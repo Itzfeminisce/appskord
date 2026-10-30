@@ -29,6 +29,7 @@ export class MediaCache {
   private videos = new Map<string, VideoSource>();
   private audios = new Map<string, unknown>();
   private fonts = new Set<string>();
+  private families = new Set<string>();
   private pending = new Map<string, Promise<void>>();
   private fits = new Map<string, Fit>();
 
@@ -56,7 +57,7 @@ export class MediaCache {
     if (!blob) return;
     if (asset.kind === 'image' || asset.kind === 'logo') this.images.set(asset.id, await (d.image ?? defaultImage)(blob));
     else if (asset.kind === 'video' && d.video) this.videos.set(asset.id, await d.video(asset, blob));
-    else if (asset.kind === 'font') { await (d.font ?? defaultFont)(asset.name, blob); this.fonts.add(asset.id); }
+    else if (asset.kind === 'font') { await (d.font ?? defaultFont)(asset.name, blob); this.fonts.add(asset.id); this.families.add(asset.name); }
     else if (asset.kind === 'audio' && d.audio) this.audios.set(asset.id, await d.audio(blob));
   }
 
@@ -79,6 +80,15 @@ export class MediaCache {
     return this.scratchCtx ?? undefined;
   }
 
+  /** True once the family is usable, so fits measured on fallback metrics are not reused. */
+  fontReady(family: string): boolean {
+    if (this.families.has(family)) return true;
+    try {
+      const fonts = (globalThis as unknown as { fonts?: { check(f: string): boolean } }).fonts;
+      return !!fonts?.check(`16px "${family.replace(/"/g, '')}"`);
+    } catch { return false; }
+  }
+
   fit(key: string, make: () => Fit): Fit {
     let f = this.fits.get(key);
     if (!f) {
@@ -93,6 +103,6 @@ export class MediaCache {
   dispose() {
     for (const i of this.images.values()) i.close?.();
     for (const v of this.videos.values()) v.close?.();
-    this.images.clear(); this.videos.clear(); this.audios.clear(); this.fonts.clear(); this.fits.clear();
+    this.images.clear(); this.videos.clear(); this.audios.clear(); this.fonts.clear(); this.families.clear(); this.fits.clear();
   }
 }

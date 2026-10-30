@@ -62,15 +62,20 @@ function slotPose(motion: Motion | undefined, slot: PresetSlot, raw: number, pos
   return apply(pose, preset.pose(ease(motion.feel, raw)));
 }
 
-/** The pose of a layer `t` ms after the layer starts. Pure, so preview and export agree. */
-export function layerPose(layer: Pick<Layer, 'startMs' | 'endMs' | 'in' | 'during' | 'out'>, t: number): Pose {
-  const length = layer.endMs - layer.startMs;
+/** The pose of a layer `t` ms after the layer starts; `sceneMs` is the scene-local end. Pure, so preview and export agree. */
+export function layerPose(layer: Pick<Layer, 'startMs' | 'endMs' | 'in' | 'during' | 'out'>, t: number, sceneMs = Infinity): Pose {
+  // A layer that runs past its scene ends with the scene, so its out phase still plays.
+  const length = Math.min(layer.endMs, sceneMs) - layer.startMs;
   let pose = REST;
-  if (layer.in) pose = slotPose(layer.in, 'in', t / Math.max(1, layer.in.durationMs), pose);
+  // In and out that together exceed the layer shrink in proportion so it still reaches full pose.
+  const inMs = layer.in ? Math.max(1, layer.in.durationMs) : 0;
+  const outMs = layer.out ? Math.max(1, layer.out.durationMs) : 0;
+  const k = inMs + outMs > length && length > 0 ? length / (inMs + outMs) : 1;
+  if (layer.in) pose = slotPose(layer.in, 'in', t / Math.max(1, inMs * k), pose);
   if (layer.during) {
     const cycle = Math.max(1, layer.during.durationMs);
     pose = slotPose(layer.during, 'during', (((t % cycle) + cycle) % cycle) / cycle, pose);
   }
-  if (layer.out) pose = slotPose(layer.out, 'out', (length - t) / Math.max(1, layer.out.durationMs), pose);
+  if (layer.out) pose = slotPose(layer.out, 'out', (length - t) / Math.max(1, outMs * k), pose);
   return pose;
 }

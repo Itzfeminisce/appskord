@@ -87,4 +87,33 @@ describe('checker', () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.length).toBeGreaterThan(3);
   });
+
+  it('one overflow fix size holds on every size when all fixes are applied', () => {
+    const r = clip([title({ text: 'A much longer spring sale headline than fits in any box at all', box: { x: 0.2, y: 0.4, w: 0.6, h: 0.2 } } as Partial<Layer>)]);
+    const found = check(r, { measure }).filter((i) => i.kind === 'overflow');
+    expect(found.length).toBeGreaterThan(1);
+    expect(new Set(found.map((i) => JSON.stringify(i.fix))).size).toBe(1);
+    expect(kinds(fixed(r)).filter((k) => k.startsWith('overflow'))).toEqual([]);
+  });
+
+  it('several too-fast fixes in one scene never cut a layer', () => {
+    const words = (n: number) => Array.from({ length: n }, (_, k) => `w${k}`).join(' ');
+    const a = title({ id: 'a', text: words(20), startMs: 1000, endMs: 1500, box: { x: 0.2, y: 0.2, w: 0.6, h: 0.2 } } as Partial<Layer>);
+    const b = title({ id: 'b', text: words(12), startMs: 1500, endMs: 2000, box: { x: 0.2, y: 0.6, w: 0.6, h: 0.2 } } as Partial<Layer>);
+    const f = fixed(clip([a, b]));
+    const sc = f.scenes[0]!;
+    expect(sc.durationMs).toBe(1000 + readMs(words(20)));
+    for (const l of sc.layers) expect(l.endMs).toBeLessThanOrEqual(sc.durationMs);
+    expect(kinds(f).filter((k) => k.startsWith('too-fast'))).toEqual([]);
+  });
+
+  it('reads the box for the recipe size and blends alpha and opacity when finding the colour behind', () => {
+    const card = (extra: Partial<Layer>): Layer => ({ id: 'card', name: 'Card', type: 'shape', shape: 'rect', fill: '#FFFFFF', startMs: 0, endMs: 3000, opacity: 1, box: { x: 0.1, y: 0.3, w: 0.8, h: 0.4 }, ...extra } as Layer);
+    const ink = { colour: '#000000' } as Partial<Layer>;
+    const moved = title({ box: { x: 0.02, y: 0.02, w: 0.1, h: 0.1 }, boxes: { '1:1': { x: 0.2, y: 0.4, w: 0.6, h: 0.2 } } } as Partial<Layer>);
+    expect(kinds(clip([card({}), moved]))).toContain('contrast@1:1');
+    expect(kinds(clip([card({}), title(ink)]))).toEqual([]);
+    expect(kinds(clip([card({ fill: '#FFFFFF10' } as Partial<Layer>), title(ink)]))).toEqual(['contrast@1:1']);
+    expect(kinds(clip([card({ opacity: 0.1 }), title(ink)]))).toEqual(['contrast@1:1']);
+  });
 });

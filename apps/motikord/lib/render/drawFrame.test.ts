@@ -85,6 +85,43 @@ describe('drawFrame', () => {
     expect(draw(500, '16:9', true)).not.toContain('fillStyle=#111111');
   });
 
+  it('draws the last frame at and after the clip end', () => {
+    const end = clipDuration(clip);
+    expect(draw(end)).toContain('fillStyle=#333333');
+    expect(draw(end).some((c) => c.startsWith('rect('))).toBe(true);
+    expect(draw(end + 500)).toEqual(draw(end));
+  });
+
+  it('keeps a layer that ends at the scene end visible on the final frame', () => {
+    const r = recipe([scene('a', '#111111', [text('t1', { startMs: 0, endMs: 1000 })])]);
+    const { ctx, log } = fakeCtx(1280, 720);
+    drawFrame(ctx, r, '16:9', 1000, new MediaCache());
+    expect(log.some((c) => c.startsWith('fillText(Hello there'))).toBe(true);
+  });
+
+  it('refits when the font becomes ready, and keys on the same rounded size it fits', () => {
+    const cache = new MediaCache();
+    const keys: string[] = [];
+    const fit = cache.fit.bind(cache);
+    cache.fit = (k, make) => { keys.push(k); return fit(k, make); };
+    const r = recipe([scene('a', '#111111', [text('t1')])]);
+    drawFrame(fakeCtx(1280, 720).ctx, r, '16:9', 100, cache);
+    (cache as unknown as { families: Set<string> }).families.add('Geist');
+    drawFrame(fakeCtx(1280, 720).ctx, r, '16:9', 100, cache);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it('draws a wrapped chart number label on separate lines', () => {
+    const chart: Layer = { id: 'c', name: 'c', type: 'chart', chart: 'number', colour: '#FFFFFF', values: [{ label: 'a very long label that has to wrap onto several lines here', value: 5 }],
+      startMs: 0, endMs: 1000, opacity: 1, box: { x: 0.4, y: 0.2, w: 0.2, h: 0.6 } } as Layer;
+    const { ctx, log } = fakeCtx(1280, 720);
+    drawFrame(ctx, recipe([scene('a', '#111111', [chart])]), '16:9', 500, new MediaCache());
+    const labels = log.filter((c) => c.startsWith('fillText(')).slice(1);
+    expect(labels.length).toBeGreaterThan(1);
+    expect(labels.every((c) => !c.includes('a very long label that has to wrap'))).toBe(true);
+  });
+
   it('has no DOM access, so it runs in the export worker', () => {
     const dir = __dirname;
     for (const f of readdirSync(dir).filter((n) => n.endsWith('.ts') && !n.endsWith('.test.ts'))) {

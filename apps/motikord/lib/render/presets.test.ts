@@ -68,4 +68,17 @@ describe('layerPose', () => {
     expect(layerPose(l, 400).dy).toBeCloseTo(layerPose(l, 1200).dy);
     expect(getPreset('bounce')?.slot).toBe('during');
   });
+
+  it('scales in and out down so a short layer still reaches full pose', () => {
+    const l = { startMs: 0, endMs: 600, in: { preset: 'fade-in', feel: 'steady' as Feel, durationMs: 600 }, out: { preset: 'fade-out', feel: 'steady' as Feel, durationMs: 600 } };
+    expect(layerPose(l, 300).alpha).toBeCloseTo(1);
+    expect(layerPose(l, 150).alpha).toBeCloseTo(0.5);
+  });
+
+  it('ends the out phase at the scene end when the layer runs past it', () => {
+    const l = { startMs: 0, endMs: 5000, out: { preset: 'fade-out', feel: 'steady' as Feel, durationMs: 500 } };
+    expect(layerPose(l, 1000, 1000).alpha).toBeCloseTo(0);
+    expect(layerPose(l, 750, 1000).alpha).toBeCloseTo(0.5);
+    expect(layerPose(l, 750).alpha).toBe(1);
+  });
 });

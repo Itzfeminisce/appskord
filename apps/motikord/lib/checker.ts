@@ -24,10 +24,8 @@ export function check(recipe: Recipe, opts: CheckOptions = {}): Issue[] {
   recipe.scenes.forEach((scene, si) => {
     scene.layers.forEach((layer, li) => {
       const at = { recipe, scene, layer, si, li };
-      for (const aspect of ASPECTS) {
-        if (layer.type === 'text') overflow(at, aspect, measure, issues);
-        safeArea(at, aspect, issues);
-      }
+      if (layer.type === 'text') overflow(at, measure, issues);
+      for (const aspect of ASPECTS) safeArea(at, aspect, issues);
       if (layer.type === 'text') contrast(at, issues);
       tooFast(at, issues);
       credit(at, issues);
@@ -42,17 +40,24 @@ export function check(recipe: Recipe, opts: CheckOptions = {}): Issue[] {
 
 interface At { recipe: Recipe; scene: Scene; layer: Layer; si: number; li: number }
 
-function overflow({ recipe, scene, layer, si, li }: At, aspect: Aspect, measure: Measure, out: Issue[]) {
+function overflow({ recipe, scene, layer, si, li }: At, measure: Measure, out: Issue[]) {
   const l = layer as TextLayer;
-  const b = boxFor(l, aspect, recipe.aspect, scene.layout);
-  const { w, h } = canvasSize(aspect, 1080);
   const pad = l.background ? 32 : 0;
-  const fit = fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize: l.sizePx, lineHeight: l.lineHeight, measure });
-  if (fit.fits && fit.sizePx >= Math.floor(l.sizePx)) return;
-  out.push({
-    id: id('overflow', scene.id, l.id, aspect), sceneId: scene.id, layerId: l.id, aspect, kind: 'overflow',
-    fix: [{ op: 'replace', path: `${layerPath(si, li)}/sizePx`, value: fit.sizePx }],
+  const fits = ASPECTS.map((aspect) => {
+    const b = boxFor(l, aspect, recipe.aspect, scene.layout);
+    const { w, h } = canvasSize(aspect, 1080);
+    return { aspect, fit: fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize: l.sizePx, lineHeight: l.lineHeight, measure }) };
   });
+  const bad = fits.filter(({ fit }) => !fit.fits || fit.sizePx < Math.floor(l.sizePx));
+  if (!bad.length) return;
+  // One size for every aspect: the smallest fit, so no fix undoes another.
+  const sizePx = Math.min(...fits.map(({ fit }) => fit.sizePx));
+  for (const { aspect } of bad) {
+    out.push({
+      id: id('overflow', scene.id, l.id, aspect), sceneId: scene.id, layerId: l.id, aspect, kind: 'overflow',
+      fix: [{ op: 'replace', path: `${layerPath(si, li)}/sizePx`, value: sizePx }],
+    });
+  }
 }
 
 // Text and charts must stay readable; a logo must never sit under a player's buttons.
@@ -76,12 +81,20 @@ function boxFix(recipe: Recipe, layer: Layer, si: number, li: number, aspect: As
   return { op: 'add', path: `${base}/boxes`, value: { [aspect]: box } };
 }
 
-export function parseHex(hex: string): [number, number, number] | undefined {
+type Rgba = [number, number, number, number];
+
+function parseRgba(hex: string): Rgba | undefined {
   const m = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(hex);
   if (!m) return undefined;
   let s = m[1]!;
   if (s.length === 3) s = [...s].map((c) => c + c).join('');
-  return [0, 2, 4].map((i) => parseInt(s.slice(i, i + 2), 16)) as [number, number, number];
+  const n = [0, 2, 4, 6].map((i) => (s.length > i ? parseInt(s.slice(i, i + 2), 16) : 255));
+  return [n[0]!, n[1]!, n[2]!, n[3]! / 255];
+}
+
+export function parseHex(hex: string): [number, number, number] | undefined {
+  const c = parseRgba(hex);
+  return c && [c[0], c[1], c[2]];
 }
 
 const luminance = ([r, g, b]: [number, number, number]) => {
@@ -89,37 +102,58 @@ const luminance = ([r, g, b]: [number, number, number]) => {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 };
 
+const ratioOf = (x: [number, number, number], y: [number, number, number]) => {
+  const [hi, lo] = [luminance(x), luminance(y)].sort((p, q) => q - p) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+};
+
 /** WCAG contrast ratio of two hex colours, or undefined when either is not a solid colour. */
 export function contrastRatio(a: string, b: string): number | undefined {
   const x = parseHex(a);
   const y = parseHex(b);
-  if (!x || !y) return undefined;
-  const [hi, lo] = [luminance(x), luminance(y)].sort((p, q) => q - p) as [number, number];
-  return (hi + 0.05) / (lo + 0.05);
+  return x && y ? ratioOf(x, y) : undefined;
+}
+
+type Rgb = [number, number, number];
+const toHex = ([r, g, b]: Rgb) => `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+
+/** `fill` at `alpha` over `base`; undefined when it is see-through and nothing solid is below. */
+function over(fill: string, alpha: number, base: Rgb | undefined): Rgb | undefined {
+  const c = parseRgba(fill);
+  if (!c) return undefined;
+  const a = c[3] * alpha;
+  if (a >= 1) return [c[0], c[1], c[2]];
+  if (!base) return undefined;
+  return [0, 1, 2].map((i) => c[i]! * a + base[i]! * (1 - a)) as Rgb;
 }
 
 const contains = (o: Box, i: Box) => o.x <= i.x && o.y <= i.y && o.x + o.w >= i.x + i.w && o.y + o.h >= i.y + i.h;
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** The solid colour behind a text layer, or undefined when a picture or nothing solid is behind it. */
-function behind(scene: Scene, li: number, l: TextLayer): string | undefined {
-  if (l.background) return l.background;
+/** The solid colour behind layer li (below its own fill), or undefined when a picture or nothing solid is behind it. */
+function under(recipe: Recipe, scene: Scene, li: number): Rgb | undefined {
+  const l = scene.layers[li]!;
+  const box = boxFor(l, recipe.aspect, recipe.aspect, scene.layout);
   for (let k = li - 1; k >= 0; k--) {
     const below = scene.layers[k]!;
-    if (below.startMs >= l.endMs || below.endMs <= l.startMs || !overlaps(below.box, l.box)) continue;
-    if (below.type === 'shape' && below.shape === 'rect' && below.opacity >= 1 && contains(below.box, l.box)) return below.fill;
+    const bb = boxFor(below, recipe.aspect, recipe.aspect, scene.layout);
+    if (below.startMs >= l.endMs || below.endMs <= l.startMs || !overlaps(bb, box)) continue;
+    if (below.type === 'shape' && below.shape === 'rect' && contains(bb, box)) return over(below.fill, below.opacity, under(recipe, scene, k));
     // A picture, chart or partly covering shape: the checker cannot tell the colour behind.
     return undefined;
   }
-  return scene.background === 'transparent' ? undefined : scene.background;
+  return scene.background === 'transparent' ? undefined : over(scene.background, 1, undefined);
 }
 
 function contrast({ recipe, scene, layer, si, li }: At, out: Issue[]) {
   const l = layer as TextLayer;
-  const bg = behind(scene, li, l);
-  if (!bg) return;
-  const ratio = contrastRatio(l.colour, bg);
-  if (ratio === undefined) return;
+  const base = under(recipe, scene, li);
+  const bgRgb = l.background ? over(l.background, 1, base) : base;
+  if (!bgRgb) return;
+  const bg = toHex(bgRgb);
+  const ink = over(l.colour, l.opacity, bgRgb);
+  if (!ink) return;
+  const ratio = ratioOf(ink, bgRgb);
   const large = l.role === 'title' || l.sizePx >= 48;
   if (ratio >= (large ? 3 : 4.5)) return;
   const colour = (contrastRatio(LIGHT, bg) ?? 0) >= (contrastRatio(DARK, bg) ?? 0) ? LIGHT : DARK;
@@ -132,6 +166,13 @@ function contrast({ recipe, scene, layer, si, li }: At, out: Issue[]) {
 /** Time to read text once: a short base plus a quarter second a word. */
 export const readMs = (text: string) => Math.max(1000, 400 + text.split(/\s+/).filter(Boolean).length * 250);
 
+/** The scene length that holds every too-short text layer, never less than it has, so no fix cuts a layer. */
+function sceneNeed(scene: Scene): number {
+  let need = scene.durationMs;
+  for (const l of scene.layers) if (l.type === 'text') need = Math.max(need, l.endMs - l.startMs < readMs(l.text) ? l.startMs + readMs(l.text) : 0);
+  return need;
+}
+
 function tooFast({ recipe, scene, layer, si, li }: At, out: Issue[]) {
   const base = layerPath(si, li);
   const fix: PatchOp[] = [];
@@ -140,10 +181,11 @@ function tooFast({ recipe, scene, layer, si, li }: At, out: Issue[]) {
     if (m && m.durationMs < MIN_MOTION_MS) fix.push({ op: 'replace', path: `${base}/${slot}/durationMs`, value: Math.max(MIN_MOTION_MS, getPreset(m.preset)?.defaultMs ?? MIN_MOTION_MS) });
   }
   if (layer.type === 'text') {
-    const need = readMs(layer.text);
-    if (layer.endMs - layer.startMs < need) {
-      const end = layer.startMs + need;
-      if (end > scene.durationMs) fix.push({ op: 'replace', path: `/scenes/${si}/durationMs`, value: end });
+    const read = readMs(layer.text);
+    if (layer.endMs - layer.startMs < read) {
+      const end = layer.startMs + read;
+      const need = sceneNeed(scene);
+      if (need > scene.durationMs) fix.push({ op: 'replace', path: `/scenes/${si}/durationMs`, value: need });
       fix.push({ op: 'replace', path: `${base}/endMs`, value: end });
     }
   }

@@ -54,4 +54,11 @@ describe('MediaCache', () => {
     expect(img.close).toHaveBeenCalled();
     expect(cache.image('i')).toBeUndefined();
   });
+
+  it('reports a font family ready only after it loads', async () => {
+    const cache = new MediaCache(decoders());
+    expect(cache.fontReady('f')).toBe(false);
+    await cache.load(recipe([asset('f', 'font')]));
+    expect(cache.fontReady('f')).toBe(true);
+  });
 });

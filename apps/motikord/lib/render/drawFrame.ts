@@ -43,7 +43,9 @@ export function drawFrame(ctx: Ctx, recipe: Recipe, aspect: Aspect, tMs: number,
   ctx.globalAlpha = 1;
   ctx.filter = 'none';
   ctx.clearRect(0, 0, w, h);
-  const at = sceneAt(recipe, tMs);
+  // At or past the end, show the last instant inside the last scene instead of a blank frame.
+  const end = clipDuration(recipe);
+  const at = sceneAt(recipe, end > 0 && tMs >= end ? end - 1 : tMs);
   if (!at) return;
   const { scene, localMs } = at;
   if (!opts.seeThrough && scene.background !== 'transparent') {
@@ -53,7 +55,7 @@ export function drawFrame(ctx: Ctx, recipe: Recipe, aspect: Aspect, tMs: number,
   const unit = Math.min(w, h) / BASE_SHORT;
   for (const layer of activeLayers(scene, localMs)) {
     const t = localMs - layer.startMs;
-    const pose = layerPose(layer, t);
+    const pose = layerPose(layer, t, scene.durationMs);
     const alpha = layer.opacity * pose.alpha;
     if (alpha <= 0.001 || pose.scale <= 0.001 || pose.reveal <= 0) continue;
     const b = boxFor(layer, aspect, recipe.aspect, scene.layout);
@@ -120,8 +122,10 @@ const measurer = (ctx: Ctx, l: Pick<TextLayer, 'font' | 'weight'>): Measure => (
 };
 
 function fitIn(ctx: Ctx, cache: MediaCache, l: Pick<TextLayer, 'font' | 'weight'>, text: string, width: number, height: number, maxSize: number, lineHeight: number): Fit {
-  const key = `${l.font}|${l.weight}|${Math.round(maxSize)}|${Math.round(width)}|${Math.round(height)}|${lineHeight}|${text}`;
-  return cache.fit(key, () => fitText({ text, width, height, maxSize, lineHeight, measure: measurer(ctx, l) }));
+  const w = Math.round(width);
+  const h = Math.round(height);
+  const key = `${l.font}|${cache.fontReady(l.font) ? 1 : 0}|${l.weight}|${Math.round(maxSize)}|${w}|${h}|${lineHeight}|${text}`;
+  return cache.fit(key, () => fitText({ text, width: w, height: h, maxSize, lineHeight, measure: measurer(ctx, l) }));
 }
 
 function drawText(ctx: Ctx, l: TextLayer, bw: number, bh: number, typed: number, unit: number, cache: MediaCache) {
@@ -212,7 +216,9 @@ function drawChart(ctx: Ctx, l: ChartLayer, bw: number, bh: number, t: number, u
     if (first.label) {
       const lf = fitIn(ctx, cache, { font: 'Geist', weight: 500 }, first.label, bw, bh - numberH, 48 * unit, 1.2);
       ctx.font = fontFor({ font: 'Geist', weight: 500 }, lf.sizePx);
-      ctx.fillText(lf.lines.join(' '), 0, bh / 2 - (bh - numberH) / 2);
+      const step = lf.sizePx * 1.2;
+      let y = bh / 2 - (bh - numberH) / 2 - ((lf.lines.length - 1) * step) / 2;
+      for (const line of lf.lines) { ctx.fillText(line, 0, y); y += step; }
     }
     return;
   }
