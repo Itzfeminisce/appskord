@@ -26,7 +26,7 @@ export default defineConfig({
     description: 'Short animated clips, made on your computer',
     icons: ICONS,
     // activeTab + scripting run the page picker (T6) only in the tab you grab from.
-    permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting'],
+    permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting', 'identity'],
     // Asked for only when first used: Penv Cloud, Groq, the media libraries and the hosts their files come from.
     optional_host_permissions: [
       'https://penv.cloud/*',

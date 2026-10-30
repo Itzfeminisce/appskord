@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const V1_PERMISSIONS = ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting'];
+const V1_PERMISSIONS = ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting', 'identity'];
 const OPTIONAL_HOSTS = [
   'https://penv.cloud/*',
   'https://api.groq.com/*',
