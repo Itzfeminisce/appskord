@@ -12,7 +12,10 @@ const isContainer = (v: unknown): v is Container => typeof v === 'object' && v !
 export function parsePointer(path: string): string[] {
   if (path === '') return [];
   if (!path.startsWith('/')) throw new PatchError(`The path "${path}" must start with /.`);
-  return path.slice(1).split('/').map((t) => t.replace(/~1/g, '/').replace(/~0/g, '~'));
+  const tokens = path.slice(1).split('/').map((t) => t.replace(/~1/g, '/').replace(/~0/g, '~'));
+  // Blocks prototype pollution from an AI-written patch.
+  if (tokens.some((t) => t === '__proto__' || t === 'constructor' || t === 'prototype')) throw new PatchError(`The path "${path}" is not allowed.`);
+  return tokens;
 }
 const toPointer = (tokens: string[]) => tokens.map((t) => '/' + t.replace(/~/g, '~0').replace(/\//g, '~1')).join('');
 
@@ -52,7 +55,8 @@ function editParent(doc: unknown, tokens: string[], path: string, edit: (parent:
 
 function applyOne(doc: unknown, op: PatchOp): { doc: unknown; inverse: PatchOp[] } {
   if (op.op === 'move') {
-    if (op.path === op.from || op.path.startsWith(op.from + '/')) throw new PatchError(`"${op.from}" cannot move inside itself.`);
+    if (op.path === op.from) return { doc, inverse: [] };
+    if (op.path.startsWith(op.from + '/')) throw new PatchError(`"${op.from}" cannot move inside itself.`);
     const value = getAt(doc, parsePointer(op.from), op.from);
     const removed = applyOne(doc, { op: 'remove', path: op.from });
     const added = applyOne(removed.doc, { op: 'add', path: op.path, value });

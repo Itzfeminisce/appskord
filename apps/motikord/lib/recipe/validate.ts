@@ -119,12 +119,16 @@ function checkAsset(key: string, a: unknown, bad: (m: string) => void) {
 
 function checkBox(where: string, b: unknown, bad: (m: string) => void) {
   if (!isObj(b)) return bad(`${where} has no position and size.`);
-  for (const k of ['x', 'y', 'w', 'h'] as const) {
+  // x and y may sit off the canvas so a layer can start outside it; a line may have no height.
+  for (const k of ['x', 'y'] as const) {
     const v = b[k];
-    if (!isNum(v) || v < 0 || v > 1) bad(`${where} ${k} must be a fraction of the canvas from 0 to 1.`);
+    if (!isNum(v) || v < -1 || v > 2) bad(`${where} ${k} must be a fraction of the canvas from -1 to 2.`);
   }
-  if (isNum(b.w) && b.w === 0) bad(`${where} width must be more than 0.`);
-  if (isNum(b.h) && b.h === 0) bad(`${where} height must be more than 0.`);
+  for (const k of ['w', 'h'] as const) {
+    const v = b[k];
+    if (!isNum(v) || v < 0 || v > 2) bad(`${where} ${k} must be a fraction of the canvas from 0 to 2.`);
+  }
+  if (isNum(b.w) && isNum(b.h) && b.w === 0 && b.h === 0) bad(`${where} must have a width or a height.`);
   if (b.rotation !== undefined && !isNum(b.rotation)) bad(`${where} rotation must be a number.`);
 }
 

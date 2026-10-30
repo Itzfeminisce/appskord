@@ -77,3 +77,13 @@ describe('applyPatch', () => {
     expect(() => applyPatch(doc(), [{ op: 'move', from: '/scenes', path: '/scenes/0' }])).toThrow(/inside itself/);
   });
 });
+
+describe('patch guards', () => {
+  it('rejects prototype paths', () => {
+    expect(() => applyPatch({ a: {} }, [{ op: 'add', path: '/a/__proto__', value: { x: 1 } }])).toThrow(PatchError);
+  });
+  it('treats a move onto itself as a no-op', () => {
+    const doc = { a: [1, 2] };
+    expect(applyPatch(doc, [{ op: 'move', from: '/a/0', path: '/a/0' }]).doc).toEqual(doc);
+  });
+});
