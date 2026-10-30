@@ -10,11 +10,10 @@ export const HOSTS = {
   pexels: ['https://api.pexels.com/*', 'https://images.pexels.com/*', 'https://videos.pexels.com/*'],
 } as const;
 
-/** Asks Chrome for the hosts (skips the prompt when they are already allowed). Never throws. */
+/** Asks Chrome for the hosts; request() resolves true when they are already allowed. No awaited call before it, so the user gesture survives. Never throws. */
 export async function requestHost(origins: readonly string[]): Promise<HostAccess> {
   const wanted = [...origins];
   try {
-    if (await chrome.permissions.contains({ origins: wanted })) return 'granted';
     return (await chrome.permissions.request({ origins: wanted })) ? 'granted' : 'denied';
   } catch (error) {
     console.error('Motikord: could not ask for host access', error);

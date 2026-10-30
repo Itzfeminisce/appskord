@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent } from 'react';
 import { Button } from '../components/ui';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { HOSTS, requestHost } from '../lib/hostAccess';
-import { checkKey, detectKey, serviceLabel, type EnvKeyName } from '../lib/keyDetect';
-import { loadKeys, mergeKeys } from '../lib/keys';
+import { checkKey, createKeyWatcher, detectKey, serviceLabel, type EnvKeyName } from '../lib/keyDetect';
+import { mergeKeys } from '../lib/keys';
 import { updateSettings } from '../lib/settings';
 import { SourceToggle } from './PenvConnect';
 import { Footer, Page, StepHead, Title } from './Setup';
-import { KeyChecking, KeyNotRecognised, KeyRejected } from './StatesSetup';
+import { GroqAccess, KeyChecking, KeyNotRecognised, KeyRejected } from './StatesSetup';
 
 type Status =
   | { kind: 'empty' }
@@ -15,7 +15,7 @@ type Status =
   | { kind: 'checking'; name: EnvKeyName }
   | { kind: 'ready'; name: EnvKeyName }
   | { kind: 'rejected'; name: EnvKeyName }
-  | { kind: 'unverified'; name: EnvKeyName };
+  | { kind: 'blocked'; name: EnvKeyName };
 
 const WHAT: Record<EnvKeyName, string | null> = {
   GROQ_API_KEY: 'It writes your clips and makes the changes you ask for.',
@@ -38,59 +38,62 @@ export default function PasteKey() {
   const { back, navigate, replace } = useRouter();
   const [value, setValue] = useState('');
   const [status, setStatus] = useState<Status>({ kind: 'empty' });
-  const [hasGroq, setHasGroq] = useState(false);
   const [busy, setBusy] = useState(false);
   const run = useRef(0);
 
-  useEffect(() => {
-    loadKeys().then((k) => setHasGroq(!!k.GROQ_API_KEY)).catch((error: unknown) => console.error('Motikord: could not read keys', error));
-  }, []);
-
-  /** Checks the key with its service and keeps it in session memory when accepted. */
+  /** Asks for host access, then checks the key; the key is saved only when the service accepts it. */
   async function verify(name: EnvKeyName, key: string, mine: number): Promise<Status> {
+    // requestHost is called first with nothing awaited before it, so the paste or click gesture counts.
+    const access = await requestHost(name === 'GROQ_API_KEY' ? HOSTS.groq : HOSTS.pexels);
+    if (mine !== run.current) return { kind: 'empty' };
+    if (access === 'denied') return { kind: 'blocked', name };
     const result = await checkKey(name, key);
     if (mine !== run.current) return { kind: 'empty' };
     if (result === 'rejected') return { kind: 'rejected', name };
-    if (result === 'ready') {
-      await mergeKeys({ [name]: key.trim() });
-      if (name === 'GROQ_API_KEY') setHasGroq(true);
-      await updateSettings({ keySource: 'paste' });
-      return { kind: 'ready', name };
-    }
-    return { kind: 'unverified', name };
+    if (result === 'unreachable') return { kind: 'blocked', name };
+    await mergeKeys({ [name]: key.trim() });
+    await updateSettings({ keySource: 'paste' });
+    return { kind: 'ready', name };
   }
 
-  function onInput(next: string) {
-    setValue(next);
+  function check(name: EnvKeyName, key: string) {
+    if (name !== 'GROQ_API_KEY') return setStatus({ kind: 'not-recognised' });
     const mine = ++run.current;
-    if (!next.trim()) return setStatus({ kind: 'empty' });
-    const name = detectKey(next);
-    if (!name) return setStatus({ kind: 'not-recognised' });
     setStatus({ kind: 'checking', name });
-    verify(name, next, mine)
+    verify(name, key, mine)
       .then((s) => mine === run.current && setStatus(s))
       .catch((error: unknown) => {
         console.error('Motikord: could not check the key', error);
-        if (mine === run.current) setStatus({ kind: 'unverified', name });
+        if (mine === run.current) setStatus({ kind: 'blocked', name });
       });
   }
 
+  const watcher = useRef(createKeyWatcher((name, key) => check(name, key)));
+  useEffect(() => () => watcher.current.cancel(), []);
+
+  function onInput(next: string) {
+    setValue(next);
+    ++run.current;
+    if (!next.trim()) return setStatus({ kind: 'empty' });
+    const name = detectKey(next);
+    setStatus(name && name !== 'GROQ_API_KEY' ? { kind: 'not-recognised' } : name ? { kind: 'empty' } : { kind: 'not-recognised' });
+    watcher.current.type(next);
+  }
+
+  function onPaste(e: ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData('text');
+    if (!text.trim()) return;
+    e.preventDefault();
+    setValue(text);
+    const name = detectKey(text);
+    if (!name || name !== 'GROQ_API_KEY') { ++run.current; watcher.current.cancel(); return setStatus({ kind: 'not-recognised' }); }
+    watcher.current.paste(text);
+  }
+
   async function start() {
+    if (status.kind !== 'ready') return;
     setBusy(true);
     try {
-      if (status.kind === 'unverified') {
-        // Chrome only shows its prompt from a click, so the check that could not run on input runs here.
-        const hosts = status.name === 'GROQ_API_KEY' ? HOSTS.groq : HOSTS.pexels;
-        await requestHost(hosts);
-        const next = await verify(status.name, value, run.current);
-        if (next.kind === 'rejected') return setStatus(next);
-        if (next.kind === 'unverified') {
-          await mergeKeys({ [status.name]: value.trim() });
-          await updateSettings({ keySource: 'paste' });
-          if (status.name === 'GROQ_API_KEY') setHasGroq(true);
-        }
-      }
-      if (!(await loadKeys()).GROQ_API_KEY) return;
       await updateSettings({ onboarded: true });
       replace('Home');
     } catch (error) {
@@ -100,7 +103,7 @@ export default function PasteKey() {
     }
   }
 
-  const canStart = status.kind !== 'checking' && status.kind !== 'rejected' && (hasGroq || (status.kind === 'unverified' && status.name === 'GROQ_API_KEY'));
+  const canStart = status.kind === 'ready' && status.name === 'GROQ_API_KEY';
   return (
     <Page frame="PasteKey">
       <StepHead step={2} onBack={back} />
@@ -111,12 +114,13 @@ export default function PasteKey() {
           <span style={{ fontSize: 13, fontWeight: 600 }}>Your key</span>
           <input
             type="password" value={value} autoComplete="off" spellCheck={false} aria-label="Your key"
-            onChange={(e) => onInput(e.target.value)}
+            onChange={(e) => onInput(e.target.value)} onPaste={onPaste}
             style={{ height: 44, padding: '0 12px', borderRadius: 10, border: `1px solid ${status.kind === 'rejected' || status.kind === 'not-recognised' ? 'var(--error-line)' : 'var(--line-strong)'}`, background: 'var(--surface)', font: '14px var(--mono)', color: 'var(--ink)' }}
           />
         </label>
         {status.kind === 'checking' && <KeyChecking service={serviceLabel(status.name)} />}
-        {(status.kind === 'ready' || status.kind === 'unverified') && <Detected name={status.name} ready={status.kind === 'ready'} />}
+        {status.kind === 'ready' && <Detected name={status.name} ready />}
+        {status.kind === 'blocked' && <GroqAccess onAllow={() => check(status.name, value)} />}
         {status.kind === 'not-recognised' && <KeyNotRecognised />}
         {status.kind === 'rejected' && <KeyRejected />}
         <span style={{ fontSize: 13, color: 'var(--muted)' }}>No key yet? <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">Get a free Groq key</a></span>
