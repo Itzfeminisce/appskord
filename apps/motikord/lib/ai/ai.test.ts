@@ -9,7 +9,7 @@ import { detectType, guessType } from './detectType';
 import { compactRecipe, editRecipe } from './editRecipe';
 import { AiError } from './errors';
 import { editSystem, recipeSystem } from './prompts';
-import { normaliseColour, parseJsonReply, writeRecipe, type WriteInput } from './writeRecipe';
+import { fitToMax, normaliseColour, parseJsonReply, writeRecipe, type WriteInput } from './writeRecipe';
 
 const KEY = 'gsk_test';
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
@@ -64,9 +64,12 @@ describe('detectType', () => {
     expect(guessType('How to brew coffee in 3 steps')).toBe('explainer');
   });
 
-  it('throws a typed error when Groq is busy', async () => {
-    const fetch: FetchLike = async () => new Response('{}', { status: 429 });
-    await expect(detectType('x', { ai: 'cloud', key: KEY, fetch, settings: {} })).rejects.toMatchObject({ state: 'groq-busy' });
+  it('falls back to a local guess when the call fails, but stays cancelled on cancel', async () => {
+    const busy: FetchLike = async () => new Response('{}', { status: 429 });
+    expect(await detectType('Revenue grew 40%', { ai: 'cloud', key: KEY, fetch: busy, settings: {} })).toEqual({ type: 'chart', by: 'guess' });
+    const ac = new AbortController(); ac.abort();
+    const aborted: FetchLike = async () => { throw new DOMException('x', 'AbortError'); };
+    await expect(detectType('x', { ai: 'cloud', key: KEY, fetch: aborted, signal: ac.signal, settings: {} })).rejects.toMatchObject({ code: 'cancelled' });
   });
 });
 
@@ -111,6 +114,20 @@ describe('writeRecipe', () => {
     expect(err).toMatchObject({ code: 'invalid-reply', state: 'making-failed' });
     expect(err.detail.problems.join(' ')).toContain('not in the assets list');
     expect(g.bodies).toHaveLength(2);
+  });
+
+  it('fitToMax keeps every layer at least 1 ms and every scene at least 1 ms', () => {
+    const scenes = [
+      { ...(JSON.parse(draft({ id: 's1', durationMs: 59990 }, [title({ startMs: 0, endMs: 59990 })])).scenes[0]) },
+      { ...(JSON.parse(draft({ id: 's2', durationMs: 20 }, [title({ id: 't2', startMs: 5, endMs: 7 })])).scenes[0]) },
+      { ...(JSON.parse(draft({ id: 's3', durationMs: 10000 }, [title({ id: 't3', startMs: 100, endMs: 101 })])).scenes[0]) },
+    ];
+    const out = fitToMax({ scenes } as unknown as Recipe);
+    expect(out.scenes.reduce((t, s) => t + s.durationMs, 0)).toBeLessThanOrEqual(60000);
+    for (const s of out.scenes) {
+      expect(s.durationMs).toBeGreaterThanOrEqual(1);
+      for (const l of s.layers) { expect(l.endMs).toBeGreaterThanOrEqual(l.startMs + 1); expect(l.endMs).toBeLessThanOrEqual(s.durationMs); }
+    }
   });
 
   it('cuts a clip over 60 seconds to fit and says too-long', async () => {

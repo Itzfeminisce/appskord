@@ -16,7 +16,7 @@ export const GROQ_MODEL = 'llama-3.3-70b-versatile';
 export interface LanguageModelLike {
   availability(): Promise<'unavailable' | 'downloadable' | 'downloading' | 'available'>;
   create(opts: { initialPrompts?: ChatMessage[]; temperature?: number; topK?: number; signal?: AbortSignal }): Promise<{
-    prompt(input: string, opts?: { signal?: AbortSignal }): Promise<string>;
+    prompt(input: string, opts?: { signal?: AbortSignal; responseConstraint?: object }): Promise<string>;
     destroy?(): void;
   }>;
 }
@@ -81,25 +81,41 @@ async function chatGroq(messages: ChatMessage[], opts: ChatOptions): Promise<str
   }
   if (!res.ok) throw new LLMError(`Groq returned ${res.status}.`, 'server');
   let content: unknown;
-  try { content = ((await res.json()) as { choices?: { message?: { content?: unknown } }[] }).choices?.[0]?.message?.content; } catch { /* handled below */ }
+  try {
+    content = ((await res.json()) as { choices?: { message?: { content?: unknown } }[] }).choices?.[0]?.message?.content;
+  } catch (e) {
+    if (isAbort(e) || opts.signal?.aborted) throw new LLMError('Cancelled.', 'cancelled');
+  }
   if (typeof content !== 'string') throw new LLMError('Groq sent an unexpected reply.', 'bad-reply');
   return content;
 }
 
 async function chatLocal(messages: ChatMessage[], opts: ChatOptions): Promise<string> {
   const lm = opts.languageModel ?? (globalThis as { LanguageModel?: LanguageModelLike }).LanguageModel;
-  if (!lm || (await lm.availability()) === 'unavailable') throw new LLMError('Built-in AI is not available.', 'local-unavailable');
+  const availability = lm ? await lm.availability().catch(() => 'unavailable' as const) : 'unavailable';
+  // Never start a model download from here.
+  if (!lm || availability !== 'available') throw new LLMError('Built-in AI is not available.', 'local-unavailable');
   const last = messages[messages.length - 1];
   if (!last || last.role !== 'user') throw new LLMError('The last message must be from the user.', 'bad-reply');
+  let session: Awaited<ReturnType<LanguageModelLike['create']>>;
   try {
-    const session = await lm.create({ initialPrompts: messages.slice(0, -1), signal: opts.signal });
-    try {
-      return await session.prompt(last.content, { signal: opts.signal });
-    } finally {
-      session.destroy?.();
-    }
+    session = await lm.create({ initialPrompts: messages.slice(0, -1), signal: opts.signal });
   } catch (e) {
-    if (isAbort(e)) throw new LLMError('Cancelled.', 'cancelled');
+    if (isAbort(e) || opts.signal?.aborted) throw new LLMError('Cancelled.', 'cancelled');
+    throw new LLMError('Built-in AI is not available.', 'local-unavailable');
+  }
+  try {
+    if (opts.json) {
+      try { return await session.prompt(last.content, { signal: opts.signal, responseConstraint: { type: 'object' } }); } catch (e) {
+        if (isAbort(e) || opts.signal?.aborted) throw e;
+        // This Chrome does not take responseConstraint; ask again without it.
+      }
+    }
+    return await session.prompt(last.content, { signal: opts.signal });
+  } catch (e) {
+    if (isAbort(e) || opts.signal?.aborted) throw new LLMError('Cancelled.', 'cancelled');
     throw new LLMError('Built-in AI could not answer.', 'bad-reply');
+  } finally {
+    session.destroy?.();
   }
 }

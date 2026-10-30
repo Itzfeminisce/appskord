@@ -47,4 +47,36 @@ describe('chat with built-in AI', () => {
     const lm: LanguageModelLike = { availability: async () => 'unavailable', create: async () => { throw new Error('no'); } };
     expect(await code(chat([{ role: 'user', content: 'u' }], { ai: 'local', languageModel: lm }))).toBe('local-unavailable');
   });
+
+  it('treats a model that still has to download as local-unavailable and never creates a session', async () => {
+    for (const a of ['downloadable', 'downloading'] as const) {
+      const create = vi.fn();
+      const lm: LanguageModelLike = { availability: async () => a, create };
+      expect(await code(chat([{ role: 'user', content: 'u' }], { ai: 'local', languageModel: lm }))).toBe('local-unavailable');
+      expect(create).not.toHaveBeenCalled();
+    }
+  });
+
+  it('reports a create() failure as local-unavailable', async () => {
+    const lm: LanguageModelLike = { availability: async () => 'available', create: async () => { throw new Error('no'); } };
+    expect(await code(chat([{ role: 'user', content: 'u' }], { ai: 'local', languageModel: lm }))).toBe('local-unavailable');
+  });
+
+  it('passes responseConstraint when json is asked for', async () => {
+    const prompt = vi.fn(async () => '{}');
+    const lm: LanguageModelLike = { availability: async () => 'available', create: async () => ({ prompt }) };
+    await chat([{ role: 'user', content: 'u' }], { ai: 'local', languageModel: lm, json: true });
+    expect(prompt).toHaveBeenCalledWith('u', expect.objectContaining({ responseConstraint: expect.anything() }));
+  });
+});
+
+describe('cancel stays cancel', () => {
+  it('maps an abort while reading the Groq body to cancelled', async () => {
+    const ac = new AbortController();
+    const fetch: FetchLike = async () => ({
+      ok: true, status: 200, headers: new Headers(),
+      json: async () => { ac.abort(); throw new DOMException('aborted', 'AbortError'); },
+    } as unknown as Response);
+    expect(await code(chat([{ role: 'user', content: 'u' }], { ai: 'cloud', key: KEY, fetch, signal: ac.signal }))).toBe('cancelled');
+  });
 });

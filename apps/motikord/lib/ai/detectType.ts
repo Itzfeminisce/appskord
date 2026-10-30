@@ -32,7 +32,9 @@ export async function detectType(
   try {
     reply = await chat([{ role: 'system', content: detectSystem() }, { role: 'user', content: prompt }], { ...chatOpts, json: true, maxTokens: 20, temperature: 0 });
   } catch (e) {
-    throw toAiError(e, 'make');
+    const err = toAiError(e, 'make');
+    if (err.code === 'cancelled') throw err;
+    return { type: guessType(prompt), by: 'guess' }; // best effort; the recipe call surfaces real errors
   }
   const parsed = parseJsonReply(reply.text);
   const raw = (typeof parsed === 'object' && parsed !== null ? (parsed as { type?: unknown }).type : reply.text);

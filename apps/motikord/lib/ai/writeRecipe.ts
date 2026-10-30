@@ -114,14 +114,18 @@ export function fitToMax(recipe: Recipe): Recipe {
   const k = MAX_CLIP_MS / total;
   const t = (ms: number) => Math.floor(ms * k);
   const motion = (m?: Motion) => (m ? { ...m, durationMs: Math.max(1, t(m.durationMs)) } : m);
-  const scenes = recipe.scenes.map((s) => ({
-    ...s, durationMs: t(s.durationMs),
-    layers: s.layers.map((l) => {
-      const out = { ...l, startMs: t(l.startMs), endMs: Math.min(t(l.endMs), t(s.durationMs)) } as Layer;
-      for (const slot of ['in', 'during', 'out'] as const) if (l[slot]) out[slot] = motion(l[slot]);
-      return out;
-    }),
-  }));
+  const scenes = recipe.scenes.map((s) => {
+    const dur = Math.max(1, t(s.durationMs));
+    return {
+      ...s, durationMs: dur,
+      layers: s.layers.map((l) => {
+        const startMs = Math.min(t(l.startMs), dur - 1);
+        const out = { ...l, startMs, endMs: Math.max(startMs + 1, Math.min(t(l.endMs), dur)) } as Layer;
+        for (const slot of ['in', 'during', 'out'] as const) if (l[slot]) out[slot] = motion(l[slot]);
+        return out;
+      }),
+    };
+  });
   return { ...recipe, scenes };
 }
 
