@@ -36,7 +36,7 @@ export function failureFor(error: unknown, settings: Pick<Settings, 'keySource'>
   if (error instanceof MakeFailure) return error;
   const ai = error instanceof AiError ? error : new AiError('invalid-reply', 'make');
   if (ai.code === 'cancelled') return new MakeFailure(undefined);
-  if (ai.code === 'no-key') return new MakeFailure(settings.keySource === 'penv-app' ? 'penv-disconnected' : 'groq-down');
+  if (ai.code === 'no-key') return new MakeFailure(settings.keySource === 'penv-app' ? 'penv-disconnected' : 'key-needed');
   return new MakeFailure(ai.state ?? 'making-failed', ai.detail.retryAfterMs);
 }
 

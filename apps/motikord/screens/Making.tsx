@@ -5,7 +5,7 @@ import { HOSTS, requestHost } from '../lib/hostAccess';
 import { MAX_BUSY_RETRIES, draft, runner, useRun, useSettings } from '../lib/makeClip';
 import type { ClipType } from '../lib/types';
 import { send } from '../lib/messages';
-import { AiFooter, GroqBusy, GroqBusyRetried, GroqDown, MakingFailed, Offline, TooLong } from './StatesCreate';
+import { AiFooter, GroqBusy, GroqBusyRetried, GroqDown, KeyNeeded, MakingFailed, Offline, TooLong } from './StatesCreate';
 import { GroqAccess, PenvDisconnected } from './StatesSetup';
 import { RecipeThumb, TYPE_NAMES } from './Templates';
 
@@ -74,6 +74,7 @@ export default function Making() {
   else if (failed === 'groq-busy' && !autoRetry) card = <GroqBusyRetried onTryNow={again} />;
   else if (failed === 'groq-busy') card = <GroqBusy seconds={Math.ceil((waitMs ?? 20_000) / 1000)} onTryNow={again} />;
   else if (failed === 'groq-down') card = <GroqDown onOpenSettings={() => navigate('Settings')} />;
+  else if (failed === 'key-needed') card = <KeyNeeded onPasteKey={() => navigate('PasteKey')} />;
   else if (failed === 'offline') card = <Offline />;
   else if (failed === 'penv-disconnected') card = <PenvDisconnected onConnect={() => navigate('PenvConnect')} />;
   else if (failed === 'groq-access') card = <GroqAccess onAllow={allow} />;

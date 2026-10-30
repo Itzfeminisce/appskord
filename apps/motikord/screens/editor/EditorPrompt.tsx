@@ -6,7 +6,7 @@ import { getSettings, onSettingsChanged } from '../../lib/settings';
 import { openSidePanelOn } from '../../lib/sidepanelGo';
 import type { AiMode } from '../../lib/types';
 import Editor, { useEditor } from './Editor';
-import { ChangeTooLong, GroqAccess, GroqBusy, GroqBusyRetried, GroqDown, Offline, PromptFailed, PromptWorking } from './StatesPrompt';
+import { ChangeTooLong, GroqAccess, GroqBusy, GroqBusyRetried, GroqDown, KeyNeeded, Offline, PromptFailed, PromptWorking } from './StatesPrompt';
 
 // Editor frame, centre: "Tell Motikord what to change" with its chips. EditorPrompt frame: the "Done." toast with Undo.
 
@@ -15,7 +15,7 @@ const BUSY_S = 20;
 
 type Ui =
   | { kind: 'idle' } | { kind: 'working' } | { kind: 'failed' } | { kind: 'too-long'; totalMs: number }
-  | { kind: 'busy'; left: number } | { kind: 'busy-retried' } | { kind: 'down' } | { kind: 'offline' } | { kind: 'access' };
+  | { kind: 'busy'; left: number } | { kind: 'busy-retried' } | { kind: 'down' } | { kind: 'key' } | { kind: 'offline' } | { kind: 'access' };
 
 export function PromptBox() {
   const { state, edit, toast } = useEditor();
@@ -60,12 +60,14 @@ export function PromptBox() {
       setUi({ kind: 'idle' });
     } catch (error) {
       const e = toAiError(error, 'edit');
-      if (e.code !== 'cancelled') console.error('Motikord: could not change the clip', e);
+      if (e.code !== 'cancelled' && e.code !== 'no-key') console.error('Motikord: could not change the clip', e);
       switch (e.state) {
         case undefined: setUi({ kind: 'idle' }); break;
         case 'change-too-long': setUi({ kind: 'too-long', totalMs: e.detail.totalMs ?? 0 }); break;
         case 'groq-busy': setUi(retried.current ? { kind: 'busy-retried' } : { kind: 'busy', left: Math.max(1, Math.ceil((e.detail.retryAfterMs ?? BUSY_S * 1000) / 1000)) }); break;
         case 'groq-down': setUi({ kind: 'down' }); break;
+        // Penv Cloud keeps its own key, so a missing one there is still sent to Settings.
+        case 'key-needed': setUi({ kind: (await getSettings().catch(() => undefined))?.keySource === 'penv-app' ? 'down' : 'key' }); break;
         case 'offline': setUi({ kind: 'offline' }); break;
         default: setUi({ kind: 'failed' });
       }
@@ -102,6 +104,12 @@ export function PromptBox() {
     openSidePanelOn(id, 'Settings');
   };
 
+  const pasteKey = () => {
+    const id = windowId.current;
+    if (id === undefined) return;
+    openSidePanelOn(id, 'PasteKey');
+  };
+
   const card = (() => {
     switch (ui.kind) {
       case 'failed': return <PromptFailed onRetry={() => send(last.current)} />;
@@ -109,6 +117,7 @@ export function PromptBox() {
       case 'busy': return <GroqBusy seconds={ui.left} onTryNow={() => send(last.current)} />;
       case 'busy-retried': return <GroqBusyRetried onTryNow={() => send(last.current)} />;
       case 'down': return <GroqDown onOpenSettings={openSettings} />;
+      case 'key': return <KeyNeeded onPasteKey={pasteKey} />;
       case 'offline': return <Offline />;
       case 'access': return <GroqAccess onAllow={() => send(last.current)} />;
       default: return null;

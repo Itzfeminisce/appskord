@@ -8,7 +8,7 @@ describe('stateFor', () => {
     ['rate-limited', 'groq-busy', 'groq-busy'],
     ['server', 'groq-down', 'groq-down'],
     ['auth', 'groq-down', 'groq-down'],
-    ['no-key', 'groq-down', 'groq-down'],
+    ['no-key', 'key-needed', 'key-needed'],
     ['bad-reply', 'making-failed', 'prompt-failed'],
     ['invalid-reply', 'making-failed', 'prompt-failed'],
     ['local-unavailable', 'making-failed', 'prompt-failed'],

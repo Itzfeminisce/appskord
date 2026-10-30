@@ -86,8 +86,8 @@ describe('makeClip', () => {
 
   it('maps a missing key by where the key came from', async () => {
     expect(failureFor(new AiError('no-key', 'make'), { keySource: 'penv-app' }).state).toBe('penv-disconnected');
-    expect(failureFor(new AiError('no-key', 'make'), { keySource: 'paste' }).state).toBe('groq-down');
-    expect(failureFor(new AiError('no-key', 'make'), { keySource: null }).state).toBe('groq-down');
+    expect(failureFor(new AiError('no-key', 'make'), { keySource: 'paste' }).state).toBe('key-needed');
+    expect(failureFor(new AiError('no-key', 'make'), { keySource: null }).state).toBe('key-needed');
   });
 
   it('treats a stopped request as no state at all', async () => {

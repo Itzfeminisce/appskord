@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { clockShort } from '../../lib/editor/store';
 
-// The prompt box's states: prompt-working, prompt-failed, change-too-long (StatesEditor), groq-busy, groq-down, offline (StatesCreate), groq-access (StatesSetup).
+// The prompt box's states: prompt-working, prompt-failed, change-too-long (StatesEditor), groq-busy, groq-down, key-needed, offline (StatesCreate), groq-access (StatesSetup).
 
 const svg = (size: number, stroke: string, body: ReactNode, w = 2) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>{body}</svg>
@@ -83,6 +83,15 @@ export function GroqDown({ onOpenSettings }: { onOpenSettings?: () => void }) {
   );
 }
 
+export function KeyNeeded({ onPasteKey }: { onPasteKey?: () => void }) {
+  return (
+    <Card tone="warning" icon={svg(20, 'var(--warning-ink)', <><path d="M12 3.5l9.5 16.5h-19z" /><path d="M12 10v4.5M12 17.5v.01" /></>)} title="Paste your key again"
+      action={<button type="button" onClick={onPasteKey} style={dark}>Paste a key</button>}>
+      A pasted key is kept only until Chrome closes. Your clips are safe, and you can still edit by hand and export.
+    </Card>
+  );
+}
+
 export function Offline() {
   return (
     <Card tone="plain" icon={svg(20, 'var(--muted)', <path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0M12 19v.01M3 3l18 18" />)} title="You’re offline">
@@ -108,5 +117,6 @@ export const PROMPT_STATES: [string, ReactNode][] = [
   ['groq-busy · Making your clip, Editor', <GroqBusy seconds={20} />],
   ['groq-busy-retried · Making your clip, Editor', <GroqBusyRetried />],
   ['groq-down · Make a clip, Editor', <GroqDown />],
+  ['key-needed · Editor prompt', <KeyNeeded />],
   ['offline · Make a clip, Editor (banner)', <Offline />],
 ];
