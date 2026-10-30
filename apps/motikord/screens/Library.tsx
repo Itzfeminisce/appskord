@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { updateClip } from '../lib/db';
 import { cleanName, clipDate, duplicate, ensureThumbnail, filterClips, footerText, libraryDeps, measureSpace, removeClip, sortClips, type TypeFilter } from '../lib/library';
@@ -20,14 +20,31 @@ const chipStyle = (on: boolean) => ({ height: 28, padding: '0 10px', borderRadiu
 function Thumb({ clip }: { clip: Clip }) {
   const [url, setUrl] = useState<string>();
   const first = clip.recipe.scenes[0];
+  const latest = useRef(clip);
+  latest.current = clip;
+  const shown = useRef<string | undefined>(undefined);
   useEffect(() => {
-    let live = true;
-    let made: string | undefined;
-    ensureThumbnail(clip)
-      .then((blob) => { if (live && blob) { made = URL.createObjectURL(blob); setUrl(made); } })
+    const stop = new AbortController();
+    ensureThumbnail(latest.current, stop.signal)
+      .then((blob) => {
+        if (stop.signal.aborted || !blob) return;
+        const next = URL.createObjectURL(blob);
+        const img = new Image();
+        const swap = () => {
+          if (stop.signal.aborted) { URL.revokeObjectURL(next); return; }
+          const old = shown.current;
+          shown.current = next;
+          setUrl(next);
+          if (old) URL.revokeObjectURL(old);
+        };
+        img.onload = swap;
+        img.onerror = swap;
+        img.src = next;
+      })
       .catch((error: unknown) => console.error('Motikord: could not draw a thumbnail', error));
-    return () => { live = false; if (made) URL.revokeObjectURL(made); };
-  }, [clip]);
+    return () => stop.abort();
+  }, [clip.id, clip.updatedAt]);
+  useEffect(() => () => { if (shown.current) URL.revokeObjectURL(shown.current); }, []);
   return (
     <span style={{ height: 200, borderRadius: 12, background: first?.background === 'transparent' || !first ? 'var(--stage)' : first.background, border: '1px solid var(--line)', position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
       {url && <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyBrand, brandEdit, familyFromFile, hasBrand, hexToHsv, hsvToHex, logoPath, normHex, withColour } from './brand';
-import { check } from './checker';
+import { applyBrand, brandEdit, brandPaths, familyFromFile, hasBrand, hexToHsv, hsvToHex, logoPath, normHex, withColour } from './brand';
+import { check, contrastRatio } from './checker';
 import { applyPatch } from './patch';
 import { validateRecipe } from './recipe/validate';
 import type { BrandKit, Recipe } from './types';
@@ -35,7 +35,7 @@ describe('applyBrand', () => {
     expect(out.brandApplied).toBe(true);
     expect(out.scenes[0]!.background).toBe('#FFFBF5');
     expect(layer(out, 'title')).toMatchObject({ colour: '#431407', font: 'Fraunces' });
-    expect(layer(out, 'sub')).toMatchObject({ colour: '#431407', font: 'Geist' });
+    expect(layer(out, 'sub')).toMatchObject({ colour: '#FFFFFF', font: 'Geist' });
     expect(layer(out, 'card')).toMatchObject({ fill: '#B45309' });
     expect(layer(out, 'rule')).toMatchObject({ fill: '#FDE68A' });
     expect(layer(out, 'tag')).toMatchObject({ background: '#B45309', colour: '#FFFFFF' });
@@ -103,5 +103,25 @@ describe('brand kit states', () => {
     expect(normHex('#b45309')).toBe('#B45309');
     expect(normHex('#12')).toBeUndefined();
     for (const hex of ['#B45309', '#FFFFFF', '#000000', '#3366CC']) expect(hsvToHex(hexToHsv(hex))).toBe(hex);
+  });
+});
+
+describe('readable text after Apply', () => {
+  const mid: BrandKit = { useForNewClips: false, colours: [{ hex: '#797979', role: 'primary' }, { hex: '#888888', role: 'text' }, { hex: '#797979', role: 'background' }] };
+  it('keeps every text layer at or above its contrast, even on a mid-tone', () => {
+    const out = run(recipe(), mid);
+    for (const l of out.scenes[0]!.layers) {
+      if (l.type !== 'text') continue;
+      const back = l.background ?? '#797979';
+      const min = l.sizePx >= 48 ? 3 : 4.5;
+      expect(contrastRatio(l.colour, back) ?? 0).toBeGreaterThanOrEqual(min);
+    }
+    expect(layer(out, 'sub')).toHaveProperty('background');
+  });
+  it('uses the kit Text colour when it reaches the contrast', () => {
+    expect(layer(run(recipe()), 'title')).toMatchObject({ colour: '#431407' });
+  });
+  it('lists the logo and custom font paths the kit holds', () => {
+    expect(brandPaths(kit)).toEqual([logoPath('brand-logo-svg'), expect.stringContaining('fraunces')]);
   });
 });
