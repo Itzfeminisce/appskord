@@ -5,7 +5,8 @@ import { canRedo, canUndo } from '../../lib/editor/history';
 import { devSampleRecipe, findLayer, initState, reducer, removeLayer, sceneIndex, type EditorState, type Edit } from '../../lib/editor/store';
 import { getBrandKit, getClip, putClip, updateClip } from '../../lib/db';
 import { getMedia } from '../../lib/media';
-import { send } from '../../lib/messages';
+import { brandEdit, loadKit, registerBrandFonts } from '../../lib/brand';
+import { onMessage, send } from '../../lib/messages';
 import { MediaCache } from '../../lib/render/cache';
 import { devTools, type RouteParams } from '../../lib/router';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
@@ -13,6 +14,7 @@ import type { Asset, Author, BrandKit, Clip } from '../../lib/types';
 import { useRouter, type EditorScreen } from '../../entrypoints/editor/router';
 import { AddToScene } from './AddToScene';
 import { Canvas } from './Canvas';
+import { CheckerPanel } from '../Checker';
 import { LayerTab } from './LayerTab';
 import { ScenesList } from './ScenesList';
 import { EditorLoading, FirstRun, MediaMissing, PreviewLight, SaveFailed, UndoToast } from './StatesEditor';
@@ -97,7 +99,9 @@ async function openClip(clipId: string | undefined, cache: MediaCache): Promise<
   }
   if (!clip) return undefined;
   const r = clip.recipe;
-  const [brand] = await Promise.all([getBrandKit().catch(() => undefined), cache.load(r), document.fonts.ready]);
+  const brand = await getBrandKit().catch(() => undefined);
+  await Promise.all([registerBrandFonts(brand), cache.load(r)]);
+  await document.fonts.ready;
   let missing: Loaded['missing'];
   r.scenes.forEach((s, i) => s.layers.forEach((l) => {
     if ((l.type !== 'image' && l.type !== 'video') || cache.has(l.assetId)) return;
@@ -223,6 +227,18 @@ function EditorOpen({ loaded, cache }: { loaded: Loaded; cache: MediaCache }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [api]);
 
+  // "Apply to the open clip" in the Brand kit screen: the saved kit becomes one Change by hand.
+  useEffect(() => onMessage({
+    'brand/apply': async ({ clipId }) => {
+      const s = stateRef.current;
+      if (clipId && clipId !== s.clip.id) return { applied: false };
+      const kit = await loadKit();
+      await registerBrandFonts(kit);
+      api.edit(brandEdit(s.clip.recipe, kit), { toast: true });
+      return { applied: true };
+    },
+  }), [api]);
+
   const dismissFirstRun = () => {
     setFirstRun(false);
     void browser.storage.local.set({ [FIRST_RUN_KEY]: true }).catch(() => undefined);
@@ -248,6 +264,7 @@ function EditorOpen({ loaded, cache }: { loaded: Loaded; cache: MediaCache }) {
               {save === 'failed' && <SaveFailed onRetry={() => void autosave.current?.flush()} />}
               {missing && <MediaMissing file={missing.file} scene={missing.scene} onReplace={() => { setMissing(undefined); api.go('YourMedia', { sceneId: state.clip.recipe.scenes[missing.scene - 1]?.id }); }} />}
             </div>
+            {router.route.screen === 'Checker' && <CheckerPanel />}
             {firstRun && <div style={{ position: 'absolute', left: 20, bottom: 96, width: 300, zIndex: 6 }}><FirstRun onDone={dismissFirstRun} /></div>}
             {toastText && <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 320, zIndex: 6 }}><UndoToast text={toastText} onUndo={api.undo} /></div>}
           </main>

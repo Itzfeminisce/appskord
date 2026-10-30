@@ -7,6 +7,8 @@ export interface MessageMap {
   'editor/open': { req: { clipId?: string }; res: { tabId: number } };
   // Editor tab → everyone: a clip was saved to IndexedDB, so lists reload it.
   'clip/saved': { req: { clipId: string }; res: void };
+  // Brand kit screen → editor tab: apply the saved brand kit to the open clip as one Change by 'hand'.
+  'brand/apply': { req: { clipId?: string }; res: { applied: boolean } };
   // Export (T11) → service worker: toolbar badge progress, 0 to 100; null clears it.
   'export/progress': { req: { percent: number | null }; res: void };
 }
