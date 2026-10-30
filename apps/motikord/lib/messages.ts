@@ -1,3 +1,5 @@
+import type { PageInfo, Pick } from './grab/pick';
+
 /**
  * Runtime messages between the side panel, the editor tab and the service worker.
  * Each entry is the message's fields (`req`) and what its listener answers (`res`). Later tasks add entries here.
@@ -11,6 +13,12 @@ export interface MessageMap {
   'brand/apply': { req: { clipId?: string }; res: { applied: boolean } };
   // Export (T11) → service worker: toolbar badge progress, 0 to 100; null clears it.
   'export/progress': { req: { percent: number | null }; res: void };
+  // Page picker → side panel: the picks so far (each click), "Done" or Esc (`done`), or "Cancel".
+  'grab/picks': { req: { picks: Pick[]; page: PageInfo; done?: boolean }; res: void };
+  'grab/cancel': { req: Record<never, never>; res: void };
+  // Side panel → page picker (sent to the tab): remove one pick, or stop picking.
+  'grab/remove': { req: { id: string }; res: void };
+  'grab/stop': { req: Record<never, never>; res: void };
 }
 
 export type MessageType = keyof MessageMap;
