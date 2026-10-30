@@ -9,6 +9,7 @@ import { clock, chooseMusicEdit } from '../lib/music';
 import { LICENCE_TAG, needsCredit } from '../lib/media/licence';
 import { MediaSearchError, searchOpenverse, type MediaKind, type MediaResult } from '../lib/media/openverse';
 import { searchPexels } from '../lib/media/pexels';
+import { PANEL_GOTO, send } from '../lib/messages';
 import { getKey, getSettings, onSettingsChanged } from '../lib/settings';
 import type { Recipe, Settings } from '../lib/types';
 import { AllLicencesOn, LibraryDenied, MediaDownloadFailed, MediaNoResults, MediaOffline, MediaSearching, PexelsNeedsKey } from './StatesMedia';
@@ -30,7 +31,8 @@ export function useStoredClip() {
   const commit = async (edit: Edit | undefined) => {
     if (!clipId || !edit) return false;
     const ok = await commitEdit(clipId, edit);
-    if (ok) await reload();
+    // The edit is saved; a failed reload must not read as a failed save.
+    if (ok) await reload().catch((error: unknown) => console.error('Motikord: could not reload the clip', error));
     return ok;
   };
   const close = () => (canGoBack ? back() : replace('Editor', { clipId }));
@@ -104,8 +106,12 @@ export default function MediaSearch() {
   const [adding, setAdding] = useState(false);
   const [failed, setFailed] = useState<MediaResult>();
   const asked = useRef(false);
+  // Every search and tab switch bumps the counter; a run that is no longer the latest sets nothing.
+  const latest = useRef(0);
+  const inflight = useRef<AbortController | undefined>(undefined);
   const audio = usePreview();
 
+  useEffect(() => () => { latest.current++; inflight.current?.abort(); }, []);
   useEffect(() => { void getKey('pexels').then(setKey).catch(() => undefined); }, []);
   useEffect(() => { if (settings && !asked.current) { asked.current = true; setFreeOnly(!settings.libraries.allLicences); } }, [settings]);
 
@@ -131,14 +137,22 @@ export default function MediaSearch() {
   const allLicences = !freeOnly;
 
   async function run(access: Promise<'granted' | 'denied'>, query: string, withKey: string | undefined, lic: boolean) {
+    const id = ++latest.current;
+    inflight.current?.abort();
+    const ctl = new AbortController();
+    inflight.current = ctl;
+    const doFetch = (u: string, i?: RequestInit) => fetch(u, { ...i, signal: ctl.signal });
     setStatus('searching');
     setPicked(undefined);
     setNeedsKey(wantPx && !withKey);
-    if ((await access) === 'denied') { setStatus('denied'); return; }
+    const granted = await access;
+    if (id !== latest.current) return;
+    if (granted === 'denied') { setStatus('denied'); return; }
     const jobs: Promise<MediaResult[]>[] = [];
-    if (wantOv) jobs.push(searchOpenverse((u, i) => fetch(u, i), query, tab === 'audio' ? 'audio' : 'image', lic));
-    if (wantPx && withKey) jobs.push(searchPexels((u, i) => fetch(u, i), withKey, query, tab === 'video' ? 'video' : 'image'));
+    if (wantOv) jobs.push(searchOpenverse(doFetch, query, tab === 'audio' ? 'audio' : 'image', lic));
+    if (wantPx && withKey) jobs.push(searchPexels(doFetch, withKey, query, tab === 'video' ? 'video' : 'image'));
     const settled = await Promise.allSettled(jobs);
+    if (id !== latest.current) return;
     const lists = settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
     const errors = settled.flatMap((s) => (s.status === 'rejected' ? [s.reason as unknown] : []));
     for (const e of errors) if (!(e instanceof MediaSearchError)) console.error('Motikord: could not search free media', e);
@@ -175,16 +189,18 @@ export default function MediaSearch() {
     void (async () => {
       await access;
       let path: string | undefined;
+      let saved = false;
       try {
         const asset = await downloadResult(r, { fetch: (u, i) => fetch(u, i) });
         path = asset.opfsPath;
         const scene = recipe.scenes.find((s) => s.id === sceneId) ?? recipe.scenes[0];
         const edit = r.kind === 'audio' ? chooseMusicEdit(recipe, asset) : scene && addMediaEdit(recipe, scene.id, asset, crypto.randomUUID());
         if (!(await commit(edit))) throw new Error('The edit did not apply');
+        saved = true;
         close();
       } catch (error) {
         console.error('Motikord: could not add free media', error);
-        if (path) await deleteMedia(path).catch(() => undefined);
+        if (path && !saved) await deleteMedia(path).catch(() => undefined);
         setFailed(r);
       } finally {
         setAdding(false);
@@ -192,11 +208,24 @@ export default function MediaSearch() {
     })();
   }
 
+  // sidePanel.open must run inside the click, so the window id is read ahead of it.
+  const windowId = useRef<number | undefined>(undefined);
+  useEffect(() => { void browser.windows.getCurrent().then((w) => { windowId.current = w.id; }).catch(() => undefined); }, []);
+  function addKey() {
+    if (windowId.current === undefined) return;
+    const opened = browser.sidePanel.open({ windowId: windowId.current });
+    // A panel that was closed has not loaded yet, so it also finds a note in session storage when it starts.
+    void browser.storage.session.set({ [PANEL_GOTO]: 'PasteKey' }).catch(() => undefined);
+    void opened.then(() => send({ type: 'panel/show-paste-key' })).catch((error: unknown) => console.error('Motikord: could not open the side panel', error));
+  }
+
   const selected = results.find((r) => r.id === picked && r.kind === tab);
   const shown = results.filter((r) => r.kind === tab);
   const sources: [typeof source, string][] = [['all', 'All sources'], ...(ovOn && tab !== 'video' ? [['openverse', 'Openverse'] as [typeof source, string]] : []), ...(pxOn ? [['pexels', 'Pexels'] as [typeof source, string]] : [])];
 
   const switchTab = (t: Tab) => {
+    latest.current++;
+    inflight.current?.abort();
     setTab(t); setResults([]); setStatus('idle'); setPicked(undefined); setFailed(undefined); setNeedsKey(false);
     if ((t === 'video' && source === 'openverse') || (t === 'audio' && source === 'pexels')) setSource('all');
   };
@@ -231,7 +260,7 @@ export default function MediaSearch() {
       <div style={{ flexGrow: 1, display: 'flex', gap: 16, padding: '14px 20px 0', minHeight: 0 }}>
         <div style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
           {!freeOnly && <AllLicencesOn />}
-          {needsKey && source !== 'openverse' && (source === 'pexels' || status !== 'idle') && <PexelsNeedsKey onAddKey={() => { void browser.windows.getCurrent().then((w) => browser.sidePanel.open({ windowId: w.id! })).catch((error: unknown) => console.error('Motikord: could not open the side panel', error)); }} />}
+          {needsKey && source !== 'openverse' && (source === 'pexels' || status !== 'idle') && <PexelsNeedsKey onAddKey={addKey} />}
           {status === 'searching' && <MediaSearching />}
           {status === 'denied' && <LibraryDenied onAllow={() => navigate('AccessPrompt', route.params)} />}
           {status === 'offline' && <MediaOffline onUseMedia={() => navigate('YourMedia', route.params)} />}
@@ -276,6 +305,7 @@ export default function MediaSearch() {
               {selected.width && selected.height && <><dt style={{ color: 'var(--muted)' }}>Size</dt><dd style={{ margin: 0, fontFamily: 'var(--mono)' }}>{`${selected.width} × ${selected.height}`}</dd></>}
             </dl>
             {needsCredit(selected.licence) && <span style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--warning-bg)', fontSize: 12, lineHeight: 1.45, color: 'var(--warning-ink)' }}>Needs a credit. Motikord adds it to credits.txt for you.</span>}
+            {selected.source === 'pexels' && <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>No credit needed. Motikord still adds one to credits.txt.</span>}
             <a href={selected.pageUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 500, textDecoration: 'none' }}>{`See it on ${selected.source === 'pexels' ? 'Pexels' : 'Openverse'}`}</a>
             <div style={{ flexGrow: 1 }} />
             <Button block disabled={!recipe} busy={adding} onClick={() => add(selected)}>Add to clip</Button>

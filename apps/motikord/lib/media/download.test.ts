@@ -27,6 +27,32 @@ describe('downloadResult', () => {
   });
 });
 
+describe('downloadResult size cap', () => {
+  it('refuses a declared size over the cap without reading the body', async () => {
+    const put = vi.fn(async () => undefined);
+    const res = new Response('x', { headers: { 'content-length': '500', 'content-type': 'image/jpeg' } });
+    await expect(downloadResult(result, { fetch: async () => res, put, maxBytes: 100 })).rejects.toBeInstanceOf(DownloadError);
+    expect(put).not.toHaveBeenCalled();
+  });
+  it('cancels a stream as soon as it passes the cap', async () => {
+    const put = vi.fn(async () => undefined);
+    let pulled = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) { pulled++; c.enqueue(new Uint8Array(40)); },
+      cancel() { cancelled = true; },
+    });
+    await expect(downloadResult(result, { fetch: async () => new Response(body, { headers: { 'content-type': 'image/jpeg' } }), put, maxBytes: 100 })).rejects.toBeInstanceOf(DownloadError);
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThan(10);
+    expect(put).not.toHaveBeenCalled();
+  });
+  it('keeps a streamed file under the cap with its real size', async () => {
+    const asset = await downloadResult(result, { fetch: async () => new Response(new Uint8Array(60), { headers: { 'content-type': 'image/png' } }), put: async () => undefined, id: 'id3', maxBytes: 100 });
+    expect(asset).toMatchObject({ bytes: 60, mime: 'image/png', opfsPath: 'media/id3.png' });
+  });
+});
+
 describe('addMediaEdit', () => {
   it('adds the asset and a layer in one edit', async () => {
     const asset = await downloadResult(result, { fetch: async () => new Response(new Blob(['x'], { type: 'image/png' })), put: async () => undefined, id: 'id2' });

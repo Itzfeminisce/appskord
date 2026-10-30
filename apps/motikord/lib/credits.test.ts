@@ -26,13 +26,19 @@ describe('credits', () => {
   it('writes credits.txt for CC BY, Pexels and bundled music', () => {
     expect(creditsText(recipe())).toBe([
       'Sourdough promo · made with Motikord',
-      '“Loaf on a wooden board” by Ada\nOpenverse · CC BY 4.0\nhttps://www.flickr.com/photos/a',
+      '“Loaf on a wooden board” by Ada\nOpenverse · CC BY 4.0\nhttps://www.flickr.com/photos/a\nhttps://creativecommons.org/licenses/by/4.0/',
       '“Video by Bo” by Bo\nPexels · Pexels licence\nhttps://www.pexels.com/video/9/',
-      '“Upbeat” · Motikord · CC0',
+      '“Sunny morning” · Motikord · CC0',
     ].join('\n\n'));
   });
+  it('leaves out "by" when the author is unknown and names BY-NC-SA exactly', () => {
+    const odd: Asset = { ...loaf, credit: { ...loaf.credit!, author: 'Unknown', licence: 'cc-by-nc', licenceUrl: 'https://creativecommons.org/licenses/by-nc-sa/4.0/' } };
+    const r = { ...recipe(), assets: { ...recipe().assets, a: odd } };
+    expect(creditsText(r)).toContain('“Loaf on a wooden board”\nOpenverse · CC BY-NC-SA 4.0\nhttps://www.flickr.com/photos/a\nhttps://creativecommons.org/licenses/by-nc-sa/4.0/');
+    expect(endCardLines(r)[0]).toBe('Photo: “Loaf on a wooden board”, CC BY-NC-SA 4.0');
+  });
   it('writes the end card lines', () => {
-    expect(endCardLines(recipe())).toEqual(['Photo: “Loaf on a wooden board” by Ada, CC BY 4.0', 'Video: Bo, Pexels', 'Music: Upbeat, CC0']);
+    expect(endCardLines(recipe())).toEqual(['Photo: “Loaf on a wooden board” by Ada, CC BY 4.0', 'Video: Bo, Pexels', 'Music: Sunny morning, CC0']);
   });
   it('toggles the end card', () => {
     let r = recipe();

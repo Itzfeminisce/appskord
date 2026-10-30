@@ -39,12 +39,16 @@ export function creditsList(r: Recipe): CreditsList {
 /** CC BY media never exports without credits.txt. */
 export const needsCreditsFile = (r: Recipe): boolean => creditsList(r).credited.some((row) => row.need === 'needed');
 
+/** The author, or undefined when the library gave none (the frame has no wording for that, so the "by" is left out). */
+const knownAuthor = (c: Credit): string | undefined => (c.author.trim() && c.author.trim().toLowerCase() !== 'unknown' ? c.author.trim() : undefined);
+const CC_LICENCES: readonly Credit['licence'][] = ['cc0', 'cc-by', 'cc-by-sa', 'cc-by-nc'];
+
 /** The text of credits.txt. */
 export function creditsText(r: Recipe): string {
   const blocks = creditsList(r).credited.map(({ credit, source, licence }) =>
     credit.source === 'bundled'
       ? `“${credit.title}” · ${source} · ${licence}`
-      : [`“${credit.title}” by ${credit.author}`, `${source} · ${licence}`, credit.url].filter(Boolean).join('\n'));
+      : [`“${credit.title}”${knownAuthor(credit) ? ` by ${knownAuthor(credit)}` : ''}`, `${source} · ${licence}`, credit.url, CC_LICENCES.includes(credit.licence) ? credit.licenceUrl : undefined].filter(Boolean).join('\n'));
   return [`${r.name} · made with Motikord`, ...blocks].join('\n\n');
 }
 
@@ -53,8 +57,9 @@ export function endCardLines(r: Recipe): string[] {
   return creditsList(r).credited.map(({ asset, credit, source, licence }) => {
     const word = KIND_WORD[asset.kind];
     if (credit.source === 'bundled') return `${word}: ${credit.title}, ${licence}`;
-    if (credit.source === 'pexels') return `${word}: ${credit.author}, ${source}`;
-    return `${word}: “${credit.title}” by ${credit.author}, ${licence}`;
+    const by = knownAuthor(credit);
+    if (credit.source === 'pexels') return `${word}: ${by ? `${by}, ` : ''}${source}`;
+    return `${word}: “${credit.title}”${by ? ` by ${by}` : ''}, ${licence}`;
   });
 }
 

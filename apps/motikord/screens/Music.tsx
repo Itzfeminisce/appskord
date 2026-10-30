@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { IconButton } from '../components/ui';
 import { useRouter } from '../entrypoints/editor/router';
 import { getMedia, putMedia } from '../lib/media';
-import { BUNDLED_TRACKS, bundledAsset, bundledAssetId, chooseMusicEdit, clock, DEFAULT_MUSIC, fadeLabel, FADE_CHOICES, musicSettingEdit, type BundledTrack } from '../lib/music';
+import { BUNDLED_TRACKS, bundledAssetId, chooseMusicEdit, clock, DEFAULT_MUSIC, ensureBundledAsset, fadeLabel, FADE_CHOICES, musicSettingEdit, type BundledTrack } from '../lib/music';
 import { CloseIcon, DialogShell, openMediaTab, usePreview, useStoredClip } from './MediaSearch';
 
 const row = { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px' } as const;
@@ -17,6 +17,9 @@ export default function Music() {
   const { recipe, commit, close } = useStoredClip();
   const audio = usePreview();
   const [busy, setBusy] = useState(false);
+  // The slider moves a local value while dragging; the clip is saved once on release.
+  const [draft, setDraft] = useState<number>();
+  const saving = useRef(false);
   const music = recipe?.music;
   const current = music && recipe ? recipe.assets[music.assetId] : undefined;
   const bundledId = BUNDLED_TRACKS.find((t) => bundledAssetId(t.id) === music?.assetId)?.id;
@@ -26,12 +29,7 @@ export default function Music() {
     if (!recipe || busy) return;
     setBusy(true);
     try {
-      let asset = t && bundledAsset(t);
-      if (t && asset && !(await getMedia(asset.opfsPath))) {
-        const blob = await (await fetch(trackUrl(t))).blob();
-        await putMedia(asset.opfsPath, blob);
-        asset = { ...asset, bytes: blob.size };
-      }
+      const asset = t && await ensureBundledAsset(t, { get: getMedia, put: putMedia, fetchTrack: async (x) => (await fetch(trackUrl(x))).blob() });
       await commit(chooseMusicEdit(recipe, asset));
     } catch (error) {
       console.error('Motikord: could not use this track', error);
@@ -40,7 +38,14 @@ export default function Music() {
     }
   }
   const set = (field: 'volume' | 'fadeInMs' | 'fadeOutMs', value: number) => { if (recipe) void commit(musicSettingEdit(recipe, field, value)); };
-  const volume = Math.round((music?.volume ?? DEFAULT_MUSIC.volume) * 100);
+  const saved = Math.round((music?.volume ?? DEFAULT_MUSIC.volume) * 100);
+  const volume = draft ?? saved;
+  const release = (value: number) => {
+    if (saving.current || draft === undefined) return;
+    saving.current = true;
+    const edit = recipe && value !== saved ? musicSettingEdit(recipe, 'volume', value / 100) : undefined;
+    void (edit ? commit(edit) : Promise.resolve()).finally(() => { saving.current = false; setDraft(undefined); });
+  };
 
   return (
     <DialogShell width={360} label="Music" style={{ padding: 16, gap: 12, overflowY: 'auto', boxShadow: '0 12px 32px rgba(16,16,20,0.12)' }}>
@@ -81,7 +86,7 @@ export default function Music() {
 
       <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)' }}><span>Volume</span><span style={{ fontFamily: 'var(--mono)', color: 'var(--ink)' }}>{`${volume}%`}</span></span>
-        <input type="range" min={0} max={100} value={volume} disabled={!music} onChange={(e) => set('volume', Number(e.target.value) / 100)} style={{ accentColor: 'var(--accent)', width: '100%', margin: 0 }} />
+        <input type="range" min={0} max={100} value={volume} disabled={!music} onChange={(e) => setDraft(Number(e.target.value))} onPointerUp={(e) => release(Number(e.currentTarget.value))} onKeyUp={(e) => release(Number(e.currentTarget.value))} onBlur={(e) => release(Number(e.currentTarget.value))} style={{ accentColor: 'var(--accent)', width: '100%', margin: 0 }} />
       </label>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
         {([['Fade in', 'fadeInMs', DEFAULT_MUSIC.fadeInMs], ['Fade out', 'fadeOutMs', DEFAULT_MUSIC.fadeOutMs]] as const).map(([label, field, fallback]) => (

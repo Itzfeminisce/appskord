@@ -18,5 +18,6 @@ describe('licence', () => {
     expect(licenceName('pexels')).toBe('Pexels licence');
     expect(creditLicenceName({ licence: 'cc-by', licenceUrl: 'https://creativecommons.org/licenses/by/4.0/' })).toBe('CC BY 4.0');
     expect(creditLicenceName({ licence: 'cc0' })).toBe('CC0');
+    expect(creditLicenceName({ licence: 'cc-by-nc', licenceUrl: 'https://creativecommons.org/licenses/by-nc-sa/4.0/' })).toBe('CC BY-NC-SA 4.0');
   });
 });

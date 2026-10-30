@@ -36,8 +36,14 @@ export function licenceName(licence: LicenceId, version?: string): string {
   return version && (needsCredit(licence) || licence === 'cc0') ? `${tag} ${version}` : tag;
 }
 
-/** A credit's licence for people: the version comes from the licence link when there is one. */
+/** "CC BY-NC-SA 4.0" from an Openverse code; keeps the exact licence that LicenceId folds into cc-by-nc. */
+export function openverseLicenceName(code: string | undefined, licence: LicenceId, version?: string): string {
+  const c = (code ?? '').toLowerCase();
+  return /^by(-nc)?(-sa)?$/.test(c) ? `CC ${c.toUpperCase()}${version ? ` ${version}` : ''}` : licenceName(licence, version);
+}
+
+/** A credit's licence for people: the exact name and version come from the licence link when there is one. */
 export function creditLicenceName(credit: Pick<Credit, 'licence' | 'licenceUrl'>): string {
-  const version = /\/licenses\/[a-z-]+\/(\d+\.\d+)/.exec(credit.licenceUrl ?? '')?.[1];
-  return licenceName(credit.licence, version);
+  const m = /\/licenses\/([a-z-]+)\/(\d+\.\d+)/.exec(credit.licenceUrl ?? '');
+  return m ? openverseLicenceName(m[1], credit.licence, m[2]) : licenceName(credit.licence);
 }
