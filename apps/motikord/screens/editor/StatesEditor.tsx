@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { SaveStatus } from '../../lib/editor/autosave';
+import { PROMPT_STATES } from './StatesPrompt';
 
 // StatesEditor frame: the editor's loading, first-run, preview, media, save and undo states. T8 and T9 add theirs.
 
@@ -132,6 +133,7 @@ export default function StatesEditor() {
       </Section>
       <Section label="save-failed · Editor"><SaveFailed /></Section>
       <Section label="undo-toast · Editor (after a fix or hand edit)"><UndoToast text="Fixed 3 things" /></Section>
+      {PROMPT_STATES.map(([label, card]) => <Section key={label} label={label}>{card}</Section>)}
     </div>
   );
 }

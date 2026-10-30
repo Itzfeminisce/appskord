@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
-import { Placeholder } from '../../components/ui';
 import { createAutosave, type Autosave, type SaveStatus } from '../../lib/editor/autosave';
+import { stepsBack } from '../../lib/editor/changes';
 import { canRedo, canUndo } from '../../lib/editor/history';
+import { toSizeOnly } from '../../lib/editor/sizeOnly';
 import { devSampleRecipe, findLayer, initState, reducer, removeLayer, sceneIndex, type EditorState, type Edit } from '../../lib/editor/store';
 import { getBrandKit, getClip, putClip, updateClip } from '../../lib/db';
 import { getMedia } from '../../lib/media';
@@ -9,13 +10,18 @@ import { send } from '../../lib/messages';
 import { MediaCache } from '../../lib/render/cache';
 import { devTools, type RouteParams } from '../../lib/router';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
-import type { Asset, Author, BrandKit, Clip } from '../../lib/types';
+import type { Asset, Author, BrandKit, Clip, PresetSlot, Recipe } from '../../lib/types';
 import { useRouter, type EditorScreen } from '../../entrypoints/editor/router';
 import { AddToScene } from './AddToScene';
 import { Canvas } from './Canvas';
+import { ChangesTab } from './ChangesTab';
+import { PromptBox } from './EditorPrompt';
+import { FormatsPanel } from './Formats';
 import { LayerTab } from './LayerTab';
+import { PresetsPopover } from './Presets';
 import { ScenesList } from './ScenesList';
 import { EditorLoading, FirstRun, MediaMissing, PreviewLight, SaveFailed, UndoToast } from './StatesEditor';
+import { Timeline } from './Timeline';
 import { TopBar } from './TopBar';
 import { Transport } from './Transport';
 
@@ -40,8 +46,20 @@ export interface EditorApi {
   play: (on: boolean) => void;
   /** undo-toast: T9 passes "Fixed N things"; hand edits pass their summary. */
   toast: (text: string) => void;
-  go: (screen: EditorScreen, params?: RouteParams) => void;
+  /** Presets, Formats and EditorPrompt (the Changes tab) open inside the editor; other screens are routes. */
+  go: (screen: EditorScreen, params?: RouteParams & { slot?: PresetSlot }) => void;
+  /** "Go back here": undoes every change after this one. */
+  goBack: (changeId: string) => void;
+  /** "This size only": box edits write Layer.boxes for the size being edited. */
+  sizeOnly: boolean;
+  setSizeOnly: (on: boolean) => void;
+  /** A recipe the canvas draws instead of the clip, without recording a change (preset preview). */
+  setPreview: (r: Recipe | undefined) => void;
 }
+
+/** What the editor opens on: a route screen for Presets, Formats or EditorPrompt. */
+export type EditorOpenOn = 'presets' | 'formats' | 'changes';
+type Panel = { kind: 'presets'; sceneId: string; layerId: string; slot: PresetSlot } | { kind: 'formats' };
 
 const Ctx = createContext<EditorApi | null>(null);
 export function useEditor(): EditorApi {
@@ -108,7 +126,7 @@ async function openClip(clipId: string | undefined, cache: MediaCache): Promise<
   return { clip, brand, missing };
 }
 
-export default function Editor() {
+export default function Editor({ open }: { open?: EditorOpenOn } = {}) {
   const { route } = useRouter();
   const [cache] = useState(pageCache);
   const [loaded, setLoaded] = useState<Loaded>();
@@ -129,10 +147,10 @@ export default function Editor() {
       </div>
     );
   }
-  return <EditorOpen loaded={loaded} cache={cache} />;
+  return <EditorOpen loaded={loaded} cache={cache} open={open} />;
 }
 
-function EditorOpen({ loaded, cache }: { loaded: Loaded; cache: MediaCache }) {
+function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache; open?: EditorOpenOn }) {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, loaded.clip, initState);
   const [save, setSave] = useState<SaveStatus>('saved');
@@ -141,6 +159,14 @@ function EditorOpen({ loaded, cache }: { loaded: Loaded; cache: MediaCache }) {
   const [toastText, setToastText] = useState<string>();
   const [firstRun, setFirstRun] = useState(false);
   const [missing, setMissing] = useState(loaded.missing);
+  const [tab, setTab] = useState<'layer' | 'changes'>(open === 'changes' ? 'changes' : 'layer');
+  const [panel, setPanel] = useState<Panel | undefined>(() => {
+    if (open === 'formats') return { kind: 'formats' };
+    if (open === 'presets' && state.layerId) return { kind: 'presets', sceneId: state.sceneId, layerId: state.layerId, slot: 'in' };
+    return undefined;
+  });
+  const [sizeOnly, setSizeOnly] = useState(false);
+  const [preview, setPreview] = useState<Recipe>();
   const playhead = useRef(state.timeMs);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -190,6 +216,7 @@ function EditorOpen({ loaded, cache }: { loaded: Loaded; cache: MediaCache }) {
     state, brand: loaded.brand, cache, save, smoothPreview, light, setLight, playhead,
     edit: (e, o = {}) => {
       if (!e) return;
+      if (sizeOnly) e = toSizeOnly(state.clip.recipe, e);
       dispatch({ type: 'edit', edit: e, by: o.by, at: Date.now(), id: newId(), select: o.select });
       if (o.toast) toast(e.summary);
     },
@@ -199,8 +226,27 @@ function EditorOpen({ loaded, cache }: { loaded: Loaded; cache: MediaCache }) {
     setTime: (ms) => { playhead.current = ms; dispatch({ type: 'time', ms }); },
     play: (on) => dispatch({ type: 'play', playing: on }),
     toast,
-    go: (screen, params) => router.navigate(screen, { clipId: state.clip.id, ...params }),
-  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router]);
+    go: (screen, params = {}) => {
+      if (screen === 'EditorPrompt') { setTab('changes'); return; }
+      if (screen === 'Formats') { setPanel({ kind: 'formats' }); return; }
+      if (screen === 'Presets') {
+        const sceneId = params.sceneId ?? state.sceneId;
+        const layerId = params.layerId ?? state.layerId;
+        if (layerId) setPanel({ kind: 'presets', sceneId, layerId, slot: params.slot ?? 'in' });
+        return;
+      }
+      const { slot: _slot, ...rest } = params;
+      router.navigate(screen, { clipId: state.clip.id, ...rest });
+    },
+    goBack: (changeId) => {
+      const n = stepsBack(stateRef.current.clip.history, changeId) ?? 0;
+      for (let i = 0; i < n; i++) dispatch({ type: 'undo', at: Date.now() });
+      if (n) setToastText(undefined);
+    },
+    sizeOnly, setSizeOnly, setPreview,
+  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly]);
+  // The canvas alone sees the preview recipe; everything else keeps the clip.
+  const canvasApi = useMemo<EditorApi>(() => (preview ? { ...api, state: { ...api.state, clip: { ...api.state.clip, recipe: preview } } } : api), [api, preview]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -239,11 +285,10 @@ function EditorOpen({ loaded, cache }: { loaded: Loaded; cache: MediaCache }) {
             <AddToScene />
           </aside>
           <main style={{ position: 'relative', flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--stage)', minWidth: 0, padding: '12px 20px 10px', gap: 8 }}>
-            <Canvas />
+            <Ctx.Provider value={canvasApi}><Canvas /></Ctx.Provider>
             <Transport />
             {light && <div style={{ maxWidth: 520 }}><PreviewLight /></div>}
-            {/* T8: the prompt box "Tell Motikord what to change" and its chips go here. */}
-            <div data-slot="prompt" style={{ width: '100%', maxWidth: 620, height: 78, flexShrink: 0, display: 'flex' }}><Placeholder name="EditorPrompt" /></div>
+            <PromptBox />
             <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', width: 'min(440px, calc(100% - 40px))', display: 'flex', flexDirection: 'column', gap: 8, zIndex: 5 }}>
               {save === 'failed' && <SaveFailed onRetry={() => void autosave.current?.flush()} />}
               {missing && <MediaMissing file={missing.file} scene={missing.scene} onReplace={() => { setMissing(undefined); api.go('YourMedia', { sceneId: state.clip.recipe.scenes[missing.scene - 1]?.id }); }} />}
@@ -252,13 +297,20 @@ function EditorOpen({ loaded, cache }: { loaded: Loaded; cache: MediaCache }) {
             {toastText && <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 320, zIndex: 6 }}><UndoToast text={toastText} onUndo={api.undo} /></div>}
           </main>
           <aside style={{ width: 300, flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', alignContent: 'start', padding: '14px 16px', gap: 12, overflowY: 'auto' }}>
-            <LayerTab key={`${state.sceneId}/${state.layerId ?? ''}/${si}`} />
+            {tab === 'changes'
+              ? <ChangesTab onLayer={() => setTab('layer')} />
+              : <LayerTab key={`${state.sceneId}/${state.layerId ?? ''}/${si}`} />}
           </aside>
         </div>
-        {/* T8: the timeline (scenes, a track per layer, music) fills this section. */}
-        <section aria-label="Timeline" data-slot="timeline" style={{ height: 196, flexShrink: 0, background: 'var(--surface)', borderTop: '1px solid var(--line)', display: 'flex' }}>
-          <Placeholder name="Timeline" />
+        <section aria-label="Timeline" style={{ height: 196, flexShrink: 0, background: 'var(--surface)', borderTop: '1px solid var(--line)', display: 'flex' }}>
+          <Timeline />
         </section>
+        {panel?.kind === 'presets' && (
+          <div style={{ position: 'fixed', top: 60, right: 312, bottom: 12, zIndex: 20, display: 'flex', alignItems: 'flex-start' }}>
+            <PresetsPopover key={`${panel.sceneId}/${panel.layerId}/${panel.slot}`} sceneId={panel.sceneId} layerId={panel.layerId} slot={panel.slot} onClose={() => setPanel(undefined)} />
+          </div>
+        )}
+        {panel?.kind === 'formats' && <FormatsPanel onClose={() => setPanel(undefined)} />}
       </div>
     </Ctx.Provider>
   );
