@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { check, contrastRatio, MIN_TEXT_PX, readMs } from '../lib/checker';
 import { findLayer, sceneIndex, setAspect } from '../lib/editor/store';
 import type { Measure } from '../lib/render/textFit';
@@ -116,6 +116,12 @@ export function CheckerPanel() {
   const { state, edit, select, go } = useEditor();
   const { cards } = useIssues();
   const r = state.clip.recipe;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') go('Editor'); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [go]);
 
   const fixOne = (card: Card, action: string) => edit({ ops: card.fix, summary: action }, { toast: true });
   const fixAll = () => {

@@ -69,6 +69,13 @@ export function GroqDown({ onOpenSettings }: { onOpenSettings?: () => void }) {
     </Notice>
   );
 }
+export function KeyNeeded({ onPasteKey }: { onPasteKey?: () => void }) {
+  return (
+    <Notice tone="warning" role="alert" glyph="warn" title="Paste your key again" actions={<button type="button" onClick={onPasteKey} style={actionStyle}>Paste a key</button>}>
+      A pasted key is kept only until Chrome closes. Your clips are safe, and you can still edit by hand and export.
+    </Notice>
+  );
+}
 export function Offline() {
   return (
     <Notice role="status" glyph="wifi-off" title="You’re offline">
@@ -139,6 +146,7 @@ const SHEET: [string, ReactNode][] = [
   ['groq-busy · Making your clip, Editor', <GroqBusy />],
   ['groq-busy-retried · Making your clip, Editor', <GroqBusyRetried />],
   ['groq-down · Make a clip, Editor', <GroqDown />],
+  ['key-needed · Making your clip', <KeyNeeded />],
   ['penv-disconnected · Make a clip (banner)', <PenvDisconnected />],
   ['offline · Make a clip, Editor (banner)', <Offline />],
   ['too-long · Making your clip', <TooLong />],
