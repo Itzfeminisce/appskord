@@ -9,50 +9,55 @@ First time:
 
 Updating: unzip the new zip over the same folder, then press Reload on the Motikord card. Never press Remove.
 
+When Chrome asks to allow a site or a folder, press Allow.
+
 ## Set up
 1. Click the Motikord icon to open the side panel.
-2. Pick "Faster with Groq" and press Continue.
-3. Press "Use Penv Cloud", then "Connect Penv Cloud", and sign in. If it fails, pick "Paste a key" and paste a Groq key.
-4. Press "Start making clips".
+2. Press "Get started".
+3. Pick "Faster with Groq" and press "Continue".
+4. Press "Connect Penv Cloud", sign in and choose your Groq key. If that fails, press "Paste a key" and paste your Groq key in "Your key".
+5. Press "Start making clips".
 
 ## Make a clip
-1. Type "a 10-second promo for my podcast" in the box "Describe your clip".
-2. Press "Make clip".
-3. Wait for "Making your clip". The editor opens by itself.
+1. Type "a 10-second promo for my podcast" in "Describe your clip".
+2. Press "Make clip". "Making your clip" shows, then the editor opens in a new tab.
 
 ## Grab from a page
-1. Open any article in another tab.
-2. In the panel press "Grab from this page" and allow the site.
-3. Click a heading on the page.
-4. Press "Make clip from these".
+1. Open any article in another tab and stay on it.
+2. In the side panel press "Grab from this page".
+3. Click a heading on the article.
+4. Press "Make clip from these". Another editor tab opens.
 
 ## Edit
-1. In the editor type "Slower" in "Tell Motikord what to change" and press Send.
-2. Press Undo.
-3. Open the Changes tab and press "Go back here" on an earlier change.
-4. Press All sizes and pick another size, then press "Back to the editor".
+1. In the editor type "Slower" in "Tell Motikord what to change" and press "Send".
+2. Press "Bigger title".
+3. Open the "Changes" tab and press "Go back here" on "Slower".
+4. Press "Undo".
+5. Press "All sizes", look at the three sizes, then press "Back to the editor".
 
 ## Check and brand
-1. Press the Quality check button and read the list.
-2. Open Brand kit from Settings, add a logo and a colour.
-3. Press "Use for every new clip".
+1. Press "Check", read "Quality check", then close it.
+2. Press "Brand", then "Add a logo" and pick an image.
+3. Press "Add a colour", type a hex colour and press "Done".
+4. Turn on "Use for every new clip".
+5. Press "Apply to the open clip".
 
 ## Media and music
-1. In the editor press Add to this scene, then Free media.
-2. Search for "ocean" and press Use on a photo.
-3. Press Add to this scene, then Music, and pick a free track.
-4. Press Add to this scene, then Credits, and read the list.
+1. Under "Add to this scene" press "Free media".
+2. Search for "ocean", click a photo and press "Add to clip".
+3. Press "Music", pick "Slow light", then close it.
+4. Press "Credits", read the list, then close it.
 
 ## Export
-1. Press Export.
-2. Pick MP4 and press "Export 1 video".
-3. Pick a folder if asked.
-4. Wait for it to finish, then press "Open folder".
-5. Check the video plays, and that `credits.txt` is there if you used CC BY media.
+1. Press "Export", keep "MP4" and press "Export 1 video".
+2. The first time, pick a folder when Chrome asks.
+3. When it says "Saved to", press "Open folder".
+4. Check the video plays and `credits.txt` is next to it.
 
 ## Library
-1. Press "Make a new clip", then open "Your clips".
-2. Search your clips, then press Open on one.
-3. Press Duplicate, then Rename.
-4. Press Delete.
-5. Close Chrome, open it again and check your clips are still there.
+1. In the side panel press "Your clips".
+2. Type "podcast" in "Search your clips".
+3. Press the three-dot "More" button on a clip, then "Duplicate".
+4. Press "More" on the copy, then "Rename". Type a new name and press Enter.
+5. Press "More" on it, then "Delete", then "Delete" again.
+6. Close Chrome, open it again and check your clips are still there.
