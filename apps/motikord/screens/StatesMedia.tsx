@@ -75,7 +75,7 @@ export function MediaDownloadFailed({ what = 'photo', onRetry }: { what?: 'photo
   return (
     <Row role="alert" tone="error" glyph={<svg {...icon} stroke="var(--error-ink)"><circle cx="12" cy="12" r="9" /><path d="M9 9l6 6M15 9l-6 6" /></svg>}
       title={`Couldn’t download this ${what}`} actions={btn('Try again', onRetry)}>
-      The site that hosts it didn’t send the file. Try again, or pick another one.
+      {`The site that hosts it didn’t send the ${what === 'photo' ? 'file' : what}. Try again, or pick another one.`}
     </Row>
   );
 }
@@ -98,6 +98,8 @@ export default function StatesMedia() {
       <PexelsNeedsKey />
       <LibraryDenied />
       <MediaDownloadFailed />
+      <MediaDownloadFailed what="video" />
+      <MediaDownloadFailed what="track" />
       <AllLicencesOn />
     </main>
   );

@@ -11,6 +11,8 @@ export interface MessageMap {
   'clip/saved': { req: { clipId: string }; res: void };
   // Brand kit screen → editor tab: apply the saved brand kit to the open clip as one Change by 'hand'.
   'brand/apply': { req: { clipId?: string }; res: { applied: boolean } };
+  // Editor tab → side panel: show PasteKey (the Pexels field), e.g. from "Add a Pexels key".
+  'panel/show-paste-key': { req: {}; res: void };
   // Export (T11) → service worker: toolbar badge progress, 0 to 100; null clears it.
   'export/progress': { req: { percent: number | null }; res: void };
   // Page picker → side panel: the picks so far (each click), "Done" or Esc (`done`), or "Cancel".
@@ -20,6 +22,9 @@ export interface MessageMap {
   'grab/remove': { req: { id: string }; res: void };
   'grab/stop': { req: Record<never, never>; res: void };
 }
+
+/** Session-storage key the editor sets for a side panel that is still loading. */
+export const PANEL_GOTO = 'motikordPanelGoto';
 
 export type MessageType = keyof MessageMap;
 export type MessageOf<T extends MessageType> = { type: T } & MessageMap[T]['req'];

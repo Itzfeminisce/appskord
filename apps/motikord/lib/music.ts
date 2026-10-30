@@ -5,10 +5,10 @@ import type { Asset, MusicTrack, Recipe } from './types';
 /** Tracks made by scripts/make-music.mjs and released by us as CC0. Files are in public/music. */
 export interface BundledTrack { id: string; name: string; mood: string; durationMs: number; file: string }
 export const BUNDLED_TRACKS: readonly BundledTrack[] = [
-  { id: 'upbeat', name: 'Upbeat', mood: 'Upbeat', durationMs: 32000, file: 'music/upbeat.wav' },
-  { id: 'calm', name: 'Calm', mood: 'Calm', durationMs: 33333, file: 'music/calm.wav' },
-  { id: 'bold', name: 'Bold', mood: 'Bold', durationMs: 33600, file: 'music/bold.wav' },
-  { id: 'playful', name: 'Playful', mood: 'Playful', durationMs: 32727, file: 'music/playful.wav' },
+  { id: 'upbeat', name: 'Sunny morning', mood: 'Upbeat', durationMs: 32000, file: 'music/upbeat.wav' },
+  { id: 'calm', name: 'Slow light', mood: 'Calm', durationMs: 33333, file: 'music/calm.wav' },
+  { id: 'bold', name: 'Big reveal', mood: 'Bold', durationMs: 33600, file: 'music/bold.wav' },
+  { id: 'playful', name: 'Paper clouds', mood: 'Playful', durationMs: 32727, file: 'music/playful.wav' },
 ];
 
 export const DEFAULT_MUSIC = { volume: 0.7, fadeInMs: 500, fadeOutMs: 1000 } as const;
@@ -25,9 +25,21 @@ export function bundledAsset(t: BundledTrack): Asset {
   };
 }
 
+export interface BundledDeps { get: (path: string) => Promise<{ size: number } | undefined>; fetchTrack: (t: BundledTrack) => Promise<Blob>; put: (path: string, data: Blob) => Promise<void> }
+
+/** The bundled track's asset with its real size: copied into OPFS once, and read from there when it is already kept. */
+export async function ensureBundledAsset(t: BundledTrack, deps: BundledDeps): Promise<Asset> {
+  const asset = bundledAsset(t);
+  const kept = await deps.get(asset.opfsPath);
+  if (kept) return { ...asset, bytes: kept.size };
+  const blob = await deps.fetchTrack(t);
+  await deps.put(asset.opfsPath, blob);
+  return { ...asset, bytes: blob.size };
+}
+
 export const trackOf = (r: Recipe): Asset | undefined => (r.music ? r.assets[r.music.assetId] : undefined);
 
-export const fadeLabel = (ms: number) => `${ms / 1000} s`;
+export const fadeLabel = (ms: number) => (ms === 0 ? 'Off' : `${ms / 1000} s`);
 export function clock(ms: number): string {
   const s = Math.round(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;

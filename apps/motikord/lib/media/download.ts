@@ -14,21 +14,51 @@ const EXT: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/svg+xml': 'svg',
   'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/flac': 'flac',
 };
-const MAX_BYTES = 200 * 1024 * 1024;
+export const MAX_BYTES = 200 * 1024 * 1024;
+const TOO_BIG = 'The file is empty or too large.';
 
-export interface DownloadDeps { fetch: FetchLike; put?: (path: string, data: Blob) => Promise<void>; id?: string }
+export interface DownloadDeps { fetch: FetchLike; put?: (path: string, data: Blob) => Promise<void>; id?: string; maxBytes?: number; signal?: AbortSignal }
+
+/** Reads the body with a running byte count and cancels the moment it passes the cap; Content-Length is checked first. */
+async function readCapped(res: Response, max: number): Promise<Blob> {
+  const type = res.headers.get('content-type') ?? '';
+  const declared = Number(res.headers.get('content-length'));
+  if (declared > max) { await res.body?.cancel().catch(() => undefined); throw new DownloadError(TOO_BIG); }
+  if (!res.body) {
+    const blob = await res.blob();
+    if (blob.size > max) throw new DownloadError(TOO_BIG);
+    return blob;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) { await reader.cancel().catch(() => undefined); throw new DownloadError(TOO_BIG); }
+    chunks.push(value);
+  }
+  return new Blob(chunks as BlobPart[], { type });
+}
 
 /** Downloads the file once into OPFS and returns its Asset with a full Credit. Nothing is kept when the download fails. */
 export async function downloadResult(r: MediaResult, deps: DownloadDeps): Promise<Asset> {
   let res: Response;
   try {
-    res = await deps.fetch(r.downloadUrl, { credentials: 'omit' });
+    res = await deps.fetch(r.downloadUrl, { credentials: 'omit', signal: deps.signal });
   } catch {
     throw new DownloadError('The site that hosts it did not send the file.');
   }
   if (!res.ok) throw new DownloadError(`The site answered ${res.status}.`);
-  const blob = await res.blob();
-  if (blob.size === 0 || blob.size > MAX_BYTES) throw new DownloadError('The file is empty or too large.');
+  let blob: Blob;
+  try {
+    blob = await readCapped(res, deps.maxBytes ?? MAX_BYTES);
+  } catch (error) {
+    if (error instanceof DownloadError) throw error;
+    throw new DownloadError('The site that hosts it did not send the file.');
+  }
+  if (blob.size === 0) throw new DownloadError(TOO_BIG);
   const mime = (blob.type || r.mime || '').split(';')[0]!.trim();
   const id = deps.id ?? crypto.randomUUID();
   const opfsPath = mediaPath(id, EXT[mime] ?? '');

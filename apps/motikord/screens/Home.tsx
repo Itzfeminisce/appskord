@@ -185,7 +185,7 @@ export default function Home() {
       )}
 
       <div style={{ flexGrow: 1 }} />
-      {settings?.ai !== 'local' && <span style={{ padding: '12px 24px 16px', fontSize: 12, color: 'var(--faint)', textAlign: 'center' }}>Groq writes the clip from your words. Your media stays on this computer.</span>}
+      {settings && <span style={{ padding: '12px 24px 16px', fontSize: 12, color: 'var(--faint)', textAlign: 'center' }}>{settings.ai === 'local' ? 'Chrome’s built-in AI writes the clip from your words. Everything stays on this computer.' : 'Groq writes the clip from your words. Your media stays on this computer.'}</span>}
     </main>
   );
 }
