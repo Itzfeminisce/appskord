@@ -7,7 +7,7 @@ First time:
 3. Turn on Developer mode.
 4. Press Load unpacked.
 5. Pick the `Motikord` folder.
-6. Click the Motikord icon in the toolbar.
+6. Open the check page: the address shown on `chrome://extensions` for Motikord, ending in `/check.html`.
 7. Press Run all.
 8. Wait until every test shows Pass, Slow or Fail.
 9. Press Copy results.
