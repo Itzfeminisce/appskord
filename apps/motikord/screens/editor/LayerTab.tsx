@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { clipColours, clock, findLayer, parseClock, sceneStart, setField, setTiming, type Found } from '../../lib/editor/store';
+import { clipColours, clock, findLayer, parseClock, sceneIndex, sceneStart, setBackground, setField, setTiming, type Found } from '../../lib/editor/store';
+import { sceneTiming } from '../../lib/editor/timeline';
 import { getPreset } from '../../lib/render/presets';
 import type { Layer, Motion, PresetSlot } from '../../lib/types';
 import { useEditor } from './Editor';
@@ -30,7 +31,33 @@ export function LayerTab() {
         <span aria-current="page" style={{ flex: 1, height: 28, borderRadius: 6, background: 'var(--surface)', boxShadow: '0 1px 2px rgba(16,16,20,0.08)', fontSize: 12, fontWeight: 600, display: 'grid', placeItems: 'center' }}>Layer</span>
         <button type="button" onClick={() => go('EditorPrompt')} style={{ flex: 1, height: 28, border: 0, borderRadius: 6, background: 'transparent', font: '12px/1 var(--font)', color: 'var(--muted)', cursor: 'pointer' }}>Changes</button>
       </div>
-      {f && <LayerFields f={f} />}
+      {f ? <LayerFields f={f} /> : <SceneFields />}
+    </>
+  );
+}
+
+/** layer-none: with nothing selected, the tab edits the scene. */
+function SceneFields() {
+  const { state, edit } = useEditor();
+  const r = state.clip.recipe;
+  const si = sceneIndex(r, state.sceneId);
+  const scene = r.scenes[si];
+  if (!scene) return null;
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{`Scene ${si + 1}`}</span>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)', flexShrink: 0 }}>No layer selected</span>
+      </div>
+      <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>Click anything on the clip to change it. Until then, these settings apply to the whole scene.</p>
+      <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)', paddingTop: 4 }}>Scene settings</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={label}>Background colour</span>
+        <Swatches value={scene.background} onPick={(hex) => edit(setBackground(r, si, hex))} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <Labelled name="Scene length"><TimeInput value={scene.durationMs} onCommit={(ms) => edit(sceneTiming(r, si, ms))} /></Labelled>
+      </div>
     </>
   );
 }
@@ -53,10 +80,10 @@ function LayerFields({ f }: { f: Found }) {
       </div>
       {l.type === 'text' && (
         <>
-          <Labelled name="Text"><input value={l.text} onChange={(e) => set('text', e.target.value, `${l.name} text`)} style={field} /></Labelled>
+          <Labelled name="Text"><input value={l.text} onChange={(e) => set('text', e.target.value, 'Text changed')} style={field} /></Labelled>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
             <Labelled name="Font">
-              <select value={l.font} onChange={(e) => set('font', e.target.value, `${l.name} font ${e.target.value}`)} style={{ ...field, padding: '0 6px' }}>
+              <select value={l.font} onChange={(e) => set('font', e.target.value, `Font ${e.target.value}`)} style={{ ...field, padding: '0 6px' }}>
                 {fontOptions(r, brand, l.font).map(([family, text]) => <option key={family} value={family}>{text}</option>)}
               </select>
             </Labelled>
@@ -67,7 +94,7 @@ function LayerFields({ f }: { f: Found }) {
       {colourKey && colour && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={label}>Colour</span>
-          <Swatches value={colour} onPick={(hex) => set(colourKey, hex, `${l.name} colour ${hex}`)} />
+          <Swatches value={colour} onPick={(hex) => set(colourKey, hex, `Colour ${hex}`)} />
         </div>
       )}
       <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)', paddingTop: 4 }}>Motion</span>
@@ -108,15 +135,16 @@ function SizeInput({ value, onCommit }: { value: number; onCommit: (v: number) =
 }
 
 function TimeInput({ value, onCommit }: { value: number; onCommit: (ms: number) => void }) {
+  // undefined until the person types, so a blur alone never rewrites the time (rounded to tenths).
   const [text, setText] = useState<string>();
-  const commit = (t: string) => {
-    const ms = parseClock(t);
+  const commit = () => {
+    const ms = text === undefined ? undefined : parseClock(text);
     if (ms !== undefined && ms !== value) onCommit(ms);
     setText(undefined);
   };
   return (
-    <input value={text ?? clock(value)} onChange={(e) => setText(e.target.value)} onBlur={(e) => commit(e.target.value)}
-      onKeyDown={(e) => { if (e.key === 'Enter') commit(e.currentTarget.value); if (e.key === 'Escape') setText(undefined); }} style={mono} />
+    <input value={text ?? clock(value)} onChange={(e) => setText(e.target.value)} onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setText(undefined); }} style={mono} />
   );
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PatchOp } from '../types';
-import { canRedo, canUndo, MERGE_MS, record, redo, undo, type History } from './history';
+import { canRedo, canUndo, MERGE_CAP_MS, MERGE_MS, record, redo, undo, type History } from './history';
 
 const doc = { name: 'Clip', scenes: [{ id: 'a', layers: [{ id: 'l1', text: 'Hi', sizePx: 80 }] }] };
 type Doc = typeof doc;
@@ -54,6 +54,16 @@ describe('history', () => {
     ({ doc: d, history: h } = record(d, h, size(82), meta(MERGE_MS + 1, 'size')));
     ({ doc: d, history: h } = record(d, h, [{ op: 'replace', path: '/name', value: 'X' }], meta(MERGE_MS + 2, 'name')));
     expect(h.past).toHaveLength(3);
+  });
+
+  it('starts a new change once a merged one is older than the cap, even while typing steadily', () => {
+    let d: Doc = doc;
+    let h = empty;
+    for (let at = 0; at <= MERGE_CAP_MS + 1000; at += 500) {
+      ({ doc: d, history: h } = record(d, h, size(80 + at / 500), meta(at, 'size')));
+    }
+    expect(h.past).toHaveLength(2);
+    expect(h.past[1]!.at - h.past[0]!.at).toBeGreaterThanOrEqual(500);
   });
 
   it('leaves the doc and history alone when a patch cannot apply', () => {

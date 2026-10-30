@@ -12,6 +12,7 @@ export interface EditorState {
   clip: Clip;
   future: Change[];
   mergeKey?: string;
+  mergeStart?: number;
   sceneId: string;
   layerId?: string;
   timeMs: number;
@@ -24,6 +25,8 @@ export interface Edit { ops: PatchOp[]; summary: string; mergeKey?: string }
 
 export type Action =
   | { type: 'load'; clip: Clip }
+  /** The clip as merged with what another surface saved (lib/editor/merge); redo is let go. */
+  | { type: 'merge'; clip: Clip }
   | { type: 'select'; sceneId: string; layerId?: string; timeMs?: number }
   | { type: 'time'; ms: number }
   | { type: 'play'; playing: boolean }
@@ -40,6 +43,10 @@ export function initState(clip: Clip): EditorState {
 export function reducer(s: EditorState, a: Action): EditorState {
   switch (a.type) {
     case 'load': return initState(a.clip);
+    case 'merge': {
+      const next = { ...s, clip: a.clip, future: [], mergeKey: undefined, mergeStart: undefined, lastChange: undefined };
+      return keepSelection({ ...next, timeMs: Math.min(s.timeMs, clipDuration(a.clip.recipe)) });
+    }
     case 'select': return { ...s, sceneId: a.sceneId, layerId: a.layerId, timeMs: a.timeMs ?? s.timeMs };
     case 'time': {
       // The scene under the playhead becomes the selected one; a layer from another scene is let go.
@@ -68,11 +75,11 @@ export function reducer(s: EditorState, a: Action): EditorState {
   }
 }
 
-const history = (s: EditorState): History => ({ past: s.clip.history, future: s.future, mergeKey: s.mergeKey });
+const history = (s: EditorState): History => ({ past: s.clip.history, future: s.future, mergeKey: s.mergeKey, mergeStart: s.mergeStart });
 
 function withHistory(s: EditorState, recipe: Recipe, h: History, at: number, change: Change): EditorState {
   const clip: Clip = { ...s.clip, recipe, history: h.past, updatedAt: at };
-  const next = { ...s, clip, future: h.future, mergeKey: h.mergeKey, lastChange: change };
+  const next = { ...s, clip, future: h.future, mergeKey: h.mergeKey, mergeStart: h.mergeStart, lastChange: change };
   return keepSelection({ ...next, timeMs: Math.min(s.timeMs, clipDuration(recipe)) });
 }
 
@@ -175,7 +182,14 @@ export function setAspect(r: Recipe, to: Aspect): Edit | undefined {
     ops.push({ op: 'replace', path: `/scenes/${si}/layers/${li}/box`, value: boxFor({ ...layer, boxes: undefined }, to, r.aspect, scene.layout) });
   }));
   ops.push({ op: 'replace', path: '/aspect', value: to });
-  return { ops, summary: to };
+  return { ops, summary: `Size ${to}` };
+}
+
+/** The scene's background colour (layer-none). */
+export function setBackground(r: Recipe, si: number, hex: string): Edit | undefined {
+  const scene = r.scenes[si];
+  if (!scene || scene.background === hex) return undefined;
+  return { ops: [{ op: 'replace', path: `/scenes/${si}/background`, value: hex }], summary: `Colour ${hex}`, mergeKey: `${scene.id}/background` };
 }
 
 export const NEW_SCENE_MS = 5000;

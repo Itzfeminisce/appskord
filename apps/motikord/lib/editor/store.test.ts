@@ -3,7 +3,7 @@ import { validateRecipe } from '../recipe/validate';
 import type { Clip } from '../types';
 import {
   addLayer, addScene, clock, clockShort, devSampleRecipe, findLayer, initState, newShape, newText, parseClock, reducer, removeLayer,
-  sceneTitle, setAspect, setBox, setField, setTiming, type Action, type EditorState,
+  sceneTitle, setAspect, setBackground, setBox, setField, setTiming, type Action, type EditorState,
 } from './store';
 
 const clip = (): Clip => ({ id: 'c', recipe: devSampleRecipe('c'), history: [], createdAt: 0, updatedAt: 0 });
@@ -97,5 +97,24 @@ describe('playhead', () => {
     expect(s.layerId).toBeUndefined();
     s = reducer(s, { type: 'time', ms: 99_000 });
     expect(s.timeMs).toBe(15_000);
+  });
+
+  it('writes hand-edit summaries as the change-summaries card does', () => {
+    const r = devSampleRecipe('c');
+    expect(setAspect(r, '1:1')!.summary).toBe('Size 1:1');
+    expect(setBackground(r, 0, '#BE185D')!.summary).toBe('Colour #BE185D');
+    expect(setBackground(r, 0, '#FCE7F3')).toBeUndefined();
+    expect(setBox(r, findLayer(r, 's1', 's1-title')!, { x: 0, y: 0, w: 1, h: 1 }, 'rotated').summary).toBe('Title rotated');
+    expect(addScene(r, 's1', 'n')!.summary).toBe('Scene 2');
+  });
+
+  it('a merge from another surface keeps the selection and lets redo go', () => {
+    let s = initState(clip());
+    s = edit(s, setAspect(s.clip.recipe, '1:1'));
+    s = reducer(s, { type: 'undo', at: 1 });
+    const merged = reducer(s, { type: 'merge', clip: { ...s.clip, recipe: { ...s.clip.recipe, name: 'Renamed' } } });
+    expect(merged.clip.recipe.name).toBe('Renamed');
+    expect(merged.future).toEqual([]);
+    expect(merged.layerId).toBe('s1-title');
   });
 });

@@ -2,12 +2,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { createAutosave, type Autosave, type SaveStatus } from '../../lib/editor/autosave';
 import { stepsBack } from '../../lib/editor/changes';
 import { canRedo, canUndo } from '../../lib/editor/history';
+import { mergeClip, sameVersion } from '../../lib/editor/merge';
 import { toSizeOnly } from '../../lib/editor/sizeOnly';
 import { devSampleRecipe, findLayer, initState, reducer, removeLayer, sceneIndex, type EditorState, type Edit } from '../../lib/editor/store';
 import { getBrandKit, getClip, putClip, updateClip } from '../../lib/db';
 import { getMedia } from '../../lib/media';
 import { brandEdit, loadKit, registerBrandFonts } from '../../lib/brand';
 import { onMessage, send } from '../../lib/messages';
+import { applyPatch, PatchError } from '../../lib/patch';
+import { goInSidePanel, useWindowId } from '../../lib/sidepanelGo';
 import { MediaCache } from '../../lib/render/cache';
 import { devTools, type RouteParams } from '../../lib/router';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
@@ -22,7 +25,7 @@ import { FormatsPanel } from './Formats';
 import { LayerTab } from './LayerTab';
 import { PresetsPopover } from './Presets';
 import { ScenesList } from './ScenesList';
-import { EditorLoading, FirstRun, MediaMissing, PreviewLight, SaveFailed, UndoToast } from './StatesEditor';
+import { ClipNotFound, EditorLoading, FirstRun, MediaMissing, PreviewLight, SaveFailed, UndoToast } from './StatesEditor';
 import { Timeline } from './Timeline';
 import { TopBar } from './TopBar';
 import { Transport } from './Transport';
@@ -83,6 +86,10 @@ function greyBox(): CanvasImageSource {
   return c;
 }
 
+/** Fires 'frame' when a video frame the paused preview waited for is ready, so the canvas draws again. */
+export const frameReady = new EventTarget();
+const announceFrame = () => frameReady.dispatchEvent(new Event('frame'));
+
 /** Decoders for the page: files come from OPFS; a video element serves preview frames. */
 function pageCache(): MediaCache {
   return new MediaCache({
@@ -92,13 +99,15 @@ function pageCache(): MediaCache {
       v.muted = true;
       v.preload = 'auto';
       v.src = URL.createObjectURL(blob);
+      v.addEventListener('seeked', announceFrame);
+      v.addEventListener('loadeddata', announceFrame);
       return {
         frameAt(ms) {
           const t = ms / 1000;
           if (Math.abs(v.currentTime - t) > 0.15 && !v.seeking) v.currentTime = t;
           return v.readyState >= 2 ? v : undefined;
         },
-        close() { URL.revokeObjectURL(v.src); },
+        close() { v.removeEventListener('seeked', announceFrame); v.removeEventListener('loadeddata', announceFrame); URL.revokeObjectURL(v.src); },
       };
     },
   });
@@ -108,8 +117,8 @@ interface Loaded { clip: Clip; brand?: BrandKit; missing?: { file: string; scene
 
 async function openClip(clipId: string | undefined, cache: MediaCache): Promise<Loaded | undefined> {
   let clip = clipId ? await getClip(clipId) : undefined;
-  if (!clip && devTools) {
-    // Dev only: open on a sample clip so the editor can be tried before Make a clip (T5) exists.
+  if (!clip && devTools && (!clipId || clipId === 'dev-sample')) {
+    // Dev only: with no clip named, open on a sample clip; a named clip that is gone shows clip-not-found.
     const id = clipId ?? 'dev-sample';
     const now = Date.now();
     clip = (await getClip(id)) ?? { id, recipe: devSampleRecipe(id), history: [], createdAt: now, updatedAt: now };
@@ -134,16 +143,18 @@ export default function Editor({ open }: { open?: EditorOpenOn } = {}) {
   const { route } = useRouter();
   const [cache] = useState(pageCache);
   const [loaded, setLoaded] = useState<Loaded>();
+  const [gone, setGone] = useState(false);
   const [name, setName] = useState('');
   useEffect(() => {
     let live = true;
     const id = route.params.clipId ?? new URLSearchParams(location.search).get('clip') ?? undefined;
     if (id) void getClip(id).then((c) => live && c && setName(c.recipe.name)).catch(() => undefined);
-    openClip(id, cache).then((l) => { if (live && l) { setName(l.clip.recipe.name); setLoaded(l); } })
+    openClip(id, cache).then((l) => { if (!live) return; if (l) { setName(l.clip.recipe.name); setLoaded(l); } else setGone(true); })
       .catch((error: unknown) => console.error('Motikord: could not open the clip', error));
     return () => { live = false; };
   }, [route.params.clipId, cache]);
 
+  if (gone) return <NotFound />;
   if (!loaded) {
     return (
       <div style={{ flex: 1, display: 'grid', placeItems: 'center', background: 'var(--stage)' }}>
@@ -154,8 +165,19 @@ export default function Editor({ open }: { open?: EditorOpenOn } = {}) {
   return <EditorOpen loaded={loaded} cache={cache} open={open} />;
 }
 
+/** clip-not-found: the whole tab, when the clip was deleted (before or while it is open). */
+function NotFound() {
+  const win = useWindowId();
+  return (
+    <div style={{ flex: 1, minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--stage)' }}>
+      <div style={{ width: 400 }}><ClipNotFound onGo={() => goInSidePanel(win.current, 'Library')} /></div>
+    </div>
+  );
+}
+
 function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache; open?: EditorOpenOn }) {
   const router = useRouter();
+  const [gone, setGone] = useState(false);
   const [state, dispatch] = useReducer(reducer, loaded.clip, initState);
   const [save, setSave] = useState<SaveStatus>('saved');
   const [smoothPreview, setSmooth] = useState(true);
@@ -177,12 +199,45 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
 
   const autosave = useRef<Autosave>(undefined);
   const lastSaved = useRef(state.clip);
+  // The stored clip as the editor last wrote or read it: what other surfaces' saves are merged against.
+  const synced = useRef(loaded.clip);
+  const goneRef = useRef(false);
+  const markGone = useCallback(() => {
+    goneRef.current = true;
+    autosave.current?.dispose();
+    setGone(true);
+  }, []);
+
+  /** Another surface saved this clip: take its version and keep every unsaved edit made here. */
+  const takeStored = useCallback((stored: Clip) => {
+    const base = synced.current;
+    if (sameVersion(base, stored)) return;
+    const s = stateRef.current;
+    const m = mergeClip(s.clip, base, stored);
+    synced.current = stored;
+    if (m.clip === s.clip) return;
+    // Nothing of ours is unsaved: the stored clip is already right, so there is nothing to write back.
+    if (!m.dirty) lastSaved.current = m.clip;
+    dispatch({ type: 'merge', clip: m.clip });
+  }, []);
+
   useEffect(() => {
     // Made in the effect so StrictMode's trial unmount cannot leave a disposed saver behind.
     const a = createAutosave({
       write: async (clip) => {
-        const out = await updateClip(clip.id, () => ({ recipe: clip.recipe, history: clip.history, updatedAt: clip.updatedAt }));
-        if (!out) await putClip(clip);
+        if (goneRef.current) return;
+        // Re-read inside one transaction: a deleted clip is not re-created, and a rename or brand apply made elsewhere is kept.
+        let theirs: Clip | undefined;
+        let wrote: Clip | undefined;
+        const out = await updateClip(clip.id, (stored) => {
+          const base = synced.current;
+          if (!sameVersion(base, stored)) theirs = stored;
+          wrote = theirs ? mergeClip(clip, base, stored).clip : clip;
+          return { recipe: wrote.recipe, history: wrote.history, updatedAt: wrote.updatedAt };
+        });
+        if (!out || !wrote) { markGone(); return; }
+        if (theirs) takeStored(theirs);
+        synced.current = out;
         void send({ type: 'clip/saved', clipId: clip.id });
       },
       onStatus: (s, error) => {
@@ -192,12 +247,28 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
     });
     autosave.current = a;
     const hide = () => { if (document.visibilityState === 'hidden') void a.flush(); };
+    const leave = () => { void a.flush(); };
     document.addEventListener('visibilitychange', hide);
-    return () => { document.removeEventListener('visibilitychange', hide); void a.flush().then(() => a.dispose()); };
-  }, []);
+    window.addEventListener('pagehide', leave);
+    return () => {
+      document.removeEventListener('visibilitychange', hide);
+      window.removeEventListener('pagehide', leave);
+      void a.flush().then(() => a.dispose());
+    };
+  }, [markGone, takeStored]);
+
+  // Saves from other surfaces: Making finishing, a Library rename or delete, Brand apply on the stored clip.
+  useEffect(() => onMessage({
+    'clip/saved': async ({ clipId }) => {
+      if (clipId !== stateRef.current.clip.id || goneRef.current) return;
+      const stored = await getClip(clipId);
+      if (!stored) markGone();
+      else takeStored(stored);
+    },
+  }), [markGone, takeStored]);
 
   useEffect(() => {
-    if (lastSaved.current === state.clip) return;
+    if (lastSaved.current === state.clip || goneRef.current) return;
     lastSaved.current = state.clip;
     autosave.current?.schedule(state.clip);
   }, [state.clip]);
@@ -220,7 +291,14 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
     state, brand: loaded.brand, cache, save, smoothPreview, light, setLight, playhead,
     edit: (e, o = {}) => {
       if (!e) return;
-      if (sizeOnly) e = toSizeOnly(state.clip.recipe, e);
+      const recipe = stateRef.current.clip.recipe;
+      if (sizeOnly) e = toSizeOnly(recipe, e);
+      try { applyPatch(recipe, e.ops); } catch (error) {
+        // A failed edit changes nothing, so it gets no undo-toast either.
+        if (!(error instanceof PatchError)) throw error;
+        console.error('Motikord: could not apply an edit', error);
+        return;
+      }
       dispatch({ type: 'edit', edit: e, by: o.by, at: Date.now(), id: newId(), select: o.select });
       if (o.toast) toast(e.summary);
     },
@@ -257,33 +335,38 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
       const s = stateRef.current;
       const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        // One history for canvas and fields, so Ctrl+Z in a field undoes the clip change too.
+        // In the clip name or a Layer field, Ctrl+Z undoes the typing there, not the clip.
+        if (typing) return;
         e.preventDefault();
         if (e.shiftKey) { if (canRedo({ past: s.clip.history, future: s.future })) api.redo(); }
         else if (canUndo({ past: s.clip.history, future: s.future })) api.undo();
         return;
       }
       if (typing) return;
-      if (e.key === ' ') { e.preventDefault(); api.play(!s.playing); }
+      // A focused button keeps its own Space and Enter.
+      const control = e.target instanceof HTMLElement && e.target.closest('button, a, [role="radio"], [role="button"]');
+      if (e.key === ' ' && !control) { e.preventDefault(); if (!e.repeat) api.play(!s.playing); }
       if (e.key === 'Escape' && s.layerId) api.select(s.sceneId);
-      const f = (e.key === 'Delete' || e.key === 'Backspace') && findLayer(s.clip.recipe, s.sceneId, s.layerId);
-      if (f) { e.preventDefault(); api.edit(removeLayer(f), { toast: true }); }
+      const f = (e.key === 'Delete' || e.key === 'Backspace') && !e.repeat && findLayer(s.clip.recipe, s.sceneId, s.layerId);
+      if (f && !f.layer.locked) { e.preventDefault(); api.edit(removeLayer(f), { toast: true }); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [api]);
 
-  // "Apply to the open clip" in the Brand kit screen: the saved kit becomes one Change by hand.
+  // "Apply to the open clip" in the Brand kit screen: the saved kit becomes one Change by hand, in this clip's tab only.
+  const apiRef = useRef(api);
+  apiRef.current = api;
   useEffect(() => onMessage({
     'brand/apply': async ({ clipId }) => {
-      const s = stateRef.current;
-      if (clipId && clipId !== s.clip.id) return { applied: false };
+      if (!clipId || clipId !== stateRef.current.clip.id || goneRef.current) return { applied: false };
       const kit = await loadKit();
       await registerBrandFonts(kit);
-      api.edit(brandEdit(s.clip.recipe, kit), { toast: true });
+      // Read after the awaits: edits made meanwhile must not be lost.
+      apiRef.current.edit(brandEdit(stateRef.current.clip.recipe, kit), { toast: true });
       return { applied: true };
     },
-  }), [api]);
+  }), []);
 
   const dismissFirstRun = () => {
     setFirstRun(false);
@@ -291,6 +374,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   };
   const si = sceneIndex(state.clip.recipe, state.sceneId);
 
+  if (gone) return <NotFound />;
   return (
     <Ctx.Provider value={api}>
       <div style={{ flex: 'none', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--ground)', color: 'var(--ink)', overflow: 'hidden' }}>

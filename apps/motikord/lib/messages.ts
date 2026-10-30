@@ -11,6 +11,8 @@ export interface MessageMap {
   'clip/saved': { req: { clipId: string }; res: void };
   // Brand kit screen → editor tab: apply the saved brand kit to the open clip as one Change by 'hand'.
   'brand/apply': { req: { clipId?: string }; res: { applied: boolean } };
+  // Editor tab → side panel, after opening it inside the click: groq-down "Open Settings", clip-not-found "Go to your clips".
+  'sidepanel/go': { req: { screen: 'Settings' | 'Library' }; res: { shown: boolean } };
   // Export (T11) → service worker: toolbar badge progress, 0 to 100; null clears it.
   'export/progress': { req: { percent: number | null }; res: void };
   // Page picker → side panel: the picks so far (each click), "Done" or Esc (`done`), or "Cancel".

@@ -3,6 +3,7 @@ import { toAiError } from '../../lib/ai/errors';
 import { applyPrompt } from '../../lib/editor/applyPrompt';
 import { HOSTS, requestHost, type HostAccess } from '../../lib/hostAccess';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
+import { openSidePanelOn } from '../../lib/sidepanelGo';
 import type { AiMode } from '../../lib/types';
 import Editor, { useEditor } from './Editor';
 import { ChangeTooLong, GroqAccess, GroqBusy, GroqDown, Offline, PromptFailed, PromptWorking } from './StatesPrompt';
@@ -87,7 +88,7 @@ export function PromptBox() {
   const openSettings = () => {
     const id = windowId.current;
     if (id === undefined) return;
-    browser.sidePanel.open({ windowId: id }).catch((error: unknown) => console.error('Motikord: could not open the side panel', error));
+    openSidePanelOn(id, 'Settings');
   };
 
   const card = (() => {

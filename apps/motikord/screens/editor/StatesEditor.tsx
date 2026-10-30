@@ -100,6 +100,27 @@ export function SaveStatusLine({ status }: { status: SaveStatus }) {
   );
 }
 
+/** Whole tab: the clip was deleted (in the Library or another tab). */
+export function ClipNotFound({ onGo }: { onGo?: () => void }) {
+  return (
+    <div role="alert" style={{ padding: 14, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <svg {...svg(20)} stroke="var(--muted)" strokeWidth={2}><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.01" /></svg>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>This clip isn’t here anymore</span>
+        <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>It was deleted, so there is nothing to open. Your other clips are safe.</span>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}><button type="button" onClick={onGo} style={actionStyle}>Go to your clips</button></div>
+      </div>
+    </div>
+  );
+}
+
+/** Two bars while the clip plays ("Pause"), a triangle when it stops ("Play"). */
+export function PlayIcon({ playing }: { playing: boolean }) {
+  return playing
+    ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4.5" height="16" rx="1" /><rect x="13.5" y="4" width="4.5" height="16" rx="1" /></svg>
+    : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z" /></svg>;
+}
+
 export function UndoToast({ text, onUndo }: { text: string; onUndo?: () => void }) {
   return (
     <div role="status" style={{ padding: '10px 10px 10px 14px', borderRadius: 12, background: 'var(--ink)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 6px 20px rgba(16,16,20,0.18)' }}>
@@ -133,6 +154,13 @@ export default function StatesEditor() {
       </Section>
       <Section label="save-failed · Editor"><SaveFailed /></Section>
       <Section label="undo-toast · Editor (after a fix or hand edit)"><UndoToast text="Fixed 3 things" /></Section>
+      <Section label="clip-not-found · Editor (whole tab)"><ClipNotFound /></Section>
+      <Section label="pause-control · Editor (under the clip, while playing)">
+        <div style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--stage)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button type="button" aria-label="Pause" style={{ width: 34, height: 34, border: 0, borderRadius: '50%', background: 'var(--ink)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}><PlayIcon playing /></button>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>0:03.2 / 0:15.0</span>
+        </div>
+      </Section>
       {PROMPT_STATES.map(([label, card]) => <Section key={label} label={label}>{card}</Section>)}
     </div>
   );

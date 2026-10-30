@@ -34,11 +34,15 @@ export function hitLayer<L extends Pick<Layer, 'id' | 'locked'>>(layers: readonl
   return undefined;
 }
 
-/** Which handle of a selected box is under p: a corner, the ring just outside a corner (rotate), the body, or none. */
+/** Where the round Rotate handle sits above the top edge, in the box's own frame (CSS px). */
+export const ROTATE_KNOB = { above: 25, radius: 10 };
+
+/** Which handle of a selected box is under p: a corner, the Rotate knob or the ring just outside a corner, the body, or none. */
 export function handleAt(b: Box, p: Pt, W: number, H: number, grab = 8, ring = 22): Handle | null {
   const l = toLocal(b, p, W, H);
   const hw = (b.w * W) / 2;
   const hh = (b.h * H) / 2;
+  if (Math.hypot(l.x, l.y + hh + ROTATE_KNOB.above) <= ROTATE_KNOB.radius) return 'rotate';
   const corners: [Handle, number, number][] = [['nw', -hw, -hh], ['ne', hw, -hh], ['sw', -hw, hh], ['se', hw, hh]];
   for (const [h, cx, cy] of corners) if (Math.abs(l.x - cx) <= grab && Math.abs(l.y - cy) <= grab) return h;
   if (Math.abs(l.x) <= hw && Math.abs(l.y) <= hh) return 'move';
@@ -70,12 +74,15 @@ export function dragBox(start: Box, handle: Handle, from: Pt, to: Pt, W: number,
   const min = opts.minPx ?? 8;
   const w0 = start.w * W;
   const h0 = start.h * H;
-  let w = Math.max(min, w0 + sx * lx);
-  let h = Math.max(min, h0 + sy * ly);
-  if (opts.keepRatio) {
+  // A side already thinner than the minimum (a rule, a line) may keep its size; it just cannot shrink further.
+  const minW = Math.min(min, w0);
+  const minH = Math.min(min, h0);
+  let w = Math.max(minW, w0 + sx * lx);
+  let h = Math.max(minH, h0 + sy * ly);
+  if (opts.keepRatio && w0 > 0 && h0 > 0) {
     const k = Math.max(w / w0, h / h0);
-    w = Math.max(min, w0 * k);
-    h = Math.max(min, h0 * k);
+    w = Math.max(minW, w0 * k);
+    h = Math.max(minH, h0 * k);
   }
   // The centre moves half the growth, turned back into canvas axes.
   const gx = (sx * (w - w0)) / 2;
