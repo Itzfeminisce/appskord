@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { about, creditsBox, endCardScene, estimateLine, exportButton, exportRecipe, formatBytes, frameClock, frameSize, planExport, secondsLeft } from './exportPlan';
+import { about, creditsBox, endCardScene, estimateLine, exportButton, exportRecipe, formatBytes, frameClock, frameSize, planExport, secondsLeft, timeLeft } from './exportPlan';
 import { bundledAsset, BUNDLED_TRACKS } from './music';
 import type { Asset, Recipe } from './types';
 
@@ -51,6 +51,11 @@ describe('export plan', () => {
     expect(about(7.2)).toBe('About 8 seconds');
     expect(about(130)).toBe('About 3 minutes');
     expect(Math.round(secondsLeft(10000, 200, 450, []))).toBe(13);
+  });
+  it('words time left like the time-left state', () => {
+    expect(timeLeft(13)).toBe('Less than a minute left');
+    expect(timeLeft(75)).toBe('About 1 minute left');
+    expect(timeLeft(130)).toBe('About 2 minutes left');
   });
   it('formats sizes and clocks', () => {
     expect(formatBytes(4.2 * 1024 * 1024)).toBe('4.2 MB');

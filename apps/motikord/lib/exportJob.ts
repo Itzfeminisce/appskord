@@ -4,6 +4,7 @@ import type { MixedAudio } from './encode/audio';
 import { exportRecipe, planExport, secondsLeft, type ExportChoice, type RenderItem } from './exportPlan';
 import { CREDITS_FILE } from './fileNames';
 import { FolderAccessLost, uniqueDir, writeFile, type SavedFile } from './folder';
+import { send } from './messages';
 import type { ExportJob, Recipe } from './types';
 
 /** The job row plus how far it got, so Recovered can say "stopped at 46%", and a heartbeat that tells a live export from a dead one. */
@@ -22,11 +23,13 @@ export const jobChoice = (j: ExportJob): JobChoice => ({ kinds: j.kinds, aspects
  * Running jobs whose page stopped beating were cut off (Chrome closed, tab closed); they become 'interrupted'.
  * Returns every interrupted job, newest first. A job still beating belongs to an editor tab that is exporting now.
  */
-export async function findInterrupted(now: number, staleMs = STALE_MS): Promise<StoredJob[]> {
+export async function findInterrupted(now: number, staleMs = STALE_MS, clearBadge: () => void = () => void send({ type: 'export/progress', percent: null })): Promise<StoredJob[]> {
   const tx = (await getDB()).transaction('exportJobs', 'readwrite');
   const running = (await tx.store.index('status').getAll('running')) as StoredJob[];
   const dead = running.filter((j) => now - (j.beatAt ?? j.startedAt) > staleMs);
   await Promise.all([...dead.map((j) => tx.store.put({ ...j, status: 'interrupted' })), tx.done]);
+  // A cut-off export left its percent on the toolbar icon; keep it only while another export is still live.
+  if (dead.length && dead.length === running.length) clearBadge();
   return ((await listExportJobs('interrupted')) as StoredJob[]).reverse();
 }
 
@@ -68,7 +71,7 @@ const set = (patch: Partial<Session>) => { if (session) { session = { ...session
 export const getSession = () => session;
 export function subscribe(l: () => void): () => void { listeners.add(l); return () => listeners.delete(l); }
 /** Test helper and "Export another size": forget the finished run. */
-export function clearSession() { if (session?.playUrl) URL.revokeObjectURL?.(session.playUrl); session = undefined; cancelNow = undefined; emit(); }
+export function clearSession() { if (session?.playUrl) URL.revokeObjectURL?.(session.playUrl); session?.preview?.close?.(); session = undefined; cancelNow = undefined; emit(); }
 
 /** Cancel on Rendering: stops the worker; the run removes partial files and ends with phase 'cancelled'. */
 export function cancelExport() { cancelNow?.(); }
@@ -87,6 +90,7 @@ class CancelledRun extends Error { constructor() { super('Export cancelled'); th
 /**
  * Renders every planned file one after another into a new sub-folder of the chosen folder, then credits.txt.
  * The ExportJob is written at the start and removed at the end, whatever the outcome; partial files are removed.
+ * Removing the job or marking the clip happens after the files are safe, so neither can undo a finished export.
  */
 export async function runExport(recipe: Recipe, clipId: string, choice: JobChoice, deps: RunDeps, jobId?: string): Promise<Session> {
   const saveJob = deps.saveJob ?? ((j) => putExportJob(j));
@@ -105,14 +109,17 @@ export async function runExport(recipe: Recipe, clipId: string, choice: JobChoic
   let current: RenderRun | undefined;
   cancelNow = () => { stop = true; current?.cancel(); };
   let lastBeat = -Infinity;
-  const beat = (percent: number) => {
+  let beating: Promise<void> = Promise.resolve();
+  const beat = (force = false) => {
     const t = deps.now();
-    if (t - lastBeat < BEAT_MS) return;
+    if (!force && t - lastBeat < BEAT_MS) return;
     lastBeat = t;
-    job.percent = percent;
+    job.percent = session?.percent ?? 0;
     job.beatAt = t;
-    void saveJob({ ...job }).catch((error: unknown) => console.error('Motikord: could not save the export job', error));
+    beating = saveJob({ ...job }).catch((error: unknown) => console.error('Motikord: could not save the export job', error));
   };
+  // Long steps with no frames (decoding music, picking the encoder) still beat, so start-up never calls them interrupted.
+  const ticker = setInterval(() => beat(true), BEAT_MS);
 
   let dirName: string | undefined;
   let blobForPlayer: Blob | undefined;
@@ -130,17 +137,25 @@ export async function runExport(recipe: Recipe, clipId: string, choice: JobChoic
       const item = items[i]!;
       const states = session!.items.map((s, k) => (k === i ? { ...s, status: 'running' as const } : s));
       set({ index: i, items: states, frame: 0, frames: item.frames, tMs: 0, hardware: undefined });
-      if (item.audio && !mixed) { audio = await deps.mix(recipe, item); mixed = true; }
+      if (item.audio && !mixed) {
+        beat(true);
+        audio = await deps.mix(recipe, item);
+        mixed = true;
+        beat(true);
+        if (stop) throw new CancelledRun();
+      }
       const started = deps.now();
       current = deps.render(drawn, item, item.audio ? audio : undefined, {
-        encoder: (hardware) => set({ hardware }),
+        encoder: (hardware) => { set({ hardware }); beat(true); },
         progress: (frame, frames, tMs, preview) => {
+          // A frame that arrives after Cancel or the end is dropped, and its bitmap freed.
+          if (stop || session?.phase !== 'running') { preview?.close?.(); return; }
           const percent = ((before + frame) / total) * 100;
           const left = secondsLeft(deps.now() - started, frame, frames, items.slice(i + 1));
-          if (preview) session?.preview?.close?.();
-          set({ frame, frames, tMs, percent, secondsLeft: left, items: session!.items.map((s, k) => (k === i ? { ...s, percent: (frame / frames) * 100 } : s)), ...(preview ? { preview } : {}) });
+          if (preview) session.preview?.close?.();
+          set({ frame, frames, tMs, percent, secondsLeft: left, items: session.items.map((s, k) => (k === i ? { ...s, percent: (frame / frames) * 100 } : s)), ...(preview ? { preview } : {}) });
           deps.badge(percent);
-          beat(percent);
+          beat();
         },
       });
       if (stop) current.cancel();
@@ -148,28 +163,39 @@ export async function runExport(recipe: Recipe, clipId: string, choice: JobChoic
       current = undefined;
       if (stop) throw new CancelledRun();
       const saved = await writeFile(dir, item.file, blob);
+      if (stop) throw new CancelledRun();
       blobForPlayer ??= blob;
       before += item.frames;
       set({ saved: [...session!.saved, saved], items: session!.items.map((s, k) => (k === i ? { ...s, status: 'done', percent: 100, bytes: saved.size } : s)) });
     }
-    if (choice.credits) set({ saved: [...session!.saved, await writeFile(dir, CREDITS_FILE, creditsText(recipe))] });
-    await removeJob(job.id);
-    deps.badge(null);
+    if (choice.credits) {
+      if (stop) throw new CancelledRun();
+      const credits = await writeFile(dir, CREDITS_FILE, creditsText(recipe));
+      if (stop) throw new CancelledRun();
+      set({ saved: [...session!.saved, credits] });
+    }
+    // From here the files are safe: Cancel can no longer remove them.
+    cancelNow = undefined;
+    clearInterval(ticker);
     const at = deps.now();
     await markExported(clipId, session!.saved.filter((f) => f.name !== CREDITS_FILE).map((f) => ({ file: `${dirName}/${f.name}`, bytes: f.size, at })))
       .catch((error: unknown) => console.error('Motikord: could not mark the clip exported', error));
-    set({ phase: 'done', percent: 100, secondsLeft: 0, playUrl: blobForPlayer && (deps.objectUrl ?? URL.createObjectURL)(blobForPlayer) });
+    session?.preview?.close?.();
+    set({ phase: 'done', percent: 100, secondsLeft: 0, preview: undefined, playUrl: blobForPlayer && (deps.objectUrl ?? URL.createObjectURL)(blobForPlayer) });
   } catch (error) {
     const phase = classify(stop ? new CancelledRun() : error);
     if (phase !== 'cancelled') console.error('Motikord: could not export the clip', error);
     current?.cancel();
     // No half-made export is left in the folder.
     if (dirName) await deps.root.removeEntry(dirName, { recursive: true }).catch(() => undefined);
-    await removeJob(job.id).catch(() => undefined);
-    deps.badge(null);
-    set({ phase, failedKind: items[session?.index ?? 0]?.kind, saved: [], dir: undefined });
+    session?.preview?.close?.();
+    set({ phase, failedKind: items[session?.index ?? 0]?.kind, saved: [], dir: undefined, preview: undefined });
   } finally {
     cancelNow = undefined;
+    clearInterval(ticker);
+    await beating;
+    await removeJob(job.id).catch((error: unknown) => console.error('Motikord: could not remove the export job', error));
+    deps.badge(null);
   }
   return session!;
 }

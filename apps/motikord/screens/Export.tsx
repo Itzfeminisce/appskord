@@ -3,13 +3,14 @@ import { Button, IconButton } from '../components/ui';
 import { useRouter } from '../entrypoints/editor/router';
 import { getFolderHandle } from '../lib/db';
 import { pageDeps } from '../lib/encode/page';
+import { seeThroughSupported } from '../lib/encode/video';
 import { clearSession, getSession, runExport, type JobChoice } from '../lib/exportJob';
 import { ASPECTS, creditsBox, estimateLine, exportButton, planExport } from '../lib/exportPlan';
 import { youllGet } from '../lib/fileNames';
 import { chooseFolder, ensureAccess } from '../lib/folder';
 import type { Aspect, FileKind, Quality, Recipe } from '../lib/types';
 import { CloseIcon, DialogShell, useSettings, useStoredClip } from './MediaSearch';
-import { CreditLocked, ExportCancelled, FolderAccessLost, FolderNotPicked, TypeNotes } from './StatesExport';
+import { CREDIT_LOCKED, CreditLocked, ExportCancelled, FolderAccessLost, FolderNotPicked, SeeThroughUnsupported, TypeNotes } from './StatesExport';
 
 const KINDS: [FileKind, string, string][] = [
   ['mp4', 'MP4', 'Plays everywhere'],
@@ -54,6 +55,11 @@ export default function Export() {
   const [lockNote, setLockNote] = useState(false);
   const [toast, setToast] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [seeThrough, setSeeThrough] = useState<boolean>();
+
+  useEffect(() => { void seeThroughSupported().then(setSeeThrough); }, []);
+  // A saved default of See-through WebM falls back to MP4 where Chrome cannot make it.
+  useEffect(() => { if (seeThrough === false && kind === 'webm-alpha') setKind('mp4'); }, [seeThrough, kind]);
 
   useEffect(() => {
     // Cancel on Rendering comes back here with export-cancelled.
@@ -111,12 +117,12 @@ export default function Export() {
       <fieldset style={{ margin: 0, padding: 0, border: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <legend style={legend}>File type</legend>
         <div role="radiogroup" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-          {KINDS.map(([k, name, line]) => (
+          {KINDS.map(([k, name, line]) => (k === 'webm-alpha' && seeThrough === false ? <SeeThroughUnsupported key={k} /> : (
             <label key={k} style={radio(kind === k)}>
               <input type="radio" name="kind" checked={kind === k} onChange={() => setKind(k)} style={{ accentColor: 'var(--accent)', margin: '2px 0 0' }} />
               <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontSize: 13, fontWeight: 600 }}>{name}</span><span style={{ fontSize: 12, color: 'var(--muted)' }}>{line}</span></span>
             </label>
-          ))}
+          )))}
         </div>
         <TypeNotes gif={kind === 'gif'} seeThrough={kind === 'webm-alpha'} />
       </fieldset>
@@ -153,7 +159,7 @@ export default function Export() {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} onMouseEnter={() => locked && setLockNote(true)} onMouseLeave={() => setLockNote(false)}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }} onClick={() => locked && setLockNote(true)}>
+        <label title={locked ? CREDIT_LOCKED : undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }} onClick={() => locked && setLockNote(true)}>
           <input type="checkbox" checked={withCredits} disabled={locked} onChange={(e) => setCredits(e.target.checked)} onFocus={() => locked && setLockNote(true)} style={box} />
           <span>Credits file (credits.txt)</span>
           {locked && <span style={{ fontSize: 12, color: 'var(--muted)' }}>Needed: this clip uses CC BY media</span>}

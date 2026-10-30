@@ -2,12 +2,12 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from '../entrypoints/editor/router';
 import { getClip, getExportJob } from '../lib/db';
 import { cancelExport, getSession, jobChoice, subscribe, type Session } from '../lib/exportJob';
-import { about, frameClock } from '../lib/exportPlan';
+import { frameClock, timeLeft } from '../lib/exportPlan';
 import { savedFolder } from '../lib/folder';
 import type { Aspect } from '../lib/types';
 import { DialogShell } from './MediaSearch';
 import { beginExport, folderFromClick, openExportAs } from './Export';
-import { DiskFull, ExportFailed, ExportingSeveral, ExportSlow } from './StatesExport';
+import { DiskFull, ExportFailed, ExportingSeveral, ExportSlow, SeeThroughFailed } from './StatesExport';
 
 const PREVIEW: Record<Aspect, { w: number; h: number }> = { '9:16': { w: 180, h: 320 }, '1:1': { w: 260, h: 260 }, '16:9': { w: 400, h: 225 } };
 const note = { display: 'flex', gap: 8, alignItems: 'flex-start' } as const;
@@ -22,9 +22,10 @@ function Preview({ s }: { s: Session }) {
   useEffect(() => {
     const c = ref.current;
     const g = c?.getContext('2d');
-    if (!c || !g) return;
+    // Keep the last frame on screen once the run ends and its bitmap is freed.
+    if (!c || !g || !s.preview) return;
     g.clearRect(0, 0, c.width, c.height);
-    if (s.preview) g.drawImage(s.preview, 0, 0, c.width, c.height);
+    g.drawImage(s.preview, 0, 0, c.width, c.height);
   }, [s.preview]);
   const checker = item.seeThrough ? 'repeating-conic-gradient(#E4E4E7 0% 25%, #FFFFFF 0% 50%) 50% / 16px 16px' : 'var(--tint-strong)';
   return (
@@ -88,11 +89,13 @@ export default function Rendering() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><span style={{ fontSize: 15, fontWeight: 600 }}>{cur.item.label}</span><span style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>{`${itemPercent}%`}</span></div>
           <span role="progressbar" aria-valuenow={itemPercent} aria-valuemin={0} aria-valuemax={100} style={{ height: 8, borderRadius: 4, background: '#F1F1F3', overflow: 'hidden' }}><span style={{ display: 'block', width: `${itemPercent}%`, height: '100%', background: 'var(--accent)' }} /></span>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)' }}><span>{`Frame ${s.frame} of ${s.frames}`}</span>{s.frame > 0 && <span>{`${about(s.secondsLeft)} left`}</span>}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)' }}><span>{`Frame ${s.frame} of ${s.frames}`}</span>{s.frame > 0 && <span>{timeLeft(s.secondsLeft)}</span>}</div>
         </div>
       )}
       {s.phase === 'disk-full' && <DiskFull percent={s.percent} onAgain={() => void again()} />}
-      {s.phase === 'failed' && <ExportFailed onRetry={() => void again()} onWebm={asWebm} />}
+      {s.phase === 'failed' && (s.failedKind === 'webm-alpha'
+        ? <SeeThroughFailed onWebm={asWebm} onBack={() => replace('Export', { clipId: s.job.clipId })} />
+        : <ExportFailed onRetry={() => void again()} onWebm={asWebm} />)}
 
       {s.items.length > 1 && s.phase === 'running' && (
         <ExportingSeveral index={s.index} rows={s.items.map((it) => ({ label: s.items.filter((o) => o.item.aspect === it.item.aspect).length > 1 ? it.item.label : it.item.aspect, status: it.status, percent: it.percent }))} />

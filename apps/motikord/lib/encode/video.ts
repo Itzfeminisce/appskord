@@ -43,6 +43,14 @@ export async function pickVideoConfig(s: VideoSpec, isSupported: IsSupported): P
   return null;
 }
 
+let seeThroughProbe: Promise<boolean> | undefined;
+/** Asked once per page: can Chrome encode VP9 with alpha here? Export disables See-through WebM when not. */
+export function seeThroughSupported(isSupported?: IsSupported): Promise<boolean> {
+  const ask: IsSupported | undefined = isSupported ?? (typeof VideoEncoder === 'undefined' ? undefined : (c) => VideoEncoder.isConfigSupported(c));
+  seeThroughProbe ??= ask ? pickVideoConfig({ kind: 'webm-alpha', width: 1080, height: 1920, fps: 30, bitrate: 8_000_000 }, ask).then((p) => !!p, () => false) : Promise.resolve(false);
+  return seeThroughProbe;
+}
+
 export interface FrameLoop {
   frames: number; fps: number;
   /** Gets what frame i needs (video frames) before it is drawn. */

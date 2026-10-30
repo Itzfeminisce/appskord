@@ -112,6 +112,13 @@ export function about(seconds: number): string {
   return `About ${m} ${m === 1 ? 'minute' : 'minutes'}`;
 }
 
+/** Rendering's time-left line: "Less than a minute left" / "About 1 minute left" / "About 2 minutes left". */
+export function timeLeft(seconds: number): string {
+  if (seconds < 60) return 'Less than a minute left';
+  const m = Math.round(seconds / 60);
+  return `About ${m} ${m === 1 ? 'minute' : 'minutes'} left`;
+}
+
 export const estimateLine = (items: RenderItem[]) => `${about(estimateSeconds(items))} on this computer. Nothing is uploaded.`;
 export const exportButton = (n: number) => `Export ${n} ${n === 1 ? 'video' : 'videos'}`;
 

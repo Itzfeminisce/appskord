@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { audioParts, pickAudioCodec } from './audio';
-import { Cancelled, pickVideoConfig, runFrames, videoTrack, type EncoderLike, type Muxed } from './video';
+import { gifDelayMs } from './gif';
+import { Cancelled, pickVideoConfig, runFrames, seeThroughSupported, videoTrack, type EncoderLike, type Muxed } from './video';
 import type { Recipe } from '../types';
 
 const spec = { kind: 'webm-alpha' as const, width: 720, height: 1280, fps: 30, bitrate: 1 };
@@ -70,5 +71,19 @@ describe('encode', () => {
       { assetId: 'm', atSec: 0, durSec: 9, gain: 0.5, fadeInSec: 0.5, fadeOutSec: 1, loop: true },
       { assetId: 'v', atSec: 4, durSec: 2, gain: 1, fadeInSec: 0, fadeOutSec: 0, loop: false },
     ]);
+  });
+
+  it('times GIF frames so the whole loop keeps its length', () => {
+    const delays = Array.from({ length: 15 }, (_, i) => gifDelayMs(i, 15));
+    expect(delays.slice(0, 3)).toEqual([70, 60, 70]);
+    expect(delays.reduce((a, b) => a + b, 0)).toBe(1000);
+  });
+
+  it('asks once whether see-through WebM can be made here', async () => {
+    let asked = 0;
+    const no = async () => { asked++; return { supported: false }; };
+    expect(await seeThroughSupported(no)).toBe(false);
+    expect(await seeThroughSupported(no)).toBe(false);
+    expect(asked).toBe(2);
   });
 });
