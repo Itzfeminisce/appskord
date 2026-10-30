@@ -116,4 +116,16 @@ describe('checker', () => {
     expect(kinds(clip([card({ fill: '#FFFFFF10' } as Partial<Layer>), title(ink)]))).toEqual(['contrast@1:1']);
     expect(kinds(clip([card({ opacity: 0.1 }), title(ink)]))).toEqual(['contrast@1:1']);
   });
+
+  it('flags text under 28 px on 9:16, and the fix raises it without overflowing any size', () => {
+    const small = clip([title({ text: 'Open daily', sizePx: 18, box: { x: 0.2, y: 0.4, w: 0.6, h: 0.2 } } as Partial<Layer>)]);
+    expect(kinds(small)).toContain('too-small@9:16');
+    expect(kinds(fixed(small)).filter((k) => k.startsWith('too-small') || k.startsWith('overflow'))).toEqual([]);
+    expect(kinds(clip([title({ sizePx: 40 } as Partial<Layer>)])).filter((k) => k.startsWith('too-small'))).toEqual([]);
+  });
+
+  it('does not flag small text that could not be 28 px without overflowing', () => {
+    const tiny = clip([title({ text: 'Small print '.repeat(12).trim(), sizePx: 12, box: { x: 0.2, y: 0.4, w: 0.6, h: 0.03 } } as Partial<Layer>)]);
+    expect(kinds(tiny).filter((k) => k.startsWith('too-small'))).toEqual([]);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBrand, brandEdit, familyFromFile, logoPath } from './brand';
+import { applyBrand, brandEdit, familyFromFile, hasBrand, hexToHsv, hsvToHex, logoPath, normHex, withColour } from './brand';
 import { check } from './checker';
 import { applyPatch } from './patch';
 import { validateRecipe } from './recipe/validate';
@@ -84,5 +84,24 @@ describe('familyFromFile', () => {
   it('turns a file name into a family name', () => {
     expect(familyFromFile('Fraunces-Bold.ttf')).toBe('Fraunces Bold');
     expect(familyFromFile('.ttf')).toBe('Your font');
+  });
+});
+
+describe('brand kit states', () => {
+  it('an empty kit has nothing to apply until a logo or colour exists', () => {
+    expect(hasBrand({ colours: [], useForNewClips: false })).toBe(false);
+    expect(hasBrand({ colours: [{ hex: '#111114', role: 'text' }], useForNewClips: false })).toBe(true);
+    expect(hasBrand({ colours: [], logoAssetId: 'brand-logo-svg', useForNewClips: false })).toBe(true);
+  });
+  it('removes and restores a colour in role order', () => {
+    const gone = withColour(kit, 'accent', undefined);
+    expect(gone.colours.map((c) => c.role)).toEqual(['text', 'primary', 'background']);
+    expect(withColour(gone, 'accent', '#FDE68A').colours).toEqual(kit.colours);
+  });
+  it('reads hex and converts to and from hue, saturation and value', () => {
+    expect(normHex('abc')).toBe('#AABBCC');
+    expect(normHex('#b45309')).toBe('#B45309');
+    expect(normHex('#12')).toBeUndefined();
+    for (const hex of ['#B45309', '#FFFFFF', '#000000', '#3366CC']) expect(hsvToHex(hexToHsv(hex))).toBe(hex);
   });
 });

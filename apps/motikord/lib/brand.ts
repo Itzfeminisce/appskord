@@ -11,6 +11,10 @@ type Role = BrandKit['colours'][number]['role'];
 export const ROLE_LABEL: Record<Role, string> = { text: 'Text', primary: 'Main', accent: 'Accent', background: 'Background' };
 export const ROLES: readonly Role[] = ['text', 'primary', 'accent', 'background'];
 export const BUILT_IN_FONT = 'Geist';
+/** Only these two can be removed; Text and Main can only be changed. */
+export const REMOVABLE: readonly Role[] = ['accent', 'background'];
+/** What a colour starts as when it is added to a free role. */
+export const ROLE_START: Record<Role, string> = { text: '#111114', primary: '#BE185D', accent: '#FDE68A', background: '#FFFFFF' };
 
 export const emptyKit = (): BrandKit => ({ colours: [], useForNewClips: false });
 
@@ -27,6 +31,43 @@ const MIME: Record<string, string> = { svg: 'image/svg+xml', png: 'image/png', j
 
 /** "Fraunces-Bold.ttf" becomes "Fraunces Bold". */
 export const familyFromFile = (name: string) => name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Your font';
+
+// ---- Colour picker maths (pure) ----
+
+/** "#abc", "abc" or "#AABBCC" as "#AABBCC"; undefined when it is not a hex colour. */
+export function normHex(input: string): string | undefined {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(input.trim());
+  if (!m) return undefined;
+  const h = m[1]!.length === 3 ? [...m[1]!].map((c) => c + c).join('') : m[1]!;
+  return `#${h.toUpperCase()}`;
+}
+
+/** Hue 0-360, saturation and value 0-1. */
+export type Hsv = [number, number, number];
+
+export function hexToHsv(hex: string): Hsv {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  let h = 0;
+  if (d) h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, max ? d / max : 0, max];
+}
+
+export function hsvToHex([h, s, v]: Hsv): string {
+  const f = (n: number) => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return `#${[5, 3, 1].map((n) => Math.round(f(n) * 255).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+}
+
+/** The kit with this role's colour set, added or removed, kept in role order. */
+export function withColour(kit: BrandKit, role: Role, hex: string | undefined): BrandKit {
+  const rest = kit.colours.filter((c) => c.role !== role);
+  const colours = hex ? [...rest, { hex, role }] : rest;
+  return { ...kit, colours: colours.sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role)) };
+}
+
+/** Whether Apply has anything to apply. */
+export const hasBrand = (kit: BrandKit) => !!kit.logoAssetId || kit.colours.length > 0;
 
 // ---- Applying a kit: PatchOp[] only ----
 

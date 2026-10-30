@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { editor } from '../entrypoints/editor/router';
 import { sidepanel } from '../entrypoints/sidepanel/router';
-import { applyBrandToStoredClip, BUILT_IN_FONT, loadKit, logoName, logoPath, registerBrandFonts, ROLE_LABEL, ROLES, saveFont, saveLogo } from '../lib/brand';
+import { applyBrandToStoredClip, BUILT_IN_FONT, hasBrand, hexToHsv, hsvToHex, loadKit, logoName, logoPath, normHex, registerBrandFonts, REMOVABLE, ROLE_LABEL, ROLE_START, ROLES, saveFont, saveLogo, withColour, type Hsv } from '../lib/brand';
 import { putBrandKit } from '../lib/db';
 import { getMedia } from '../lib/media';
 import { send } from '../lib/messages';
@@ -20,7 +20,56 @@ function tryHook<T>(hook: () => T): T | undefined {
 }
 
 const card: CSSProperties = { margin: '10px 16px 0', padding: 14, borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 10 };
-const small: CSSProperties = { height: 34, padding: '0 12px', border: '1px solid var(--line-strong)', borderRadius: 9, background: 'var(--surface)', color: 'var(--ink)', font: '600 12px/1 var(--font)', cursor: 'pointer' };
+type Role = Kit['colours'][number]['role'];
+
+const field: CSSProperties = { height: 32, padding: '0 12px', borderRadius: 8, font: '500 12px/1 var(--font)', cursor: 'pointer' };
+
+/** Colour area, hue slider and hex field, as in the colour-edit frame. */
+function Picker({ hex, onChange, onRemove, onDone }: { hex: string; onChange: (hex: string) => void; onRemove?: () => void; onDone: () => void }) {
+  const [hsv, setHsv] = useState<Hsv>(() => hexToHsv(hex));
+  const [draft, setDraft] = useState(hex);
+  const [h, sat, v] = hsv;
+  const set = (next: Hsv) => { setHsv(next); const x = hsvToHex(next); setDraft(x); onChange(x); };
+  const drag = (e: PointerEvent<HTMLDivElement>, move: (fx: number, fy: number) => void) => {
+    const el = e.currentTarget;
+    const at = (ev: { clientX: number; clientY: number }) => {
+      const r = el.getBoundingClientRect();
+      move(Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)));
+    };
+    el.setPointerCapture(e.pointerId);
+    at(e);
+    const onMove = (ev: globalThis.PointerEvent) => at(ev);
+    const stop = () => { el.removeEventListener('pointermove', onMove); el.removeEventListener('pointerup', stop); };
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', stop);
+  };
+  const knob: CSSProperties = { position: 'absolute', borderRadius: '50%', border: '2px solid #FFFFFF', boxShadow: '0 0 0 1px rgba(17,17,20,0.4)', pointerEvents: 'none' };
+  return (
+    <div data-state="colour-edit" style={{ padding: 12, borderRadius: 12, background: 'var(--ground)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div role="slider" aria-label="Colour" aria-valuetext={hex} tabIndex={0} onPointerDown={(e) => drag(e, (fx, fy) => set([h, fx, 1 - fy]))}
+        style={{ height: 96, borderRadius: 8, position: 'relative', touchAction: 'none', background: `linear-gradient(to top, #000000, rgba(0,0,0,0)), linear-gradient(to right, #FFFFFF, ${hsvToHex([h, 1, 1])})` }}>
+        <span style={{ ...knob, left: `${sat * 100}%`, top: `${(1 - v) * 100}%`, width: 14, height: 14, margin: '-7px 0 0 -7px' }} />
+      </div>
+      <div role="slider" aria-label="Hue" aria-valuemin={0} aria-valuemax={360} aria-valuenow={Math.round(h)} tabIndex={0} onPointerDown={(e) => drag(e, (fx) => set([fx * 360, sat, v]))}
+        style={{ height: 12, borderRadius: 6, position: 'relative', touchAction: 'none', background: 'linear-gradient(to right, #FF0000, #FFFF00, #00FF00, #00FFFF, #0000FF, #FF00FF, #FF0000)' }}>
+        <span style={{ ...knob, left: `${(h / 360) * 100}%`, top: 6, width: 16, height: 16, margin: '-8px 0 0 -8px', background: hex }} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label htmlFor="brand-hex" style={{ fontSize: 12, color: 'var(--muted)' }}>Hex</label>
+        <input id="brand-hex" value={draft} spellCheck={false} onChange={(e) => {
+          setDraft(e.target.value);
+          const x = normHex(e.target.value);
+          if (x) { setHsv(hexToHsv(x)); onChange(x); }
+        }} style={{ width: 96, height: 32, padding: '0 8px', border: '2px solid var(--accent)', borderRadius: 8, fontFamily: 'var(--mono)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+        <div style={{ flexGrow: 1 }} />
+        {onRemove && <button type="button" onClick={onRemove} style={{ ...field, border: '1px solid var(--line-strong)', background: 'var(--surface)', color: '#B91C1C' }}>Remove</button>}
+        <button type="button" onClick={onDone} style={{ ...field, border: 0, background: 'var(--accent)', color: '#fff', fontWeight: 600 }}>Done</button>
+      </div>
+    </div>
+  );
+}
+
+const small: CSSProperties = { height: 34, whiteSpace: 'nowrap', flexShrink: 0, padding: '0 12px', border: '1px solid var(--line-strong)', borderRadius: 9, background: 'var(--surface)', color: 'var(--ink)', font: '600 12px/1 var(--font)', cursor: 'pointer' };
 
 export default function BrandKit() {
   const { tab, panel } = useSurface();
@@ -29,8 +78,9 @@ export default function BrandKit() {
   const [busy, setBusy] = useState(false);
   const logoInput = useRef<HTMLInputElement>(null);
   const fontInput = useRef<HTMLInputElement>(null);
-  const colourInput = useRef<HTMLInputElement>(null);
-  const editing = useRef<number>(-1);
+  const [editing, setEditing] = useState<Role>();
+  const [removed, setRemoved] = useState<{ role: Role; hex: string }>();
+  const [fontNote, setFontNote] = useState<string>();
 
   useEffect(() => {
     loadKit().then((k) => { setKit(k); void registerBrandFonts(k).then(() => setKit({ ...k })); })
@@ -73,21 +123,30 @@ export default function BrandKit() {
       // The new font goes to Headings, or to Body when Headings already has one of yours.
       const heading = !kit.headingFont || kit.headingFont === BUILT_IN_FONT;
       update(heading ? { headingFont: family } : { bodyFont: family });
+      setFontNote(heading ? `Added ${family} as your Headings font. Your next font file becomes the Body font.` : `Added ${family} as your Body font.`);
     } catch (error) { console.error('Motikord: could not add the font', error); }
   };
 
-  const setColour = (hex: string) => {
-    if (!kit) return;
-    const i = editing.current;
-    const colours = kit.colours.map((c, k) => (k === i ? { ...c, hex } : c));
-    if (i >= kit.colours.length) {
-      const role = ROLES.find((r) => !kit.colours.some((c) => c.role === r));
-      if (role) colours.push({ hex, role });
-    }
-    update({ colours });
+  const free = kit ? ROLES.find((r) => !kit.colours.some((c) => c.role === r)) : undefined;
+  const setColour = (role: Role, hex: string) => { if (kit) update(withColour(kit, role, hex)); };
+  const addColour = () => {
+    if (!kit || !free) return;
+    setRemoved(undefined);
+    update(withColour(kit, free, ROLE_START[free]));
+    setEditing(free);
   };
-  const openPicker = (i: number) => { editing.current = i; colourInput.current?.click(); };
-  const free = kit ? ROLES.some((r) => !kit.colours.some((c) => c.role === r)) : false;
+  const removeColour = (role: Role) => {
+    const gone = kit?.colours.find((c) => c.role === role);
+    if (!kit || !gone) return;
+    update(withColour(kit, role, undefined));
+    setRemoved({ role, hex: gone.hex });
+    setEditing(undefined);
+  };
+  const undoRemove = () => {
+    if (!kit || !removed) return;
+    update(withColour(kit, removed.role, removed.hex));
+    setRemoved(undefined);
+  };
 
   const apply = async () => {
     setBusy(true);
@@ -113,9 +172,10 @@ export default function BrandKit() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: last ? 0 : '1px solid #EFEFF1' }}>
         <span style={{ fontSize: 12, color: 'var(--muted)', width: 70 }}>{label}</span>
         <select aria-label={label} value={family} onChange={(e) => update({ [key]: e.target.value })}
-          style={{ flexGrow: 1, minWidth: 0, border: 0, background: 'transparent', color: 'var(--ink)', fontFamily: family === BUILT_IN_FONT ? 'var(--font)' : `'${family}', ${serif ? 'Georgia, serif' : 'system-ui, sans-serif'}`, fontSize: serif ? 18 : 16, fontWeight: serif ? 700 : 400, cursor: 'pointer' }}>
+          style={{ flexGrow: 1, minWidth: 0, border: 0, background: 'transparent', appearance: 'none', padding: 0, color: 'var(--ink)', fontFamily: family === BUILT_IN_FONT ? 'var(--font)' : `'${family}', ${serif ? 'Georgia, serif' : 'system-ui, sans-serif'}`, fontSize: serif ? 18 : 16, fontWeight: serif ? 700 : 400, cursor: 'pointer' }}>
           {options.map((f) => <option key={f} value={f}>{f}</option>)}
         </select>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginLeft: -8, pointerEvents: 'none' }}><path d="M6 9l6 6 6-6" /></svg>
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>{family === BUILT_IN_FONT ? 'Built in' : 'Your font'}</span>
       </div>
     );
@@ -134,14 +194,16 @@ export default function BrandKit() {
       <section style={card}>
         <span style={{ fontSize: 13, fontWeight: 600 }}>Logo</span>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <span style={{ width: 64, height: 64, borderRadius: 12, background: 'var(--ground)', border: '1px solid var(--line)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-            {logoUrl ? <img src={logoUrl} alt="" style={{ maxWidth: 52, maxHeight: 52 }} /> : <span style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--line-strong)' }} />}
+          <span data-state={logoId ? undefined : 'brand-empty'} style={{ width: 64, height: 64, borderRadius: 12, boxSizing: 'border-box', background: logoId ? 'var(--ground)' : 'var(--surface)', border: logoId ? '1px solid var(--line)' : '1px dashed #A1A1AA', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+            {logoUrl ? <img src={logoUrl} alt="" style={{ maxWidth: 52, maxHeight: 52 }} /> : logoId ? <span style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--line-strong)' }} /> : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M4 16l5-5 4 4 3-3 4 4" /></svg>
+            )}
           </span>
           <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1 }}>
-            <span style={{ fontSize: 13 }}>{logoId ? logoName(logoId) : ''}</span>
+            <span style={{ fontSize: 13 }}>{logoId ? logoName(logoId) : 'No logo yet'}</span>
             <span style={{ fontSize: 12, color: 'var(--muted)' }}>Used in logo intros and end cards</span>
           </span>
-          <button type="button" style={small} onClick={() => logoInput.current?.click()}>Replace</button>
+          <button type="button" style={small} onClick={() => logoInput.current?.click()}>{logoId ? 'Replace' : 'Add a logo'}</button>
           <input ref={logoInput} type="file" accept="image/svg+xml,image/png,image/jpeg,image/webp" hidden onChange={(e) => { void pickLogo(e.target.files?.[0]); e.target.value = ''; }} />
         </div>
       </section>
@@ -149,21 +211,31 @@ export default function BrandKit() {
       <section style={card}>
         <span style={{ fontSize: 13, fontWeight: 600 }}>Colours</span>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8 }}>
-          {kit.colours.map((c, i) => (
-            <button key={c.role} type="button" aria-label={`${ROLE_LABEL[c.role]} ${c.hex}`} onClick={() => openPicker(i)}
+          {kit.colours.map((c) => (
+            <button key={c.role} type="button" aria-label={`${ROLE_LABEL[c.role]} ${c.hex}`} aria-pressed={editing === c.role} onClick={() => { setRemoved(undefined); setEditing(editing === c.role ? undefined : c.role); }}
               style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', color: 'inherit' }}>
-              <span style={{ width: 44, height: 44, borderRadius: '50%', background: c.hex, border: '1px solid var(--line-strong)' }} />
+              <span style={{ width: 44, height: 44, borderRadius: '50%', boxSizing: 'border-box', background: c.hex, border: '1px solid var(--line-strong)', boxShadow: editing === c.role ? '0 0 0 2px #FFFFFF, 0 0 0 4px var(--accent)' : undefined }} />
               <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--muted)' }}>{c.hex.toUpperCase()}</span>
               <span style={{ fontSize: 10, color: 'var(--muted)' }}>{ROLE_LABEL[c.role]}</span>
             </button>
           ))}
-          <button type="button" aria-label="Add a colour" disabled={!free} onClick={() => openPicker(kit.colours.length)}
+          <button type="button" aria-label="Add a colour" disabled={!free} onClick={addColour}
             style={{ width: 44, height: 44, borderRadius: '50%', border: '1px dashed #A1A1AA', background: 'var(--surface)', display: 'grid', placeItems: 'center', cursor: free ? 'pointer' : 'not-allowed', opacity: free ? 1 : 0.5, justifySelf: 'center' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
           </button>
-          <input ref={colourInput} type="color" tabIndex={-1} aria-hidden="true" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
-            onChange={(e) => setColour(e.target.value.toUpperCase())} />
         </div>
+        {editing && kit.colours.some((c) => c.role === editing) && (
+          <Picker key={editing} hex={kit.colours.find((c) => c.role === editing)!.hex} onChange={(hex) => setColour(editing, hex)}
+            onRemove={REMOVABLE.includes(editing) ? () => removeColour(editing) : undefined} onDone={() => setEditing(undefined)} />
+        )}
+        {removed && (
+          <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--muted)' }}>
+            <span style={{ flexGrow: 1 }}>{`${ROLE_LABEL[removed.role]} removed. Text and Main can only be changed.`}</span>
+            <button type="button" onClick={undoRemove} style={{ border: 0, background: 'transparent', padding: 0, color: 'var(--accent)', font: '600 12px/1 var(--font)', cursor: 'pointer' }}>Undo</button>
+          </div>
+        )}
+        {!removed && !editing && kit.colours.length === 0 && <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>No colours yet. Add up to four: text, main, accent and background.</span>}
+        {!removed && !editing && !free && <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>Your kit holds four colours. Tap one to change or remove it.</span>}
       </section>
 
       <section style={card}>
@@ -174,6 +246,7 @@ export default function BrandKit() {
         </div>
         <button type="button" style={{ ...small, alignSelf: 'flex-start', height: 32, fontWeight: 500 }} onClick={() => fontInput.current?.click()}>Add a font file</button>
         <input ref={fontInput} type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" hidden onChange={(e) => { void addFont(e.target.files?.[0]); e.target.value = ''; }} />
+        {fontNote && <span role="status" style={{ fontSize: 12, lineHeight: 1.45, color: '#166534' }}>{fontNote}</span>}
       </section>
 
       <label style={{ ...card, flexDirection: 'row', alignItems: 'center', gap: 12, padding: '12px 14px', cursor: 'pointer' }}>
@@ -186,8 +259,8 @@ export default function BrandKit() {
 
       <div style={{ flexGrow: 1 }} />
       <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <button type="button" className={`btn btn-primary btn-block${busy ? ' is-busy' : ''}`} disabled={busy} onClick={() => void apply()}>Apply to the open clip</button>
-        <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>Saved as you go. Kept on this computer.</span>
+        <button type="button" className={`btn btn-primary btn-block${busy ? ' is-busy' : ''}`} disabled={busy || !hasBrand(kit)} onClick={() => void apply()}>Apply to the open clip</button>
+        <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>{hasBrand(kit) ? '' : 'Add a logo or a colour first. '}Saved as you go. Kept on this computer.</span>
       </div>
     </div>
   );
