@@ -6,14 +6,14 @@ import Credits from '../../screens/Credits';
 import Editor from '../../screens/editor/Editor';
 import StatesEditor from '../../screens/editor/StatesEditor';
 import StatesMedia from '../../screens/StatesMedia';
-import EditorPrompt from '../../screens/EditorPrompt';
+import EditorPrompt from '../../screens/editor/EditorPrompt';
 import Export from '../../screens/Export';
 import Exported from '../../screens/Exported';
-import Formats from '../../screens/Formats';
+import Formats from '../../screens/editor/Formats';
 import Library from '../../screens/Library';
 import MediaSearch from '../../screens/MediaSearch';
 import Music from '../../screens/Music';
-import Presets from '../../screens/Presets';
+import Presets from '../../screens/editor/Presets';
 import Rendering from '../../screens/Rendering';
 import YourMedia from '../../screens/YourMedia';
 

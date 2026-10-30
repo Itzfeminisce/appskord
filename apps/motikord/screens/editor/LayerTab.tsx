@@ -72,8 +72,7 @@ function LayerFields({ f }: { f: Found }) {
       )}
       <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)', paddingTop: 4 }}>Motion</span>
       {SLOTS.map(([slot, text]) => (
-        // T8 builds the Presets popover; it opens on this layer and slot.
-        <button key={slot} type="button" data-slot={slot} onClick={() => go('Presets', { sceneId: f.scene.id, layerId: l.id })}
+        <button key={slot} type="button" data-slot={slot} onClick={() => go('Presets', { sceneId: f.scene.id, layerId: l.id, slot })}
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 36, padding: '0 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', font: '13px/1 var(--font)', cursor: 'pointer' }}>
           <span style={{ color: 'var(--muted)' }}>{text}</span><span style={{ fontWeight: 600 }}>{motionLabel(l[slot])}</span>
         </button>
