@@ -1,3 +1,4 @@
+import { setBadge } from '../lib/badge';
 import { onMessage } from '../lib/messages';
 
 const EDITOR_URL = '/editor.html';
@@ -23,5 +24,6 @@ export default defineBackground(() => {
   });
   onMessage({
     'editor/open': (msg) => openEditor(msg.clipId),
+    'export/progress': (msg) => setBadge(msg.percent, chrome.action, browser.runtime.getManifest().action?.default_title ?? 'Motikord'),
   });
 });
