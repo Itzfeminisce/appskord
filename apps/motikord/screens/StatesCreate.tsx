@@ -91,6 +91,22 @@ export function VideoWontPlay({ name }: { name: string }) {
   );
 }
 
+export function GrabNotAllowed() {
+  return (
+    <Notice role="status" glyph="info" title="Motikord can’t pick from this page">
+      Chrome doesn’t let extensions read its own pages or the Web Store. Open another site and try again.
+    </Notice>
+  );
+}
+export function GrabNothingPicked() {
+  return (
+    <div style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 14, fontWeight: 600 }}>Nothing picked yet</span>
+      <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>Click a headline, image, logo, quote or table on the page.</span>
+    </div>
+  );
+}
+
 /** The one line under Making that says where the prompt went. */
 export function AiFooter({ ai }: { ai: AiMode | 'groq' | 'builtin' }) {
   const groq = ai === 'cloud' || ai === 'groq';
@@ -112,6 +128,8 @@ const SHEET: [string, ReactNode][] = [
   ['offline · Make a clip, Editor (banner)', <Offline />],
   ['too-long · Making your clip', <TooLong />],
   ['groq-access · first “Make clip” (Chrome asks once)', <GroqAccess />],
+  ['grab-not-allowed · Grab from the page', <GrabNotAllowed />],
+  ['grab-nothing-picked · Grab from the page', <GrabNothingPicked />],
   ['media-unsupported · Your media', <MediaUnsupported name="brochure.pdf" />],
   ['video-wont-play · Your media', <VideoWontPlay name="drone-shot.mov" />],
   ['ai-footer · Making your clip (one line per AI)', (
