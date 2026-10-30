@@ -3,7 +3,7 @@ import { createAutosave, type Autosave, type SaveStatus } from '../../lib/editor
 import { stepsBack } from '../../lib/editor/changes';
 import { canRedo, canUndo } from '../../lib/editor/history';
 import { mergeClip, sameVersion } from '../../lib/editor/merge';
-import { toSizeOnly } from '../../lib/editor/sizeOnly';
+import { switchesSize, toSizeOnly } from '../../lib/editor/sizeOnly';
 import { devSampleRecipe, findLayer, initState, reducer, removeLayer, sceneIndex, type EditorState, type Edit } from '../../lib/editor/store';
 import { getBrandKit, getClip, putClip, updateClip } from '../../lib/db';
 import { getMedia } from '../../lib/media';
@@ -43,7 +43,7 @@ export interface EditorApi {
   /** The playhead while playing, without a React render per frame. */
   playhead: MutableRefObject<number>;
   /** Applies a PatchOp[] edit and records it as one Change (by 'hand' unless said). */
-  edit: (e: Edit | undefined, o?: { by?: Author; select?: { sceneId: string; layerId?: string }; toast?: boolean }) => void;
+  edit: (e: Edit | undefined, o?: { by?: Author; select?: { sceneId: string; layerId?: string }; toast?: boolean }) => boolean;
   undo: () => void;
   redo: () => void;
   select: (sceneId: string, layerId?: string, timeMs?: number) => void;
@@ -290,17 +290,21 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   const api = useMemo<EditorApi>(() => ({
     state, brand: loaded.brand, cache, save, smoothPreview, light, setLight, playhead,
     edit: (e, o = {}) => {
-      if (!e) return;
+      if (!e) return false;
       const recipe = stateRef.current.clip.recipe;
       if (sizeOnly) e = toSizeOnly(recipe, e);
+      const switched = switchesSize(e);
       try { applyPatch(recipe, e.ops); } catch (error) {
         // A failed edit changes nothing, so it gets no undo-toast either.
         if (!(error instanceof PatchError)) throw error;
         console.error('Motikord: could not apply an edit', error);
-        return;
+        return false;
       }
       dispatch({ type: 'edit', edit: e, by: o.by, at: Date.now(), id: newId(), select: o.select });
+      // "This size only" names one size, so a size switch turns it off.
+      if (switched) setSizeOnly(false);
       if (o.toast) toast(e.summary);
+      return true;
     },
     undo: () => { dispatch({ type: 'undo', at: Date.now() }); setToastText(undefined); },
     redo: () => dispatch({ type: 'redo', at: Date.now() }),
@@ -411,7 +415,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
             <PresetsPopover key={`${panel.sceneId}/${panel.layerId}/${panel.slot}`} sceneId={panel.sceneId} layerId={panel.layerId} slot={panel.slot} onClose={() => setPanel(undefined)} />
           </div>
         )}
-        {panel?.kind === 'formats' && <FormatsPanel onClose={() => setPanel(undefined)} />}
+        {panel?.kind === 'formats' && <FormatsPanel onClose={() => { setSizeOnly(false); setPanel(undefined); }} />}
       </div>
     </Ctx.Provider>
   );

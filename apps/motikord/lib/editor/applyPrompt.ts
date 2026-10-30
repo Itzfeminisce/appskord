@@ -44,3 +44,13 @@ export async function applyPrompt(recipe: Recipe, prompt: string, opts: PromptOp
     signal?.removeEventListener('abort', stop);
   }
 }
+
+/** The clip changed while the AI was answering: the same ops, re-checked against the clip as it is now, or undefined. */
+export function rebase(out: PromptEdit, prompt: string, from: Recipe, now: Recipe): PromptEdit | undefined {
+  if (now === from) return out;
+  let next: Recipe;
+  try { next = applyPatch(now, out.edit.ops).doc; } catch { return undefined; }
+  if (validateRecipe(next).length > 0) return undefined;
+  const detail = describe(now, next);
+  return { ...out, edit: { ...out.edit, summary: promptSummary(prompt, detail) }, detail, recipe: next };
+}

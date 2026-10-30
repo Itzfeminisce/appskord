@@ -18,16 +18,18 @@ function SizePreview({ aspect, w, h }: { aspect: Aspect; w: number; h: number })
   const { state, cache } = useEditor();
   const ref = useRef<HTMLCanvasElement>(null);
   const r = state.clip.recipe;
+  // Setting width or height clears the canvas, so it only happens when the size changes.
   useEffect(() => {
     const c = ref.current;
-    const ctx = c?.getContext('2d');
-    if (!c || !ctx) return;
+    if (!c) return;
     const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
     c.width = Math.round(w * dpr);
     c.height = Math.round(h * dpr);
-    // One still frame per size; nothing redraws until the clip or the time changes.
-    const id = requestAnimationFrame(() => drawFrame(ctx, r, aspect, state.timeMs, cache));
-    return () => cancelAnimationFrame(id);
+  }, [w, h]);
+  // One still frame per size; nothing redraws until the clip or the time changes.
+  useEffect(() => {
+    const ctx = ref.current?.getContext('2d');
+    if (ctx) drawFrame(ctx, r, aspect, state.timeMs, cache);
   }, [r, aspect, w, h, state.timeMs, cache]);
   return <canvas ref={ref} aria-label={aspect} style={{ width: w, height: h, display: 'block', boxShadow: '0 6px 20px rgba(16,16,20,0.12)', background: 'var(--surface)' }} />;
 }

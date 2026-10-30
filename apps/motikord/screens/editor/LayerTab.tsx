@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { clipColours, clock, findLayer, parseClock, sceneIndex, sceneStart, setBackground, setField, setTiming, type Found } from '../../lib/editor/store';
+import { clipColours, clock, findLayer, parseClock, sceneIndex, sceneStart, setBackground, setField, setLayout, setTiming, type Found } from '../../lib/editor/store';
 import { sceneTiming } from '../../lib/editor/timeline';
 import { getPreset } from '../../lib/render/presets';
+import { LAYOUTS, type LayoutId } from '../../lib/render/reflow';
 import type { Layer, Motion, PresetSlot } from '../../lib/types';
 import { useEditor } from './Editor';
 
@@ -12,6 +13,7 @@ const mono = { ...field, fontFamily: 'var(--mono)' } as const;
 const TYPE: Record<Layer['type'], string> = { text: 'Text', shape: 'Shape', image: 'Image', video: 'Video', chart: 'Chart' };
 const SLOTS: [PresetSlot, string][] = [['in', 'Comes in'], ['during', 'While on screen'], ['out', 'Goes out']];
 const MAX_SWATCHES = 8;
+const LAYOUT_NAMES: Record<LayoutId, string> = { center: 'Centred', top: 'Photo on top', bottom: 'Photo below', 'lower-third': 'Lower third', split: 'Side by side', full: 'Full picture' };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** "Rise · Smooth · 0.6 s", as the Motion rows show a preset. */
@@ -57,6 +59,11 @@ function SceneFields() {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
         <Labelled name="Scene length"><TimeInput value={scene.durationMs} onCommit={(ms) => edit(sceneTiming(r, si, ms))} /></Labelled>
+        <Labelled name="Layout">
+          <select value={scene.layout} onChange={(e) => edit(setLayout(r, si, e.target.value, LAYOUT_NAMES[e.target.value as LayoutId]))} style={{ ...field, padding: '0 6px', background: 'var(--surface)' }}>
+            {LAYOUTS.map((id) => <option key={id} value={id}>{LAYOUT_NAMES[id]}</option>)}
+          </select>
+        </Labelled>
       </div>
     </>
   );

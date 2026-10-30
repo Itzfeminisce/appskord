@@ -65,6 +65,15 @@ export function GroqBusy({ seconds, onTryNow }: { seconds: number; onTryNow?: ()
   );
 }
 
+export function GroqBusyRetried({ onTryNow }: { onTryNow?: () => void }) {
+  return (
+    <Card tone="warning" icon={svg(20, 'var(--warning-ink)', <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>)} title="Groq is still busy"
+      action={<button type="button" onClick={onTryNow} style={outline}>Try now</button>}>
+      Motikord tried again and Groq is still at its free limit. Try now, or come back in a few minutes.
+    </Card>
+  );
+}
+
 export function GroqDown({ onOpenSettings }: { onOpenSettings?: () => void }) {
   return (
     <Card tone="warning" icon={svg(20, 'var(--warning-ink)', <><path d="M12 3.5l9.5 16.5h-19z" /><path d="M12 10v4.5M12 17.5v.01" /></>)} title="Groq isn’t responding"
@@ -97,6 +106,7 @@ export const PROMPT_STATES: [string, ReactNode][] = [
   ['prompt-failed · Editor', <PromptFailed />],
   ['change-too-long · Editor', <ChangeTooLong totalMs={72_000} />],
   ['groq-busy · Making your clip, Editor', <GroqBusy seconds={20} />],
+  ['groq-busy-retried · Making your clip, Editor', <GroqBusyRetried />],
   ['groq-down · Make a clip, Editor', <GroqDown />],
   ['offline · Make a clip, Editor (banner)', <Offline />],
 ];

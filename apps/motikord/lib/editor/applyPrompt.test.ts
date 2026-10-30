@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FetchLike } from '../llm';
 import { applyPatch } from '../patch';
-import { applyPrompt } from './applyPrompt';
+import { applyPrompt, rebase } from './applyPrompt';
 import { devSampleRecipe } from './store';
 
 const KEY = 'gsk_test';
@@ -63,5 +63,16 @@ describe('applyPrompt', () => {
   it('refuses a change past 60 seconds with its length', async () => {
     const long = JSON.stringify({ ops: [0, 1, 2].map((i) => ({ op: 'replace', path: `/scenes/${i}/durationMs`, value: 24_000 })) });
     await expect(applyPrompt(r, 'Much slower', groq(long).opts)).rejects.toMatchObject({ state: 'change-too-long', detail: { totalMs: 72_000 } });
+  });
+
+  it('re-checks the answer against a clip that changed while the AI answered', async () => {
+    const out = await applyPrompt(r, 'Slower', groq(slower).opts);
+    expect(rebase(out, 'Slower', r, r)).toBe(out);
+    const twoScenes = applyPatch(r, [{ op: 'remove', path: '/scenes/2' }]).doc;
+    expect(rebase(out, 'Slower', r, twoScenes)).toBeUndefined();
+    const renamed = applyPatch(r, [{ op: 'replace', path: '/name', value: 'Other' }]).doc;
+    const again = rebase(out, 'Slower', r, renamed)!;
+    expect(again.recipe.name).toBe('Other');
+    expect(again.recipe.scenes.map((x) => x.durationMs)).toEqual([6000, 6000, 6000]);
   });
 });

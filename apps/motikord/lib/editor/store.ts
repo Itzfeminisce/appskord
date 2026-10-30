@@ -192,6 +192,13 @@ export function setBackground(r: Recipe, si: number, hex: string): Edit | undefi
   return { ops: [{ op: 'replace', path: `/scenes/${si}/background`, value: hex }], summary: `Colour ${hex}`, mergeKey: `${scene.id}/background` };
 }
 
+/** The scene's layout (layer-none); summary names it as the select does. */
+export function setLayout(r: Recipe, si: number, id: string, name: string): Edit | undefined {
+  const scene = r.scenes[si];
+  if (!scene || scene.layout === id) return undefined;
+  return { ops: [{ op: 'replace', path: `/scenes/${si}/layout`, value: id }], summary: `Layout ${name}` };
+}
+
 export const NEW_SCENE_MS = 5000;
 
 /** Room left for one more scene under the 60 s limit, or 0 when a scene of at least 1 s does not fit. */

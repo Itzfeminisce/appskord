@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { applyPatch } from '../patch';
 import { validateRecipe } from '../recipe/validate';
 import type { Clip } from '../types';
 import {
   addLayer, addScene, clock, clockShort, devSampleRecipe, findLayer, initState, newShape, newText, parseClock, reducer, removeLayer,
-  sceneTitle, setAspect, setBackground, setBox, setField, setTiming, type Action, type EditorState,
+  sceneTitle, setAspect, setBackground, setLayout, setBox, setField, setTiming, type Action, type EditorState,
 } from './store';
 
 const clip = (): Clip => ({ id: 'c', recipe: devSampleRecipe('c'), history: [], createdAt: 0, updatedAt: 0 });
@@ -116,5 +117,12 @@ describe('playhead', () => {
     expect(merged.clip.recipe.name).toBe('Renamed');
     expect(merged.future).toEqual([]);
     expect(merged.layerId).toBe('s1-title');
+  });
+  it('sets a scene layout as one Change', () => {
+    const r = devSampleRecipe('l');
+    expect(setLayout(r, 0, 'center', 'Centred')).toBeUndefined();
+    const e = setLayout(r, 0, 'top', 'Photo on top')!;
+    expect(e.summary).toBe('Layout Photo on top');
+    expect(applyPatch(r, e.ops).doc.scenes[0]!.layout).toBe('top');
   });
 });

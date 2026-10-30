@@ -34,11 +34,13 @@ export function tracks(r: Recipe): Track[] {
 export function snap(ms: number, targets: readonly number[] = [], tolMs = 0): number {
   return snapTo(ms, targets, tolMs).ms;
 }
+const toGrid = (ms: number) => Math.round(ms / GRID_MS) * GRID_MS;
 function snapTo(ms: number, targets: readonly number[], tolMs: number): { ms: number; gap: number } {
-  let best = { ms: Math.round(ms / GRID_MS) * GRID_MS, gap: Infinity };
+  let best = { ms: toGrid(ms), gap: Infinity };
   for (const t of targets) {
     const d = Math.abs(t - ms);
-    if (d <= tolMs && d < best.gap) best = { ms: t, gap: d };
+    // Targets such as the playhead fall between grid lines; the snapped time still lands on the grid.
+    if (d <= tolMs && d < best.gap) best = { ms: toGrid(t), gap: d };
   }
   return best;
 }
@@ -76,8 +78,9 @@ export function sceneTargets(r: Recipe, si: number, exceptLayerId?: string): num
 }
 
 /** The Change a layer drag makes, or undefined when it lands where it started. */
-export function layerTiming(r: Recipe, si: number, li: number, span: Span): Edit | undefined {
+export function layerTiming(r: Recipe, si: number, li: number, raw: Span): Edit | undefined {
   const layer = r.scenes[si]?.layers[li];
+  const span = { startMs: toGrid(raw.startMs), endMs: Math.min(toGrid(raw.endMs), r.scenes[si]?.durationMs ?? Infinity) };
   if (!layer || (layer.startMs === span.startMs && layer.endMs === span.endMs)) return undefined;
   const path = `/scenes/${si}/layers/${li}`;
   const at = sceneStart(r, si);
@@ -93,7 +96,7 @@ export function sceneLength(r: Recipe, si: number, wantMs: number): number {
   if (!scene) return 0;
   const floor = Math.max(MIN_SCENE_MS, ...scene.layers.map((l) => l.startMs + MIN_LAYER_MS));
   const ceiling = MAX_CLIP_MS - (clipDuration(r) - scene.durationMs);
-  return Math.max(floor, Math.min(snap(wantMs), ceiling));
+  return Math.max(Math.ceil(floor / GRID_MS) * GRID_MS, Math.min(snap(wantMs), Math.floor(ceiling / GRID_MS) * GRID_MS));
 }
 
 /** Trims a scene; layers that ran to or past the old end follow the new end. */

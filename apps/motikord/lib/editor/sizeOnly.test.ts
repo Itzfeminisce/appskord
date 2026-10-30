@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { applyPatch } from '../patch';
 import { boxFor } from '../render/reflow';
 import { validateRecipe } from '../recipe/validate';
-import { devSampleRecipe, findLayer, setBox, setField } from './store';
-import { toSizeOnly, touchesBox } from './sizeOnly';
+import { devSampleRecipe, findLayer, setAspect, setBox, setField } from './store';
+import { switchesSize, toSizeOnly } from './sizeOnly';
 
 describe('this size only', () => {
   it('writes a moved box to boxes[aspect] and leaves the other sizes alone', () => {
@@ -37,7 +37,14 @@ describe('this size only', () => {
   it('passes edits that are not boxes through untouched', () => {
     const r = devSampleRecipe('s');
     const e = setField(findLayer(r, 's1', 's1-title')!, 'sizePx', 80, 'Title size 80');
-    expect(touchesBox(e)).toBe(false);
     expect(toSizeOnly(r, e)).toBe(e);
+  });
+
+  it('leaves a size switch alone, boxes and all', () => {
+    const r = devSampleRecipe('s');
+    const e = setAspect(r, '1:1')!;
+    expect(switchesSize(e)).toBe(true);
+    expect(toSizeOnly(r, e)).toBe(e);
+    expect(validateRecipe(applyPatch(r, toSizeOnly(r, e).ops).doc)).toEqual([]);
   });
 });
