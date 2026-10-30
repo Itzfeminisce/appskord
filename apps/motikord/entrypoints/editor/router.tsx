@@ -5,6 +5,7 @@ import Checker from '../../screens/Checker';
 import Credits from '../../screens/Credits';
 import Editor from '../../screens/editor/Editor';
 import StatesEditor from '../../screens/editor/StatesEditor';
+import StatesMedia from '../../screens/StatesMedia';
 import EditorPrompt from '../../screens/EditorPrompt';
 import Export from '../../screens/Export';
 import Exported from '../../screens/Exported';
@@ -20,7 +21,7 @@ import YourMedia from '../../screens/YourMedia';
 export const editor = createRouter({
   Editor, EditorPrompt, Formats, Presets, Checker,
   MediaSearch, AccessPrompt, Music, Credits,
-  Export, Rendering, Exported, StatesEditor,
+  Export, Rendering, Exported, StatesEditor, StatesMedia,
   Library, BrandKit, YourMedia,
 });
 export type EditorScreen = (typeof editor.names)[number];

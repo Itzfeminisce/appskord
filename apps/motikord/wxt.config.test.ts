@@ -11,7 +11,7 @@ const OPTIONAL_HOSTS = [
   'https://images.pexels.com/*',
   'https://videos.pexels.com/*',
 ];
-const OPENVERSE_MEDIA_HOSTS = ['https://*.staticflickr.com/*', 'https://upload.wikimedia.org/*', 'https://cdn.freesound.org/*', 'https://*.jamendo.com/*', 'https://ccmixter.org/*'];
+const OPENVERSE_MEDIA_HOSTS = ['https://*.staticflickr.com/*', 'https://upload.wikimedia.org/*', 'https://cdn.freesound.org/*', 'https://*.jamendo.com/*', 'https://ccmixter.org/*', 'https://images.metmuseum.org/*', 'https://images.rawpixel.com/*', 'https://cdn.stocksnap.io/*', 'https://files.freemusicarchive.org/*', 'https://archive.org/*', 'https://*.archive.org/*', 'https://lh3.googleusercontent.com/*', 'https://player.vimeo.com/*'];
 
 async function manifest() {
   vi.resetModules();
