@@ -129,3 +129,20 @@ describe('drawFrame', () => {
     }
   });
 });
+
+describe('glow', () => {
+  const glowing = recipe([scene('g', '#111111', [text('t', { endMs: 1000, during: { preset: 'glow', feel: 'steady', durationMs: 1000 } })])]);
+  const draw = (t: number) => {
+    const { ctx, log } = fakeCtx(1280, 720);
+    drawFrame(ctx, glowing, '16:9', t, new MediaCache());
+    return log;
+  };
+
+  it('sets a shadow in the layer colour mid-cycle and none at the boundary', () => {
+    const mid = draw(500);
+    expect(mid).toContain('shadowColor=#FFFFFF');
+    expect(mid.some((c) => /^shadowBlur=[1-9]/.test(c))).toBe(true);
+    expect(draw(0).some((c) => c.startsWith('shadow'))).toBe(false);
+  });
+});
+

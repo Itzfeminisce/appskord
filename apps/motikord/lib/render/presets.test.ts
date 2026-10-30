@@ -82,3 +82,47 @@ describe('layerPose', () => {
     expect(layerPose(l, 750).alpha).toBe(1);
   });
 });
+
+describe('while on screen presets', () => {
+  const DURING = ['bounce', 'pulse', 'float', 'shake', 'slow-zoom', 'glow'];
+  const FEEL_LIST: Feel[] = ['smooth', 'snappy', 'bouncy', 'steady'];
+  const mk = (preset: string, feel: Feel) => ({ startMs: 0, endMs: 6000, during: { preset, feel, durationMs: 1000 } });
+  const dev = (id: string, feel: Feel, t: number) => {
+    const p = layerPose(mk(id, feel), t);
+    return Math.abs(p.dx) + Math.abs(p.dy) + Math.abs(p.scale - 1) + p.glow;
+  };
+
+  it('the "While on screen" set is the frame tiles, in order', () => {
+    expect(presetsFor('during').map((p) => p.label)).toEqual(['Bounce', 'Pulse', 'Float', 'Shake', 'Slow zoom', 'Glow']);
+    for (const id of DURING) expect(isPresetId(id)).toBe(true);
+  });
+
+  it.each(DURING)('%s is zero at the layer in and out boundaries, for every Feel', (id) => {
+    for (const feel of FEEL_LIST) {
+      expect(dev(id, feel, 0)).toBeCloseTo(0);
+      expect(dev(id, feel, 6000)).toBeCloseTo(0);
+    }
+  });
+
+  it.each(DURING)('%s is periodic and deterministic', (id) => {
+    for (const feel of FEEL_LIST) {
+      expect(layerPose(mk(id, feel), 2370)).toEqual(layerPose(mk(id, feel), 2370));
+      expect(layerPose(mk(id, feel), 2370).dy).toBeCloseTo(layerPose(mk(id, feel), 3370).dy);
+      expect(layerPose(mk(id, feel), 2370).scale).toBeCloseTo(layerPose(mk(id, feel), 3370).scale);
+      expect(layerPose(mk(id, feel), 2370).glow).toBeCloseTo(layerPose(mk(id, feel), 3370).glow);
+    }
+  });
+
+  it('each moves its own field', () => {
+    expect(layerPose(mk('pulse', 'steady'), 2500).scale).toBeGreaterThan(1);
+    expect(layerPose(mk('slow-zoom', 'steady'), 2500).scale).toBeGreaterThan(1);
+    expect(layerPose(mk('float', 'steady'), 2250).dy).toBeLessThan(0);
+    expect(layerPose(mk('shake', 'steady'), 2000 + 62).dx).not.toBe(0);
+    expect(layerPose(mk('glow', 'steady'), 2500).glow).toBeGreaterThan(0.5);
+    expect(layerPose(mk('glow', 'steady'), 2500).glow).toBeLessThanOrEqual(1);
+  });
+
+  it('Feels change amplitude', () => {
+    expect(Math.abs(layerPose(mk('float', 'bouncy'), 2250).dy)).toBeGreaterThan(Math.abs(layerPose(mk('float', 'steady'), 2250).dy));
+  });
+});

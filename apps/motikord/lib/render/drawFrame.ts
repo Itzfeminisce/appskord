@@ -80,11 +80,17 @@ function drawLayer(ctx: Ctx, layer: Layer, b: Box, pose: Pose, alpha: number, t:
     ctx.rect(-bw / 2 - bw, -bh / 2 - bh, bw + bw * pose.reveal, bh * 3);
     ctx.clip();
   }
+  if (pose.glow > 0.01) {
+    ctx.shadowColor = glowColour(layer);
+    ctx.shadowBlur = pose.glow * 28 * f.unit;
+  }
   const blur = pose.blur * f.unit;
   if (blur > 0.5) drawBlurred(ctx, (c) => drawContent(c, layer, bw, bh, pose, t, f.unit, cache), bw, bh, blur, cache);
   else drawContent(ctx, layer, bw, bh, pose, t, f.unit, cache);
   ctx.restore();
 }
+
+const glowColour = (l: Layer) => (l.type === 'text' || l.type === 'chart' ? l.colour : l.type === 'shape' ? l.fill : '#ffffff');
 
 function drawContent(ctx: Ctx, layer: Layer, bw: number, bh: number, pose: Pose, t: number, unit: number, cache: MediaCache) {
   if (layer.type === 'text') drawText(ctx, layer, bw, bh, pose.typed, unit, cache);
