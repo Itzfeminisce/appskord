@@ -91,6 +91,20 @@ export function KeyRejected() {
     </StateCard>
   );
 }
+export function PexelsKeyRejected() {
+  return (
+    <StateCard tone="error" role="alert" glyph="cross" title="Pexels didn’t accept this key" actions={link('https://www.pexels.com/api/', 'Get a free Pexels key')}>
+      Media search still works with Openverse. Make a new Pexels key and paste it here.
+    </StateCard>
+  );
+}
+export function KeyCheckUnreachable({ onTryAgain }: { onTryAgain?: () => void }) {
+  return (
+    <StateCard tone="warning" role="status" glyph="warn" title="Motikord can’t check your key right now" actions={act('Try again', onTryAgain)}>
+      You may be offline, or the service is down. Your key is kept until Chrome closes, and Motikord will check it again as soon as it’s back.
+    </StateCard>
+  );
+}
 export function KeyChecking({ service }: { service: string }) {
   return (
     <div role="status" style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -110,6 +124,8 @@ const SHEET: [string, ReactNode][] = [
   ['penv-disconnected · Make a clip (banner)', <PenvDisconnected />],
   ['key-not-recognised · Paste a key', <KeyNotRecognised />],
   ['key-rejected · Paste a key', <KeyRejected />],
+  ['pexels-key-rejected · Paste a key', <PexelsKeyRejected />],
+  ['key-check-unreachable · PasteKey', <KeyCheckUnreachable />],
   ['key-checking · Paste a key', <KeyChecking service="Groq" />],
 ];
 

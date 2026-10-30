@@ -64,3 +64,20 @@ export async function checkKey(name: EnvKeyName, value: string, fetchImpl: typeo
     return 'unreachable';
   }
 }
+
+export type Verdict = 'ready' | 'rejected' | 'unreachable' | 'denied';
+
+export interface VerifyDeps {
+  request: (origins: readonly string[]) => Promise<'granted' | 'denied'>;
+  save: (name: EnvKeyName, value: string) => Promise<void>;
+  fetchImpl?: typeof fetch;
+}
+
+/** Asks for host access first (nothing awaited before it, so the gesture counts), checks the key, and saves it only when accepted. */
+export async function verifyKey(name: EnvKeyName, value: string, origins: readonly string[], deps: VerifyDeps): Promise<Verdict> {
+  if ((await deps.request(origins)) === 'denied') return 'denied';
+  const result = await checkKey(name, value, deps.fetchImpl);
+  if (result !== 'ready') return result;
+  await deps.save(name, value.trim());
+  return 'ready';
+}
