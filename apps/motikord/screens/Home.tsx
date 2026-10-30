@@ -3,6 +3,7 @@ import { guessType } from '../lib/ai/detectType';
 import { Button, IconButton } from '../components/ui';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { listClips } from '../lib/db';
+import { requestPageAccess, useActiveTabUrl } from '../lib/grab/access';
 import { HOSTS, requestHost } from '../lib/hostAccess';
 import { canMake, draft, runner, useDraft, useSettings } from '../lib/makeClip';
 import { send } from '../lib/messages';
@@ -44,6 +45,7 @@ function useOnline(): boolean {
 export default function Home() {
   const { navigate } = useRouter();
   const d = useDraft();
+  const pageUrl = useActiveTabUrl();
   const settings = useSettings();
   const online = useOnline();
   const useTemplate = useUseTemplate();
@@ -74,6 +76,14 @@ export default function Home() {
     void access.then((a) => runner.start(draft.get(), { access: a }));
   };
 
+  // Chrome grants a side-panel click no activeTab, so the page's site access is asked inside this click, before anything is awaited.
+  const grab = () => {
+    void requestPageAccess(pageUrl.current).then((access) => {
+      if (access === 'denied') { console.warn('Motikord: access to this page was not given'); return; }
+      navigate('Grab');
+    });
+  };
+
   return (
     <main data-frame="Home" style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', paddingBottom: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 16px 0 24px' }}>
@@ -99,7 +109,7 @@ export default function Home() {
             style={{ resize: 'none', border: '1px solid #E0E0E4', borderRadius: 12, padding: '10px 12px', font: '14px/1.45 var(--font)', color: 'var(--ink)', outline: 'none' }} />
         </label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          <button type="button" style={pill} onClick={() => navigate('Grab')}>
+          <button type="button" style={pill} onClick={grab}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4l7 17 2.5-7.5L21 11z" /></svg>Grab from this page
           </button>
           <button type="button" style={pill} onClick={() => navigate('YourMedia')}>

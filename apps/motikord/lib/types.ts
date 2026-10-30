@@ -6,7 +6,7 @@ export type Feel = 'smooth' | 'snappy' | 'bouncy' | 'steady';
 export type PresetSlot = 'in' | 'during' | 'out';           // "Comes in" / "While on screen" / "Goes out"
 export type FileKind = 'mp4' | 'webm' | 'gif' | 'webm-alpha';
 export type Quality = '720p' | '1080p';
-export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pexels' | 'own';
+export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pexels' | 'page' | 'own';
 export type Author = 'groq' | 'builtin' | 'hand' | 'template';
 
 export interface Credit {                                    // every asset someone else made

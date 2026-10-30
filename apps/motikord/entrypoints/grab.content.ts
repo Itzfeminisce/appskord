@@ -1,10 +1,10 @@
-import { classifyElement, extractPick, hoverLabel, pickedLabel, squash, type ElementInfo, type PageInfo, type Pick, type PickKind } from '../lib/grab/pick';
+import { classifyElement, dataUrlBytes, extractPick, GRAB_PORT, hoverLabel, MAX_IMAGE_BYTES, pickedLabel, squash, type ElementInfo, type PageInfo, type Pick, type PickKind } from '../lib/grab/pick';
 import { onMessage, send } from '../lib/messages';
 
-// Put on the page only when you press "Grab from this page" (activeTab + scripting); never a static content script.
+// Put on the page only when you press "Grab from this page" (the page's site access + scripting); never a static content script.
 const BAR_TEXT = 'Click a headline, image, logo, quote or table';
 const ESC_TEXT = 'Press Esc to stop picking';
-const MAX_IMAGE_BYTES = 12_000_000;
+const THUMB_PX = 96;
 const SLOT = '__motikordGrab';
 
 const CSS = `
@@ -60,8 +60,7 @@ function resolve(start: Element): { el: Element; kind: PickKind; info: ElementIn
 
 function pageInfo(): PageInfo {
   const meta = document.querySelector<HTMLMetaElement>('meta[property="og:site_name"]')?.content;
-  const licence = document.querySelector<HTMLLinkElement>('link[rel~="license"]')?.href;
-  return { title: squash(document.title), url: location.href, site: squash(meta ?? '') || location.hostname.replace(/^www\./, ''), licenceHref: licence || undefined };
+  return { title: squash(document.title), url: location.href, site: squash(meta ?? '') || location.hostname.replace(/^www\./, '') };
 }
 
 const toDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
@@ -71,18 +70,23 @@ const toDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   r.readAsDataURL(blob);
 });
 
-/** Reads the picture's bytes inside the page, where its cookies and CORS apply. */
+const tooBig = (dataUrl: string) => dataUrlBytes(dataUrl) > MAX_IMAGE_BYTES;
+
+/** Reads the picture's bytes inside the page; a picture over MAX_IMAGE_BYTES counts as unreadable. */
 async function readPicture(el: Element, src: string | undefined): Promise<string> {
+  const capped = (dataUrl: string) => { if (tooBig(dataUrl)) throw new Error('picture is too large'); return dataUrl; };
   if (el instanceof SVGElement) {
     const xml = new XMLSerializer().serializeToString(el);
-    return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(xml)))}`;
+    return capped(`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(xml)))}`);
   }
-  if (src?.startsWith('data:')) return src;
+  if (src?.startsWith('data:')) return capped(src);
   try {
     if (!src) throw new Error('no source');
-    const blob = await (await fetch(src)).blob();
+    const res = await fetch(src, { credentials: 'omit' });
+    if (Number(res.headers.get('content-length')) > MAX_IMAGE_BYTES) throw new Error('picture is too large');
+    const blob = await res.blob();
     if (!blob.type.startsWith('image/') || blob.size > MAX_IMAGE_BYTES) throw new Error('not a usable image');
-    return await toDataUrl(blob);
+    return capped(await toDataUrl(blob));
   } catch (fetchError) {
     // A picture the page drew itself can still be copied through a canvas when it is not cross-origin.
     if (el instanceof HTMLImageElement && el.complete && el.naturalWidth > 0) {
@@ -90,10 +94,29 @@ async function readPicture(el: Element, src: string | undefined): Promise<string
       canvas.width = el.naturalWidth;
       canvas.height = el.naturalHeight;
       canvas.getContext('2d')?.drawImage(el, 0, 0);
-      return canvas.toDataURL('image/png');
+      return capped(canvas.toDataURL('image/png'));
     }
     throw fetchError;
   }
+}
+
+/** A small JPEG of the picture for the panel list; undefined when it cannot be drawn. */
+async function makeThumb(dataUrl: string): Promise<string | undefined> {
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await img.decode();
+    const scale = Math.min(1, THUMB_PX / Math.max(img.naturalWidth, img.naturalHeight, 1));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.7);
+  } catch { return undefined; }
 }
 
 interface Mark { pick: Pick; el: Element; box: HTMLElement; tag: HTMLElement; badge: HTMLElement; reading?: Promise<void> }
@@ -170,7 +193,11 @@ function start(): () => void {
     marks.set(target.el, mark);
     if (target.kind === 'image' || target.kind === 'logo') {
       mark.reading = readPicture(target.el, target.info.src)
-        .then((dataUrl) => { pick.dataUrl = dataUrl; pick.mime = /^data:([^;,]+)/.exec(dataUrl)?.[1]; })
+        .then(async (dataUrl) => {
+          pick.mime = /^data:([^;,]+)/.exec(dataUrl)?.[1];
+          pick.thumb = await makeThumb(dataUrl);
+          if (!stopped) void send({ type: 'grab/data', id: pick.id, dataUrl });
+        })
         .catch((error: unknown) => { pick.failed = true; console.error('Motikord: could not read this picture', error); })
         .finally(() => { if (!stopped) report(); });
     }
@@ -211,10 +238,18 @@ function start(): () => void {
 
   bar.querySelector('.cancel')!.addEventListener('click', () => void finish('cancel'));
   bar.querySelector('.done')!.addEventListener('click', () => void finish('done'));
+  // Only this extension's own pages may steer the picker.
+  const own = (sender: Browser.runtime.MessageSender) => sender.id === browser.runtime.id;
   const stopListening = onMessage({
-    'grab/remove': (msg) => { for (const [el, m] of marks) if (m.pick.id === msg.id) { unmark(el); count.textContent = `${marks.size} picked`; schedule(); } },
-    'grab/stop': () => teardown(),
+    'grab/remove': (msg, sender) => { if (!own(sender)) return; for (const [el, m] of marks) if (m.pick.id === msg.id) { unmark(el); count.textContent = `${marks.size} picked`; schedule(); } },
+    'grab/stop': (_msg, sender) => { if (own(sender)) teardown(); },
   });
+  // The side panel holds a port while picking; closing the panel or leaving the screen ends the picker.
+  const onConnect = (port: Browser.runtime.Port) => {
+    if (port.name !== GRAB_PORT || port.sender?.id !== browser.runtime.id) return;
+    port.onDisconnect.addListener(() => teardown());
+  };
+  browser.runtime.onConnect.addListener(onConnect);
 
   const opts = { capture: true } as const;
   addEventListener('mousemove', onMove, opts);
@@ -236,6 +271,7 @@ function start(): () => void {
     removeEventListener('scroll', schedule, opts);
     removeEventListener('resize', schedule);
     stopListening();
+    browser.runtime.onConnect.removeListener(onConnect);
     host.remove();
     delete (window as unknown as Record<string, unknown>)[SLOT];
   }
@@ -243,7 +279,7 @@ function start(): () => void {
 }
 
 export default defineContentScript({
-  // Injected by chrome.scripting.executeScript from the Grab screen; no host permission is added: activeTab covers the tab you grab from.
+  // Injected by chrome.scripting.executeScript from the Grab screen, on a site the person allowed when they pressed Grab (optional host permission).
   registration: 'runtime',
   matches: [],
   main() {

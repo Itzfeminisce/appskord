@@ -38,18 +38,18 @@ describe('picksToPrompt', () => {
 describe('picksToAssets', () => {
   it('stores each readable picture with a page credit and skips the others', async () => {
     const d = deps();
-    const { assets, byPick, skipped } = await picksToAssets(picks, { ...page, licenceHref: 'https://creativecommons.org/licenses/by/4.0/' }, d);
+    const { assets, byPick, skipped } = await picksToAssets(picks, page, d);
     expect(assets.map((a) => a.kind)).toEqual(['image', 'logo']);
     expect(skipped.map((p) => p.id)).toEqual(['p8']);
     expect(byPick.p2).toBe(assets[0]);
-    expect(assets[0]).toMatchObject({ name: 'Loaf photo', mime: 'image/png', width: 340, height: 300, credit: { source: 'page', url: page.url, title: page.title, author: 'Northside Bakery', licence: 'cc-by' } });
+    expect(assets[0]).toMatchObject({ name: 'Loaf photo', mime: 'image/png', width: 340, height: 300, credit: { source: 'page', url: page.url, title: page.title, author: 'Northside Bakery', licence: 'page' } });
     expect(assets[0]!.opfsPath).toMatch(/^media\/a\d+\.png$/);
     expect(assets[1]!.opfsPath).toMatch(/\.svg$/);
     expect(d.stored[assets[0]!.opfsPath]!.size).toBe(assets[0]!.bytes);
   });
-  it('credits to the page with licence own when it states none', async () => {
+  it('credits to the page with licence page', async () => {
     const { assets } = await picksToAssets(picks.slice(1, 2), page, deps());
-    expect(assets[0]!.credit).toEqual({ title: page.title, author: 'Northside Bakery', source: 'page', url: page.url, licence: 'own' });
+    expect(assets[0]!.credit).toEqual({ title: page.title, author: 'Northside Bakery', source: 'page', url: page.url, licence: 'page' });
   });
   it('refuses anything that is not an image', () => {
     expect(dataUrlToBlob('data:text/html;base64,PGI+')).toBeUndefined();

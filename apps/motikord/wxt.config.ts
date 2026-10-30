@@ -49,6 +49,9 @@ export default defineConfig({
       'https://*.archive.org/*',
       'https://lh3.googleusercontent.com/*',
       'https://player.vimeo.com/*',
+      // The side panel gets no activeTab, so Grab asks for the page you are on (one site at a time, never all sites at once).
+      'https://*/*',
+      'http://*/*',
     ],
     action: { default_title: 'Open Motikord', default_icon: ICONS },
   },
