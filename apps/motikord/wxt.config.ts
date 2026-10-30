@@ -6,8 +6,12 @@ const extensionKey = process.env.WXT_EXTENSION_KEY || MOTIKORD_KEY;
 // Release = `wxt zip` or `--mode release`.
 const release = process.argv.includes('zip') || process.argv.includes('release');
 
+const ICONS = { 16: 'icon/16.png', 48: 'icon/48.png', 128: 'icon/128.png' };
+
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
+  // Dev tools (screen switcher, ?screen=, check link) ship in dev and `npm run build`, never in the release zip.
+  vite: () => ({ define: { __MOTIKORD_DEV_TOOLS__: JSON.stringify(!release) } }),
   hooks: {
     // The machine check is a developer page; it stays out of the release zip.
     'entrypoints:found': (_wxt, infos) => {
@@ -20,7 +24,24 @@ export default defineConfig({
     key: extensionKey,
     name: 'Motikord',
     description: 'Short animated clips, made on your computer',
-    permissions: ['storage', 'unlimitedStorage'],
-    action: { default_title: 'Open Motikord' },
+    icons: ICONS,
+    // activeTab + scripting run the page picker (T6) only in the tab you grab from.
+    permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting'],
+    // Asked for only when first used: Penv Cloud, Groq, the media libraries and the hosts their files come from.
+    optional_host_permissions: [
+      'https://penv.cloud/*',
+      'https://api.groq.com/*',
+      'https://api.openverse.org/*',
+      'https://api.pexels.com/*',
+      'https://images.pexels.com/*',
+      'https://videos.pexels.com/*',
+      // Openverse lists files that live on their source sites.
+      'https://*.staticflickr.com/*',
+      'https://upload.wikimedia.org/*',
+      'https://cdn.freesound.org/*',
+      'https://*.jamendo.com/*',
+      'https://ccmixter.org/*',
+    ],
+    action: { default_title: 'Open Motikord', default_icon: ICONS },
   },
 });
