@@ -128,7 +128,9 @@ export async function addFiles(files: File[], deps: MediaDeps = defaultMediaDeps
       rejected.push({ name: file.name, problem: 'media-unsupported' });
       continue;
     }
-    if (kind === 'logo') await deps.addToBrandKit(asset);
+    if (kind === 'logo') {
+      try { await deps.addToBrandKit(asset); } catch (error) { console.error('Motikord: could not add the logo to the brand kit', error); }
+    }
     added.push(asset);
   }
   if (added.length) await deps.write([...[...added].reverse(), ...(await deps.read())]);

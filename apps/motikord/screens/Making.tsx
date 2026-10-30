@@ -2,7 +2,8 @@ import { useEffect, type ReactNode } from 'react';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { Spinner } from '../components/ui';
 import { HOSTS, requestHost } from '../lib/hostAccess';
-import { draft, runner, useRun, useSettings } from '../lib/makeClip';
+import { MAX_BUSY_RETRIES, draft, runner, useRun, useSettings } from '../lib/makeClip';
+import type { ClipType } from '../lib/types';
 import { send } from '../lib/messages';
 import { AiFooter, GroqBusy, GroqDown, MakingFailed, Offline, TooLong } from './StatesCreate';
 import { GroqAccess, PenvDisconnected } from './StatesSetup';
@@ -21,6 +22,12 @@ function Step({ state, children, last, action }: { state: 'done' | 'active' | 't
   );
 }
 
+let changeRequested = false;
+
+/** A different type on the sheet remakes a run in progress, or any run when "Change" sent you there. */
+export const shouldRemake = (status: string, want: ClipType | undefined, has: ClipType | undefined, requested: boolean) =>
+  !!want && want !== has && (status === 'running' || (requested && status !== 'idle'));
+
 /** The make in progress: a preview that fills in, the steps, and the way out. */
 export default function Making() {
   const { navigate, replace } = useRouter();
@@ -32,7 +39,9 @@ export default function Making() {
   useEffect(() => {
     const r = runner.get();
     const want = draft.get();
-    if (r.status !== 'idle' && want.type && want.type !== r.type) void runner.start(want, { access: 'granted' });
+    const requested = changeRequested;
+    changeRequested = false;
+    if (shouldRemake(r.status, want.type, r.type, requested)) void runner.start(want, { access: 'granted' });
   }, []);
 
   // A finished clip is open in the editor tab; the panel goes back to Home unless there is a note to read.
@@ -42,11 +51,12 @@ export default function Making() {
 
   // Groq's limit is per minute: wait it out once, then try again.
   const waitMs = run.failure === 'groq-busy' ? (run.retryAfterMs ?? 20_000) : undefined;
+  const autoRetry = run.status === 'failed' && waitMs !== undefined && run.busyRetries < MAX_BUSY_RETRIES;
   useEffect(() => {
-    if (waitMs === undefined) return;
-    const timer = setTimeout(() => { void runner.start(draft.get(), { access: 'granted' }); }, waitMs);
+    if (!autoRetry) return;
+    const timer = setTimeout(() => { void runner.start(draft.get(), { access: 'granted', auto: true }); }, waitMs);
     return () => clearTimeout(timer);
-  }, [waitMs, run.status]);
+  }, [autoRetry, waitMs]);
 
   const again = () => { void runner.start(draft.get(), { access: 'granted' }); };
   // Chrome only asks inside the click, so the request goes out before anything is awaited.
@@ -83,7 +93,7 @@ export default function Making() {
       {card && <div style={{ margin: '16px 16px 0' }}>{card}</div>}
 
       <ol style={{ listStyle: 'none', margin: '22px 16px 0', padding: '6px 16px', borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }}>
-        <Step state={state(0)} action={run.type && steps >= 1 ? <button type="button" onClick={() => navigate('ClipType')} style={{ border: 0, background: 'none', padding: 0, font: '500 13px var(--font)', color: 'var(--accent)', cursor: 'pointer' }}>Change</button> : undefined}>
+        <Step state={state(0)} action={run.type && steps >= 1 ? <button type="button" onClick={() => { changeRequested = true; navigate('ClipType'); }} style={{ border: 0, background: 'none', padding: 0, font: '500 13px var(--font)', color: 'var(--accent)', cursor: 'pointer' }}>Change</button> : undefined}>
           Clip type{run.type && steps >= 1 ? <>: <strong style={{ fontWeight: 600 }}>{TYPE_NAMES[run.type]}</strong></> : null}
         </Step>
         <Step state={state(1)}>{scenes ? `Writing ${scenes} scene${scenes === 1 ? '' : 's'}` : 'Writing scenes'}</Step>

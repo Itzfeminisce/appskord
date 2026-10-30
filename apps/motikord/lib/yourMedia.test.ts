@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { closeDB, getBrandKit } from './db';
 import type { Asset } from './types';
 import { addFiles, classifyFile, defaultMediaDeps, describeMedia, displayName, type MediaDeps } from './yourMedia';
@@ -87,5 +87,18 @@ describe('addFiles', () => {
     expect(describeMedia({ ...base, kind: 'audio', name: 'a', bytes: 1, durationMs: 30000 })).toBe('Music · 0:30');
     expect(describeMedia({ ...base, kind: 'logo', name: 'a', bytes: 1 })).toBe('Logo · added to your brand kit');
     expect(describeMedia({ ...base, kind: 'font', name: 'a', bytes: 1 })).toBe('Font · ready to use');
+  });
+});
+
+describe('addFiles brand kit failure', () => {
+  it('keeps the logo and the rest of the batch when the brand kit throws', async () => {
+    const t = deps({ addToBrandKit: async () => { throw new Error('db'); } });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { added, rejected } = await addFiles([file('mark.svg'), file('a.jpg')], t.d);
+    expect(added.map((a) => a.name)).toEqual(['mark.svg', 'a.jpg']);
+    expect(rejected).toEqual([]);
+    expect(t.store).toHaveLength(2);
+    expect(log).toHaveBeenCalledWith('Motikord: could not add the logo to the brand kit', expect.any(Error));
+    log.mockRestore();
   });
 });

@@ -188,6 +188,89 @@ describe('library', () => {
   });
 });
 
+describe('runner review fixes', () => {
+  afterEach(async () => { await closeDB(); indexedDB.deleteDatabase('motikord'); });
+  const draftA = { prompt: 'A promo', attached: [] as Asset[], type: 'promo' as const };
+  const gate = () => { let release!: () => void; const p = new Promise<void>((r) => { release = r; }); return { p, release }; };
+
+  it('cancel on a finished run keeps the clip', async () => {
+    const g = groq(recipeJson());
+    const runner = createRunner(deps({ hooks: g.hooks }));
+    await runner.start(draftA);
+    await runner.cancel();
+    expect(await getClip('id-1')).toBeDefined();
+  });
+
+  it('an editor that fails to open keeps the finished clip', async () => {
+    const g = groq(recipeJson());
+    const d = deps({ hooks: g.hooks });
+    const runner = createRunner({ ...d, openEditor: async () => { throw new Error('no tab'); } });
+    await runner.start(draftA);
+    expect(await getClip('id-1')).toBeDefined();
+  });
+
+  it('a remake reuses the placeholder id and leaves no orphan', async () => {
+    const g = groq(recipeJson());
+    const opened: string[] = [];
+    const notified: string[] = [];
+    const hold = gate();
+    let calls = 0;
+    const make: RunnerDeps['make'] = async (i, h) => { if (calls++ === 0) { await hold.p; throw new AiError('cancelled', 'make'); } return makeClip(i, h); };
+    const runner = createRunner(deps({ opened, notified, hooks: g.hooks, make }));
+    const first = runner.start(draftA);
+    await vi.waitFor(() => expect(runner.get().status).toBe('running'));
+    await runner.openNow(draftA);
+    const second = runner.start({ ...draftA, type: 'quote' });
+    hold.release();
+    await Promise.all([first, second]);
+    expect((await listClips()).map((c) => c.id)).toEqual(['id-1']);
+    expect((await getClip('id-1'))?.recipe.scenes[0]!.layers).toHaveLength(1);
+    expect(opened).toEqual(['id-1']);
+    expect(notified).toEqual(['id-1']);
+  });
+
+  it('counts automatic busy retries', async () => {
+    const g = groq(new Response('{}', { status: 429 }), new Response('{}', { status: 429 }));
+    const runner = createRunner(deps({ hooks: g.hooks }));
+    await runner.start(draftA);
+    expect(runner.get().busyRetries).toBe(0);
+    await runner.start(draftA, { auto: true });
+    expect(runner.get()).toMatchObject({ failure: 'groq-busy', busyRetries: 1 });
+    await runner.start(draftA);
+    expect(runner.get().busyRetries).toBe(0);
+  });
+
+  it('openNow after cancel saves nothing', async () => {
+    let started = false;
+    const make: RunnerDeps['make'] = (_i, h) => new Promise((_r, rej) => { started = true; h?.signal?.addEventListener('abort', () => rej(new AiError('cancelled', 'make'))); });
+    const base = deps({ make });
+    const runner = createRunner(base);
+    const run = runner.start({ prompt: 'A promo', attached: [] });
+    await vi.waitFor(() => expect(started).toBe(true));
+    const opening = runner.openNow({ prompt: 'A promo', attached: [] });
+    await runner.cancel();
+    await opening; await run;
+    expect(await getClip('id-1')).toBeUndefined();
+    expect(runner.get().status).toBe('idle');
+  });
+
+  it('openNow loses to a run that finished meanwhile and never overwrites the real clip', async () => {
+    const g = groq(recipeJson());
+    const runner = createRunner(deps({ hooks: g.hooks }));
+    await runner.start(draftA);
+    await runner.openNow({ prompt: 'A promo', attached: [] });
+    expect((await getClip('id-1'))?.recipe.scenes[0]!.layers).toHaveLength(1);
+  });
+
+  it('a cancelled run saves nothing, even when the signal fires just before the save', async () => {
+    const g = groq(recipeJson());
+    const ctl = new AbortController();
+    const save = vi.fn(async () => undefined);
+    await expect(makeClip({ prompt: 'x', aspect: '9:16', type: 'promo', assets: [] }, { ...g.hooks, settings, signal: ctl.signal, save, onRecipe: () => ctl.abort() })).rejects.toMatchObject({ state: undefined });
+    expect(save).not.toHaveBeenCalled();
+  });
+});
+
 function deps(o: { opened?: string[]; notified?: string[]; hooks?: Record<string, unknown>; make?: RunnerDeps['make'] } = {}): RunnerDeps {
   let n = 0;
   const base = o.make ?? makeClip;
