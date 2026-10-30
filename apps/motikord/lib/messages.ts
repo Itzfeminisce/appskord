@@ -14,7 +14,9 @@ export interface MessageMap {
   // Export (T11) → service worker: toolbar badge progress, 0 to 100; null clears it.
   'export/progress': { req: { percent: number | null }; res: void };
   // Page picker → side panel: the picks so far (each click), "Done" or Esc (`done`), or "Cancel".
+  // Picks carry no picture bytes, only a small `thumb`; each picture's bytes follow once in 'grab/data'.
   'grab/picks': { req: { picks: Pick[]; page: PageInfo; done?: boolean }; res: void };
+  'grab/data': { req: { id: string; dataUrl: string }; res: void };
   'grab/cancel': { req: Record<never, never>; res: void };
   // Side panel → page picker (sent to the tab): remove one pick, or stop picking.
   'grab/remove': { req: { id: string }; res: void };

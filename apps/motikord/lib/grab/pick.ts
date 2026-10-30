@@ -1,5 +1,5 @@
 // Pure parts of Grab: what a page element is, what is taken from it, and what a table means as a chart.
-import type { Credit, LicenceId } from '../types';
+import type { Credit } from '../types';
 
 export type PickKind = 'headline' | 'text' | 'quote' | 'image' | 'logo' | 'table';
 export const KIND_NAMES: Record<PickKind, string> = { headline: 'Headline', text: 'Text', quote: 'Quote', image: 'Image', logo: 'Logo', table: 'Table' };
@@ -23,13 +23,27 @@ export interface Pick {
   text?: string;                     // headline, text, quote
   name?: string;                     // what the side panel shows for a picture or table
   src?: string; mime?: string;       // pictures
-  dataUrl?: string;                  // the picture's bytes, read inside the page
+  dataUrl?: string;                  // the picture's bytes, read inside the page; sent once, never in the picks list
+  thumb?: string;                    // a small preview for the side panel list
   width?: number; height?: number;
   rows?: string[][];                 // tables
   failed?: boolean;                  // the picture could not be read
 }
 
-export interface PageInfo { title: string; url: string; site: string; licenceHref?: string }
+export interface PageInfo { title: string; url: string; site: string }
+
+/** Name of the port the side panel holds open while picking. */
+export const GRAB_PORT = 'motikord-grab';
+
+/** A picture bigger than this is treated as unreadable. */
+export const MAX_IMAGE_BYTES = 12_000_000;
+
+/** The bytes a data URL holds (base64 decoded), without decoding it. */
+export function dataUrlBytes(dataUrl: string): number {
+  const comma = dataUrl.indexOf(',');
+  const body = comma < 0 ? '' : dataUrl.slice(comma + 1);
+  return /;base64$/i.test(dataUrl.slice(0, comma)) ? Math.floor((body.length * 3) / 4) : body.length;
+}
 
 const HEADING = /^h[1-6]$/;
 const TEXT_TAGS = new Set(['p', 'li', 'figcaption', 'dd', 'dt', 'pre']);
@@ -121,34 +135,13 @@ export function grabBlocked(url: string | undefined): boolean {
   if (!url) return false;
   let u: URL;
   try { u = new URL(url); } catch { return true; }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:' && u.protocol !== 'file:') return true;
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
   if (u.hostname === 'chromewebstore.google.com') return true;
   if (u.hostname === 'chrome.google.com' && u.pathname.startsWith('/webstore')) return true;
   return /\.pdf$/i.test(u.pathname);
 }
 
-/** The Creative Commons licence a page links to with rel="license"; 'own' when it states none. */
-export function licenceFromHref(href: string | undefined): LicenceId {
-  if (!href) return 'own';
-  let u: URL;
-  try { u = new URL(href); } catch { return 'own'; }
-  if (!/(^|\.)creativecommons\.org$/.test(u.hostname)) return 'own';
-  const p = u.pathname.toLowerCase();
-  if (p.startsWith('/publicdomain/zero')) return 'cc0';
-  if (p.startsWith('/publicdomain/mark')) return 'pdm';
-  const m = /^\/licenses\/(by(?:-[a-z]+)*)\//.exec(p);
-  if (!m) return 'own';
-  if (m[1] === 'by') return 'cc-by';
-  if (m[1] === 'by-sa') return 'cc-by-sa';
-  if (m[1] === 'by-nc') return 'cc-by-nc';
-  return 'own';
-}
-
-/** Every picture taken from a page is credited to the page. */
+/** Every picture taken from a page is credited to the page; the page owns the rights, so there is no licence line. */
 export function pageCredit(page: PageInfo, pick: Pick): Credit {
-  const licence = licenceFromHref(page.licenceHref);
-  return {
-    title: page.title || pick.name || page.site, author: page.site, source: 'page', url: page.url, licence,
-    ...(licence !== 'own' && page.licenceHref ? { licenceUrl: page.licenceHref } : {}),
-  };
+  return { title: page.title || pick.name || page.site, author: page.site, source: 'page', url: page.url, licence: 'page' };
 }

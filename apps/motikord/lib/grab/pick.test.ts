@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyElement, extractPick, grabBlocked, hoverLabel, licenceFromHref, pageCredit, parseNumber, pickedLabel, tableToChart, type ElementInfo } from './pick';
+import { classifyElement, extractPick, grabBlocked, hoverLabel, dataUrlBytes, MAX_IMAGE_BYTES, pageCredit, parseNumber, pickedLabel, tableToChart, type ElementInfo } from './pick';
 
 const el = (over: Partial<ElementInfo>): ElementInfo => ({ tag: 'div', text: '', childElements: 0, hint: '', insideHeader: false, width: 300, height: 100, ...over });
 
@@ -80,23 +80,17 @@ describe('tables as charts', () => {
 
 describe('pages and credits', () => {
   it('refuses Chrome’s own pages, the Web Store and PDFs', () => {
-    for (const url of ['chrome://extensions', 'chrome-extension://abc/x.html', 'https://chromewebstore.google.com/detail/x', 'https://chrome.google.com/webstore/detail/x', 'https://x.test/paper.PDF', 'about:blank', 'not a url'])
+    for (const url of ['chrome://extensions', 'chrome-extension://abc/x.html', 'https://chromewebstore.google.com/detail/x', 'https://chrome.google.com/webstore/detail/x', 'https://x.test/paper.PDF', 'about:blank', 'file:///tmp/a.html', 'not a url'])
       expect(grabBlocked(url), url).toBe(true);
-    for (const url of ['https://example.com/a', 'http://localhost:8000/', 'file:///tmp/a.html', undefined]) expect(grabBlocked(url), String(url)).toBe(false);
-  });
-  it('reads a Creative Commons licence the page links to', () => {
-    expect(licenceFromHref('https://creativecommons.org/licenses/by/4.0/')).toBe('cc-by');
-    expect(licenceFromHref('https://creativecommons.org/licenses/by-sa/3.0/')).toBe('cc-by-sa');
-    expect(licenceFromHref('https://creativecommons.org/licenses/by-nc/4.0/')).toBe('cc-by-nc');
-    expect(licenceFromHref('https://creativecommons.org/licenses/by-nd/4.0/')).toBe('own');
-    expect(licenceFromHref('https://creativecommons.org/publicdomain/zero/1.0/')).toBe('cc0');
-    expect(licenceFromHref('https://creativecommons.org/publicdomain/mark/1.0/')).toBe('pdm');
-    expect(licenceFromHref('https://example.com/terms')).toBe('own');
-    expect(licenceFromHref(undefined)).toBe('own');
+    for (const url of ['https://example.com/a', 'http://localhost:8000/', undefined]) expect(grabBlocked(url), String(url)).toBe(false);
   });
   it('credits a picture to the page', () => {
     const page = { title: 'Northside Bakery · Sourdough', url: 'https://example-bakery.com/sourdough', site: 'Northside Bakery' };
-    expect(pageCredit(page, { id: 'p', kind: 'image' })).toEqual({ title: 'Northside Bakery · Sourdough', author: 'Northside Bakery', source: 'page', url: page.url, licence: 'own' });
-    expect(pageCredit({ ...page, licenceHref: 'https://creativecommons.org/licenses/by/4.0/' }, { id: 'p', kind: 'image' })).toMatchObject({ licence: 'cc-by', licenceUrl: 'https://creativecommons.org/licenses/by/4.0/' });
+    expect(pageCredit(page, { id: 'p', kind: 'image' })).toEqual({ title: 'Northside Bakery · Sourdough', author: 'Northside Bakery', source: 'page', url: page.url, licence: 'page' });
+  });
+  it('counts the bytes a data URL holds', () => {
+    expect(dataUrlBytes('data:image/png;base64,AAAA')).toBe(3);
+    expect(dataUrlBytes('data:image/svg+xml,<svg/>')).toBe(6);
+    expect(dataUrlBytes(`data:image/png;base64,${'A'.repeat(16_100_000)}`)).toBeGreaterThan(MAX_IMAGE_BYTES);
   });
 });

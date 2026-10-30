@@ -5,7 +5,7 @@ import { isLayoutId, LAYOUTS } from '../render/reflow';
 export const ASPECTS: readonly Aspect[] = ['9:16', '1:1', '16:9'];
 export const CLIP_TYPES: readonly ClipType[] = ['promo', 'quote', 'chart', 'explainer', 'logo', 'captions', 'social'];
 export const FEELS: readonly Feel[] = ['smooth', 'snappy', 'bouncy', 'steady'];
-export const LICENCES: readonly LicenceId[] = ['cc0', 'pdm', 'cc-by', 'cc-by-sa', 'cc-by-nc', 'pexels', 'own'];
+export const LICENCES: readonly LicenceId[] = ['cc0', 'pdm', 'cc-by', 'cc-by-sa', 'cc-by-nc', 'pexels', 'page', 'own'];
 const ASSET_KINDS = ['image', 'video', 'audio', 'font', 'logo'] as const;
 const SOURCES = ['openverse', 'pexels', 'bundled', 'page'] as const;
 const LAYER_TYPES = ['text', 'shape', 'image', 'video', 'chart'] as const;

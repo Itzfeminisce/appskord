@@ -98,6 +98,13 @@ export function GrabNotAllowed() {
     </Notice>
   );
 }
+export function GrabPictureUnreadable({ onPickAnother }: { onPickAnother?: () => void }) {
+  return (
+    <Notice tone="warning" role="status" glyph="warn" title="Couldn’t read that picture" actions={<button type="button" onClick={onPickAnother} style={actionStyle}>Pick another</button>}>
+      The page wouldn’t let Motikord copy it, so it isn’t in your clip. Your other picks are still here.
+    </Notice>
+  );
+}
 export function GrabNothingPicked() {
   return (
     <div style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -130,6 +137,7 @@ const SHEET: [string, ReactNode][] = [
   ['groq-access · first “Make clip” (Chrome asks once)', <GroqAccess />],
   ['grab-not-allowed · Grab from the page', <GrabNotAllowed />],
   ['grab-nothing-picked · Grab from the page', <GrabNothingPicked />],
+  ['grab-picture-unreadable · Grab from the page', <GrabPictureUnreadable />],
   ['media-unsupported · Your media', <MediaUnsupported name="brochure.pdf" />],
   ['video-wont-play · Your media', <VideoWontPlay name="drone-shot.mov" />],
   ['ai-footer · Making your clip (one line per AI)', (
