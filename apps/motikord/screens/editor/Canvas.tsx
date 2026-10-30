@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { dragBox, handleAt, hitLayer, sameBox, type Handle, type Pt } from '../../lib/editor/hit';
+import { dragBox, handleAt, hitLayer, ROTATE_KNOB, sameBox, type Handle, type Pt } from '../../lib/editor/hit';
 import { findLayer, setBox, setField, type Found } from '../../lib/editor/store';
 import { applyPatch } from '../../lib/patch';
 import { activeLayers, clipDuration, drawFrame, fontFor, sceneAt } from '../../lib/render/drawFrame';
 import { boxFor, safeBox } from '../../lib/render/reflow';
 import type { Box, Layer, Recipe, Scene, TextLayer } from '../../lib/types';
-import { useEditor } from './Editor';
+import { frameReady, useEditor } from './Editor';
 
 const RATIO = { '9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9 } as const;
-const CURSOR: Record<Handle, string> = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', move: 'move', rotate: 'crosshair' };
+const CURSOR: Record<Handle, string> = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', move: 'move', rotate: 'grab' };
 // Below about 27 fps on average, the preview switches to half resolution (preview-light).
 const SLOW_FRAME_MS = 1000 / 27;
 const HANDLE: CSSProperties = { position: 'absolute', width: 7, height: 7, background: 'var(--surface)', border: '1.5px solid var(--accent)', pointerEvents: 'none' };
@@ -23,7 +23,10 @@ export function Canvas() {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ W: 0, H: 0 });
-  const [draft, setDraft] = useState<{ layerId: string; box: Box }>();
+  const [draft, setDraftState] = useState<{ layerId: string; box: Box }>();
+  // up() reads the newest draft, not the one its render closed over.
+  const draftRef = useRef(draft);
+  const setDraft = (d: typeof draft) => { draftRef.current = d; setDraftState(d); };
   const [editing, setEditing] = useState<string>();
   const [cursor, setCursor] = useState('default');
   const drag = useRef<Drag>(undefined);
@@ -106,7 +109,10 @@ export function Canvas() {
       if (ctx) drawFrame(ctx, L.view, L.view.aspect, t, cache);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    // A paused preview waits on a video seek; draw again once the frame is there.
+    const redraw = () => { live.current.dirty = true; };
+    frameReady.addEventListener('frame', redraw);
+    return () => { cancelAnimationFrame(raf); frameReady.removeEventListener('frame', redraw); };
   }, [cache, playhead]);
 
   const { W, H } = size;
@@ -141,7 +147,7 @@ export function Canvas() {
     const d = drag.current;
     const p = point(e);
     if (d) {
-      if (Math.hypot(p.x - d.from.x, p.y - d.from.y) < 2 && !draft) return;
+      if (Math.hypot(p.x - d.from.x, p.y - d.from.y) < 2 && !draftRef.current) return;
       setDraft({ layerId: d.found.layer.id, box: dragBox(d.start, d.handle, d.from, p, W, H, { keepRatio: e.shiftKey, snap: e.shiftKey }) });
       return;
     }
@@ -153,6 +159,7 @@ export function Canvas() {
 
   const up = () => {
     const d = drag.current;
+    const draft = draftRef.current;
     drag.current = undefined;
     if (!d || !draft) return;
     if (!sameBox(draft.box, d.start)) {
@@ -185,7 +192,7 @@ export function Canvas() {
           <span aria-hidden="true" style={{ position: 'absolute', left: safe.x * W, top: safe.y * H, width: safe.w * W, height: safe.h * H, border: '1px dashed color-mix(in srgb, var(--accent) 35%, transparent)', pointerEvents: 'none' }} />
           {selBox && !typing && <Selection box={selBox} W={W} H={H} />}
           {typing && selBox && <TextEditor found={typing as Found & { layer: TextLayer }} box={selBox} W={W} H={H} onDone={() => setEditing(undefined)}
-            onText={(text) => edit(setField(typing, 'text', text, `${typing.layer.name} text`))} />}
+            onText={(text) => edit(setField(typing, 'text', text, 'Text changed'))} />}
         </div>
       </div>
     </div>
@@ -203,6 +210,11 @@ function Selection({ box, W, H }: { box: Box; W: number; H: number }) {
       <span style={{ ...HANDLE, right: -7, top: -7 }} />
       <span style={{ ...HANDLE, left: -7, bottom: -7 }} />
       <span style={{ ...HANDLE, right: -7, bottom: -7 }} />
+      <span style={{ position: 'absolute', left: 'calc(50% - 0.75px)', top: -3 - 14, width: 1.5, height: 14, background: 'var(--accent)' }} />
+      <button type="button" aria-label="Rotate" tabIndex={-1}
+        style={{ position: 'absolute', left: 'calc(50% - 8px)', top: -3 - (ROTATE_KNOB.above - 3) - 8, width: 16, height: 16, padding: 0, border: '1.5px solid var(--accent)', borderRadius: '50%', background: 'var(--surface)', color: 'var(--accent)', display: 'grid', placeItems: 'center', cursor: 'grab' }}>
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.5-5.8" /><path d="M20 4v5h-5" /></svg>
+      </button>
     </div>
   );
 }

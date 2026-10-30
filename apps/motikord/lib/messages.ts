@@ -13,6 +13,8 @@ export interface MessageMap {
   'brand/apply': { req: { clipId?: string }; res: { applied: boolean } };
   // Editor tab → side panel: show PasteKey (the Pexels field), e.g. from "Add a Pexels key".
   'panel/show-paste-key': { req: {}; res: void };
+  // Editor tab → side panel, after opening it inside the click: groq-down "Open Settings", clip-not-found "Go to your clips".
+  'sidepanel/go': { req: { screen: 'Settings' | 'Library' }; res: { shown: boolean } };
   // Export (T11) → service worker: toolbar badge progress, 0 to 100; null clears it.
   'export/progress': { req: { percent: number | null }; res: void };
   // Page picker → side panel: the picks so far (each click), "Done" or Esc (`done`), or "Cancel".

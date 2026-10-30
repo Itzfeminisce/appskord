@@ -54,6 +54,20 @@ describe('dragging', () => {
     expect(tiny.w * W).toBeCloseTo(10);
   });
 
+  it('finds the round Rotate knob above the top edge', () => {
+    expect(handleAt(box, { x: 100, y: 100 - 25 }, W, H)).toBe('rotate');
+    expect(handleAt(box, { x: 100, y: 100 - 50 }, W, H)).toBeNull();
+  });
+
+  it('lets a thin rule keep its height while its width is resized', () => {
+    const rule = { x: 0.25, y: 0.5, w: 0.5, h: 0 };
+    const out = dragBox(rule, 'se', { x: 150, y: 200 }, { x: 170, y: 200 }, W, H);
+    expect(out.h).toBe(0);
+    expect(out.w).toBeCloseTo(0.6);
+    const thin = { x: 0.25, y: 0.5, w: 0.5, h: 2 / H };
+    expect(dragBox(thin, 'se', { x: 150, y: 202 }, { x: 160, y: 202 }, W, H).h).toBeCloseTo(2 / H);
+  });
+
   it('resizes a turned box along its own axes', () => {
     const turned = { ...box, rotation: 90 };
     // Turned 90°, the box's own x axis points down the canvas.

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 import { editor } from '../entrypoints/editor/router';
 import { sidepanel } from '../entrypoints/sidepanel/router';
 import { applyBrandToStoredClip, BUILT_IN_FONT, hasBrand, hexToHsv, hsvToHex, loadKit, logoName, logoPath, normHex, registerBrandFonts, REMOVABLE, ROLE_LABEL, ROLE_START, ROLES, saveFont, saveLogo, withColour, type Hsv } from '../lib/brand';
-import { putBrandKit } from '../lib/db';
+import { listClips, putBrandKit } from '../lib/db';
 import { getMedia } from '../lib/media';
 import { send } from '../lib/messages';
 import type { BrandKit as Kit } from '../lib/types';
@@ -148,16 +148,32 @@ export default function BrandKit() {
     setRemoved(undefined);
   };
 
+  /** The clip in this window's active editor tab, else another open editor tab's, else the newest clip. */
+  const openClipId = async (): Promise<string | undefined> => {
+    const base = browser.runtime.getURL('/editor.html');
+    const editors = (await chrome.runtime.getContexts({ contextTypes: [chrome.runtime.ContextType.TAB] }))
+      .filter((c) => c.documentUrl?.startsWith(base) && new URL(c.documentUrl).searchParams.has('clip'));
+    const win = await browser.windows.getCurrent();
+    const [active] = await browser.tabs.query({ active: true, windowId: win.id });
+    const pick = editors.find((c) => c.tabId === active?.id) ?? editors.find((c) => c.windowId === win.id) ?? editors[0];
+    if (pick?.documentUrl) return new URL(pick.documentUrl).searchParams.get('clip') ?? undefined;
+    return (await listClips())[0]?.id;
+  };
+
   const apply = async () => {
     setBusy(true);
     try {
       if (tab) {
         const clipId = tab.route.params.clipId;
-        if (clipId) await applyBrandToStoredClip(clipId);
+        if (clipId && await applyBrandToStoredClip(clipId)) void send({ type: 'clip/saved', clipId });
         tab.navigate('Editor', { clipId });
       } else {
-        await send({ type: 'brand/apply', clipId: undefined });
-        await send({ type: 'editor/open', clipId: undefined });
+        const clipId = await openClipId();
+        if (!clipId) throw new Error('there is no clip to apply it to');
+        const res = await send({ type: 'brand/apply', clipId });
+        // No editor tab took it: change the stored clip; an editor that opens or reloads it shows the change.
+        if (!res?.applied && await applyBrandToStoredClip(clipId)) void send({ type: 'clip/saved', clipId });
+        await send({ type: 'editor/open', clipId });
       }
     } catch (error) {
       console.error('Motikord: could not apply the brand kit', error);

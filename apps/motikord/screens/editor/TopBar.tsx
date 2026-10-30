@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { canRedo, canUndo } from '../../lib/editor/history';
 import { rename, setAspect } from '../../lib/editor/store';
 import { ASPECTS } from '../../lib/recipe/validate';
+import { goInSidePanel, useWindowId } from '../../lib/sidepanelGo';
 import { useEditor } from './Editor';
 import { useIssues } from '../Checker';
 import { SaveStatusLine } from './StatesEditor';
@@ -18,6 +19,10 @@ export function TopBar() {
   const h = { past: state.clip.history, future: state.future };
   const [name, setName] = useState(r.name);
   const [focused, setFocused] = useState(false);
+  // Escape leaves the field without saving what was typed.
+  const cancelled = useRef(false);
+  // Your clips live in the side panel; it opens inside the click.
+  const win = useWindowId();
   const shown = focused ? name : r.name;
   const count = useIssues().cards.length;
   const dot = brand?.colours.find((c) => c.role === 'primary')?.hex ?? brand?.colours[0]?.hex;
@@ -29,15 +34,15 @@ export function TopBar() {
 
   return (
     <header style={{ height: 52, flexShrink: 0, background: 'var(--surface)', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px' }}>
-      <button type="button" aria-label="Your clips" onClick={() => go('Library')} style={{ width: 36, height: 36, border: 0, borderRadius: 9, background: 'var(--ink)', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>
+      <button type="button" aria-label="Your clips" onClick={() => goInSidePanel(win.current, 'Library')} style={{ width: 36, height: 36, border: 0, borderRadius: 9, background: 'var(--ink)', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M3 8.5h5M2 12h6M3 15.5h5" /><circle cx="15.5" cy="12" r="4.5" fill="var(--accent)" stroke="none" /></svg>
       </button>
       <input
         aria-label="Clip name" value={shown} maxLength={80}
         onFocus={() => { setName(r.name); setFocused(true); }}
         onChange={(e) => setName(e.target.value)}
-        onBlur={(e) => { setFocused(false); commitName(e.target.value); }}
-        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setName(r.name); setFocused(false); e.currentTarget.blur(); } }}
+        onBlur={(e) => { setFocused(false); if (cancelled.current) cancelled.current = false; else commitName(e.target.value); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { cancelled.current = true; setName(r.name); e.currentTarget.blur(); } }}
         style={{ width: 200, height: 34, border: '1px solid transparent', borderRadius: 8, padding: '0 8px', font: '600 15px/1 var(--font)', color: 'var(--ink)', background: focused ? 'var(--surface)' : 'transparent', outlineColor: 'var(--accent)' }}
       />
       <SaveStatusLine status={save} />
