@@ -24,15 +24,17 @@ function Thumb({ asset }: { asset: Asset }) {
   );
 }
 
-function Item({ row }: { row: CreditRow }) {
+export function Item({ row }: { row: CreditRow }) {
   const { asset, credit, source, licence, need } = row;
-  const line = credit.source === 'bundled' ? `Comes with Motikord · ${licence}` : `${credit.author} · ${source} · ${licence}`;
+  const page = credit.licence === 'page';
+  const line = credit.source === 'bundled' ? `Comes with Motikord · ${licence}` : page ? `From ${credit.author}` : `${credit.author} · ${source} · ${licence}`;
   return (
     <li style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 12px', borderTop: '1px solid var(--line)' }}>
       <Thumb asset={asset} />
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1, minWidth: 0 }}>
         <span style={{ fontSize: 13, fontWeight: 600 }}>{credit.title}</span>
         <span style={{ fontSize: 12, color: 'var(--muted)' }}>{line}</span>
+        {page && <span style={{ fontSize: 12, color: 'var(--warning-ink)' }}>Check you may use it.</span>}
       </span>
       {need === 'needed'
         ? <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--warning-ink)', background: '#FEF3C7', padding: '2px 8px', borderRadius: 999 }}>Credit needed</span>

@@ -48,7 +48,9 @@ export function creditsText(r: Recipe): string {
   const blocks = creditsList(r).credited.map(({ credit, source, licence }) =>
     credit.source === 'bundled'
       ? `“${credit.title}” · ${source} · ${licence}`
-      : [`“${credit.title}”${knownAuthor(credit) ? ` by ${knownAuthor(credit)}` : ''}`, `${source} · ${licence}`, credit.url, CC_LICENCES.includes(credit.licence) ? credit.licenceUrl : undefined].filter(Boolean).join('\n'));
+      : credit.licence === 'page'
+        ? `“${credit.title}” · From ${credit.author}\n${credit.url}`
+        : [`“${credit.title}”${knownAuthor(credit) ? ` by ${knownAuthor(credit)}` : ''}`, `${source} · ${licence}`, credit.url, CC_LICENCES.includes(credit.licence) ? credit.licenceUrl : undefined].filter(Boolean).join('\n'));
   return [`${r.name} · made with Motikord`, ...blocks].join('\n\n');
 }
 

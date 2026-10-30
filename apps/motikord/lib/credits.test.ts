@@ -48,6 +48,15 @@ describe('credits', () => {
     r = applyPatch(r, endCardEdit(r, false)!.ops).doc;
     expect(r.creditsEndCard).toBe(false);
   });
+  it('lists a web page picture as optional, two credits.txt lines, and never forces credits.txt', () => {
+    const page: Asset = { id: 'p', kind: 'image', name: 'Bakery', mime: 'image/jpeg', bytes: 1, opfsPath: 'media/p.jpg', credit: { title: 'Bakery counter', author: 'Bakery Site', source: 'page', url: 'https://bakery.example/counter', licence: 'page' } };
+    const r = recipe();
+    r.assets = { p: page };
+    r.scenes[0]!.layers = [layer('lp', 'p', 'image')];
+    expect(creditsList(r).credited.map((c) => [c.asset.id, c.need, c.licence])).toEqual([['p', 'optional', 'Web page']]);
+    expect(needsCreditsFile(r)).toBe(false);
+    expect(creditsText(r)).toBe('Sourdough promo · made with Motikord\n\n“Bakery counter” · From Bakery Site\nhttps://bakery.example/counter');
+  });
   it('needs no credits file without CC BY', () => {
     const r = recipe();
     r.scenes[0]!.layers.splice(0, 1);
