@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "id": "template-wipe-reveal",
+  "name": "Wipe reveal",
+  "type": "logo",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc91",
+      "durationMs": 5000,
+      "background": "#111114",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "s88",
+          "name": "Bar",
+          "type": "shape",
+          "shape": "rect",
+          "fill": "#BE185D",
+          "startMs": 200,
+          "endMs": 5000,
+          "box": {
+            "x": 0.2,
+            "y": 0.46,
+            "w": 0.6,
+            "h": 0.012
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "wipe-in",
+            "feel": "smooth",
+            "durationMs": 900
+          }
+        },
+        {
+          "id": "t89",
+          "name": "Name",
+          "type": "text",
+          "role": "title",
+          "text": "Your brand",
+          "font": "Geist",
+          "sizePx": 100,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 600,
+          "endMs": 5000,
+          "box": {
+            "x": 0.1,
+            "y": 0.34,
+            "w": 0.8,
+            "h": 0.11
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "wipe-in",
+            "feel": "smooth",
+            "durationMs": 900
+          }
+        },
+        {
+          "id": "t90",
+          "name": "Tag",
+          "type": "text",
+          "role": "caption",
+          "text": "Say it in a few words",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 500,
+          "colour": "#C9C9CF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 1400,
+          "endMs": 5000,
+          "box": {
+            "x": 0.1,
+            "y": 0.5,
+            "w": 0.8,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

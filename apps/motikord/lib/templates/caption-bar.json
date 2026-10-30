@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "id": "template-caption-bar",
+  "name": "Caption bar",
+  "type": "captions",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc101",
+      "durationMs": 5000,
+      "background": "#0EA5E9",
+      "layout": "lower-third",
+      "layers": [
+        {
+          "id": "t100",
+          "name": "Caption",
+          "type": "text",
+          "role": "caption",
+          "text": "Words that appear in time",
+          "font": "Geist",
+          "sizePx": 72,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5000,
+          "box": {
+            "x": 0.06,
+            "y": 0.56,
+            "w": 0.88,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "type-on",
+            "feel": "steady",
+            "durationMs": 1600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc103",
+      "durationMs": 4000,
+      "background": "#0EA5E9",
+      "layout": "lower-third",
+      "layers": [
+        {
+          "id": "t102",
+          "name": "Caption",
+          "type": "text",
+          "role": "caption",
+          "text": "Change them to your own",
+          "font": "Geist",
+          "sizePx": 72,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.06,
+            "y": 0.56,
+            "w": 0.88,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "type-on",
+            "feel": "steady",
+            "durationMs": 1400
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

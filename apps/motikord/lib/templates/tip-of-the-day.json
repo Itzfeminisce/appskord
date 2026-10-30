@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "id": "template-tip-of-the-day",
+  "name": "Tip of the day",
+  "type": "social",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc118",
+      "durationMs": 6000,
+      "background": "#FCE7F3",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "s115",
+          "name": "Card",
+          "type": "shape",
+          "shape": "rect",
+          "fill": "#FFFFFF",
+          "radius": 28,
+          "startMs": 0,
+          "endMs": 6000,
+          "box": {
+            "x": 0.08,
+            "y": 0.26,
+            "w": 0.84,
+            "h": 0.4
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t116",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Tip of the day",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 600,
+          "colour": "#BE185D",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 300,
+          "endMs": 6000,
+          "box": {
+            "x": 0.12,
+            "y": 0.3,
+            "w": 0.76,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t117",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Drink water before coffee",
+          "font": "Geist",
+          "sizePx": 72,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 600,
+          "endMs": 6000,
+          "box": {
+            "x": 0.12,
+            "y": 0.4,
+            "w": 0.76,
+            "h": 0.2
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}
