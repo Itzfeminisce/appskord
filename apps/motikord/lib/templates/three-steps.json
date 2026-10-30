@@ -1,0 +1,258 @@
+{
+  "version": 1,
+  "id": "template-three-steps",
+  "name": "Three steps",
+  "type": "explainer",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc56",
+      "durationMs": 4000,
+      "background": "#FCE7F3",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t54",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "How it works",
+          "font": "Geist",
+          "sizePx": 104,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.34,
+            "w": 0.84,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t55",
+          "name": "Body",
+          "type": "text",
+          "role": "body",
+          "text": "Three quick steps",
+          "font": "Geist",
+          "sizePx": 48,
+          "weight": 500,
+          "colour": "#5F6168",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 400,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.52,
+            "w": 0.84,
+            "h": 0.08
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc59",
+      "durationMs": 5333,
+      "background": "#FFFFFF",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t57",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Step 1 of 3",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 600,
+          "colour": "#BE185D",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5333,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t58",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Sign up in a minute",
+          "font": "Geist",
+          "sizePx": 88,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 200,
+          "endMs": 5333,
+          "box": {
+            "x": 0.08,
+            "y": 0.4,
+            "w": 0.84,
+            "h": 0.2
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "slide-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc62",
+      "durationMs": 5333,
+      "background": "#FCE7F3",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t60",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Step 2 of 3",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 600,
+          "colour": "#BE185D",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5333,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t61",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Pick what you need",
+          "font": "Geist",
+          "sizePx": 88,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 200,
+          "endMs": 5333,
+          "box": {
+            "x": 0.08,
+            "y": 0.4,
+            "w": 0.84,
+            "h": 0.2
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "slide-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc65",
+      "durationMs": 5333,
+      "background": "#FFFFFF",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t63",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Step 3 of 3",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 600,
+          "colour": "#BE185D",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5333,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t64",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Share it with a link",
+          "font": "Geist",
+          "sizePx": 88,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 200,
+          "endMs": 5333,
+          "box": {
+            "x": 0.08,
+            "y": 0.4,
+            "w": 0.84,
+            "h": 0.2
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "slide-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

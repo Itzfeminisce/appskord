@@ -11,7 +11,8 @@ const OPTIONAL_HOSTS = [
   'https://images.pexels.com/*',
   'https://videos.pexels.com/*',
 ];
-const OPENVERSE_MEDIA_HOSTS = ['https://*.staticflickr.com/*', 'https://upload.wikimedia.org/*', 'https://cdn.freesound.org/*', 'https://*.jamendo.com/*', 'https://ccmixter.org/*'];
+const OPENVERSE_MEDIA_HOSTS = ['https://*.staticflickr.com/*', 'https://upload.wikimedia.org/*', 'https://cdn.freesound.org/*', 'https://*.jamendo.com/*', 'https://ccmixter.org/*', 'https://images.metmuseum.org/*', 'https://images.rawpixel.com/*', 'https://cdn.stocksnap.io/*', 'https://files.freemusicarchive.org/*', 'https://archive.org/*', 'https://*.archive.org/*', 'https://lh3.googleusercontent.com/*', 'https://player.vimeo.com/*'];
+const PAGE_HOSTS = ['https://*/*', 'http://*/*'];
 
 async function manifest() {
   vi.resetModules();
@@ -45,7 +46,7 @@ describe('manifest', () => {
 
   it('lists every library, AI and media host as optional', async () => {
     const hosts = (await manifest()).optional_host_permissions as string[];
-    expect(hosts).toEqual([...OPTIONAL_HOSTS, ...OPENVERSE_MEDIA_HOSTS]);
+    expect(hosts).toEqual([...OPTIONAL_HOSTS, ...OPENVERSE_MEDIA_HOSTS, ...PAGE_HOSTS]);
     expect(hosts).not.toContain('<all_urls>');
   });
 

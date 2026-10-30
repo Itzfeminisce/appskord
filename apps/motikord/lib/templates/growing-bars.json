@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "id": "template-growing-bars",
+  "name": "Growing bars",
+  "type": "chart",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc42",
+      "durationMs": 4000,
+      "background": "#FFFFFF",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t40",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Sales are growing",
+          "font": "Geist",
+          "sizePx": 80,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.14,
+            "w": 0.84,
+            "h": 0.1
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "c41",
+          "name": "Chart",
+          "type": "chart",
+          "chart": "bar",
+          "values": [
+            {
+              "label": "Q1",
+              "value": 12
+            },
+            {
+              "label": "Q2",
+              "value": 19
+            },
+            {
+              "label": "Q3",
+              "value": 27
+            },
+            {
+              "label": "Q4",
+              "value": 41
+            }
+          ],
+          "colour": "#BE185D",
+          "startMs": 400,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.28,
+            "w": 0.84,
+            "h": 0.46
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "wipe-in",
+            "feel": "smooth",
+            "durationMs": 1400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc45",
+      "durationMs": 5000,
+      "background": "#111114",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t43",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Up 3x in a year",
+          "font": "Geist",
+          "sizePx": 104,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.36,
+            "w": 0.84,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "bouncy",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t44",
+          "name": "Body",
+          "type": "text",
+          "role": "body",
+          "text": "Add your own numbers in the editor",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 500,
+          "colour": "#C9C9CF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 500,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.54,
+            "w": 0.84,
+            "h": 0.08
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

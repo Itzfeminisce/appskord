@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "id": "template-bold-quote",
+  "name": "Bold quote",
+  "type": "quote",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc30",
+      "durationMs": 8000,
+      "background": "#111114",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t27",
+          "name": "Quote",
+          "type": "text",
+          "role": "title",
+          "text": "“Make it simple, but significant.”",
+          "font": "Geist",
+          "sizePx": 104,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 8000,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.3
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          },
+          "out": {
+            "preset": "fade-out",
+            "feel": "smooth",
+            "durationMs": 500
+          }
+        },
+        {
+          "id": "s28",
+          "name": "Rule",
+          "type": "shape",
+          "shape": "rect",
+          "fill": "#BE185D",
+          "startMs": 800,
+          "endMs": 8000,
+          "box": {
+            "x": 0.08,
+            "y": 0.64,
+            "w": 0.14,
+            "h": 0.006
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "wipe-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t29",
+          "name": "Author",
+          "type": "text",
+          "role": "caption",
+          "text": "Don Draper",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 500,
+          "colour": "#C9C9CF",
+          "align": "left",
+          "lineHeight": 1.15,
+          "startMs": 900,
+          "endMs": 8000,
+          "box": {
+            "x": 0.08,
+            "y": 0.67,
+            "w": 0.84,
+            "h": 0.06
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

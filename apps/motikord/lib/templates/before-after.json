@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "id": "template-before-after",
+  "name": "Before and after",
+  "type": "explainer",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc79",
+      "durationMs": 5000,
+      "background": "#111114",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t77",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Before",
+          "font": "Geist",
+          "sizePx": 48,
+          "weight": 600,
+          "colour": "#C9C9CF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t78",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Hours of copying and pasting",
+          "font": "Geist",
+          "sizePx": 84,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 300,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.4,
+            "w": 0.84,
+            "h": 0.22
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc82",
+      "durationMs": 5000,
+      "background": "#BE185D",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t80",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "After",
+          "font": "Geist",
+          "sizePx": 48,
+          "weight": 600,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t81",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "One click and done",
+          "font": "Geist",
+          "sizePx": 96,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 300,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.4,
+            "w": 0.84,
+            "h": 0.22
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "bouncy",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc84",
+      "durationMs": 4000,
+      "background": "#FFFFFF",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t83",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Try it today",
+          "font": "Geist",
+          "sizePx": 104,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.36,
+            "w": 0.84,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "slide-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

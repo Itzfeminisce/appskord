@@ -1,22 +1,29 @@
 import { createRouter } from '../../lib/router';
 import AccessPrompt from '../../screens/AccessPrompt';
+import BrandKit from '../../screens/BrandKit';
 import Checker from '../../screens/Checker';
 import Credits from '../../screens/Credits';
-import Editor from '../../screens/Editor';
-import EditorPrompt from '../../screens/EditorPrompt';
+import Editor from '../../screens/editor/Editor';
+import StatesEditor from '../../screens/editor/StatesEditor';
+import StatesExport from '../../screens/StatesExport';
+import StatesMedia from '../../screens/StatesMedia';
+import EditorPrompt from '../../screens/editor/EditorPrompt';
 import Export from '../../screens/Export';
 import Exported from '../../screens/Exported';
-import Formats from '../../screens/Formats';
+import Formats from '../../screens/editor/Formats';
+import Library from '../../screens/Library';
 import MediaSearch from '../../screens/MediaSearch';
 import Music from '../../screens/Music';
-import Presets from '../../screens/Presets';
+import Presets from '../../screens/editor/Presets';
 import Rendering from '../../screens/Rendering';
+import YourMedia from '../../screens/YourMedia';
 
-/** Editor tab screens, one per FRAMES.md frame, named as the frame (rows 3, 4 and 5). */
+/** Editor tab screens, one per FRAMES.md frame (rows 3, 4 and 5); Library, BrandKit and YourMedia stand in until their tasks route to the side panel. */
 export const editor = createRouter({
   Editor, EditorPrompt, Formats, Presets, Checker,
   MediaSearch, AccessPrompt, Music, Credits,
-  Export, Rendering, Exported,
+  Export, Rendering, Exported, StatesEditor, StatesMedia, StatesExport,
+  Library, BrandKit, YourMedia,
 });
 export type EditorScreen = (typeof editor.names)[number];
 export const { RouterProvider, useRouter, Outlet } = editor;

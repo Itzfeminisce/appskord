@@ -1,3 +1,4 @@
+import { setBadge } from '../lib/badge';
 import { onMessage } from '../lib/messages';
 
 const EDITOR_URL = '/editor.html';
@@ -21,7 +22,13 @@ export default defineBackground(() => {
   browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error: unknown) => {
     console.error('Motikord: could not set the side panel to open from the toolbar', error);
   });
+  const title = () => browser.runtime.getManifest().action?.default_title ?? 'Motikord';
+  // No export survives a browser restart, so a badge left from one is stale.
+  const clearBadge = () => setBadge(null, chrome.action, title()).catch((error: unknown) => console.error('Motikord: could not clear the toolbar badge', error));
+  browser.runtime.onStartup.addListener(() => void clearBadge());
+  browser.runtime.onInstalled.addListener(() => void clearBadge());
   onMessage({
     'editor/open': (msg) => openEditor(msg.clipId),
+    'export/progress': (msg) => setBadge(msg.percent, chrome.action, title()),
   });
 });

@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "id": "template-announcement",
+  "name": "Announcement",
+  "type": "social",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc111",
+      "durationMs": 4000,
+      "background": "#FDE68A",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t109",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Big news",
+          "font": "Geist",
+          "sizePx": 52,
+          "weight": 600,
+          "colour": "#BE185D",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.08
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t110",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "We just launched",
+          "font": "Geist",
+          "sizePx": 100,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 200,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.4,
+            "w": 0.84,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "slide-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc114",
+      "durationMs": 4000,
+      "background": "#111114",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t112",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Come and see it",
+          "font": "Geist",
+          "sizePx": 100,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.36,
+            "w": 0.84,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t113",
+          "name": "Body",
+          "type": "text",
+          "role": "body",
+          "text": "Link in bio",
+          "font": "Geist",
+          "sizePx": 48,
+          "weight": 500,
+          "colour": "#C9C9CF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 500,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.54,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

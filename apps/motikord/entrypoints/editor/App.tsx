@@ -10,7 +10,8 @@ function Switcher() {
 export default function App() {
   const url = new URLSearchParams(location.search);
   const clipId = url.get('clip') ?? undefined;
-  const first = screenFromUrl(editor.names) ?? 'Editor';
+  // Recovered's "Export it again" opens ?export=<job id>, which Rendering restarts.
+  const first = screenFromUrl(editor.names) ?? (url.has('export') ? 'Rendering' : 'Editor');
   return (
     <RouterProvider initial={{ screen: first, params: { clipId } }}>
       <div className="editor-surface" style={{ display: 'contents' }}>

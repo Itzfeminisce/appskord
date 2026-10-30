@@ -6,7 +6,7 @@ export type Feel = 'smooth' | 'snappy' | 'bouncy' | 'steady';
 export type PresetSlot = 'in' | 'during' | 'out';           // "Comes in" / "While on screen" / "Goes out"
 export type FileKind = 'mp4' | 'webm' | 'gif' | 'webm-alpha';
 export type Quality = '720p' | '1080p';
-export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pexels' | 'own';
+export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pexels' | 'page' | 'own';
 export type Author = 'groq' | 'builtin' | 'hand' | 'template';
 
 export interface Credit {                                    // every asset someone else made
@@ -67,7 +67,7 @@ export interface BrandKit {
 
 export interface Issue {                                     // quality checker
   id: string; sceneId: string; layerId: string; aspect: Aspect;
-  kind: 'overflow' | 'contrast' | 'safe-area' | 'too-fast' | 'credit-missing';
+  kind: 'overflow' | 'contrast' | 'safe-area' | 'too-fast' | 'too-small' | 'credit-missing';
   fix: PatchOp[];
 }
 

@@ -11,11 +11,11 @@ function goodRecipe(): Recipe {
       song: { id: 'song', kind: 'audio', name: 'Calm', mime: 'audio/mpeg', bytes: 5000, durationMs: 30000, opfsPath: 'media/song.mp3' },
     },
     scenes: [{
-      id: 's1', durationMs: 4000, background: '#111114', layout: 'title-center',
+      id: 's1', durationMs: 4000, background: '#111114', layout: 'center',
       layers: [
         { id: 'l1', name: 'Title', type: 'text', role: 'title', text: 'Spring sale', font: 'Geist', sizePx: 96, weight: 700, colour: '#FFFFFF',
           align: 'center', lineHeight: 1.1, startMs: 0, endMs: 4000, box: { x: 0.1, y: 0.4, w: 0.8, h: 0.2 }, opacity: 1,
-          in: { preset: 'rise', feel: 'smooth', durationMs: 500 }, boxes: { '16:9': { x: 0.2, y: 0.4, w: 0.6, h: 0.2 } } },
+          in: { preset: 'rise-in', feel: 'smooth', durationMs: 500 }, boxes: { '16:9': { x: 0.2, y: 0.4, w: 0.6, h: 0.2 } } },
         { id: 'l2', name: 'Photo', type: 'image', assetId: 'photo', fit: 'cover', startMs: 0, endMs: 3000, box: { x: 0, y: 0, w: 1, h: 0.4 }, opacity: 1 },
         { id: 'l3', name: 'Bar', type: 'shape', shape: 'rect', fill: '#BE185D', radius: 8, startMs: 500, endMs: 4000, box: { x: 0.1, y: 0.7, w: 0.8, h: 0.02 }, opacity: 0.8 },
         { id: 'l4', name: 'Chart', type: 'chart', chart: 'bar', values: [{ label: 'Q1', value: 3 }], colour: '#BE185D', startMs: 0, endMs: 1000, box: { x: 0.1, y: 0.75, w: 0.8, h: 0.2 }, opacity: 1 },
@@ -53,7 +53,7 @@ describe('validateRecipe', () => {
     ['no size', (r) => { const b = r.scenes[0]!.layers[0]!.box; b.w = 0; b.h = 0; }, /must have a width or a height/],
     ['bad per-size box', (r) => { r.scenes[0]!.layers[0]!.boxes = { '4:3': { x: 0, y: 0, w: 1, h: 1 } } as never; }, /unknown size "4:3"/],
     ['bad colour', (r) => { (r.scenes[0]!.layers[0] as { colour: string }).colour = 'pink'; }, /colour must be a hex colour/],
-    ['bad feel', (r) => { r.scenes[0]!.layers[0]!.in = { preset: 'rise', feel: 'wobbly' as never, durationMs: 500 }; }, /"Comes in" feel must be one of/],
+    ['bad feel', (r) => { r.scenes[0]!.layers[0]!.in = { preset: 'rise-in', feel: 'wobbly' as never, durationMs: 500 }; }, /"Comes in" feel must be one of/],
     ['missing asset', (r) => { (r.scenes[0]!.layers[1] as { assetId: string }).assetId = 'nope'; }, /not in the assets list/],
     ['image layer on an audio file', (r) => { (r.scenes[0]!.layers[1] as { assetId: string }).assetId = 'song'; }, /audio file, not a image/],
     ['duplicate layer id', (r) => { r.scenes[0]!.layers[1]!.id = 'l1'; }, /uses the id "l1" twice/],
@@ -62,6 +62,9 @@ describe('validateRecipe', () => {
     ['asset key and id differ', (r) => { r.assets.photo!.id = 'other'; }, /must have the id "photo"/],
     ['bad licence', (r) => { r.assets.photo!.credit!.licence = 'mine' as never; }, /licence must be one of/],
     ['music on an image', (r) => { r.music!.assetId = 'photo'; }, /Music must point to an audio file/],
+    ['unknown layout', (r) => { r.scenes[0]!.layout = 'title-center'; }, /layout must be one of center/],
+    ['unknown preset', (r) => { r.scenes[0]!.layers[0]!.in = { preset: 'zoom', feel: 'smooth', durationMs: 500 }; }, /preset "zoom" is not a known in preset/],
+    ['preset in the wrong slot', (r) => { r.scenes[0]!.layers[0]!.out = { preset: 'fade-in', feel: 'smooth', durationMs: 500 }; }, /"Goes out" preset "fade-in" is not a known out preset/],
     ['clip longer than 60 seconds', (r) => { r.scenes[0]!.durationMs = 61000; }, /the most is 60/],
   ];
   for (const [name, breakIt, problem] of cases) {

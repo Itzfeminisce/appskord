@@ -1,9 +1,11 @@
-import type { Aspect, Box, ClipType, Feel, LicenceId, Motion, Recipe } from '../types';
+import type { Aspect, Box, ClipType, Feel, LicenceId, Motion, PresetSlot, Recipe } from '../types';
+import { getPreset } from '../render/presets';
+import { isLayoutId, LAYOUTS } from '../render/reflow';
 
 export const ASPECTS: readonly Aspect[] = ['9:16', '1:1', '16:9'];
 export const CLIP_TYPES: readonly ClipType[] = ['promo', 'quote', 'chart', 'explainer', 'logo', 'captions', 'social'];
 export const FEELS: readonly Feel[] = ['smooth', 'snappy', 'bouncy', 'steady'];
-export const LICENCES: readonly LicenceId[] = ['cc0', 'pdm', 'cc-by', 'cc-by-sa', 'cc-by-nc', 'pexels', 'own'];
+export const LICENCES: readonly LicenceId[] = ['cc0', 'pdm', 'cc-by', 'cc-by-sa', 'cc-by-nc', 'pexels', 'page', 'own'];
 const ASSET_KINDS = ['image', 'video', 'audio', 'font', 'logo'] as const;
 const SOURCES = ['openverse', 'pexels', 'bundled', 'page'] as const;
 const LAYER_TYPES = ['text', 'shape', 'image', 'video', 'chart'] as const;
@@ -65,6 +67,7 @@ export function validateRecipe(value: unknown): string[] {
       else total += duration;
       if (!isColour(s.background)) bad(`${at} background must be a hex colour or transparent.`);
       if (!isText(s.layout)) bad(`${at} has no layout.`);
+      else if (!isLayoutId(s.layout)) bad(`${at} layout must be one of ${LAYOUTS.join(', ')}.`);
       if (!Array.isArray(s.layers)) return bad(`${at} has no layers list.`);
       s.layers.forEach((l: unknown, j) => {
         const name = isObj(l) && isText(l.name) ? `"${l.name}"` : String(j + 1);
@@ -132,11 +135,12 @@ function checkBox(where: string, b: unknown, bad: (m: string) => void) {
   if (b.rotation !== undefined && !isNum(b.rotation)) bad(`${where} rotation must be a number.`);
 }
 
-function checkMotion(where: string, m: unknown, bad: (m: string) => void) {
+function checkMotion(where: string, slot: PresetSlot, m: unknown, bad: (m: string) => void) {
   if (m === undefined) return;
   if (!isObj(m)) return bad(`${where} is not an object.`);
   const motion = m as Partial<Motion>;
   if (!isText(motion.preset)) bad(`${where} has no preset.`);
+  else if (getPreset(motion.preset)?.slot !== slot) bad(`${where} preset "${motion.preset}" is not a known ${slot} preset.`);
   if (!oneOf(FEELS, motion.feel)) bad(`${where} feel must be one of ${FEELS.join(', ')}.`);
   if (!isNum(motion.durationMs) || motion.durationMs <= 0) bad(`${where} must last longer than 0 ms.`);
 }
@@ -164,9 +168,9 @@ function checkLayer(
     }
   }
   if (!isNum(l.opacity) || l.opacity < 0 || l.opacity > 1) bad(`${where} opacity must be between 0 and 1.`);
-  checkMotion(`${where} "Comes in"`, l.in, bad);
-  checkMotion(`${where} "While on screen"`, l.during, bad);
-  checkMotion(`${where} "Goes out"`, l.out, bad);
+  checkMotion(`${where} "Comes in"`, 'in', l.in, bad);
+  checkMotion(`${where} "While on screen"`, 'during', l.during, bad);
+  checkMotion(`${where} "Goes out"`, 'out', l.out, bad);
   if (l.locked !== undefined && !isBool(l.locked)) bad(`${where} locked must be true or false.`);
 
   switch (l.type) {

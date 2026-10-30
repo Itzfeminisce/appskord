@@ -14,6 +14,8 @@ import Privacy from '../../screens/Privacy';
 import Recovered from '../../screens/Recovered';
 import Settings from '../../screens/Settings';
 import Setup from '../../screens/Setup';
+import StatesCreate from '../../screens/StatesCreate';
+import StatesLibrary from '../../screens/StatesLibrary';
 import StatesSetup from '../../screens/StatesSetup';
 import Templates from '../../screens/Templates';
 import YourMedia from '../../screens/YourMedia';
@@ -22,7 +24,7 @@ import YourMedia from '../../screens/YourMedia';
 export const sidepanel = createRouter({
   Main, Setup, PenvConnect, PasteKey, PenvConnected,
   Home, ClipType, Templates, YourMedia, Making, Grab,
-  BrandKit, Library, LibraryEmpty, Settings, Privacy, Recovered, StatesSetup,
+  BrandKit, Library, LibraryEmpty, Settings, Privacy, Recovered, StatesSetup, StatesCreate, StatesLibrary,
 });
 export type SidepanelScreen = (typeof sidepanel.names)[number];
 export const { RouterProvider, useRouter, Outlet } = sidepanel;

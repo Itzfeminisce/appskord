@@ -1,12 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
-import { checkKey, detectKey, serviceLabel } from './keyDetect';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { checkKey, createKeyWatcher, detectKey, serviceLabel, verifyKey } from './keyDetect';
 
 describe('detectKey', () => {
   it('recognises Groq and Pexels keys', () => {
     expect(detectKey('gsk_test')).toBe('GROQ_API_KEY');
     expect(detectKey('  gsk_test  ')).toBe('GROQ_API_KEY');
     expect(detectKey('pexels_test')).toBe('PEXELS_API_KEY');
-    expect(detectKey('a'.repeat(56))).toBe('PEXELS_API_KEY');
+    expect(detectKey('a'.repeat(56), 'pexels')).toBe('PEXELS_API_KEY');
+  });
+  it('never takes the bare Pexels shape from the main field', () => {
+    expect(detectKey('a'.repeat(56))).toBeNull();
+    expect(detectKey('a'.repeat(56), 'main')).toBeNull();
   });
   it('does not recognise anything else', () => {
     expect(detectKey('')).toBeNull();
@@ -35,5 +39,69 @@ describe('checkKey', () => {
   it('is unreachable on a server error or a network failure', async () => {
     expect(await checkKey('PEXELS_API_KEY', 'pexels_test', reply(500))).toBe('unreachable');
     expect(await checkKey('GROQ_API_KEY', 'gsk_test', vi.fn(async () => { throw new Error('offline'); }))).toBe('unreachable');
+  });
+});
+
+describe('createKeyWatcher', () => {
+  afterEach(() => vi.useRealTimers());
+  const key = 'gsk_' + 'x'.repeat(52);
+
+  it('makes at most one fetch while a key is typed character by character', async () => {
+    vi.useFakeTimers();
+    const f = vi.fn(async () => new Response('{}', { status: 200 }));
+    const w = createKeyWatcher((n, k) => void checkKey(n, k, f as unknown as typeof fetch));
+    for (let i = 1; i <= key.length; i++) { w.type(key.slice(0, i)); await vi.advanceTimersByTimeAsync(100); }
+    expect(f).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  it('checks at once on paste and cancels a pending typed check', async () => {
+    vi.useFakeTimers();
+    const run = vi.fn();
+    const w = createKeyWatcher(run);
+    w.type(key);
+    w.paste(key);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+  it('does not send a pasted bare Pexels shape from the main field', () => {
+    const run = vi.fn();
+    createKeyWatcher(run).paste('a'.repeat(56));
+    expect(run).not.toHaveBeenCalled();
+    createKeyWatcher(run, 'pexels').paste('a'.repeat(56));
+    expect(run).toHaveBeenCalledWith('PEXELS_API_KEY', 'a'.repeat(56));
+  });
+});
+
+describe('verifyKey', () => {
+  const granted = async () => 'granted' as const;
+  const reply = (status: number) => vi.fn(async () => new Response('{}', { status }));
+  const pex = ['https://api.pexels.com/*'];
+  it('asks for the host before any fetch and saves only an accepted key', async () => {
+    const order: string[] = [];
+    const save = vi.fn(async () => { order.push('save'); });
+    const f = vi.fn(async () => { order.push('fetch'); return new Response('{}', { status: 200 }); });
+    const request = vi.fn(async () => { order.push('request'); return 'granted' as const; });
+    expect(await verifyKey('PEXELS_API_KEY', ' pexels_test ', pex, { request, save, fetchImpl: f })).toBe('ready');
+    expect(order).toEqual(['request', 'fetch', 'save']);
+    expect(save).toHaveBeenCalledWith('PEXELS_API_KEY', 'pexels_test');
+  });
+  it('is denied without a fetch when host access is refused', async () => {
+    const f = reply(200);
+    expect(await verifyKey('PEXELS_API_KEY', 'pexels_test', pex, { request: async () => 'denied', save: vi.fn(), fetchImpl: f })).toBe('denied');
+    expect(f).not.toHaveBeenCalled();
+  });
+  it('is rejected on 401 and 403 and saves nothing', async () => {
+    for (const code of [401, 403]) {
+      const save = vi.fn();
+      expect(await verifyKey('PEXELS_API_KEY', 'pexels_test', pex, { request: granted, save, fetchImpl: reply(code) })).toBe('rejected');
+      expect(save).not.toHaveBeenCalled();
+    }
+  });
+  it('is unreachable on a network failure and saves nothing', async () => {
+    const save = vi.fn();
+    const f = vi.fn(async () => { throw new TypeError('offline'); });
+    expect(await verifyKey('GROQ_API_KEY', 'gsk_test', ['https://api.groq.com/*'], { request: granted, save, fetchImpl: f as unknown as typeof fetch })).toBe('unreachable');
+    expect(save).not.toHaveBeenCalled();
   });
 });

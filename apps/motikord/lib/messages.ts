@@ -1,3 +1,5 @@
+import type { PageInfo, Pick } from './grab/pick';
+
 /**
  * Runtime messages between the side panel, the editor tab and the service worker.
  * Each entry is the message's fields (`req`) and what its listener answers (`res`). Later tasks add entries here.
@@ -7,9 +9,26 @@ export interface MessageMap {
   'editor/open': { req: { clipId?: string }; res: { tabId: number } };
   // Editor tab → everyone: a clip was saved to IndexedDB, so lists reload it.
   'clip/saved': { req: { clipId: string }; res: void };
+  // Brand kit screen → editor tab: apply the saved brand kit to the open clip as one Change by 'hand'.
+  'brand/apply': { req: { clipId?: string }; res: { applied: boolean } };
+  // Editor tab → side panel: show PasteKey (the Pexels field), e.g. from "Add a Pexels key".
+  'panel/show-paste-key': { req: {}; res: void };
+  // Editor tab → side panel, after opening it inside the click: groq-down "Open Settings", key-needed "Paste a key", clip-not-found "Go to your clips".
+  'sidepanel/go': { req: { screen: 'Settings' | 'Library' | 'PasteKey' }; res: { shown: boolean } };
   // Export (T11) → service worker: toolbar badge progress, 0 to 100; null clears it.
   'export/progress': { req: { percent: number | null }; res: void };
+  // Page picker → side panel: the picks so far (each click), "Done" or Esc (`done`), or "Cancel".
+  // Picks carry no picture bytes, only a small `thumb`; each picture's bytes follow once in 'grab/data'.
+  'grab/picks': { req: { picks: Pick[]; page: PageInfo; done?: boolean }; res: void };
+  'grab/data': { req: { id: string; dataUrl: string }; res: void };
+  'grab/cancel': { req: Record<never, never>; res: void };
+  // Side panel → page picker (sent to the tab): remove one pick, or stop picking.
+  'grab/remove': { req: { id: string }; res: void };
+  'grab/stop': { req: Record<never, never>; res: void };
 }
+
+/** Session-storage key the editor sets for a side panel that is still loading. */
+export const PANEL_GOTO = 'motikordPanelGoto';
 
 export type MessageType = keyof MessageMap;
 export type MessageOf<T extends MessageType> = { type: T } & MessageMap[T]['req'];
