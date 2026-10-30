@@ -67,7 +67,7 @@ export interface BrandKit {
 
 export interface Issue {                                     // quality checker
   id: string; sceneId: string; layerId: string; aspect: Aspect;
-  kind: 'overflow' | 'contrast' | 'safe-area' | 'too-fast' | 'credit-missing';
+  kind: 'overflow' | 'contrast' | 'safe-area' | 'too-fast' | 'too-small' | 'credit-missing';
   fix: PatchOp[];
 }
 

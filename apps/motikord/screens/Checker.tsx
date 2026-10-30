@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { check, contrastRatio, readMs } from '../lib/checker';
+import { check, contrastRatio, MIN_TEXT_PX, readMs } from '../lib/checker';
 import { findLayer, sceneIndex, setAspect } from '../lib/editor/store';
 import type { Measure } from '../lib/render/textFit';
 import type { Aspect, Issue, LicenceId, PatchOp, Recipe, TextLayer } from '../lib/types';
@@ -66,7 +66,7 @@ export function cardText(card: Card, r: Recipe): CardText {
   const name = l?.name ?? 'Text';
   const text = l?.type === 'text' ? firstLine(l.text) : '';
   const si = sceneIndex(r, card.sceneId);
-  const where = `${si < 0 ? 'Music' : `Scene ${si + 1}`} · ${sizesLabel(card.aspects)}`;
+  const where = `${si < 0 ? 'Music' : `Scene ${si + 1}`} · ${card.kind === 'credit-missing' ? 'all sizes' : sizesLabel(card.aspects)}`;
   switch (card.kind) {
     case 'safe-area': {
       const last = text.split(/\s+/).filter(Boolean).pop();
@@ -79,17 +79,21 @@ export function cardText(card: Card, r: Recipe): CardText {
       // The fix is the colour that reads best, so the trouble is text and background both being the other tone.
       const value = (card.fix[0] as { value?: unknown } | undefined)?.value;
       const tone = lightness(String(value ?? '#FFFFFF')) === 'light' ? 'dark' : 'light';
-      return { where, title: `Hard to read: ${tone} text on a ${tone} background`, body: `“${text}” blends into the background.`, action: 'Change the text colour' };
+      return { where, title: `Hard to read: ${tone} text on a ${tone} background`, body: `“${text}” blends into the background.`, action: `Make the text ${tone === 'light' ? 'dark' : 'light'}` };
     }
     case 'too-fast': {
       const read = l?.type === 'text' ? Math.ceil(readMs((l as TextLayer).text) / 100) / 10 : 0;
-      return { where, title: `${name} goes by too fast`, body: read ? `“${text}” needs about ${read} seconds to read.` : 'Its motion is too quick to follow.', action: 'Give it more time' };
+      return { where, title: `${name} goes by too fast`, body: read ? `“${text}” needs about ${read} seconds to read.` : '', action: 'Give it more time' };
+    }
+    case 'too-small': {
+      const px = l?.type === 'text' ? Math.round(l.sizePx) : 0;
+      return { where, title: 'Too small to read on a phone', body: `The ${name.toLowerCase()} line is ${px} px. ${MIN_TEXT_PX} px reads well.`, action: `Make it ${MIN_TEXT_PX} px` };
     }
     case 'credit-missing': {
       const m = l && (l.type === 'image' || l.type === 'video') ? r.assets[l.assetId] : r.music && r.assets[r.music.assetId];
       const c = m?.credit;
       return { where, title: 'Credit needed', action: 'Add an end card with these credits',
-        body: c ? `“${c.title}” by ${c.author} · ${LICENCE[c.licence] ?? c.licence}` : 'Someone else made this.' };
+        body: c ? `“${c.title}” by ${c.author} · ${LICENCE[c.licence] ?? c.licence}` : '' };
     }
   }
 }
@@ -143,7 +147,7 @@ export function CheckerPanel() {
               <div key={card.id} data-kind={card.kind} style={{ padding: 12, borderRadius: 12, border: '1px solid var(--warning-line)', background: 'var(--warning-bg)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--warning-ink)' }}>{t.where}</span>
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{t.title}</span>
-                <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>{t.body}</span>
+                {t.body && <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>{t.body}</span>}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button type="button" onClick={() => fixOne(card, t.action)} style={{ ...btn, border: 0, background: 'var(--ink)', color: '#fff' }}>{t.action}</button>
                   <button type="button" onClick={() => show(card)} style={{ ...btn, fontWeight: 500, border: '1px solid var(--line-strong)', background: 'var(--surface)', color: 'var(--ink)' }}>Show me</button>

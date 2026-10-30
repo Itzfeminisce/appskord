@@ -6,6 +6,8 @@ import { fitText, type Measure } from './render/textFit';
 
 const ATTRIBUTION: readonly LicenceId[] = ['cc-by', 'cc-by-sa', 'cc-by-nc'];
 const MIN_MOTION_MS = 200;
+/** The smallest text size that reads on a phone, at 1080 px wide. */
+export const MIN_TEXT_PX = 28;
 const LIGHT = '#FFFFFF';
 const DARK = '#111114';
 
@@ -24,7 +26,7 @@ export function check(recipe: Recipe, opts: CheckOptions = {}): Issue[] {
   recipe.scenes.forEach((scene, si) => {
     scene.layers.forEach((layer, li) => {
       const at = { recipe, scene, layer, si, li };
-      if (layer.type === 'text') overflow(at, measure, issues);
+      if (layer.type === 'text') { overflow(at, measure, issues); tooSmall(at, measure, issues); }
       for (const aspect of ASPECTS) safeArea(at, aspect, issues);
       if (layer.type === 'text') contrast(at, issues);
       tooFast(at, issues);
@@ -58,6 +60,23 @@ function overflow({ recipe, scene, layer, si, li }: At, measure: Measure, out: I
       fix: [{ op: 'replace', path: `${layerPath(si, li)}/sizePx`, value: sizePx }],
     });
   }
+}
+
+/** Text drawn under MIN_TEXT_PX on 9:16 is raised to it, but only when it then still fits every size's box. */
+function tooSmall({ recipe, scene, layer, si, li }: At, measure: Measure, out: Issue[]) {
+  const l = layer as TextLayer;
+  const fitAt = (aspect: Aspect, maxSize: number) => {
+    const b = boxFor(l, aspect, recipe.aspect, scene.layout);
+    const { w, h } = canvasSize(aspect, 1080);
+    const pad = l.background ? 32 : 0;
+    return fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize, lineHeight: l.lineHeight, measure });
+  };
+  if (l.sizePx >= MIN_TEXT_PX && fitAt('9:16', l.sizePx).sizePx >= MIN_TEXT_PX) return;
+  if (!ASPECTS.every((aspect) => fitAt(aspect, MIN_TEXT_PX).sizePx >= MIN_TEXT_PX)) return;
+  out.push({
+    id: id('too-small', scene.id, l.id, '9:16'), sceneId: scene.id, layerId: l.id, aspect: '9:16', kind: 'too-small',
+    fix: [{ op: 'replace', path: `${layerPath(si, li)}/sizePx`, value: MIN_TEXT_PX }],
+  });
 }
 
 // Text and charts must stay readable; a logo must never sit under a player's buttons.

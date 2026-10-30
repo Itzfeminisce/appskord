@@ -23,6 +23,7 @@ const cases: [string, Layer[], string][] = [
   ['contrast', [text({ colour: '#222226' })], 'contrast'],
   ['safe-area', [text({ box: { x: 0.0, y: 0.4, w: 0.6, h: 0.2 } })], 'safe-area'],
   ['too-fast', [text({ endMs: 400 })], 'too-fast'],
+  ['too-small', [text({ sizePx: 18, text: 'Open daily' })], 'too-small'],
   ['credit-missing', [photo()], 'credit-missing'],
 ];
 
@@ -46,6 +47,18 @@ describe('Checker cards', () => {
     const c = cards(clip([text({ text: 'Spring sale on running shoes this weekend only for everyone' })])).find((x) => x.kind === 'overflow')!;
     expect(c.aspects).toEqual(['9:16', '1:1', '16:9']);
     expect(cardText(c, clip([])).where).toContain('all sizes');
+  });
+});
+
+describe('Card copy', () => {
+  const copy = (layers: Layer[], kind: string, r = clip(layers)) => cardText(cards(r).find((c) => c.kind === kind)!, r);
+  it('says the frame wording', () => {
+    expect(copy([text({ colour: '#222226' })], 'contrast')).toMatchObject({ title: 'Hard to read: dark text on a dark background', action: 'Make the text light' });
+    const pale = clip([text({ colour: '#F0F0F0' })]);
+    pale.scenes[0]!.background = '#FAFAFA';
+    expect(copy([], 'contrast', pale)).toMatchObject({ title: 'Hard to read: light text on a light background', action: 'Make the text dark' });
+    expect(copy([text({ sizePx: 18, name: 'Opening hours', text: 'Open daily' })], 'too-small')).toMatchObject({ title: 'Too small to read on a phone', body: 'The opening hours line is 18 px. 28 px reads well.', action: 'Make it 28 px' });
+    expect(copy([photo()], 'credit-missing')).toMatchObject({ where: 'Scene 1 · all sizes', title: 'Credit needed', body: '“Hill” by A. Person · CC BY 4.0' });
   });
 });
 
