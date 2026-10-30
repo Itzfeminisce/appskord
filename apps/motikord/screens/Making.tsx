@@ -5,7 +5,7 @@ import { HOSTS, requestHost } from '../lib/hostAccess';
 import { MAX_BUSY_RETRIES, draft, runner, useRun, useSettings } from '../lib/makeClip';
 import type { ClipType } from '../lib/types';
 import { send } from '../lib/messages';
-import { AiFooter, GroqBusy, GroqDown, MakingFailed, Offline, TooLong } from './StatesCreate';
+import { AiFooter, GroqBusy, GroqBusyRetried, GroqDown, MakingFailed, Offline, TooLong } from './StatesCreate';
 import { GroqAccess, PenvDisconnected } from './StatesSetup';
 import { RecipeThumb, TYPE_NAMES } from './Templates';
 
@@ -71,6 +71,7 @@ export default function Making() {
 
   let card: ReactNode = null;
   if (failed === 'making-failed') card = <MakingFailed onTryAgain={again} onTemplates={() => navigate('Templates')} />;
+  else if (failed === 'groq-busy' && !autoRetry) card = <GroqBusyRetried onTryNow={again} />;
   else if (failed === 'groq-busy') card = <GroqBusy seconds={Math.ceil((waitMs ?? 20_000) / 1000)} onTryNow={again} />;
   else if (failed === 'groq-down') card = <GroqDown onOpenSettings={() => navigate('Settings')} />;
   else if (failed === 'offline') card = <Offline />;

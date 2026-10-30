@@ -55,6 +55,13 @@ export function GroqBusy({ seconds = 20, onTryNow }: { seconds?: number; onTryNo
     </Notice>
   );
 }
+export function GroqBusyRetried({ onTryNow }: { onTryNow?: () => void }) {
+  return (
+    <Notice tone="warning" role="status" glyph="clock" title="Groq is still busy" actions={<button type="button" onClick={onTryNow} style={actionStyle}>Try now</button>}>
+      Motikord tried again and Groq is still at its free limit. Try now, or come back in a few minutes.
+    </Notice>
+  );
+}
 export function GroqDown({ onOpenSettings }: { onOpenSettings?: () => void }) {
   return (
     <Notice tone="warning" role="alert" glyph="warn" title="Groq isn’t responding" actions={<button type="button" onClick={onOpenSettings} style={actionStyle}>Open Settings</button>}>
@@ -130,6 +137,7 @@ const SHEET: [string, ReactNode][] = [
   )],
   ['making-failed · Making your clip', <MakingFailed />],
   ['groq-busy · Making your clip, Editor', <GroqBusy />],
+  ['groq-busy-retried · Making your clip, Editor', <GroqBusyRetried />],
   ['groq-down · Make a clip, Editor', <GroqDown />],
   ['penv-disconnected · Make a clip (banner)', <PenvDisconnected />],
   ['offline · Make a clip, Editor (banner)', <Offline />],

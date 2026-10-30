@@ -11,6 +11,9 @@ describe('timeline maths', () => {
     expect(snap(1234)).toBe(1200);
     expect(snap(1960, [2000], 80)).toBe(2000);
     expect(snap(1900, [2000], 80)).toBe(1900);
+    // A playhead between grid lines still snaps onto the grid.
+    expect(snap(1960, [1987], 80)).toBe(2000);
+    expect(dragSpan({ startMs: 0, endMs: 1000 }, 'end', 960, 5000, [1987], 80).endMs).toBe(2000);
   });
 
   it('moves a bar keeping its length and clamps it to the scene', () => {

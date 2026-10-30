@@ -10,6 +10,7 @@ describe('StatesCreate', () => {
       'prompt-empty · Make a clip', 'Describe your clip, like “a 10-second promo for my podcast”', 'Describe your clip, grab something from a page, or add your media.',
       'Motikord couldn’t make this clip', 'The AI’s answer didn’t work, even on a second try. Your prompt is kept. Try again, or start from a template.', 'See templates',
       'Groq is busy right now', 'Motikord will try again in 20 seconds.', 'Try now',
+      'Groq is still busy', 'Motikord tried again and Groq is still at its free limit. Try now, or come back in a few minutes.',
       'Groq isn’t responding', 'Open Settings', 'Penv Cloud was disconnected', 'You’re offline',
       'Clips can be up to 60 seconds', 'Motikord made a 60-second clip. For a longer idea, make two clips.', 'Allow Motikord to reach Groq',
       'Motikord can’t use “brochure.pdf”', 'Add images, videos, music or font files. The others were added.',

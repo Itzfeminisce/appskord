@@ -7,6 +7,8 @@ const BOX = /^(\/scenes\/(\d+)\/layers\/(\d+))\/box$/;
 
 /** Rewrites box ops onto boxes[aspect] of the size being edited; every other op passes through. */
 export function toSizeOnly(r: Recipe, edit: Edit, aspect: Aspect = r.aspect): Edit {
+  // A size switch carries its own boxes for the new size; rewriting them would file them under the old one.
+  if (switchesSize(edit)) return edit;
   const made = new Set<string>();
   const ops: PatchOp[] = [];
   for (const op of edit.ops) {
@@ -27,5 +29,5 @@ export function toSizeOnly(r: Recipe, edit: Edit, aspect: Aspect = r.aspect): Ed
   return made.size ? { ...edit, ops, summary: `${edit.summary} (${aspect})` } : edit;
 }
 
-/** True when the edit moves, resizes or rotates a box, so "This size only" changes what it writes. */
-export const touchesBox = (edit: Edit) => edit.ops.some((o) => BOX.test(o.path));
+/** True when the edit switches the clip to another size. */
+export const switchesSize = (edit: Edit) => edit.ops.some((o) => o.path === '/aspect');

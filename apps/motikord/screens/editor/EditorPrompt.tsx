@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { toAiError } from '../../lib/ai/errors';
-import { applyPrompt } from '../../lib/editor/applyPrompt';
+import { applyPrompt, rebase } from '../../lib/editor/applyPrompt';
 import { HOSTS, requestHost, type HostAccess } from '../../lib/hostAccess';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
 import { openSidePanelOn } from '../../lib/sidepanelGo';
 import type { AiMode } from '../../lib/types';
 import Editor, { useEditor } from './Editor';
-import { ChangeTooLong, GroqAccess, GroqBusy, GroqDown, Offline, PromptFailed, PromptWorking } from './StatesPrompt';
+import { ChangeTooLong, GroqAccess, GroqBusy, GroqBusyRetried, GroqDown, Offline, PromptFailed, PromptWorking } from './StatesPrompt';
 
 // Editor frame, centre: "Tell Motikord what to change" with its chips. EditorPrompt frame: the "Done." toast with Undo.
 
@@ -15,7 +15,7 @@ const BUSY_S = 20;
 
 type Ui =
   | { kind: 'idle' } | { kind: 'working' } | { kind: 'failed' } | { kind: 'too-long'; totalMs: number }
-  | { kind: 'busy'; left: number } | { kind: 'down' } | { kind: 'offline' } | { kind: 'access' };
+  | { kind: 'busy'; left: number } | { kind: 'busy-retried' } | { kind: 'down' } | { kind: 'offline' } | { kind: 'access' };
 
 export function PromptBox() {
   const { state, edit, toast } = useEditor();
@@ -25,6 +25,10 @@ export function PromptBox() {
   const ai = useRef<AiMode>('cloud');
   const windowId = useRef<number>(undefined);
   const stop = useRef<AbortController>(undefined);
+  // Set from the click until the run ends, so a second send while Chrome asks for access starts nothing.
+  const busy = useRef(false);
+  // groq-busy retries by itself once per prompt; a send by the user starts the count again.
+  const retried = useRef(false);
   const recipe = useRef(state.clip.recipe);
   recipe.current = state.clip.recipe;
 
@@ -39,14 +43,18 @@ export function PromptBox() {
   }, []);
 
   const run = async (prompt: string, access: Promise<HostAccess>) => {
-    if ((await access) === 'denied') { setUi({ kind: 'access' }); return; }
-    if (ai.current === 'cloud' && !navigator.onLine) { setUi({ kind: 'offline' }); return; }
+    busy.current = true;
     const ac = new AbortController();
-    stop.current = ac;
-    setUi({ kind: 'working' });
     try {
-      const out = await applyPrompt(recipe.current, prompt, { signal: ac.signal });
-      edit(out.edit, { by: out.by });
+      if ((await access) === 'denied') { setUi({ kind: 'access' }); return; }
+      if (ai.current === 'cloud' && !navigator.onLine) { setUi({ kind: 'offline' }); return; }
+      stop.current = ac;
+      setUi({ kind: 'working' });
+      const from = recipe.current;
+      const answer = await applyPrompt(from, prompt, { signal: ac.signal });
+      // The clip may have been edited by hand meanwhile: re-check the answer against the clip as it is now.
+      const out = rebase(answer, prompt, from, recipe.current);
+      if (!out || !edit(out.edit, { by: out.by })) { setUi({ kind: 'failed' }); return; }
       toast(out.detail ? `Done. ${out.detail}` : 'Done.');
       setText('');
       setUi({ kind: 'idle' });
@@ -56,12 +64,13 @@ export function PromptBox() {
       switch (e.state) {
         case undefined: setUi({ kind: 'idle' }); break;
         case 'change-too-long': setUi({ kind: 'too-long', totalMs: e.detail.totalMs ?? 0 }); break;
-        case 'groq-busy': setUi({ kind: 'busy', left: Math.max(1, Math.ceil((e.detail.retryAfterMs ?? BUSY_S * 1000) / 1000)) }); break;
+        case 'groq-busy': setUi(retried.current ? { kind: 'busy-retried' } : { kind: 'busy', left: Math.max(1, Math.ceil((e.detail.retryAfterMs ?? BUSY_S * 1000) / 1000)) }); break;
         case 'groq-down': setUi({ kind: 'down' }); break;
         case 'offline': setUi({ kind: 'offline' }); break;
         default: setUi({ kind: 'failed' });
       }
     } finally {
+      busy.current = false;
       if (stop.current === ac) stop.current = undefined;
     }
   };
@@ -69,17 +78,19 @@ export function PromptBox() {
   /** Call from a click or Enter: host access is asked before anything is awaited, so Chrome shows its prompt. */
   const send = (words: string) => {
     const prompt = words.trim();
-    if (!prompt || ui.kind === 'working') return;
+    if (!prompt || busy.current) return;
+    busy.current = true;
+    retried.current = false;
     const access: Promise<HostAccess> = ai.current === 'cloud' ? requestHost(HOSTS.groq) : Promise.resolve('granted');
     last.current = prompt;
     void run(prompt, access);
   };
 
-  // groq-busy counts down and tries again by itself; Groq was reachable, so no new host prompt is needed.
+  // groq-busy counts down and tries again by itself, once; Groq was reachable, so no new host prompt is needed.
   useEffect(() => {
     if (ui.kind !== 'busy') return;
     const id = setTimeout(() => {
-      if (ui.left <= 1) void run(last.current, Promise.resolve('granted'));
+      if (ui.left <= 1) { retried.current = true; void run(last.current, Promise.resolve('granted')); }
       else setUi({ kind: 'busy', left: ui.left - 1 });
     }, 1000);
     return () => clearTimeout(id);
@@ -96,6 +107,7 @@ export function PromptBox() {
       case 'failed': return <PromptFailed onRetry={() => send(last.current)} />;
       case 'too-long': return <ChangeTooLong totalMs={ui.totalMs} />;
       case 'busy': return <GroqBusy seconds={ui.left} onTryNow={() => send(last.current)} />;
+      case 'busy-retried': return <GroqBusyRetried onTryNow={() => send(last.current)} />;
       case 'down': return <GroqDown onOpenSettings={openSettings} />;
       case 'offline': return <Offline />;
       case 'access': return <GroqAccess onAllow={() => send(last.current)} />;

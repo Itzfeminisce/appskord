@@ -82,16 +82,23 @@ export function PresetsPopover({ sceneId, layerId, slot: firstSlot, onClose }: {
   const r = state.clip.recipe;
   const f = findLayer(r, sceneId, layerId);
   const [slot, setSlot] = useState<PresetSlot>(firstSlot);
-  const resume = useRef<number>(undefined);
+  // Where the playhead was, and whether it played, before the first preview; kept until it is put back.
+  const origin = useRef<{ ms: number; playing: boolean }>(undefined);
+  const previewing = useRef(false);
 
   const stopPreview = () => {
-    const back = resume.current;
-    if (back === undefined) return;
-    resume.current = undefined;
+    if (!previewing.current) return;
+    previewing.current = false;
+    const o = origin.current!;
     setPreview(undefined);
-    play(false);
+    play(o.playing);
     // The canvas settles its playhead on the frame after playback stops; put the time and selection back after that.
-    requestAnimationFrame(() => requestAnimationFrame(() => { playhead.current = back; select(sceneId, layerId, back); }));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (previewing.current || origin.current !== o) return;
+      origin.current = undefined;
+      playhead.current = o.ms;
+      select(sceneId, layerId, o.ms);
+    }));
   };
   useEffect(() => () => stopPreview(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -107,7 +114,8 @@ export function PresetsPopover({ sceneId, layerId, slot: firstSlot, onClose }: {
   const preview = (p: Preset) => {
     const m = motionWith(p);
     const next = applyPatch(r, setMotion(f, slot, m).ops).doc;
-    resume.current ??= playhead.current;
+    origin.current ??= { ms: playhead.current, playing: state.playing };
+    previewing.current = true;
     setPreview(next);
     setTime(slotStart(next, f, slot, m));
     play(true);

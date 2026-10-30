@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { DevSwitcher } from '../../components/ui';
+import { findInterrupted } from '../../lib/exportJob';
 import { onMessage, PANEL_GOTO } from '../../lib/messages';
 import { screenFromUrl } from '../../lib/router';
 import { getSettings } from '../../lib/settings';
@@ -50,8 +51,13 @@ export default function App() {
   const [first, setFirst] = useState<SidepanelScreen | null>(() => screenFromUrl(sidepanel.names) ?? null);
   useEffect(() => {
     if (first) return;
-    getSettings()
-      .then((s) => setFirst(s.onboarded ? 'Home' : 'Main'))
+    // An export cut off by Chrome closing is offered again before anything else.
+    const interrupted = findInterrupted(Date.now()).catch((error: unknown) => {
+      console.error('Motikord: could not read the interrupted export', error);
+      return [];
+    });
+    Promise.all([getSettings(), interrupted])
+      .then(([s, jobs]) => setFirst(jobs.length > 0 ? 'Recovered' : s.onboarded ? 'Home' : 'Main'))
       .catch((error: unknown) => {
         console.error('Motikord: could not read settings', error);
         setFirst('Main');
