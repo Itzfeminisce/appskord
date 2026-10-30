@@ -4,7 +4,7 @@ import { useRouter } from '../entrypoints/editor/router';
 import { getFolderHandle } from '../lib/db';
 import { clearSession } from '../lib/exportJob';
 import { ASPECTS, clipClock, formatBytes } from '../lib/exportPlan';
-import { CREDITS_FILE } from '../lib/fileNames';
+import { CREDITS_FILE, videoFileName } from '../lib/fileNames';
 import { CloseIcon, DialogShell, useSettings } from './MediaSearch';
 import { useSession } from './Rendering';
 
@@ -12,7 +12,7 @@ const PLAYER = { '9:16': { w: 180, h: 320 }, '1:1': { w: 260, h: 260 }, '16:9': 
 const link = { fontSize: 13, fontWeight: 500, textDecoration: 'none', background: 'none', border: 0, padding: 0, color: 'var(--accent)', cursor: 'pointer', font: '500 13px/1.45 var(--font)' } as const;
 
 /** Chrome has no "reveal in folder" for picked folders; its folder picker opened inside the export's sub-folder shows the files. */
-async function showInFolder(dir: string | undefined) {
+async function openFolder(dir: string | undefined) {
   const pick = (globalThis as unknown as { showDirectoryPicker?: (o?: object) => Promise<unknown> }).showDirectoryPicker;
   const root = await getFolderHandle();
   if (!pick || !root) return;
@@ -31,6 +31,9 @@ export default function Exported() {
   const first = s?.items[0]?.item;
   const size = PLAYER[first?.aspect ?? ASPECTS[0]!];
   const gif = first?.kind === 'gif';
+  const folder = settings?.folderName ?? 'Motikord clips';
+  // The real name this clip's see-through file has (or would have), so the note never shows sample data.
+  const seeThroughName = s ? (s.items.find((it) => it.item.kind === 'webm-alpha')?.item.file ?? videoFileName(s.recipe.name, first?.aspect ?? s.recipe.aspect, 'webm-alpha')) : '';
   const byName = new Map(s?.items.map((it) => [it.item.file, it.item]) ?? []);
 
   const play = () => {
@@ -51,7 +54,7 @@ export default function Exported() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success-ink)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-          {`Saved to ${settings?.folderName ?? 'Motikord clips'}`}
+          {`Saved to ${folder}`}
         </h1>
         <IconButton aria-label="Close" onClick={editing}><CloseIcon /></IconButton>
       </div>
@@ -84,8 +87,9 @@ export default function Exported() {
       )}
 
       <div style={{ flexGrow: 1 }} />
+      {s && <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)', marginBottom: -4 }}>{`Chrome opens its folder picker inside ${folder}. A see-through file is named ${seeThroughName}.`}</span>}
       <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        <button type="button" className="btn btn-primary" onClick={() => void showInFolder(s?.dir).catch((error: unknown) => console.error('Motikord: could not show the folder', error))} style={{ flex: 1, height: 44, borderRadius: 12, fontSize: 14 }}><span className="btn-label">Show in folder</span></button>
+        <button type="button" className="btn btn-primary" onClick={() => void openFolder(s?.dir).catch((error: unknown) => console.error('Motikord: could not show the folder', error))} style={{ flex: 1, height: 44, borderRadius: 12, fontSize: 14 }}><span className="btn-label">Open folder</span></button>
         <button type="button" className="btn btn-secondary" onClick={again} style={{ flex: 1, height: 44, borderRadius: 12, fontSize: 14 }}><span className="btn-label">Export another size</span></button>
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>

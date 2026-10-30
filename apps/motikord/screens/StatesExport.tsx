@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { timeLeft } from '../lib/exportPlan';
 import { actionStyle } from './StatesSetup';
 
 // StatesExport frame: every state of Export and Exporting. Each card's label in the frame is `<state-id> · <screen it appears on>`.
@@ -26,6 +27,7 @@ function Row({ tone = 'plain', glyph, title, children, actions, role }: { tone?:
 }
 
 const btn = (text: string, onClick?: () => void, style: CSSProperties = actionStyle) => <button key={text} type="button" onClick={onClick} style={style}>{text}</button>;
+const warningGlyph = <svg {...icon} stroke="#B45309"><path d="M12 3.5l9.5 16.5h-19z" /><path d="M12 10v4.5M12 17.5v.01" /></svg>;
 const errorGlyph = <svg {...icon} stroke="var(--error-ink)"><circle cx="12" cy="12" r="9" /><path d="M9 9l6 6M15 9l-6 6" /></svg>;
 
 export function FolderNotPicked({ onChoose }: { onChoose?: () => void }) {
@@ -39,17 +41,19 @@ export function FolderNotPicked({ onChoose }: { onChoose?: () => void }) {
 
 export function FolderAccessLost({ folder = 'Motikord clips', onAllow, onChooseAnother }: { folder?: string; onAllow?: () => void; onChooseAnother?: () => void }) {
   return (
-    <Row role="alert" tone="warning" glyph={<svg {...icon} stroke="#B45309"><path d="M12 3.5l9.5 16.5h-19z" /><path d="M12 10v4.5M12 17.5v.01" /></svg>}
+    <Row role="alert" tone="warning" glyph={warningGlyph}
       title={`Motikord needs your OK to save in “${folder}”`} actions={[btn('Allow', onAllow), btn('Choose another folder', onChooseAnother, ghostAction)]}>
       Chrome asks again after a restart. Nothing was lost.
     </Row>
   );
 }
 
+export const CREDIT_LOCKED = 'Some media needs credit, so credits.txt is always included.';
+
 export function CreditLocked() {
   return (
     <div role="note" style={{ padding: '10px 14px', borderRadius: 12, background: 'var(--ink)', color: '#fff', fontSize: 12, lineHeight: 1.45 }}>
-      This clip uses CC BY media, so credits.txt is always included. Remove that media to turn it off.
+      {CREDIT_LOCKED}
     </div>
   );
 }
@@ -60,6 +64,31 @@ export function TypeNotes({ gif = true, seeThrough = true }: { gif?: boolean; se
     <div role="note" style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, lineHeight: 1.45, color: '#44464D' }}>
       {gif && <span><strong style={{ fontWeight: 600 }}>GIF:</strong> GIFs have no sound, so the music is left out.</span>}
       {seeThrough && <span><strong style={{ fontWeight: 600 }}>See-through WebM:</strong> The background is left out. Place it over other videos in your editor.</span>}
+    </div>
+  );
+}
+
+export function SeeThroughUnsupported() {
+  return (
+    <label style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid #E0E0E4', background: 'var(--ground)', display: 'flex', gap: 10, alignItems: 'flex-start', opacity: 0.7 }}>
+      <input type="radio" name="kind" disabled style={{ margin: '2px 0 0' }} />
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontSize: 13, fontWeight: 600 }}>See-through WebM</span><span style={{ fontSize: 12, color: 'var(--muted)' }}>Not supported on this computer</span></span>
+    </label>
+  );
+}
+
+export function SeeThroughFailed({ onWebm, onBack }: { onWebm?: () => void; onBack?: () => void }) {
+  return (
+    <Row role="alert" tone="warning" glyph={warningGlyph} title="See-through WebM is not supported on this computer" actions={[btn('Export as WebM', onWebm), btn('Back to export', onBack, ghostAction)]}>
+      Nothing was saved. A normal WebM works here, with a background.
+    </Row>
+  );
+}
+
+export function TimeLeftLines() {
+  return (
+    <div style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
+      {[150, 60, 30].map((sec) => <span key={sec}>{timeLeft(sec)}</span>)}
     </div>
   );
 }
@@ -122,8 +151,11 @@ export default function StatesExport() {
     <main data-frame="StatesExport" style={{ maxWidth: 400, width: '100%', margin: '0 auto', padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: 18 }}>
       <Section id="folder-not-picked · Export (first time)"><FolderNotPicked /></Section>
       <Section id="folder-access-lost · Export"><FolderAccessLost /></Section>
-      <Section id="credit-locked · Export (credits checkbox)"><CreditLocked /></Section>
+      <Section id="credit-locked · Export (hover on the locked credits box)"><CreditLocked /></Section>
       <Section id="type-notes · Export (under File type)"><TypeNotes /></Section>
+      <Section id="see-through-unsupported · Export (File type, option disabled)"><SeeThroughUnsupported /></Section>
+      <Section id="see-through-failed · Exporting"><SeeThroughFailed /></Section>
+      <Section id="time-left · Rendering (the line under the progress bar)"><TimeLeftLines /></Section>
       <Section id="exporting-several · Exporting">
         <ExportingSeveral index={1} rows={[{ label: '9:16', status: 'done', percent: 100 }, { label: '1:1', status: 'running', percent: 38 }, { label: '16:9', status: 'waiting', percent: 0 }]} />
       </Section>

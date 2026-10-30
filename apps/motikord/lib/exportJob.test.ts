@@ -79,7 +79,7 @@ describe('export job', () => {
     const root = new FakeDir('Motikord clips');
     const { d, badges } = deps(root, { hang: true });
     const run = runExport(recipe, 'c1', { kinds: ['webm'], aspects: ['9:16'], quality: '1080p', credits: false }, d, 'job2');
-    await new Promise((r) => setTimeout(r, 10));
+    for (let k = 0; k < 200 && !(getSession()?.percent ?? 0); k++) await new Promise((r) => setTimeout(r, 5));
     expect(getSession()?.percent).toBeGreaterThan(0);
     cancelExport();
     const s = await run;
@@ -99,13 +99,44 @@ describe('export job', () => {
     expect(classify(Object.assign(new Error('x'), { name: 'NotAllowedError' }))).toBe('access-lost');
   });
 
+  it('keeps a finished export when the job row cannot be removed', async () => {
+    const root = new FakeDir('Motikord clips');
+    const { d, badges } = deps(root);
+    d.removeJob = async () => { throw new Error('db closed'); };
+    const s = await runExport(recipe, 'c1', { kinds: ['mp4'], aspects: ['9:16'], quality: '720p', credits: true }, d, 'job5');
+    expect(s.phase).toBe('done');
+    expect([...root.dirs.get('Sourdough promo')!.files.keys()]).toEqual(['sourdough-promo-9x16.mp4', 'credits.txt']);
+    expect(badges.at(-1)).toBeNull();
+  });
+
+  it('Cancel while credits.txt is written still cancels and removes the files', async () => {
+    const root = new FakeDir('Motikord clips');
+    const orig = FakeDir.prototype.getFileHandle;
+    FakeDir.prototype.getFileHandle = async function (this: FakeDir, name: string) {
+      if (name === 'credits.txt') cancelExport();
+      return orig.call(this, name);
+    };
+    try {
+      const { d } = deps(root);
+      const s = await runExport(recipe, 'c1', { kinds: ['mp4'], aspects: ['9:16'], quality: '720p', credits: true }, d, 'job6');
+      expect(s.phase).toBe('cancelled');
+      expect(root.dirs.size).toBe(0);
+      expect(await getExportJob('job6')).toBeUndefined();
+    } finally { FakeDir.prototype.getFileHandle = orig; }
+  });
+
   it('finds jobs cut off at start-up and leaves a live export alone', async () => {
     const dead = { ...newJob('c1', { kinds: ['mp4'], aspects: ['9:16'], quality: '1080p', credits: false }, 1000, 'dead'), percent: 46, beatAt: 1000 };
     const live = { ...newJob('c2', { kinds: ['mp4'], aspects: ['9:16'], quality: '1080p', credits: false }, 1000, 'live'), beatAt: 99_000 };
     await putExportJob(dead);
     await putExportJob(live);
-    const found = await findInterrupted(100_000);
+    let cleared = 0;
+    const found = await findInterrupted(100_000, undefined, () => { cleared++; });
     expect(found.map((j) => [j.id, j.status, j.percent])).toEqual([['dead', 'interrupted', 46]]);
     expect((await listExportJobs('running')).map((j) => j.id)).toEqual(['live']);
+    // The live export still owns the badge.
+    expect(cleared).toBe(0);
+    await findInterrupted(200_000, undefined, () => { cleared++; });
+    expect(cleared).toBe(1);
   });
 });
