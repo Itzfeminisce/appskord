@@ -1,0 +1,160 @@
+import type { Aspect, Box, Issue, Layer, LicenceId, PatchOp, Recipe, Scene, TextLayer } from './types';
+import { ASPECTS } from './recipe/validate';
+import { getPreset } from './render/presets';
+import { boxFor, canvasSize, clampToSafe, insideSafe, isFullBleed } from './render/reflow';
+import { fitText, type Measure } from './render/textFit';
+
+const ATTRIBUTION: readonly LicenceId[] = ['cc-by', 'cc-by-sa', 'cc-by-nc'];
+const MIN_MOTION_MS = 200;
+const LIGHT = '#FFFFFF';
+const DARK = '#111114';
+
+/** A rough average glyph width, for when no canvas is at hand (AI gating in the background). */
+export const estimateMeasure: Measure = (text, sizePx) => text.length * sizePx * 0.56;
+
+export interface CheckOptions { measure?: Measure }
+
+const id = (kind: Issue['kind'], sceneId: string, layerId: string, aspect: Aspect) => `${kind}/${sceneId}/${layerId}/${aspect}`;
+const layerPath = (si: number, li: number) => `/scenes/${si}/layers/${li}`;
+
+/** Every problem in the recipe on every size, each with a patch that fixes it. Pure. */
+export function check(recipe: Recipe, opts: CheckOptions = {}): Issue[] {
+  const measure = opts.measure ?? estimateMeasure;
+  const issues: Issue[] = [];
+  recipe.scenes.forEach((scene, si) => {
+    scene.layers.forEach((layer, li) => {
+      const at = { recipe, scene, layer, si, li };
+      for (const aspect of ASPECTS) {
+        if (layer.type === 'text') overflow(at, aspect, measure, issues);
+        safeArea(at, aspect, issues);
+      }
+      if (layer.type === 'text') contrast(at, issues);
+      tooFast(at, issues);
+      credit(at, issues);
+    });
+  });
+  const music = recipe.music && recipe.assets[recipe.music.assetId];
+  if (music?.credit && ATTRIBUTION.includes(music.credit.licence) && !recipe.creditsEndCard) {
+    issues.push({ id: id('credit-missing', '', 'music', recipe.aspect), sceneId: '', layerId: 'music', aspect: recipe.aspect, kind: 'credit-missing', fix: [creditsOn()] });
+  }
+  return issues;
+}
+
+interface At { recipe: Recipe; scene: Scene; layer: Layer; si: number; li: number }
+
+function overflow({ recipe, scene, layer, si, li }: At, aspect: Aspect, measure: Measure, out: Issue[]) {
+  const l = layer as TextLayer;
+  const b = boxFor(l, aspect, recipe.aspect, scene.layout);
+  const { w, h } = canvasSize(aspect, 1080);
+  const pad = l.background ? 32 : 0;
+  const fit = fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize: l.sizePx, lineHeight: l.lineHeight, measure });
+  if (fit.fits && fit.sizePx >= Math.floor(l.sizePx)) return;
+  out.push({
+    id: id('overflow', scene.id, l.id, aspect), sceneId: scene.id, layerId: l.id, aspect, kind: 'overflow',
+    fix: [{ op: 'replace', path: `${layerPath(si, li)}/sizePx`, value: fit.sizePx }],
+  });
+}
+
+// Text and charts must stay readable; a logo must never sit under a player's buttons.
+function needsSafe(recipe: Recipe, layer: Layer): boolean {
+  if (layer.type === 'text' || layer.type === 'chart') return true;
+  return layer.type === 'image' && recipe.assets[layer.assetId]?.kind === 'logo';
+}
+
+function safeArea({ recipe, scene, layer, si, li }: At, aspect: Aspect, out: Issue[]) {
+  if (!needsSafe(recipe, layer)) return;
+  const b = boxFor(layer, aspect, recipe.aspect, scene.layout);
+  if (isFullBleed(b) || insideSafe(b, aspect)) return;
+  out.push({ id: id('safe-area', scene.id, layer.id, aspect), sceneId: scene.id, layerId: layer.id, aspect, kind: 'safe-area', fix: [boxFix(recipe, layer, si, li, aspect, clampToSafe(b, aspect))] });
+}
+
+function boxFix(recipe: Recipe, layer: Layer, si: number, li: number, aspect: Aspect, box: Box): PatchOp {
+  const base = layerPath(si, li);
+  if (layer.boxes?.[aspect]) return { op: 'replace', path: `${base}/boxes/${aspect}`, value: box };
+  if (aspect === recipe.aspect) return { op: 'replace', path: `${base}/box`, value: box };
+  if (layer.boxes) return { op: 'add', path: `${base}/boxes/${aspect}`, value: box };
+  return { op: 'add', path: `${base}/boxes`, value: { [aspect]: box } };
+}
+
+export function parseHex(hex: string): [number, number, number] | undefined {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(hex);
+  if (!m) return undefined;
+  let s = m[1]!;
+  if (s.length === 3) s = [...s].map((c) => c + c).join('');
+  return [0, 2, 4].map((i) => parseInt(s.slice(i, i + 2), 16)) as [number, number, number];
+}
+
+const luminance = ([r, g, b]: [number, number, number]) => {
+  const lin = (c: number) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+};
+
+/** WCAG contrast ratio of two hex colours, or undefined when either is not a solid colour. */
+export function contrastRatio(a: string, b: string): number | undefined {
+  const x = parseHex(a);
+  const y = parseHex(b);
+  if (!x || !y) return undefined;
+  const [hi, lo] = [luminance(x), luminance(y)].sort((p, q) => q - p) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+const contains = (o: Box, i: Box) => o.x <= i.x && o.y <= i.y && o.x + o.w >= i.x + i.w && o.y + o.h >= i.y + i.h;
+const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** The solid colour behind a text layer, or undefined when a picture or nothing solid is behind it. */
+function behind(scene: Scene, li: number, l: TextLayer): string | undefined {
+  if (l.background) return l.background;
+  for (let k = li - 1; k >= 0; k--) {
+    const below = scene.layers[k]!;
+    if (below.startMs >= l.endMs || below.endMs <= l.startMs || !overlaps(below.box, l.box)) continue;
+    if (below.type === 'shape' && below.shape === 'rect' && below.opacity >= 1 && contains(below.box, l.box)) return below.fill;
+    // A picture, chart or partly covering shape: the checker cannot tell the colour behind.
+    return undefined;
+  }
+  return scene.background === 'transparent' ? undefined : scene.background;
+}
+
+function contrast({ recipe, scene, layer, si, li }: At, out: Issue[]) {
+  const l = layer as TextLayer;
+  const bg = behind(scene, li, l);
+  if (!bg) return;
+  const ratio = contrastRatio(l.colour, bg);
+  if (ratio === undefined) return;
+  const large = l.role === 'title' || l.sizePx >= 48;
+  if (ratio >= (large ? 3 : 4.5)) return;
+  const colour = (contrastRatio(LIGHT, bg) ?? 0) >= (contrastRatio(DARK, bg) ?? 0) ? LIGHT : DARK;
+  out.push({
+    id: id('contrast', scene.id, l.id, recipe.aspect), sceneId: scene.id, layerId: l.id, aspect: recipe.aspect, kind: 'contrast',
+    fix: [{ op: 'replace', path: `${layerPath(si, li)}/colour`, value: colour }],
+  });
+}
+
+/** Time to read text once: a short base plus a quarter second a word. */
+export const readMs = (text: string) => Math.max(1000, 400 + text.split(/\s+/).filter(Boolean).length * 250);
+
+function tooFast({ recipe, scene, layer, si, li }: At, out: Issue[]) {
+  const base = layerPath(si, li);
+  const fix: PatchOp[] = [];
+  for (const slot of ['in', 'during', 'out'] as const) {
+    const m = layer[slot];
+    if (m && m.durationMs < MIN_MOTION_MS) fix.push({ op: 'replace', path: `${base}/${slot}/durationMs`, value: Math.max(MIN_MOTION_MS, getPreset(m.preset)?.defaultMs ?? MIN_MOTION_MS) });
+  }
+  if (layer.type === 'text') {
+    const need = readMs(layer.text);
+    if (layer.endMs - layer.startMs < need) {
+      const end = layer.startMs + need;
+      if (end > scene.durationMs) fix.push({ op: 'replace', path: `/scenes/${si}/durationMs`, value: end });
+      fix.push({ op: 'replace', path: `${base}/endMs`, value: end });
+    }
+  }
+  if (fix.length) out.push({ id: id('too-fast', scene.id, layer.id, recipe.aspect), sceneId: scene.id, layerId: layer.id, aspect: recipe.aspect, kind: 'too-fast', fix });
+}
+
+const creditsOn = (): PatchOp => ({ op: 'add', path: '/creditsEndCard', value: true });
+
+function credit({ recipe, scene, layer }: At, out: Issue[]) {
+  if ((layer.type !== 'image' && layer.type !== 'video') || recipe.creditsEndCard) return;
+  const c = recipe.assets[layer.assetId]?.credit;
+  if (!c || !ATTRIBUTION.includes(c.licence)) return;
+  out.push({ id: id('credit-missing', scene.id, layer.id, recipe.aspect), sceneId: scene.id, layerId: layer.id, aspect: recipe.aspect, kind: 'credit-missing', fix: [creditsOn()] });
+}
