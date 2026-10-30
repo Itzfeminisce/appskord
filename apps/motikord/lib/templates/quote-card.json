@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "id": "template-quote-card",
+  "name": "Quote card",
+  "type": "quote",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc37",
+      "durationMs": 4000,
+      "background": "#BE185D",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "s34",
+          "name": "Card",
+          "type": "shape",
+          "shape": "rect",
+          "fill": "#FFFFFF",
+          "radius": 28,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.26,
+            "w": 0.84,
+            "h": 0.4
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t35",
+          "name": "Quote",
+          "type": "text",
+          "role": "title",
+          "text": "“Done is better than perfect.”",
+          "font": "Geist",
+          "sizePx": 84,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 300,
+          "endMs": 4000,
+          "box": {
+            "x": 0.12,
+            "y": 0.3,
+            "w": 0.76,
+            "h": 0.22
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t36",
+          "name": "Author",
+          "type": "text",
+          "role": "caption",
+          "text": "Sheryl Sandberg",
+          "font": "Geist",
+          "sizePx": 40,
+          "weight": 500,
+          "colour": "#5F6168",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 800,
+          "endMs": 4000,
+          "box": {
+            "x": 0.12,
+            "y": 0.56,
+            "w": 0.76,
+            "h": 0.06
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc39",
+      "durationMs": 4000,
+      "background": "#111114",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t38",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Share this with someone",
+          "font": "Geist",
+          "sizePx": 88,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.36,
+            "w": 0.8,
+            "h": 0.16
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}
