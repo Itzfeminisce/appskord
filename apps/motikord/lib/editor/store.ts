@@ -4,6 +4,7 @@ import { MAX_CLIP_MS } from '../recipe/validate';
 import { clipDuration, sceneAt } from '../render/drawFrame';
 import { boxFor } from '../render/reflow';
 import type { Aspect, Author, BrandKit, Box, Change, Clip, Layer, PatchOp, Recipe, Scene, ShapeLayer, TextLayer } from '../types';
+import { layoutBoxes } from './arrange';
 import { record, redo, undo, type History } from './history';
 
 // The editor's state and every edit it makes, as pure functions. Edits are PatchOp[] so the AI (T8) and the hand share one history.
@@ -192,11 +193,20 @@ export function setBackground(r: Recipe, si: number, hex: string): Edit | undefi
   return { ops: [{ op: 'replace', path: `/scenes/${si}/background`, value: hex }], summary: `Colour ${hex}`, mergeKey: `${scene.id}/background` };
 }
 
-/** The scene's layout (layer-none); summary names it as the select does. */
+/** The scene's layout (layer-none): sets it and re-arranges the layers into it as one Change; summary names it as the select does. */
 export function setLayout(r: Recipe, si: number, id: string, name: string): Edit | undefined {
   const scene = r.scenes[si];
   if (!scene || scene.layout === id) return undefined;
-  return { ops: [{ op: 'replace', path: `/scenes/${si}/layout`, value: id }], summary: `Layout ${name}` };
+  const ops: PatchOp[] = [{ op: 'replace', path: `/scenes/${si}/layout`, value: id }];
+  const boxes = layoutBoxes(r, scene, id);
+  scene.layers.forEach((l, li) => {
+    const box = boxes.get(l.id);
+    if (!box) return;
+    const base = `/scenes/${si}/layers/${li}`;
+    ops.push({ op: 'replace', path: `${base}/box`, value: l.box.rotation === undefined ? box : { ...box, rotation: l.box.rotation } });
+    if (l.boxes) ops.push({ op: 'remove', path: `${base}/boxes` });
+  });
+  return { ops, summary: `Layout ${name}` };
 }
 
 export const NEW_SCENE_MS = 5000;
