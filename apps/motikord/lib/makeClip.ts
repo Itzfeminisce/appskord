@@ -82,6 +82,7 @@ export async function makeClip(input: MakeInput, hooks: MakeHooks = {}): Promise
     onRecipe?.(recipe);
     const at = now();
     const clip: Clip = { id: recipe.id, recipe, history: [], createdAt: at, updatedAt: at };
+    if (ai.signal?.aborted) throw new AiError('cancelled', 'make');
     await save(clip);
     return { clip, type, notices: wrote.notices, by: wrote.by };
   } catch (error) {
@@ -136,8 +137,11 @@ export interface RunState {
   failure?: MakeState; retryAfterMs?: number;
   notices: AiStateId[]; by?: 'groq' | 'builtin';
   editorOpen: boolean;
+  busyRetries: number;           // automatic groq-busy retries already made
 }
-const IDLE: RunState = { status: 'idle', steps: 0, notices: [], editorOpen: false };
+/** Groq-busy is retried by itself this many times; after that only "Try now" remains. */
+export const MAX_BUSY_RETRIES = 1;
+const IDLE: RunState = { status: 'idle', steps: 0, notices: [], editorOpen: false, busyRetries: 0 };
 
 export interface RunnerDeps {
   make: typeof makeClip;
@@ -168,16 +172,21 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
   let controller: AbortController | undefined;
   let reserved: string | undefined;
   let placeholder = false;
+  let pending: Promise<unknown> = Promise.resolve();
   let sequence = 0;
+  let opening = false;
   const patch = (p: Partial<RunState>) => store.set({ ...store.get(), ...p });
 
-  async function start(d: MakeDraft, opts: { access?: HostAccess } = {}): Promise<void> {
+  async function start(d: MakeDraft, opts: { access?: HostAccess; auto?: boolean } = {}): Promise<void> {
     controller?.abort();
     const mine = ++sequence;
     const ctl = (controller = new AbortController());
-    reserved = deps.id();
-    placeholder = false;
-    store.set({ ...IDLE, status: 'running', type: d.type });
+    const before = store.get();
+    // A remake while the editor shows the placeholder reuses its id, so the finished clip replaces it.
+    const reuse = placeholder && reserved !== undefined;
+    if (!reuse) reserved = deps.id();
+    const busyRetries = opts.auto ? before.busyRetries + 1 : 0;
+    store.set({ ...IDLE, status: 'running', type: d.type, busyRetries, ...(reuse ? { editorOpen: before.editorOpen, clipId: before.clipId } : {}) });
     const live = () => mine === sequence;
     try {
       const settings = await deps.settings();
@@ -185,38 +194,54 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
       const result = await deps.make(
         { prompt: promptFor(d), aspect: d.aspect ?? settings.defaultAspect, type: d.type, assets: d.attached, id: reserved },
         {
-          signal: ctl.signal, fetch: deps.fetch, settings, brand: await deps.brand(), save: deps.save,
+          signal: ctl.signal, fetch: deps.fetch, settings, brand: await deps.brand(),
+          save: async (clip) => {
+            await pending;
+            if (!live()) throw new AiError('cancelled', 'make');
+            await deps.save(clip);
+            placeholder = false;
+          },
           onType: (type, by) => { if (live()) patch({ type, typeBy: by, steps: 1 }); },
           onRecipe: (recipe) => { if (live()) patch({ recipe, steps: 3 }); },
         },
       );
       if (!live()) return;
+      placeholder = false;
       patch({ status: 'done', steps: 4, clipId: result.clip.id, recipe: result.clip.recipe, notices: result.notices, by: result.by });
       if (store.get().editorOpen) await deps.notifySaved(result.clip.id);
       else { await deps.openEditor(result.clip.id); patch({ editorOpen: true }); }
     } catch (error) {
       if (!live()) return;
       const failure = failureFor(error, await deps.settings().catch(() => ({ keySource: null as Settings['keySource'] })));
-      if (failure.state === undefined) { await discard(); store.set(IDLE); return; }
+      await pending;
       await discard();
+      if (!live()) return;
+      if (failure.state === undefined) { store.set(IDLE); return; }
       patch({ status: 'failed', failure: failure.state, retryAfterMs: failure.retryAfterMs });
     }
   }
 
   /** "Open the editor now": opens the tab on a clip with its scenes still to come. */
   async function openNow(d: MakeDraft): Promise<void> {
-    const s = store.get();
-    if (s.status !== 'running' || !reserved || s.editorOpen) return;
+    const mine = sequence;
     const settings = await deps.settings();
+    const s = store.get();
+    const id = reserved;
+    if (mine !== sequence || s.status !== 'running' || !id || s.editorOpen || opening) return;
+    opening = true;
     const at = Date.now();
     const recipe: Recipe = {
-      version: 1, id: reserved, name: promptFor(d).slice(0, 40), type: s.type ?? 'social', aspect: d.aspect ?? settings.defaultAspect,
+      version: 1, id, name: promptFor(d).slice(0, 40), type: s.type ?? 'social', aspect: d.aspect ?? settings.defaultAspect,
       scenes: [{ id: 's1', durationMs: 3000, background: '#FFFFFF', layout: 'center', layers: [] }], assets: {}, prompt: d.prompt || undefined,
     };
-    await deps.save({ id: reserved, recipe, history: [], createdAt: at, updatedAt: at });
     placeholder = true;
-    patch({ editorOpen: true, clipId: reserved });
-    await deps.openEditor(reserved);
+    const saving = deps.save({ id, recipe, history: [], createdAt: at, updatedAt: at });
+    pending = saving.catch(() => undefined);
+    try { await saving; } catch (error) { placeholder = false; opening = false; throw error; }
+    opening = false;
+    if (mine !== sequence) return;
+    patch({ editorOpen: true, clipId: id });
+    await deps.openEditor(id);
   }
 
   async function discard(): Promise<void> {
@@ -227,6 +252,7 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
   async function cancel(): Promise<void> {
     sequence++;
     controller?.abort();
+    await pending;
     await discard();
     store.set(IDLE);
   }

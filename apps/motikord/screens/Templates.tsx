@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { makeFromTemplate } from '../lib/makeClip';
 import { send } from '../lib/messages';
@@ -43,15 +43,27 @@ export function RecipeThumb({ recipe, height, atMs = 1800 }: { recipe: Recipe; h
 const sceneCount = (t: Template) => `${t.scenes} scene${t.scenes === 1 ? '' : 's'}`;
 
 /** Makes your own copy of the template and opens it in the editor tab. */
-export function useUseTemplate() {
-  return async (t: Template) => {
-    try {
-      const clip = await makeFromTemplate(t);
-      await send({ type: 'editor/open', clipId: clip.id });
-    } catch (error) {
-      console.error('Motikord: could not start from the template', error);
-    }
+/** Wraps an action so a second call while one is running does nothing. */
+export function onceAtATime<A extends unknown[]>(run: (...args: A) => Promise<void>): (...args: A) => Promise<void> {
+  let busy = false;
+  return async (...args) => {
+    if (busy) return;
+    busy = true;
+    try { await run(...args); } finally { busy = false; }
   };
+}
+
+const startFromTemplate = async (t: Template) => {
+  try {
+    const clip = await makeFromTemplate(t);
+    await send({ type: 'editor/open', clipId: clip.id });
+  } catch (error) {
+    console.error('Motikord: could not start from the template', error);
+  }
+};
+
+export function useUseTemplate() {
+  return useMemo(() => onceAtATime(startFromTemplate), []);
 }
 
 export function TemplateCard({ template, height, onUse }: { template: Template; height: number; onUse: (t: Template) => void }) {
