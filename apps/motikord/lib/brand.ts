@@ -1,9 +1,9 @@
 import { contrastRatio } from './checker';
-import { getBrandKit, updateClip } from './db';
+import { getBrandKit, listClips, updateClip } from './db';
 import { record } from './editor/history';
 import { deleteMedia, getMedia, mediaPath, putMedia } from './media';
 import { canvasSize, safeBox } from './render/reflow';
-import type { Asset, BrandKit, Layer, PatchOp, Recipe, Scene } from './types';
+import type { Asset, BrandKit, Layer, PatchOp, Recipe, Scene, ShapeLayer, TextLayer } from './types';
 
 type Role = BrandKit['colours'][number]['role'];
 
@@ -72,12 +72,60 @@ export const hasBrand = (kit: BrandKit) => !!kit.logoAssetId || kit.colours.leng
 // ---- Applying a kit: PatchOp[] only ----
 
 const same = (a: string | undefined, b: string) => a?.toUpperCase() === b.toUpperCase();
-const readable = (bg: string) => ((contrastRatio('#FFFFFF', bg) ?? 21) >= (contrastRatio('#111114', bg) ?? 0) ? '#FFFFFF' : '#111114');
 const thin = (l: Layer) => Math.min(l.box.w, l.box.h) < 0.03;
+const DARK = '#111114';
+const isLarge = (l: TextLayer) => l.sizePx >= 48 || (l.sizePx >= 36 && l.weight >= 700);
+const need = (l: TextLayer) => (isLarge(l) ? 3 : 4.5);
+const ratio = (a: string, b: string) => contrastRatio(a, b) ?? 0;
+/** The better of white and near-black on this backdrop. */
+const bestOn = (bg: string) => (ratio('#FFFFFF', bg) >= ratio(DARK, bg) ? '#FFFFFF' : DARK);
+/** The backdrop mixed toward black. */
+function darken(hex: string, by: number): string {
+  const n = [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - by)));
+  return `#${n.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+}
+
+/** The colour a shape gets from applyBrand. */
+const newFill = (l: ShapeLayer, kit: BrandKit): string => {
+  const c = (role: Role) => kit.colours.find((k) => k.role === role)?.hex;
+  const want = l.shape === 'line' || thin(l) ? (c('accent') ?? c('primary')) : c('primary');
+  return want ?? l.fill;
+};
+
+/** What sits behind a text layer after the kit: the topmost shape under its centre, else the scene background. */
+function backdropOf(scene: Scene, index: number, kit: BrandKit): string | undefined {
+  const t = scene.layers[index]!;
+  const cx = t.box.x + t.box.w / 2;
+  const cy = t.box.y + t.box.h / 2;
+  for (let i = index - 1; i >= 0; i--) {
+    const s = scene.layers[i]!;
+    if (s.type !== 'shape' || s.shape === 'line' || thin(s) || s.opacity < 0.9) continue;
+    if (cx >= s.box.x && cx <= s.box.x + s.box.w && cy >= s.box.y && cy <= s.box.y + s.box.h) return newFill(s, kit);
+  }
+  if (scene.background === 'transparent') return undefined;
+  const bg = kit.colours.find((k) => k.role === 'background')?.hex;
+  return bg ?? scene.background;
+}
+
+/** Text colour (and a backing colour when no plain colour reaches the contrast) for a text layer on a backdrop. */
+function readableText(l: TextLayer, backdrop: string, preferred: string | undefined, kit: BrandKit): { colour: string; background?: string } {
+  const min = need(l);
+  if (preferred && ratio(preferred, backdrop) >= min) return { colour: preferred };
+  const best = bestOn(backdrop);
+  if (ratio(best, backdrop) >= min) return { colour: best };
+  const kitBg = kit.colours.find((k) => k.role === 'background')?.hex;
+  for (const back of [kitBg, darken(backdrop, 0.65), darken(backdrop, 0.85)]) {
+    if (!back) continue;
+    if (preferred && ratio(preferred, back) >= min) return { colour: preferred, background: back };
+    const c = bestOn(back);
+    if (ratio(c, back) >= min) return { colour: c, background: back };
+  }
+  return { colour: best, background: darken(backdrop, 0.85) };
+}
 
 /**
  * Ops that give the clip the kit's colours (by role), fonts (headings for titles, body for the rest) and logo.
- * Only values that differ become ops, and brandApplied is set. Pure.
+ * Only values that differ become ops, and brandApplied is set. Text stays readable on its new backdrop. Pure.
  */
 export function applyBrand(recipe: Recipe, kit: BrandKit): PatchOp[] {
   const ops: PatchOp[] = [];
@@ -97,11 +145,16 @@ export function applyBrand(recipe: Recipe, kit: BrandKit): PatchOp[] {
       if (l.type === 'text') {
         const family = l.role === 'title' ? kit.headingFont : kit.bodyFont;
         if (family && l.font !== family) ops.push({ op: 'replace', path: `${at}/font`, value: family });
-        if (l.background) {
-          set(`${at}/background`, true, l.background, primary);
-          set(`${at}/colour`, true, l.colour, readable(primary ?? l.background));
+        const own = l.background ? (primary ?? l.background) : undefined;
+        const backdrop = own ?? backdropOf(scene, li, kit);
+        if (kit.colours.length === 0 || !backdrop || !/^#[0-9a-f]{6}$/i.test(backdrop)) {
+          if (l.background) set(`${at}/background`, true, l.background, primary);
+          else set(`${at}/colour`, true, l.colour, text);
         } else {
-          set(`${at}/colour`, true, l.colour, text);
+          const fix = readableText(l, backdrop, text, kit);
+          const back = fix.background ?? own;
+          if (back && !same(l.background, back)) ops.push({ op: l.background ? 'replace' : 'add', path: `${at}/background`, value: back });
+          set(`${at}/colour`, true, l.colour, fix.colour);
         }
       } else if (l.type === 'shape') {
         set(`${at}/fill`, true, l.fill, l.shape === 'line' || thin(l) ? (accent ?? primary) : primary);
@@ -168,11 +221,21 @@ export async function loadKit(): Promise<BrandKit> {
   return (await getBrandKit()) ?? emptyKit();
 }
 
+/** OPFS paths the kit's logo and fonts live at; clips share these files, so they must outlive any clip. */
+export function brandPaths(kit: BrandKit | undefined): string[] {
+  if (!kit) return [];
+  return [...(kit.logoAssetId ? [logoPath(kit.logoAssetId)] : []), ...customFamilies(kit).map(fontPath)];
+}
+
 export async function saveLogo(file: File, old?: string): Promise<string> {
   const ext = (/\.([a-z0-9]+)$/i.exec(file.name)?.[1] ?? file.type.split('/')[1] ?? 'png').toLowerCase().replace('svg+xml', 'svg');
   const id = `brand-logo-${ext}`;
   await putMedia(logoPath(id), file);
-  if (old && old !== id) await deleteMedia(logoPath(old)).catch(() => undefined);
+  if (old && old !== id) {
+    const path = logoPath(old);
+    const inUse = (await listClips().catch(() => [])).some((c) => Object.values(c.recipe.assets).some((a) => a.opfsPath === path));
+    if (!inUse) await deleteMedia(path).catch(() => undefined);
+  }
   return id;
 }
 

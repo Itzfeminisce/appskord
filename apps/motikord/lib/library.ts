@@ -1,4 +1,5 @@
-import { deleteClip, listClips, putClip, updateClip } from './db';
+import { brandPaths } from './brand';
+import { deleteClip, getBrandKit, listClips, putClip, updateClip } from './db';
 import { deleteMedia, getMedia, mediaSize } from './media';
 import { MediaCache } from './render/cache';
 import { drawFrame } from './render/drawFrame';
@@ -22,13 +23,18 @@ export function duplicateClip(clip: Clip, id: string, now: number): Clip {
   recipe.id = id;
   recipe.name = `${clip.recipe.name} copy`;
   const copy: Clip = { id, recipe, history: structuredClone(clip.history), createdAt: now, updatedAt: now };
-  if (clip.thumbnail) copy.thumbnail = clip.thumbnail;
+  if (clip.thumbnail) {
+    copy.thumbnail = clip.thumbnail;
+    const key = (clip as { thumbnailKey?: string }).thumbnailKey;
+    if (key) (copy as { thumbnailKey?: string }).thumbnailKey = key;
+  }
   return copy;
 }
 
-/** OPFS paths of the clip's assets that no other clip uses, so they are safe to delete with it. */
-export function exclusivePaths(clip: Clip, others: Clip[]): string[] {
-  const used = new Set(others.filter((c) => c.id !== clip.id).flatMap((c) => Object.values(c.recipe.assets).map((a: Asset) => a.opfsPath)));
+/** OPFS paths of the clip's assets that no other clip and not the brand kit uses, so they are safe to delete with it. */
+export function exclusivePaths(clip: Clip, others: Clip[], keep: string[] = []): string[] {
+  const used = new Set(keep);
+  for (const p of others.filter((c) => c.id !== clip.id).flatMap((c) => Object.values(c.recipe.assets).map((a: Asset) => a.opfsPath))) used.add(p);
   return [...new Set(Object.values(clip.recipe.assets).map((a) => a.opfsPath))].filter((p) => !used.has(p));
 }
 
@@ -74,12 +80,13 @@ export interface LibraryDeps {
   remove: (id: string) => Promise<void>;
   removeMedia: (path: string) => Promise<void>;
   size: (path: string) => Promise<number>;
+  brandPaths: () => Promise<string[]>;
   databaseEstimate: () => Promise<number | undefined>;
   id: () => string;
   now: () => number;
 }
 export const libraryDeps: LibraryDeps = {
-  list: listClips, put: putClip, remove: deleteClip, removeMedia: (p) => deleteMedia(p), size: (p) => mediaSize(p), id: newId, now: Date.now,
+  list: listClips, put: putClip, remove: deleteClip, removeMedia: (p) => deleteMedia(p), size: (p) => mediaSize(p), brandPaths: async () => brandPaths(await getBrandKit()), id: newId, now: Date.now,
   databaseEstimate: async () => ((await navigator.storage?.estimate?.()) as { usageDetails?: { indexedDB?: number } } | undefined)?.usageDetails?.indexedDB,
 };
 
@@ -94,8 +101,9 @@ export async function removeClip(id: string, deps: LibraryDeps = libraryDeps): P
   const all = await deps.list();
   const clip = all.find((c) => c.id === id);
   if (!clip) return;
+  const keep = await deps.brandPaths();
   await deps.remove(id);
-  for (const path of exclusivePaths(clip, all)) {
+  for (const path of exclusivePaths(clip, all, keep)) {
     try { await deps.removeMedia(path); } catch (error) { console.error('Motikord: could not delete a clip’s media', error); }
   }
 }
@@ -123,10 +131,40 @@ export async function makeThumbnail(clip: Clip, height = 240): Promise<Blob | un
   return new Promise((resolve) => canvas.toBlob((b) => resolve(b ?? undefined), 'image/jpeg', 0.8));
 }
 
-export async function ensureThumbnail(clip: Clip): Promise<Blob | undefined> {
-  if (clip.thumbnail) return clip.thumbnail;
-  const thumbnail = await makeThumbnail(clip);
-  if (!thumbnail) return undefined;
-  await updateClip(clip.id, (c) => (c.thumbnail ? null : { thumbnail }));
-  return thumbnail;
+type Stored = Clip & { thumbnailKey?: string };
+
+/** A cheap fingerprint of what the picture shows (not the name), kept beside the stored thumbnail. */
+export function thumbnailKey(clip: Clip): string {
+  const text = JSON.stringify([clip.recipe.aspect, clip.recipe.scenes, clip.recipe.assets]);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return `${text.length}-${(h >>> 0).toString(36)}`;
+}
+
+/** Runs at most `max` jobs at once; the rest wait in order. */
+export function queue(max: number) {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  const next = () => { running--; waiting.shift()?.(); };
+  return <T>(job: () => Promise<T>): Promise<T> => new Promise<T>((resolve, reject) => {
+    const start = () => { running++; job().then(resolve, reject).finally(next); };
+    if (running < max) start(); else waiting.push(start);
+  });
+}
+const thumbnailQueue = queue(2);
+
+/** The stored picture when it still matches the recipe; else a new one, kept on the clip (two at a time). */
+export function ensureThumbnail(clip: Clip, signal?: AbortSignal): Promise<Blob | undefined> {
+  const key = thumbnailKey(clip);
+  if (clip.thumbnail && (clip as Stored).thumbnailKey === key) return Promise.resolve(clip.thumbnail);
+  return thumbnailQueue(async () => {
+    if (signal?.aborted) return undefined;
+    const thumbnail = await makeThumbnail(clip).catch(() => undefined);
+    await updateClip(clip.id, (c) => {
+      if (thumbnailKey(c) !== key) return null;
+      if ((c as Stored).thumbnailKey === key && c.thumbnail) return null;
+      return thumbnail ? { thumbnail, thumbnailKey: key } as Partial<Clip> : { thumbnail: undefined, thumbnailKey: undefined } as Partial<Clip>;
+    });
+    return thumbnail;
+  });
 }

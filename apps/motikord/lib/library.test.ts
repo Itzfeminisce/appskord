@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { closeDB, getClip, listClips, putClip } from './db';
 import {
-  cleanName, clipDate, duplicate, duplicateClip, exclusivePaths, filterClips, footerText, formatBytes, libraryDeps, measureSpace, mediaPaths, removeClip, sortClips,
+  cleanName, clipDate, duplicate, duplicateClip, exclusivePaths, filterClips, queue, thumbnailKey, footerText, formatBytes, libraryDeps, measureSpace, mediaPaths, removeClip, sortClips,
   type LibraryDeps,
 } from './library';
 import type { Asset, Clip, ClipType } from './types';
@@ -99,7 +99,7 @@ describe('library with storage', () => {
   it('deletes the clip and only the media no other clip uses', async () => {
     for (const c of fakes()) await putClip(c);
     const removed: string[] = [];
-    const deps: LibraryDeps = { ...libraryDeps, removeMedia: async (p) => { removed.push(p); } };
+    const deps: LibraryDeps = { ...libraryDeps, brandPaths: async () => [], removeMedia: async (p) => { removed.push(p); } };
     await removeClip('a', deps);
     expect(await getClip('a')).toBeUndefined();
     expect(removed).toEqual(['media/photo.png']);
@@ -107,5 +107,31 @@ describe('library with storage', () => {
     expect(removed).toEqual(['media/photo.png', 'media/logo.png']);
     await removeClip('missing', deps);
     expect((await listClips()).map((c) => c.id)).toEqual(['c']);
+  });
+  it('never deletes a file the brand kit uses', async () => {
+    for (const c of fakes()) await putClip(c);
+    const removed: string[] = [];
+    const deps: LibraryDeps = { ...libraryDeps, brandPaths: async () => ['media/photo.png'], removeMedia: async (p) => { removed.push(p); } };
+    await removeClip('a', deps);
+    expect(removed).toEqual([]);
+    expect(exclusivePaths(fakes()[0]!, fakes(), ['media/photo.png'])).toEqual([]);
+  });
+});
+
+describe('thumbnails', () => {
+  it('runs at most two jobs at once', async () => {
+    const run = queue(2);
+    let now = 0;
+    let peak = 0;
+    const job = () => run(async () => { peak = Math.max(peak, ++now); await new Promise((r) => setTimeout(r, 5)); now--; });
+    await Promise.all([1, 2, 3, 4, 5].map(job));
+    expect(peak).toBe(2);
+  });
+  it('changes the key when the picture changes, not the name', () => {
+    const c = fakes()[0]!;
+    const renamed = { ...c, recipe: { ...c.recipe, name: 'Other' } };
+    const moved = { ...c, recipe: { ...c.recipe, aspect: '1:1' as const } };
+    expect(thumbnailKey(renamed)).toBe(thumbnailKey(c));
+    expect(thumbnailKey(moved)).not.toBe(thumbnailKey(c));
   });
 });
