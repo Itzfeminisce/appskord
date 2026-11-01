@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { chatCloud, chatLocal, extractJson, type CloudChat, type LanguageModelLike } from './chat';
+import { chatCloud, estimateTokens, chatLocal, extractJson, type CloudChat, type LanguageModelLike } from './chat';
 import type { ErrorText } from './errors';
 
 const text: ErrorText = (f) => `${f.reason}:${f.label}${f.status ? `:${f.status}` : ''}`;
@@ -282,5 +282,34 @@ describe('extractJson', () => {
   it('pulls the object out of prose or a fence', () => {
     expect(extractJson('```json\n{"a":1}\n```')).toBe('{"a":1}');
     expect(extractJson('no json')).toBe('no json');
+  });
+});
+
+describe('images', () => {
+  const img = 'data:image/jpeg;base64,AAAA';
+  const withImg = [{ role: 'user' as const, content: 'look', images: [img] }];
+  it('OpenAI-compatible: text and image_url parts; plain messages unchanged', async () => {
+    const f = vi.fn(async () => reply('ok'));
+    await chatCloud([...msgs, ...withImg], base({ fetch: f }));
+    expect(sent(f).body.messages).toEqual([
+      ...msgs,
+      { role: 'user', content: [{ type: 'text', text: 'look' }, { type: 'image_url', image_url: { url: img } }] },
+    ]);
+  });
+  it('Anthropic: image blocks', async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify({ content: [{ type: 'text', text: 'ok' }] })));
+    await chatCloud(withImg, base({ provider: 'anthropic', key: 'sk-ant-test', fetch: f }));
+    expect(sent(f).body.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' } },
+          { type: 'text', text: 'look' },
+        ],
+      },
+    ]);
+  });
+  it('counts 1,000 tokens an image', () => {
+    expect(estimateTokens(withImg)).toBe(1001);
   });
 });

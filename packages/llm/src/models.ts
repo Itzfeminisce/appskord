@@ -24,6 +24,11 @@ const OPENAI_NOT_CHAT = /-pro(\b|-)|deep-research|codex/i;
 /** True when a model id names something that can't write text (speech, images, embeddings…). */
 export const notForText = (model: string) => NOT_CHAT.test(model);
 
+const VISION = /vision|llama-4|gpt-4o|gpt-4\.1|gpt-5|claude|gemini|pixtral|qwen[\w.-]*vl/i;
+
+/** True when a model id names a model that can read images. */
+export const canSeeImages = (_provider: ProviderId, model: string) => VISION.test(model);
+
 const ver = (s: string) => (s.match(/\d+/g) ?? []).map(Number);
 function newer(a: string, b: string): number {
   const x = ver(a);
