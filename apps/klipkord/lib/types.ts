@@ -1,3 +1,5 @@
+import type { SourceKind } from './project/types';
+
 export type CaptureMode = 'tab' | 'window' | 'screen';
 export type Quality = '720p' | '1080p';
 export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -27,6 +29,7 @@ export interface Settings {
   defaultStyle?: NoteStyle;                            // "Always use this style": skips detection
   folderName?: string;                                 // handle itself kept in IndexedDB
   onboarded?: boolean;                                 // set once the first-run AI choice is made (T2)
+  bakeCamera: boolean;                                 // v3: bake the camera into the next recording; default false
 }
 
 export interface Marker { id: string; at: number; kind: MarkerKind }            // at = ms into the recording
@@ -55,6 +58,7 @@ export interface Recording {
   savedTo?: { folder: string; at: number; files: string[] };
   transcriptModel?: TranscriptModel;                   // the DB upgrade fills 'live' or 'full' on v1 records
   share?: { fileId: string; link: string; at: number }; // Drive copy, removed on "Delete from Drive"
+  v3?: { sources: SourceKind[]; events: boolean };     // v3 recordings: separate tracks; absent on v1 and v2
 }
 
 export interface CleanupItem { id: string; kind: CleanupKind; start: number; end: number; text: string; on: boolean }

@@ -1,5 +1,6 @@
 import { createDB, folderHandle, type DBSchema } from '@appskord/platform';
 import { docsOf, type SearchDoc } from './search';
+import type { Project } from './project/types';
 import type { Recording, TranscriptModel } from './types';
 
 interface KlipkordDB extends DBSchema {
@@ -8,11 +9,13 @@ interface KlipkordDB extends DBSchema {
   handles: { key: string; value: FileSystemDirectoryHandle };
   // Searchable pieces per recording; the in-memory index is rebuilt from these.
   searchIndex: { key: string; value: SearchEntry };
+  // v3 edit project per recording, key = recording id.
+  projects: { key: string; value: Project };
 }
 
 export interface SearchEntry { id: string; docs: SearchDoc[] }
 
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 const appDB = createDB<KlipkordDB>({
   name: 'klipkord',
@@ -29,6 +32,7 @@ const appDB = createDB<KlipkordDB>({
       }
     }
     if (oldVersion < 3) db.createObjectStore('searchIndex', { keyPath: 'id' });
+    if (oldVersion < 4) db.createObjectStore('projects', { keyPath: 'id' });
   },
 });
 
@@ -78,10 +82,12 @@ export async function listRecordings(): Promise<Recording[]> {
   const all = await (await getDB()).getAll('recordings');
   return all.sort((a, b) => b.createdAt - a.createdAt);
 }
-/** Deletes the record only; remove its video with videoStore.remove(id). */
+/** Deletes the record and its edit project; remove its video with videoStore.remove(id). */
 export async function deleteRecording(id: string): Promise<void> {
-  const tx = (await getDB()).transaction(['recordings', 'searchIndex'], 'readwrite');
-  await Promise.all([tx.objectStore('recordings').delete(id), tx.objectStore('searchIndex').delete(id), tx.done]);
+  const tx = (await getDB()).transaction(['recordings', 'searchIndex', 'projects'], 'readwrite');
+  await Promise.all([
+    tx.objectStore('recordings').delete(id), tx.objectStore('searchIndex').delete(id), tx.objectStore('projects').delete(id), tx.done,
+  ]);
 }
 
 /** Every stored entry of the search index. */

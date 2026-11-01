@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bubble: { corner: 'bottom-left', size: 'M', mode: 'floating' },
   draw: { tool: 'pen', color: '#C2410C' },
   cleanup: { pauses: true, fillers: true, minPause: 2 },
+  bakeCamera: false,
 };
 
 type Nested = 'capture' | 'bubble' | 'draw' | 'cleanup';
