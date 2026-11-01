@@ -222,7 +222,7 @@ export default function GifClip() {
   };
   const up = () => { drag.current = null; };
 
-  if (rec === undefined) return <main className="screen screen-center"><Spinner /></main>;
+  if (rec === undefined) return <main className="screen screen-center"><Spinner label="Loading" /></main>;
   if (!rec) return <main className="screen screen-center"><BackBar label="Back" onBack={back} /></main>;
   const r = rec;
 

@@ -65,7 +65,7 @@ export default function Settings() {
   if (!s) {
     return (
       <main className="screen screen-center">
-        <Spinner />
+        <Spinner label="Loading" />
       </main>
     );
   }

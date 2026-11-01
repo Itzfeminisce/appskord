@@ -32,7 +32,7 @@ export default function Storage() {
   useEffect(() => { void refresh(); }, []);
 
   const { saved, unsaved } = useMemo(() => (data ? splitDeletable(data.recs, data.sizes) : { saved: [], unsaved: [] }), [data]);
-  if (!data) return <main className="screen screen-center"><Spinner /></main>;
+  if (!data) return <main className="screen screen-center"><Spinner label="Loading" /></main>;
 
   const picked = saved.filter((c) => !off.has(c.rec.id));
   const videos = Object.values(data.sizes).reduce((n, b) => n + b, 0);
@@ -97,7 +97,7 @@ export default function Storage() {
           </div>
           <button type="button" disabled={busy || picked.length === 0} onClick={() => void remove()}
             style={{ height: 44, border: 'none', borderRadius: 12, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 14, fontWeight: 600, opacity: picked.length === 0 ? 0.5 : 1, cursor: 'pointer' }}>
-            {busy ? <Spinner /> : `Delete ${plural(picked.length)} · ${formatBytes(totalBytes(picked))}`}
+            {busy ? <Spinner label="Loading" /> : `Delete ${plural(picked.length)} · ${formatBytes(totalBytes(picked))}`}
           </button>
         </div>
       )}

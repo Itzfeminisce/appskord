@@ -25,7 +25,7 @@ export default function Saved() {
     }).catch((error) => { console.error('Klipkord: could not load the saved files', error); setRec((r) => r ?? null); });
   }, [id]);
 
-  if (rec === undefined) return <main className="screen screen-center"><Spinner /></main>;
+  if (rec === undefined) return <main className="screen screen-center"><Spinner label="Loading" /></main>;
   const saved = rec?.savedTo;
   const sub = saved?.files[0]?.split('/')[0];
   const goReview = () => replace('Review', { recordingId: id });

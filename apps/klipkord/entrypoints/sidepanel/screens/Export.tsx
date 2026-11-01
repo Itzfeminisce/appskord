@@ -94,7 +94,7 @@ export default function Export() {
     return () => stop.current?.abort();
   }, [id]);
 
-  if (rec === undefined) return <main className="screen screen-center"><Spinner /></main>;
+  if (rec === undefined) return <main className="screen screen-center"><Spinner label="Loading" /></main>;
   if (!rec) return <main className="screen screen-center"><BackBar label="Back" onBack={back} /></main>;
   const r = rec;
 
@@ -218,7 +218,7 @@ export default function Export() {
       <div style={{ padding: '14px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <button type="button" onClick={() => void save()} disabled={busy || nothing}
           style={{ height: 48, border: 'none', borderRadius: 12, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, opacity: nothing ? 0.5 : 1, cursor: busy ? 'default' : 'pointer' }}>
-          {busy ? <Spinner /> : 'Save to folder'}
+          {busy ? <Spinner label="Loading" /> : 'Save to folder'}
         </button>
         {busy && choice.video && encode && (
           <span role="progressbar" aria-valuenow={Math.round(share * 100)} aria-valuemin={0} aria-valuemax={100} style={{ height: 6, borderRadius: 999, background: '#F1F1F3', overflow: 'hidden' }}>
