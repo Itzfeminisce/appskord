@@ -1,3 +1,4 @@
+import { on, send as sendMessage, type MessageSender } from '@appskord/platform';
 import type { PageInfo, Pick } from './grab/pick';
 
 /**
@@ -36,37 +37,22 @@ export type Message = { [T in MessageType]: MessageOf<T> }[MessageType];
 export type ResponseOf<T extends MessageType> = MessageMap[T]['res'];
 
 export type Handlers = {
-  [T in MessageType]?: (msg: MessageOf<T>, sender: Browser.runtime.MessageSender) => ResponseOf<T> | Promise<ResponseOf<T>>;
+  [T in MessageType]?: (msg: MessageOf<T>, sender: MessageSender) => ResponseOf<T> | Promise<ResponseOf<T>>;
 };
 
-/**
- * Sends a runtime message. Resolves with the listener's response, or undefined when nothing is listening
- * (never throws for "Receiving end does not exist").
- */
-export async function send<T extends MessageType>(msg: MessageOf<T>): Promise<ResponseOf<T> | undefined> {
-  try {
-    return (await browser.runtime.sendMessage(msg)) as ResponseOf<T> | undefined;
-  } catch {
-    return undefined;
-  }
-}
+/** Sends a runtime message; resolves with the reply, or undefined when nothing is listening. */
+export const send = <T extends MessageType>(msg: MessageOf<T>): Promise<ResponseOf<T> | undefined> => sendMessage<MessageOf<T>, ResponseOf<T>>(msg);
 
 /** Listens for the message types in `handlers`; others are left for other listeners. Returns an unsubscribe function. */
 export function onMessage(handlers: Handlers): () => void {
-  // sendResponse + `return true` works on every Chrome version, unlike returning a promise.
-  const listener = (msg: unknown, sender: Browser.runtime.MessageSender, sendResponse: (r?: unknown) => void) => {
-    if (!msg || typeof msg !== 'object') return false;
-    const type = (msg as { type?: unknown }).type;
-    const handler = typeof type === 'string' ? (handlers as Record<string, Function | undefined>)[type] : undefined;
-    if (!handler) return false;
-    Promise.resolve()
+  return on<Message>((msg, sender) => {
+    const handler = (handlers as Record<string, Function | undefined>)[msg.type];
+    if (!handler) return undefined;
+    return Promise.resolve()
       .then(() => handler(msg, sender))
-      .then(sendResponse, (error: unknown) => {
-        console.error(`Motikord: could not answer ${String(type)}`, error);
-        sendResponse(undefined);
+      .catch((error: unknown) => {
+        console.error(`Motikord: could not answer ${String(msg.type)}`, error);
+        return undefined;
       });
-    return true;
-  };
-  browser.runtime.onMessage.addListener(listener);
-  return () => browser.runtime.onMessage.removeListener(listener);
+  });
 }

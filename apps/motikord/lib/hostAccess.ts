@@ -1,4 +1,5 @@
 /** Optional host access. Call from a click handler: Chrome only shows its prompt after a user gesture. */
+import { requestOrigins } from '@appskord/platform';
 
 export type HostAccess = 'granted' | 'denied';
 
@@ -15,11 +16,9 @@ export const HOSTS = {
 
 /** Asks Chrome for the hosts; request() resolves true when they are already allowed. No awaited call before it, so the user gesture survives. Never throws. */
 export async function requestHost(origins: readonly string[]): Promise<HostAccess> {
-  const wanted = [...origins];
-  try {
-    return (await chrome.permissions.request({ origins: wanted })) ? 'granted' : 'denied';
-  } catch (error) {
-    console.error('Motikord: could not ask for host access', error);
-    return 'denied';
-  }
+  const granted = await requestOrigins(origins, {
+    permissions: chrome.permissions,
+    onError: (error) => console.error('Motikord: could not ask for host access', error),
+  });
+  return granted ? 'granted' : 'denied';
 }

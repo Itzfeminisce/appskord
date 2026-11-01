@@ -1,4 +1,4 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { createDB, type DBSchema, type IDBPDatabase } from '@appskord/platform';
 import type { AskTurn, Chunk, Marker, Meeting, Note, RecordingMeta, RecordingPart, Segment } from './types';
 
 interface RekordDB extends DBSchema {
@@ -17,36 +17,32 @@ const CHILD_STORES: ChildStore[] = ['segments', 'notes', 'markers', 'chunks', 'a
 
 export const DB_VERSION = 2;
 
-let dbPromise: Promise<IDBPDatabase<RekordDB>> | null = null;
+const appDB = createDB<RekordDB>({
+  name: 'rekord',
+  version: DB_VERSION,
+  // Each step only adds stores, so data from earlier versions is kept.
+  upgrade(db, oldVersion) {
+    if (oldVersion < 1) {
+      db.createObjectStore('meetings', { keyPath: 'id' });
+      db.createObjectStore('segments', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
+      db.createObjectStore('notes', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
+      db.createObjectStore('markers', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
+      const chunks = db.createObjectStore('chunks', { keyPath: 'id' });
+      chunks.createIndex('meetingId', 'meetingId');
+      chunks.createIndex('status', 'status');
+    }
+    if (oldVersion < 2) {
+      db.createObjectStore('asks', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
+      db.createObjectStore('recordings', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
+      db.createObjectStore('recordingMeta', { keyPath: 'meetingId' });
+    }
+  },
+});
 
-export function getDB(): Promise<IDBPDatabase<RekordDB>> {
-  dbPromise ??= openDB<RekordDB>('rekord', DB_VERSION, {
-    // Each step only adds stores, so data from earlier versions is kept.
-    upgrade(db, oldVersion) {
-      if (oldVersion < 1) {
-        db.createObjectStore('meetings', { keyPath: 'id' });
-        db.createObjectStore('segments', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
-        db.createObjectStore('notes', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
-        db.createObjectStore('markers', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
-        const chunks = db.createObjectStore('chunks', { keyPath: 'id' });
-        chunks.createIndex('meetingId', 'meetingId');
-        chunks.createIndex('status', 'status');
-      }
-      if (oldVersion < 2) {
-        db.createObjectStore('asks', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
-        db.createObjectStore('recordings', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
-        db.createObjectStore('recordingMeta', { keyPath: 'meetingId' });
-      }
-    },
-  });
-  return dbPromise;
-}
+export const getDB = appDB.get;
 
 /** Test helper: close and forget the cached connection. */
-export async function closeDB(): Promise<void> {
-  if (dbPromise) (await dbPromise).close();
-  dbPromise = null;
-}
+export const closeDB = appDB.close;
 
 // Meetings
 export async function putMeeting(meeting: Meeting): Promise<void> {

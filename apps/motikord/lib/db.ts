@@ -1,4 +1,4 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { createDB, folderHandle, type DBSchema } from '@appskord/platform';
 import type { BrandKit, Clip, ExportJob } from './types';
 
 interface MotikordDB extends DBSchema {
@@ -11,31 +11,26 @@ interface MotikordDB extends DBSchema {
 }
 
 export const DB_VERSION = 1;
-const FOLDER_KEY = 'folder';
 const BRAND_KEY = 'brand';
 
-let dbPromise: Promise<IDBPDatabase<MotikordDB>> | null = null;
+const appDB = createDB<MotikordDB>({
+  name: 'motikord',
+  version: DB_VERSION,
+  // Each later version only adds stores or fills new fields, so earlier data is kept.
+  upgrade(db, oldVersion) {
+    if (oldVersion < 1) {
+      db.createObjectStore('clips', { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt');
+      db.createObjectStore('brandKit');
+      db.createObjectStore('exportJobs', { keyPath: 'id' }).createIndex('status', 'status');
+      db.createObjectStore('handles');
+    }
+  },
+});
 
-export function getDB(): Promise<IDBPDatabase<MotikordDB>> {
-  dbPromise ??= openDB<MotikordDB>('motikord', DB_VERSION, {
-    // Each later version only adds stores or fills new fields, so earlier data is kept.
-    upgrade(db, oldVersion) {
-      if (oldVersion < 1) {
-        db.createObjectStore('clips', { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt');
-        db.createObjectStore('brandKit');
-        db.createObjectStore('exportJobs', { keyPath: 'id' }).createIndex('status', 'status');
-        db.createObjectStore('handles');
-      }
-    },
-  });
-  return dbPromise;
-}
+export const getDB = appDB.get;
 
 /** Test helper: close and forget the cached connection. */
-export async function closeDB(): Promise<void> {
-  if (dbPromise) (await dbPromise).close();
-  dbPromise = null;
-}
+export const closeDB = appDB.close;
 
 export async function putClip(clip: Clip): Promise<void> {
   await (await getDB()).put('clips', clip);
@@ -94,12 +89,7 @@ export async function markInterruptedJobs(): Promise<number> {
   return running.length;
 }
 
-export async function getFolderHandle(): Promise<FileSystemDirectoryHandle | undefined> {
-  return (await getDB()).get('handles', FOLDER_KEY);
-}
-export async function putFolderHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-  await (await getDB()).put('handles', handle, FOLDER_KEY);
-}
-export async function clearFolderHandle(): Promise<void> {
-  await (await getDB()).delete('handles', FOLDER_KEY);
-}
+const folder = folderHandle(getDB);
+export const getFolderHandle = folder.get;
+export const putFolderHandle = folder.put;
+export const clearFolderHandle = folder.clear;

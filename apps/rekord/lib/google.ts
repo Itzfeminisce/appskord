@@ -3,7 +3,8 @@
  * the scopes the user allowed, call Google APIs with it, and disconnect (revoke it, clear settings.google).
  * The token lives only in storage.session with its expiry; it is never logged.
  */
-import { GOOGLE_CLIENT_ID, authUrl, parseTokenRedirect, tokenUsable, type GoogleToken } from './googleAuth';
+import { signInWithGoogle, type IdentityApi } from '@appskord/platform';
+import { GOOGLE_CLIENT_ID, tokenUsable, type GoogleToken } from './googleAuth';
 import { GOOGLE_HOSTS, requestHosts } from './hosts';
 import { getSettings, updateSettings } from './settings';
 import type { Settings } from './types';
@@ -22,10 +23,7 @@ const TOKEN_KEY = 'googleToken';
 let renewing: Promise<GoogleToken> | undefined;
 
 /** The part of chrome.identity Rekord uses; injected in tests. */
-export interface IdentityApi {
-  launchWebAuthFlow(details: { url: string; interactive: boolean; abortOnLoadForNonInteractive?: boolean; timeoutMsForNonInteractive?: number }): Promise<string | undefined>;
-  getRedirectURL(path?: string): string;
-}
+export type { IdentityApi };
 
 export interface GoogleDeps {
   identity?: IdentityApi;
@@ -75,23 +73,9 @@ async function authorize(interactive: boolean, scopes: string[], deps: GoogleDep
   const clientId = clientIdOf(deps);
   if (!clientId) throw new GoogleError('not-configured');
   const fail = new GoogleError(interactive ? 'cancelled' : 'auth');
-  const identity = identityOf(deps);
-  const state = crypto.randomUUID();
-  let redirected: string | undefined;
-  try {
-    redirected = await identity.launchWebAuthFlow({
-      url: authUrl(clientId, identity.getRedirectURL(), state, scopes, { silent: !interactive, loginHint }),
-      interactive,
-      // prompt=none answers through a redirect chain; give it a moment instead of stopping at the first page load.
-      ...(interactive ? {} : { abortOnLoadForNonInteractive: false, timeoutMsForNonInteractive: 5000 }),
-    });
-  } catch {
-    throw fail;
-  }
-  if (!redirected) throw fail;
   let t: GoogleToken;
   try {
-    t = parseTokenRedirect(redirected, state, scopes, Date.now());
+    t = await signInWithGoogle({ clientId, scopes, interactive, loginHint, identity: identityOf(deps) });
   } catch {
     throw fail;
   }
