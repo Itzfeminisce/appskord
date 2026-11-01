@@ -27,6 +27,9 @@ function Wave({ peaks, beats, total, cuts }: { peaks: number[]; beats: number[];
 const trackUrl = (t: BundledTrack) => browser.runtime.getURL(`/${t.file}` as '/music/upbeat.wav');
 
 /** Music panel: the bundled CC0 tracks, volume and fades. Writes Recipe.music. */
+export const MOOD_CHIPS = [['upbeat', 'Upbeat'], ['calm', 'Calm'], ['warm', 'Warm'], ['dramatic', 'Dramatic'], ['none', 'No music']] as const;
+const chip = (on: boolean) => ({ height: 28, padding: '0 10px', borderRadius: 14, border: on ? '1px solid var(--accent)' : '1px solid var(--line-strong)', background: on ? 'var(--tint)' : 'transparent', color: 'var(--ink)', font: '600 12px/1 var(--font)', cursor: 'pointer' }) as const;
+
 export default function Music() {
   const { navigate, route } = useRouter();
   const { recipe, commit, close } = useStoredClip();
@@ -67,6 +70,7 @@ export default function Music() {
     return () => { live = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.beatSync, opfsPath]);
+  const chooser = useRef<HTMLDivElement>(null);
   const bpm = bpmOf(recipe?.beats);
   const beatState = !music ? 'beats-no-music' : finding ? 'beats-finding' : bpm ? 'beats-on' : 'beats-none';
   const current = music && recipe ? recipe.assets[music.assetId] : undefined;
@@ -106,7 +110,7 @@ export default function Music() {
       </div>
       <span style={{ fontSize: 12, color: 'var(--muted)' }}>Free tracks that come with Motikord. They work offline.</span>
 
-      <div role="radiogroup" aria-label="Music track" style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden' }}>
+      <div ref={chooser} role="radiogroup" aria-label="Music track" style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden' }}>
         {custom && (
           <label style={{ ...row, borderBottom: '1px solid var(--line)', background: 'var(--tint)' }}>
             <input type="radio" name="m" checked readOnly style={{ accentColor: 'var(--accent)', margin: 0 }} />
@@ -154,6 +158,19 @@ export default function Music() {
       {settings?.beatSync && recipe && (
         <section aria-label="Beat sync" style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>Beat sync</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{current?.name ?? 'No music'}</span>
+            <button type="button" style={{ ...outline, height: 30, padding: '0 10px' }} onClick={() => { chooser.current?.scrollIntoView?.({ block: 'center' }); chooser.current?.querySelector('input')?.focus(); }}>Change</button>
+          </div>
+          <div role="group" aria-label="Mood" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Mood</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {MOOD_CHIPS.map(([id, label]) => (
+                <button key={id} type="button" aria-pressed={recipe.mood === id} style={chip(recipe.mood === id)}
+                  onClick={() => { if (recipe.mood !== id) void commit({ ops: [{ op: recipe.mood === undefined ? 'add' : 'replace', path: '/mood', value: id }], summary: 'Music mood' }); }}>{label}</button>
+              ))}
+            </div>
+          </div>
           {beatState === 'beats-no-music' && (
             <>
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>Add music to sync cuts to its beat.</span>
@@ -163,6 +180,17 @@ export default function Music() {
           {beatState === 'beats-finding' && <span role="status" style={{ fontSize: 12, color: 'var(--muted)' }}>Finding the beats…</span>}
           {beatState === 'beats-none' && <span style={{ fontSize: 12, color: 'var(--muted)' }}>No steady beat in this track, so cuts follow the pace instead.</span>}
           {(beatState === 'beats-on' || (beatState === 'beats-none' && music)) && peaks && <Wave peaks={peaks} beats={recipe.beats ?? []} total={current?.durationMs ?? 1} cuts={recipe.scenes.reduce<number[]>((a, sc) => [...a, (a.at(-1) ?? 0) + sc.durationMs], []).slice(0, -1)} />}
+          {music && (
+            <>
+              <div aria-label="Scenes" style={{ display: 'flex', gap: 2, height: 22 }}>
+                {recipe.scenes.map((sc, i) => <div key={sc.id ?? i} style={{ flex: `${sc.durationMs} 0 0`, background: 'var(--tint)', border: '1px solid var(--line)', borderRadius: 4, fontSize: 10, color: 'var(--muted)', display: 'grid', placeItems: 'center' }}>{i + 1}</div>)}
+              </div>
+              <div style={{ display: 'flex', gap: 14, fontSize: 11, color: 'var(--muted)' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span aria-hidden="true" style={{ width: 2, height: 10, background: 'var(--accent)' }} />Beat</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }} />Cut snapped to beat</span>
+              </div>
+            </>
+          )}
           {music && bpm && (
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <span style={{ fontSize: 12 }}>{beatState === 'beats-on' && recipe.beatSync ? `Cuts land on the beat · ${bpm} BPM` : 'Beat sync'}</span>
@@ -170,6 +198,7 @@ export default function Music() {
             </label>
           )}
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>Found on this computer. The music never leaves it.</span>
+          <button type="button" style={outline} onClick={close}>Done</button>
         </section>
       )}
 
