@@ -82,17 +82,27 @@ function slotPose(motion: Motion | undefined, slot: PresetSlot, raw: number, pos
   });
 }
 
-/** The pose of a layer `t` ms after the layer starts; `sceneMs` is the scene-local end. Pure, so preview and export agree. */
-export function layerPose(layer: Pick<Layer, 'startMs' | 'endMs' | 'in' | 'during' | 'out'>, t: number, sceneMs = Infinity): Pose {
+type Timed = Pick<Layer, 'startMs' | 'endMs' | 'in' | 'during' | 'out'>;
+
+/** Which phases to leave out: a staggered layer plays its in phase per word or line, Ken Burns stands in for slow zoom. */
+export interface PoseSkip { in?: boolean; during?: boolean }
+
+// In and out that together exceed the layer shrink in proportion so it still reaches full pose.
+function phaseScale(layer: Timed, sceneMs: number) {
   // A layer that runs past its scene ends with the scene, so its out phase still plays.
   const length = Math.min(layer.endMs, sceneMs) - layer.startMs;
-  let pose = REST;
-  // In and out that together exceed the layer shrink in proportion so it still reaches full pose.
   const inMs = layer.in ? Math.max(1, layer.in.durationMs) : 0;
   const outMs = layer.out ? Math.max(1, layer.out.durationMs) : 0;
   const k = inMs + outMs > length && length > 0 ? length / (inMs + outMs) : 1;
-  if (layer.in) pose = slotPose(layer.in, 'in', t / Math.max(1, inMs * k), pose);
-  if (layer.during) {
+  return { length, inMs, outMs, k };
+}
+
+/** The pose of a layer `t` ms after the layer starts; `sceneMs` is the scene-local end. Pure, so preview and export agree. */
+export function layerPose(layer: Timed, t: number, sceneMs = Infinity, skip: PoseSkip = {}): Pose {
+  const { length, inMs, outMs, k } = phaseScale(layer, sceneMs);
+  let pose = REST;
+  if (layer.in && !skip.in) pose = slotPose(layer.in, 'in', t / Math.max(1, inMs * k), pose);
+  if (layer.during && !skip.during) {
     const cycle = Math.max(1, layer.during.durationMs);
     const ramp = Math.min(LOOP_RAMP_MS, length / 2);
     const env = ramp > 0 ? clamp01(t / ramp) * clamp01((length - t) / ramp) : 0;
@@ -101,3 +111,13 @@ export function layerPose(layer: Pick<Layer, 'startMs' | 'endMs' | 'in' | 'durin
   if (layer.out) pose = slotPose(layer.out, 'out', (length - t) / Math.max(1, outMs * k), pose);
   return pose;
 }
+
+/** Only the in phase of a layer at `t`, timed as layerPose times it; a staggered word or line passes its own delayed t. */
+export function inPose(layer: Timed, t: number, sceneMs = Infinity): Pose {
+  if (!layer.in) return REST;
+  const { inMs, k } = phaseScale(layer, sceneMs);
+  return slotPose(layer.in, 'in', t / Math.max(1, inMs * k), REST);
+}
+
+/** Length of the in phase as layerPose plays it. */
+export const inLength = (layer: Timed, sceneMs = Infinity) => { const { inMs, k } = phaseScale(layer, sceneMs); return inMs * k; };
