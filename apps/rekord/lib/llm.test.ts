@@ -1,22 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { saveKeys } from './penv';
-import { resetGroqModelsCache } from './groqModels';
-import { chat, LLMError, speakerName, transcriptLines } from './llm';
+import { chat, GROQ_CHAT_PREFERENCE, LLMError, speakerName, transcriptLines } from './llm';
 import { DEFAULT_SETTINGS, getSettings, updateSettings } from './settings';
 import type { Segment } from './types';
 
 const reply = (content: unknown, status = 200) =>
   new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status });
 const msgs = [{ role: 'user' as const, content: 'hi' }];
+const cut = (content: string) =>
+  new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'length' }] }));
 
 beforeEach(async () => {
   fakeBrowser.reset();
-  resetGroqModelsCache();
   await saveKeys({ GROQ_API_KEY: 'gsk_test' });
 });
 
 describe('chat', () => {
+  it('returns a JSON reply the token limit cut off, for the caller to read', async () => {
+    expect(await chat(msgs, { json: true }, async () => cut('{"a":'))).toBe('{"a":');
+  });
+
   it('posts an OpenAI-style request to the summary provider', async () => {
     const f = vi.fn(async () => reply('hello'));
     expect(await chat(msgs, { json: true, maxTokens: 300 }, f)).toBe('hello');
@@ -58,6 +62,22 @@ describe('chat', () => {
     const f = vi.fn();
     expect(await code(f)).toBe('no-key');
     expect(f).not.toHaveBeenCalled();
+  });
+
+  it('keeps Rekord\'s sentences', async () => {
+    const message = async (f: () => Promise<Response>) => chat(msgs, {}, f).catch((e: LLMError) => e.message);
+    expect(await message(async () => reply('x', 401))).toBe('The AI service did not accept your key. Check Connect AI in Settings.');
+    expect(await message(async () => reply('x', 429))).toBe('The AI service is busy right now. Try again in a minute.');
+    expect(await message(async () => reply('x', 400))).toBe('The AI service returned an error (400). Try again.');
+    expect(await message(async () => reply('x', 413))).toBe('The AI service returned an error (413). Try again.');
+    expect(await message(async () => reply(42))).toBe('The AI service sent an unexpected reply. Try again.');
+    expect(await message(async () => { throw new TypeError('x'); })).toBe('Rekord could not reach the AI service. Check your connection and try again.');
+    await saveKeys({});
+    expect(await message(async () => reply('x'))).toBe('Rekord needs an AI connection for this. Check Connect AI in Settings.');
+  });
+
+  it('the default Groq summary model is the first preference', () => {
+    expect(DEFAULT_SETTINGS.summary).toEqual({ provider: 'groq', model: GROQ_CHAT_PREFERENCE[0] });
   });
 
   it('never puts the key in an error message', async () => {

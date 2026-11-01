@@ -4,9 +4,30 @@
  */
 import { summaryFor, transcriptionFor, transcriptionKeyName } from './connect';
 import { checkKeys, connectPaste, type KeyStatus, loadKeyStatus, saveKeyStatus } from './penv';
-import { detectKey, jobsFor, serviceLabel, type KeyJob, type KeyName } from './keyDetect';
+import { detectKey, serviceLabel, type KeyName as AnyKeyName } from '@appskord/llm';
 import { PROVIDERS } from './settings';
 import type { SetupPreset, Settings } from './types';
+
+/** The keys Rekord uses. */
+export type KeyName = Exclude<AnyKeyName, 'PEXELS_API_KEY'>;
+export type KeyJob = 'transcription' | 'assistant';
+const KEY_NAMES: KeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'DEEPGRAM_API_KEY', 'NOTION_TOKEN'];
+
+/** What a key can do in Rekord: transcribe audio, power the assistant (summary, ask), both, or neither. */
+export function jobsFor(name: KeyName): KeyJob[] {
+  switch (name) {
+    case 'GROQ_API_KEY':
+    case 'OPENAI_API_KEY':
+      return ['transcription', 'assistant'];
+    case 'DEEPGRAM_API_KEY':
+      return ['transcription'];
+    case 'ANTHROPIC_API_KEY':
+    case 'OPENROUTER_API_KEY':
+      return ['assistant'];
+    case 'NOTION_TOKEN':
+      return [];
+  }
+}
 
 export const PENV_CLOUD_URL = 'https://penv.cloud';
 
@@ -70,7 +91,7 @@ export type PasteClass =
 /** What a pasted value is: a recognised key (with row wording), or one Rekord can't place. */
 export function classifyPaste(value: string): PasteClass {
   if (!value.trim()) return { kind: 'empty' };
-  const name = detectKey(value);
+  const name = detectKey(value, { names: KEY_NAMES });
   if (!name) return { kind: 'unknown' };
   return { kind: 'known', name, title: `This is a ${serviceLabel(name)} key`, jobs: jobsPhrase(name) };
 }

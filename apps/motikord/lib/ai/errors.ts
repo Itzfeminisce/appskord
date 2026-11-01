@@ -1,4 +1,4 @@
-import { LLMError, type LLMErrorCode } from '../llm';
+import { LLMError, type LLMErrorCode } from '@appskord/llm';
 
 /** State ids from FRAMES.md that AI failures land on; screens show that frame's copy. */
 export type AiStateId = 'making-failed' | 'too-long' | 'provider-busy' | 'provider-down' | 'key-needed' | 'offline' | 'prompt-failed' | 'change-too-long'

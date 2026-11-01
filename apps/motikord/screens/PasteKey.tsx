@@ -4,12 +4,15 @@ import type { Provider } from '../lib/types';
 import { Button } from '../components/ui';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { HOSTS, requestHost } from '../lib/hostAccess';
-import { createKeyWatcher, detectKey, serviceLabel, verifyKey, type EnvKeyName, type KeyField } from '../lib/keyDetect';
+import { createKeyWatcher, detectKey, serviceLabel, verifyKey, type KeyField, type ProviderKeyName } from '@appskord/llm';
 import { mergeKeys } from '../lib/penv';
 import { getSettings, updateSettings } from '../lib/settings';
 import { SourceToggle } from './PenvConnect';
 import { Footer, Page, StepHead, Title } from './Setup';
 import { KeyChecking, KeyCheckUnreachable, KeyNotRecognised, KeyRejected, KeyWrongProvider, PexelsKeyRejected, ProviderAccess } from './StatesSetup';
+
+type EnvKeyName = ProviderKeyName | 'PEXELS_API_KEY';
+const KEY_NAMES: EnvKeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'PEXELS_API_KEY'];
 
 type Status =
   | { kind: 'empty' }
@@ -59,7 +62,7 @@ function useKeyField(field: KeyField, expected: EnvKeyName) {
     const detected = field === 'main' && name ? providerForKey(name) : undefined;
     return detected ? { kind: 'wrong-provider', detected } : { kind: 'not-recognised' };
   };
-  const watcher = useRef(createKeyWatcher((name, key) => (name === expected ? check(key) : setStatus(mismatch(name))), field));
+  const watcher = useRef(createKeyWatcher((name, key) => (name === expected ? check(key) : setStatus(mismatch(name))), { field, names: KEY_NAMES }));
   useEffect(() => () => watcher.current.cancel(), []);
 
   function onInput(next: string) {
@@ -67,7 +70,7 @@ function useKeyField(field: KeyField, expected: EnvKeyName) {
     latest.current = next;
     ++run.current;
     if (!next.trim()) { watcher.current.cancel(); return setStatus({ kind: 'empty' }); }
-    const name = detectKey(next, field);
+    const name = detectKey(next, { field, names: KEY_NAMES });
     setStatus(name === expected || (field === 'pexels' && !name) ? { kind: 'empty' } : mismatch(name));
     watcher.current.type(next);
   }
@@ -78,7 +81,7 @@ function useKeyField(field: KeyField, expected: EnvKeyName) {
     e.preventDefault();
     setValue(text);
     latest.current = text;
-    const name = detectKey(text, field);
+    const name = detectKey(text, { field, names: KEY_NAMES });
     if (name !== expected) { ++run.current; watcher.current.cancel(); return setStatus(mismatch(name)); }
     watcher.current.paste(text);
   }

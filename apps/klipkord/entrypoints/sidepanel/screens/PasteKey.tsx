@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from '../router';
 import { checkKeys, connectPaste, disconnectPenvApp, invalidateAppLoads, type KeyStatus, loadKeys, loadKeyStatus, requestHosts, saveKeys, saveKeyStatus } from '@/lib/penv';
-import { serviceLabel, type KeyName } from '@/lib/keyDetect';
+import { serviceLabel } from '@appskord/llm';
 import { getSettings, updateSettings } from '@/lib/settings';
-import { canStart, classifyPaste, cloudSettings, GROQ_KEYS_URL, KEY_PAGE, SERVICE_CHOICES, STATUS_WORD, type RowStatus } from '@/lib/setup';
+import { canStart, classifyPaste, cloudSettings, GROQ_KEYS_URL, KEY_PAGE, SERVICE_CHOICES, STATUS_WORD, type KeyName, type RowStatus } from '@/lib/setup';
 import { SourceSwitch } from './PenvConnect';
 import { BannerAction, Check, CARD, ExternalLink, Head, Heading, InfoMark, PAGE, PrimaryButton, StateBanner, STATUS_TEXT } from './Setup';
 

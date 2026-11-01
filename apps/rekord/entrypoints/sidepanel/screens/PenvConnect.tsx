@@ -4,7 +4,7 @@ import { useRouter } from '../router';
 import { connectErrorMessage } from '@/lib/connect';
 import { checkKeys, clearKeys, connectKeyNames, connectPenv, connectPenvApp, disconnectPenvApp, formatEnvPath, invalidateAppLoads, loadKeys, loadPenvAppKeys, loadToken, parseEnvPath, PenvAppError, saveKeyStatus, wasDisconnected } from '@/lib/penv';
 import { hostsForKeys, hostsForSettings, PENV_HOSTS, requestHosts } from '@/lib/hosts';
-import { serviceLabel } from '@/lib/keyDetect';
+import { serviceLabel } from '@appskord/llm';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { canStart, keyUse, neededKeys, startHint } from '@/lib/setup';
 import type { Settings } from '@/lib/types';

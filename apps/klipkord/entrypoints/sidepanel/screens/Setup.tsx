@@ -2,9 +2,8 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { checkKeys, loadKeys, loadKeyStatus, saveKeyStatus } from '@/lib/penv';
-import { isKeyName } from '@/lib/keyDetect';
 import { updateSettings } from '@/lib/settings';
-import { detectMachine, notesEngineFor, setupChoice, type MachineCheck, type RowStatus, type SetupState } from '@/lib/setup';
+import { detectMachine, isKeyName, notesEngineFor, setupChoice, type MachineCheck, type RowStatus, type SetupState } from '@/lib/setup';
 import type { AiMode } from '@/lib/types';
 
 // ---- Shared by the onboarding and key screens (inline styles follow the frames) ----

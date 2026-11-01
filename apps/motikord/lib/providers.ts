@@ -1,3 +1,4 @@
+import { PROVIDERS as API_PROVIDERS, type ProviderKeyName } from '@appskord/llm';
 import type { Provider } from './types';
 
 /** What each cloud AI provider is called and where its keys come from. Strings are FRAMES.md "AI provider and model". */
@@ -6,18 +7,26 @@ export interface ProviderInfo {
   label: string;          // {provider}
   mono: string;           // the Settings tile monogram
   prefix: string;         // {prefix}
-  keyName: 'GROQ_API_KEY' | 'OPENAI_API_KEY' | 'ANTHROPIC_API_KEY' | 'OPENROUTER_API_KEY'; // {keyName}
+  keyName: ProviderKeyName; // {keyName}
   host: string;           // {host}
   keysUrl: string;
   getKey: string;         // "Get a free Groq key"; only Groq says "free"
 }
 
-export const PROVIDERS: Record<Provider, ProviderInfo> = {
-  groq: { id: 'groq', label: 'Groq', mono: 'Gq', prefix: 'gsk_', keyName: 'GROQ_API_KEY', host: 'api.groq.com', keysUrl: 'https://console.groq.com/keys', getKey: 'Get a free Groq key' },
-  openai: { id: 'openai', label: 'OpenAI', mono: 'OA', prefix: 'sk-', keyName: 'OPENAI_API_KEY', host: 'api.openai.com', keysUrl: 'https://platform.openai.com/api-keys', getKey: 'Get an OpenAI key' },
-  anthropic: { id: 'anthropic', label: 'Anthropic', mono: 'An', prefix: 'sk-ant-', keyName: 'ANTHROPIC_API_KEY', host: 'api.anthropic.com', keysUrl: 'https://console.anthropic.com/settings/keys', getKey: 'Get an Anthropic key' },
-  openrouter: { id: 'openrouter', label: 'OpenRouter', mono: 'OR', prefix: 'sk-or-', keyName: 'OPENROUTER_API_KEY', host: 'openrouter.ai', keysUrl: 'https://openrouter.ai/keys', getKey: 'Get an OpenRouter key' },
+// Motikord's tile monogram and "get a key" line; the rest comes from `@appskord/llm`.
+const COPY: Record<Provider, { mono: string; getKey: string }> = {
+  groq: { mono: 'Gq', getKey: 'Get a free Groq key' },
+  openai: { mono: 'OA', getKey: 'Get an OpenAI key' },
+  anthropic: { mono: 'An', getKey: 'Get an Anthropic key' },
+  openrouter: { mono: 'OR', getKey: 'Get an OpenRouter key' },
 };
+
+const info = (id: Provider): ProviderInfo => {
+  const p = API_PROVIDERS[id];
+  return { id, label: p.label, prefix: p.prefix!, keyName: p.keyName!, host: p.host, keysUrl: p.keysUrl!, ...COPY[id] };
+};
+
+export const PROVIDERS: Record<Provider, ProviderInfo> = { groq: info('groq'), openai: info('openai'), anthropic: info('anthropic'), openrouter: info('openrouter') };
 
 /** Models built into Motikord, so Settings always has something to pick: best first, then `faster` (a small one). */
 export const SUGGESTED_MODELS: Record<Provider, { models: string[]; faster: string }> = {

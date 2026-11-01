@@ -1,3 +1,4 @@
+import { PROVIDERS as API_PROVIDERS } from '@appskord/llm';
 import type { ProviderConfig, ProviderId, Settings } from './types';
 
 const STORAGE_KEY = 'settings';
@@ -18,12 +19,17 @@ export const DEFAULT_SETTINGS: Settings = {
   notion: {},
 };
 
+const provider = (id: ProviderId): ProviderConfig => {
+  const { baseUrl, keyName } = API_PROVIDERS[id];
+  return keyName ? { id, baseUrl, keyName } : { id, baseUrl };
+};
+
 export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
-  groq: { id: 'groq', baseUrl: 'https://api.groq.com/openai/v1', keyName: 'GROQ_API_KEY' },
-  openrouter: { id: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', keyName: 'OPENROUTER_API_KEY' },
-  ollama: { id: 'ollama', baseUrl: 'http://localhost:11434/v1' },
-  openai: { id: 'openai', baseUrl: 'https://api.openai.com/v1', keyName: 'OPENAI_API_KEY' },
-  anthropic: { id: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', keyName: 'ANTHROPIC_API_KEY' },
+  groq: provider('groq'),
+  openrouter: provider('openrouter'),
+  ollama: provider('ollama'),
+  openai: provider('openai'),
+  anthropic: provider('anthropic'),
 };
 
 function merge(stored: Partial<Settings> | undefined): Settings {
