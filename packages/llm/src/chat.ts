@@ -28,7 +28,7 @@ function anthropicContent(m: ChatMessage): unknown {
       ? { type: 'image', source: { type: 'base64', media_type: d[1], data: d[2] } }
       : { type: 'image', source: { type: 'url', url } };
   });
-  return [...imgs, { type: 'text', text: m.content }];
+  return m.content.trim() ? [...imgs, { type: 'text', text: m.content }] : imgs;
 }
 const openaiMessage = (m: ChatMessage): unknown =>
   m.images?.length
@@ -39,7 +39,7 @@ const openaiMessage = (m: ChatMessage): unknown =>
           ...m.images.map((url) => ({ type: 'image_url', image_url: { url } })),
         ],
       }
-    : m;
+    : (({ images: _images, ...rest }) => rest)(m);
 
 export interface CloudChat extends Endpoint, PickOptions {
   /** Log prefix: `<App>: could not reach <provider>`. */
