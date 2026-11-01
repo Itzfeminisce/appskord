@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  builtinAiPresent, canStart, noUsableKeys, classifyPaste, cloudSettings, detectMachine, isFirstRun, missingKeys, notesOptions,
+  builtinAiPresent, canStart, isKeyName, jobsFor, noUsableKeys, classifyPaste, cloudSettings, detectMachine, isFirstRun, missingKeys, notesOptions,
   penvRowStatus, requestAccess, setupChoice, transcriptsStatus,
 } from './setup';
 
@@ -127,5 +127,36 @@ describe('noUsableKeys', () => {
   it('is false once any key is not rejected', () => {
     expect(noUsableKeys(['GROQ_API_KEY', 'OPENAI_API_KEY'], { GROQ_API_KEY: 'rejected', OPENAI_API_KEY: 'ok' })).toBe(false);
     expect(noUsableKeys(['GROQ_API_KEY'], { GROQ_API_KEY: 'checking' })).toBe(false);
+  });
+});
+
+describe('pasted key names', () => {
+  const name = (v: string) => { const c = classifyPaste(v); return c.kind === 'known' ? c.name : null; };
+
+  it('recognises each prefix and trims the value', () => {
+    expect(name('gsk_test')).toBe('GROQ_API_KEY');
+    expect(name('sk-ant-test')).toBe('ANTHROPIC_API_KEY');
+    expect(name('sk-or-v1-test')).toBe('OPENROUTER_API_KEY');
+    expect(name('sk-test')).toBe('OPENAI_API_KEY');
+    expect(name('sk-proj-test')).toBe('OPENAI_API_KEY');
+    expect(name('  gsk_test \n')).toBe('GROQ_API_KEY');
+  });
+
+  it('leaves keys Klipkord does not use unknown', () => {
+    expect(name('hello')).toBeNull();
+    expect(name('ab'.repeat(20))).toBeNull();
+    expect(name('ntn_test')).toBeNull();
+    expect(name('pexels_test')).toBeNull();
+  });
+
+  it('Groq covers transcripts and notes; the rest write notes', () => {
+    expect(jobsFor('GROQ_API_KEY')).toEqual(['transcripts', 'notes']);
+    expect(jobsFor('OPENROUTER_API_KEY')).toEqual(['notes']);
+    expect(jobsFor('ANTHROPIC_API_KEY')).toEqual(['notes']);
+  });
+
+  it('knows which key names are usable', () => {
+    expect(isKeyName('OPENAI_API_KEY')).toBe(true);
+    expect(isKeyName('NOTION_TOKEN')).toBe(false);
   });
 });

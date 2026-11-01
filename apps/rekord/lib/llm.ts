@@ -1,16 +1,21 @@
-/**
- * Shared chat client for the summary provider (OpenAI-compatible `/chat/completions`).
- * Never logs or returns a key. Errors are LLMError with a user-facing message and a `code`.
- */
-import { listGroqModels, pickGroqChatModel } from './groqModels';
+/** Rekord's chat client for the summary provider, from `@appskord/llm`, with Rekord's own sentences. Never logs or returns a key. */
+import { chatCloud, type ChatMessage, type ErrorText, type FetchLike } from '@appskord/llm';
 import { loadKeys } from './penv';
 import { getSettings, PROVIDERS, updateSettings } from './settings';
 import { formatClock } from './time';
 import type { Meeting, Segment, Settings } from './types';
 
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+export { LLMError, type ChatMessage, type FetchLike, type LLMErrorCode } from '@appskord/llm';
 
-export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: string }
+/** Best first. The first entry is Rekord's default Groq summary model; a retired model is re-picked from this list. */
+export const GROQ_CHAT_PREFERENCE = [
+  'openai/gpt-oss-120b',
+  'llama-3.3-70b-versatile',
+  'meta-llama/llama-4-maverick-17b-128e-instruct',
+  'qwen/qwen3-32b',
+  'openai/gpt-oss-20b',
+  'llama-3.1-8b-instant',
+];
 
 export interface ChatOptions {
   json?: boolean;        // ask for a JSON object reply (response_format json_object)
@@ -21,12 +26,20 @@ export interface ChatOptions {
   config?: { settings: Settings; keys: Record<string, string> };
 }
 
-export type LLMErrorCode = 'no-key' | 'offline' | 'auth' | 'rate-limited' | 'server' | 'bad-reply';
+const text: ErrorText = ({ reason, status }) => {
+  if (reason === 'no-key') return 'Rekord needs an AI connection for this. Check Connect AI in Settings.';
+  if (reason === 'offline' || reason === 'cancelled') return 'Rekord could not reach the AI service. Check your connection and try again.';
+  if (reason === 'auth') return 'The AI service did not accept your key. Check Connect AI in Settings.';
+  if (reason === 'busy') return 'The AI service is busy right now. Try again in a minute.';
+  if (status) return `The AI service returned an error (${status}). Try again.`;
+  return 'The AI service sent an unexpected reply. Try again.';
+};
 
-export class LLMError extends Error {
-  constructor(message: string, readonly code: LLMErrorCode) {
-    super(message);
-    this.name = 'LLMError';
+/** Saves a re-picked model over a retired one, unless the person changed the model meanwhile. */
+async function saveRepick(failed: string, picked: string): Promise<void> {
+  const current = await getSettings();
+  if (current.summary.provider === 'groq' && current.summary.model === failed) {
+    await updateSettings({ summary: { ...current.summary, model: picked } });
   }
 }
 
@@ -39,68 +52,27 @@ export async function chat(
   const [settings, keys] = opts.config
     ? [opts.config.settings, opts.config.keys]
     : await Promise.all([getSettings(), loadKeys()]);
-  const { provider, model } = settings.summary;
-  const cfg = PROVIDERS[provider];
-  const baseUrl = (settings.summary.baseUrl || cfg.baseUrl).replace(/\/+$/, '');
-  const key = cfg.keyName ? keys[cfg.keyName] : undefined;
-  if (cfg.keyName && !key) throw new LLMError('Rekord needs an AI connection for this. Check Connect AI in Settings.', 'no-key');
-
-  const post = (model: string) => fetchFn(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) },
-    body: JSON.stringify({
-      model,
-      temperature: opts.temperature ?? 0.2,
-      ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-      ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
-      messages,
-    }),
-    signal: opts.signal,
-  });
-
-  let res: Response;
-  try {
-    res = await post(model);
+  const { provider, model, baseUrl } = settings.summary;
+  const keyName = PROVIDERS[provider].keyName;
+  return chatCloud(messages, {
+    app: 'Rekord',
+    text,
+    provider,
+    baseUrl,
+    // Anthropic goes through its OpenAI-compatible endpoint, as before.
+    openaiCompatible: true,
+    key: keyName ? keys[keyName] : undefined,
+    model,
     // Groq retires models: pick a listed one, remember it, and retry once.
-    if (res.status === 404 && provider === 'groq' && key && (await isModelNotFound(res))) {
-      const healed = await healGroqModel(baseUrl, key, model, !opts.config, fetchFn);
-      if (healed) res = await post(healed);
-    }
-  } catch {
-    throw new LLMError('Rekord could not reach the AI service. Check your connection and try again.', 'offline');
-  }
-  if (res.status === 401 || res.status === 403) throw new LLMError('The AI service did not accept your key. Check Connect AI in Settings.', 'auth');
-  if (res.status === 429) throw new LLMError('The AI service is busy right now. Try again in a minute.', 'rate-limited');
-  if (!res.ok) throw new LLMError(`The AI service returned an error (${res.status}). Try again.`, 'server');
-  let content: unknown;
-  try { content = ((await res.json()) as { choices?: { message?: { content?: unknown } }[] }).choices?.[0]?.message?.content; } catch { /* handled below */ }
-  if (typeof content !== 'string') throw new LLMError('The AI service sent an unexpected reply. Try again.', 'bad-reply');
-  return content;
-}
-
-async function isModelNotFound(res: Response): Promise<boolean> {
-  try {
-    const body = (await res.clone().json()) as { error?: { code?: unknown } };
-    return body.error?.code === 'model_not_found';
-  } catch {
-    return false;
-  }
-}
-
-/** A model Groq lists in place of `failed`, saved over it when the saved model is still `failed`. Undefined if none. */
-async function healGroqModel(baseUrl: string, key: string, failed: string, save: boolean, fetchFn: FetchLike): Promise<string | undefined> {
-  let picked: string | undefined;
-  try { picked = pickGroqChatModel(await listGroqModels(baseUrl, key, fetchFn)); } catch { return undefined; }
-  if (!picked || picked === failed) return undefined;
-  if (save) {
-    try {
-      const current = await getSettings();
-      if (current.summary.provider === 'groq' && current.summary.model === failed) {
-        await updateSettings({ summary: { ...current.summary, model: picked } });
-      }
-    } catch { /* the retry still uses `picked` */ }
-  }
-  return picked;
+    modelGone: provider === 'groq' ? 'repick' : 'report',
+    preference: GROQ_CHAT_PREFERENCE,
+    onRepick: opts.config || provider !== 'groq' ? undefined : (picked) => saveRepick(model, picked),
+    json: opts.json,
+    maxTokens: opts.maxTokens,
+    temperature: opts.temperature,
+    signal: opts.signal,
+    fetch: fetchFn,
+  });
 }
 
 /** What a speaker shows as: "You", their saved name, else "Speaker A" for a diarized label, else "Others". */

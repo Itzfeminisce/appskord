@@ -4,6 +4,7 @@ import { loadKeys, loadKeyStatus } from './penv';
 import { DEFAULT_SETTINGS } from './settings';
 import {
   addKey,
+  jobsFor,
   applyPreset,
   canStart,
   classifyPaste,
@@ -129,5 +130,20 @@ describe('key use and the Penv Cloud flag', () => {
     expect(keyUse('DEEPGRAM_API_KEY', s)).toBe('transcription');
     expect(keyUse('GROQ_API_KEY', s)).toBe('assistant and backup');
     expect(keyUse('OPENAI_API_KEY', s)).toBe('not in use');
+  });
+});
+
+describe('jobsFor', () => {
+  it('lists what each key does', () => {
+    expect(jobsFor('GROQ_API_KEY')).toEqual(['transcription', 'assistant']);
+    expect(jobsFor('OPENAI_API_KEY')).toEqual(['transcription', 'assistant']);
+    expect(jobsFor('DEEPGRAM_API_KEY')).toEqual(['transcription']);
+    expect(jobsFor('ANTHROPIC_API_KEY')).toEqual(['assistant']);
+    expect(jobsFor('OPENROUTER_API_KEY')).toEqual(['assistant']);
+    expect(jobsFor('NOTION_TOKEN')).toEqual([]);
+  });
+
+  it('leaves a key Rekord does not use unknown', () => {
+    expect(classifyPaste('pexels_test')).toEqual({ kind: 'unknown' });
   });
 });

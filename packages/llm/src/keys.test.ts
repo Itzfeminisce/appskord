@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkKey, createKeyWatcher, detectKey, looksComplete, serviceLabel, verifyKey } from './keyDetect';
+import { checkKey, checkRequest, createKeyWatcher, detectKey, looksComplete, serviceLabel, verifyKey } from './keys';
 
 describe('detectKey', () => {
   it('recognises Groq and Pexels keys', () => {
     expect(detectKey('gsk_test')).toBe('GROQ_API_KEY');
     expect(detectKey('  gsk_test  ')).toBe('GROQ_API_KEY');
     expect(detectKey('pexels_test')).toBe('PEXELS_API_KEY');
-    expect(detectKey('a'.repeat(56), 'pexels')).toBe('PEXELS_API_KEY');
+    expect(detectKey('a'.repeat(56), { field: 'pexels' })).toBe('PEXELS_API_KEY');
   });
   it('never takes the bare Pexels shape from the main field', () => {
     expect(detectKey('a'.repeat(56))).toBeNull();
-    expect(detectKey('a'.repeat(56), 'main')).toBeNull();
+    expect(detectKey('a'.repeat(56), { field: 'main' })).toBeNull();
   });
   it('does not recognise anything else', () => {
     expect(detectKey('')).toBeNull();
@@ -53,10 +53,24 @@ describe('checkKey', () => {
     await checkKey('ANTHROPIC_API_KEY', 'sk-ant-test', f as unknown as typeof fetch);
     await checkKey('OPENROUTER_API_KEY', 'sk-or-test', f as unknown as typeof fetch);
     const calls = f.mock.calls as unknown as [string, RequestInit][];
-    expect(calls.map((c) => c[0])).toEqual(['https://api.openai.com/v1/models', 'https://api.anthropic.com/v1/models?limit=1000', 'https://openrouter.ai/api/v1/key']);
+    expect(calls.map((c) => c[0])).toEqual([
+      'https://api.openai.com/v1/models',
+      'https://api.anthropic.com/v1/models?limit=1000',
+      'https://openrouter.ai/api/v1/key',
+    ]);
     expect(calls[0]![1].headers).toEqual({ Authorization: 'Bearer sk-test' });
-    expect(calls[1]![1].headers).toMatchObject({ 'x-api-key': 'sk-ant-test', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' });
-    expect(await checkKey('ANTHROPIC_API_KEY', 'sk-ant-test', (async () => new Response('{}', { status: 401 })) as unknown as typeof fetch)).toBe('rejected');
+    expect(calls[1]![1].headers).toMatchObject({
+      'x-api-key': 'sk-ant-test',
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    });
+    expect(
+      await checkKey(
+        'ANTHROPIC_API_KEY',
+        'sk-ant-test',
+        (async () => new Response('{}', { status: 401 })) as unknown as typeof fetch,
+      ),
+    ).toBe('rejected');
   });
   it('is rejected on 401', async () => {
     expect(await checkKey('GROQ_API_KEY', 'gsk_test', reply(401))).toBe('rejected');
@@ -64,7 +78,15 @@ describe('checkKey', () => {
   });
   it('is unreachable on a server error or a network failure', async () => {
     expect(await checkKey('PEXELS_API_KEY', 'pexels_test', reply(500))).toBe('unreachable');
-    expect(await checkKey('GROQ_API_KEY', 'gsk_test', vi.fn(async () => { throw new Error('offline'); }))).toBe('unreachable');
+    expect(
+      await checkKey(
+        'GROQ_API_KEY',
+        'gsk_test',
+        vi.fn(async () => {
+          throw new Error('offline');
+        }),
+      ),
+    ).toBe('unreachable');
   });
 });
 
@@ -76,7 +98,10 @@ describe('createKeyWatcher', () => {
     vi.useFakeTimers();
     const f = vi.fn(async () => new Response('{}', { status: 200 }));
     const w = createKeyWatcher((n, k) => void checkKey(n, k, f as unknown as typeof fetch));
-    for (let i = 1; i <= key.length; i++) { w.type(key.slice(0, i)); await vi.advanceTimersByTimeAsync(100); }
+    for (let i = 1; i <= key.length; i++) {
+      w.type(key.slice(0, i));
+      await vi.advanceTimersByTimeAsync(100);
+    }
     expect(f).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(600);
     expect(f).toHaveBeenCalledTimes(1);
@@ -94,7 +119,7 @@ describe('createKeyWatcher', () => {
     const run = vi.fn();
     createKeyWatcher(run).paste('a'.repeat(56));
     expect(run).not.toHaveBeenCalled();
-    createKeyWatcher(run, 'pexels').paste('a'.repeat(56));
+    createKeyWatcher(run, { field: 'pexels' }).paste('a'.repeat(56));
     expect(run).toHaveBeenCalledWith('PEXELS_API_KEY', 'a'.repeat(56));
   });
 });
@@ -105,29 +130,118 @@ describe('verifyKey', () => {
   const pex = ['https://api.pexels.com/*'];
   it('asks for the host before any fetch and saves only an accepted key', async () => {
     const order: string[] = [];
-    const save = vi.fn(async () => { order.push('save'); });
-    const f = vi.fn(async () => { order.push('fetch'); return new Response('{}', { status: 200 }); });
-    const request = vi.fn(async () => { order.push('request'); return 'granted' as const; });
+    const save = vi.fn(async () => {
+      order.push('save');
+    });
+    const f = vi.fn(async () => {
+      order.push('fetch');
+      return new Response('{}', { status: 200 });
+    });
+    const request = vi.fn(async () => {
+      order.push('request');
+      return 'granted' as const;
+    });
     expect(await verifyKey('PEXELS_API_KEY', ' pexels_test ', pex, { request, save, fetchImpl: f })).toBe('ready');
     expect(order).toEqual(['request', 'fetch', 'save']);
     expect(save).toHaveBeenCalledWith('PEXELS_API_KEY', 'pexels_test');
   });
   it('is denied without a fetch when host access is refused', async () => {
     const f = reply(200);
-    expect(await verifyKey('PEXELS_API_KEY', 'pexels_test', pex, { request: async () => 'denied', save: vi.fn(), fetchImpl: f })).toBe('denied');
+    expect(
+      await verifyKey('PEXELS_API_KEY', 'pexels_test', pex, {
+        request: async () => 'denied',
+        save: vi.fn(),
+        fetchImpl: f,
+      }),
+    ).toBe('denied');
     expect(f).not.toHaveBeenCalled();
   });
   it('is rejected on 401 and 403 and saves nothing', async () => {
     for (const code of [401, 403]) {
       const save = vi.fn();
-      expect(await verifyKey('PEXELS_API_KEY', 'pexels_test', pex, { request: granted, save, fetchImpl: reply(code) })).toBe('rejected');
+      expect(
+        await verifyKey('PEXELS_API_KEY', 'pexels_test', pex, { request: granted, save, fetchImpl: reply(code) }),
+      ).toBe('rejected');
       expect(save).not.toHaveBeenCalled();
     }
   });
   it('is unreachable on a network failure and saves nothing', async () => {
     const save = vi.fn();
-    const f = vi.fn(async () => { throw new TypeError('offline'); });
-    expect(await verifyKey('GROQ_API_KEY', 'gsk_test', ['https://api.groq.com/*'], { request: granted, save, fetchImpl: f as unknown as typeof fetch })).toBe('unreachable');
+    const f = vi.fn(async () => {
+      throw new TypeError('offline');
+    });
+    expect(
+      await verifyKey('GROQ_API_KEY', 'gsk_test', ['https://api.groq.com/*'], {
+        request: granted,
+        save,
+        fetchImpl: f as unknown as typeof fetch,
+      }),
+    ).toBe('unreachable');
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe("detectKey: Rekord's keys", () => {
+  it('recognises each prefix', () => {
+    expect(detectKey('gsk_test')).toBe('GROQ_API_KEY');
+    expect(detectKey('sk-ant-test')).toBe('ANTHROPIC_API_KEY');
+    expect(detectKey('sk-or-v1-test')).toBe('OPENROUTER_API_KEY');
+    expect(detectKey('sk-test')).toBe('OPENAI_API_KEY');
+    expect(detectKey('sk-proj-test')).toBe('OPENAI_API_KEY');
+    expect(detectKey('ntn_test')).toBe('NOTION_TOKEN');
+    expect(detectKey('secret_test')).toBe('NOTION_TOKEN');
+    expect(detectKey('ab'.repeat(20))).toBe('DEEPGRAM_API_KEY');
+  });
+
+  it('returns null for unknown values', () => {
+    expect(detectKey('dg_test')).toBeNull();
+    expect(detectKey('hello')).toBeNull();
+    expect(detectKey('')).toBeNull();
+    expect(detectKey('0123456789abcdef')).toBeNull();
+    expect(detectKey('ab'.repeat(20) + 'a')).toBeNull(); // 41 chars
+  });
+
+  it('ignores surrounding whitespace', () => {
+    expect(detectKey('  gsk_test\n')).toBe('GROQ_API_KEY');
+    expect(detectKey('\tntn_test ')).toBe('NOTION_TOKEN');
+    expect(detectKey('   ')).toBeNull();
+  });
+});
+
+describe('serviceLabel', () => {
+  it('names each service', () => {
+    expect(serviceLabel('GROQ_API_KEY')).toBe('Groq');
+    expect(serviceLabel('OPENAI_API_KEY')).toBe('OpenAI');
+    expect(serviceLabel('DEEPGRAM_API_KEY')).toBe('Deepgram');
+    expect(serviceLabel('ANTHROPIC_API_KEY')).toBe('Anthropic');
+    expect(serviceLabel('OPENROUTER_API_KEY')).toBe('OpenRouter');
+    expect(serviceLabel('NOTION_TOKEN')).toBe('Notion');
+  });
+});
+
+describe('detectKey: per app', () => {
+  it('returns only the names an app uses', () => {
+    const klipkord = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY'] as const;
+    expect(detectKey('sk-ant-test', { names: klipkord })).toBe('ANTHROPIC_API_KEY');
+    expect(detectKey('ntn_test', { names: klipkord })).toBeNull();
+    expect(detectKey('ab'.repeat(20), { names: klipkord })).toBeNull();
+    expect(detectKey('pexels_test', { names: ['GROQ_API_KEY', 'DEEPGRAM_API_KEY', 'NOTION_TOKEN'] })).toBeNull();
+  });
+  it("takes the Pexels shape over Deepgram's inside the Pexels field", () => {
+    expect(detectKey('ab'.repeat(20), { field: 'pexels' })).toBe('PEXELS_API_KEY');
+  });
+  it('waits for whole Notion, Deepgram and Pexels keys', () => {
+    expect(looksComplete('NOTION_TOKEN', 'ntn_test')).toBe(false);
+    expect(looksComplete('NOTION_TOKEN', `ntn_${'0'.repeat(24)}`)).toBe(true);
+    expect(looksComplete('DEEPGRAM_API_KEY', 'ab'.repeat(20))).toBe(true);
+    expect(looksComplete('PEXELS_API_KEY', `pexels_${'0'.repeat(24)}`)).toBe(true);
+  });
+  it('checks a Deepgram key on its projects and has no check for Notion', async () => {
+    expect(checkRequest('DEEPGRAM_API_KEY', 'dg-test')).toEqual({
+      url: 'https://api.deepgram.com/v1/projects',
+      headers: { Authorization: 'Token dg-test' },
+    });
+    expect(checkRequest('NOTION_TOKEN', 'ntn_test')).toBeNull();
+    expect(await checkKey('NOTION_TOKEN', 'ntn_test', vi.fn())).toBe('unreachable');
   });
 });

@@ -3,9 +3,9 @@ import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { transcriptionKeyName } from '@/lib/connect';
 import { loadToken } from '@/lib/penv';
-import { serviceLabel, type KeyName } from '@/lib/keyDetect';
+import { serviceLabel } from '@appskord/llm';
 import { getSettings, updateSettings } from '@/lib/settings';
-import { applyPreset, canStart, classifyPaste, KEY_PAGE, neededKeys, rowDetail, SERVICE_CHOICES, startHint } from '@/lib/setup';
+import { applyPreset, canStart, classifyPaste, KEY_PAGE, neededKeys, rowDetail, SERVICE_CHOICES, startHint, type KeyName } from '@/lib/setup';
 import { hostsForSettings, requestHosts } from '@/lib/hosts';
 import type { SetupPreset, Settings } from '@/lib/types';
 import {

@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { saveKeys } from './penv';
-import { resetGroqModelsCache } from './groqModels';
-import { chat, LLMError, speakerName, transcriptLines } from './llm';
+import { chat, GROQ_CHAT_PREFERENCE, LLMError, speakerName, transcriptLines } from './llm';
 import { DEFAULT_SETTINGS, getSettings, updateSettings } from './settings';
 import type { Segment } from './types';
 
@@ -12,7 +11,6 @@ const msgs = [{ role: 'user' as const, content: 'hi' }];
 
 beforeEach(async () => {
   fakeBrowser.reset();
-  resetGroqModelsCache();
   await saveKeys({ GROQ_API_KEY: 'gsk_test' });
 });
 
@@ -58,6 +56,21 @@ describe('chat', () => {
     const f = vi.fn();
     expect(await code(f)).toBe('no-key');
     expect(f).not.toHaveBeenCalled();
+  });
+
+  it('keeps Rekord\'s sentences', async () => {
+    const message = async (f: () => Promise<Response>) => chat(msgs, {}, f).catch((e: LLMError) => e.message);
+    expect(await message(async () => reply('x', 401))).toBe('The AI service did not accept your key. Check Connect AI in Settings.');
+    expect(await message(async () => reply('x', 429))).toBe('The AI service is busy right now. Try again in a minute.');
+    expect(await message(async () => reply('x', 400))).toBe('The AI service returned an error (400). Try again.');
+    expect(await message(async () => reply(42))).toBe('The AI service sent an unexpected reply. Try again.');
+    expect(await message(async () => { throw new TypeError('x'); })).toBe('Rekord could not reach the AI service. Check your connection and try again.');
+    await saveKeys({});
+    expect(await message(async () => reply('x'))).toBe('Rekord needs an AI connection for this. Check Connect AI in Settings.');
+  });
+
+  it('the default Groq summary model is the first preference', () => {
+    expect(DEFAULT_SETTINGS.summary).toEqual({ provider: 'groq', model: GROQ_CHAT_PREFERENCE[0] });
   });
 
   it('never puts the key in an error message', async () => {

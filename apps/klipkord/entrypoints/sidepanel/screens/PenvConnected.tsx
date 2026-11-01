@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { disconnectPenvApp, forgetAll, loadKeyStatus } from '@/lib/penv';
-import { jobsFor, serviceLabel, type KeyName } from '@/lib/keyDetect';
+import { serviceLabel } from '@appskord/llm';
 import { getSettings, updateSettings } from '@/lib/settings';
-import { canStart, cloudSettings, noUsableKeys, notesEngineFor, PENV_CLOUD_URL, STATUS_WORD } from '@/lib/setup';
+import { canStart, cloudSettings, jobsFor, noUsableKeys, notesEngineFor, PENV_CLOUD_URL, STATUS_WORD, type KeyName } from '@/lib/setup';
 import type { Settings } from '@/lib/types';
 import { BannerAction, Check, CARD, ExternalLink, Head, Heading, MONO, PAGE, PenvTile, PrimaryButton, StateBanner, STATUS_TEXT, useKeyState } from './Setup';
 

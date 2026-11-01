@@ -3,9 +3,9 @@ import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { summaryFor, transcriptionFor, transcriptionKeyName } from '@/lib/connect';
 import { hostsForSettings, requestHosts } from '@/lib/hosts';
-import { serviceLabel, type KeyName } from '@/lib/keyDetect';
+import { serviceLabel } from '@appskord/llm';
 import { getSettings, PROVIDERS, updateSettings } from '@/lib/settings';
-import { canStart, neededKeys, startHint } from '@/lib/setup';
+import { canStart, neededKeys, startHint, type KeyName } from '@/lib/setup';
 import type { ProviderId, Settings, TranscriptionProvider } from '@/lib/types';
 import { CARD, INPUT, LABEL, PAGE, SELECT, SetupHead, SetupIntro, StartFooter, StatusDot, useKeyState, type KeyState } from './setupParts';
 

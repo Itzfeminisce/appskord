@@ -42,6 +42,30 @@ describe('chat', () => {
   });
 });
 
+describe('chat errors and retired models', () => {
+  it('keeps Klipkord\'s sentences', async () => {
+    const message = async (f: () => Promise<Response>, keys?: Record<string, string>) => chat(msgs, { keys }, f).catch((e: LLMError) => e.message);
+    expect(await message(async () => reply('x', 401))).toBe('The AI service did not accept the key.');
+    expect(await message(async () => reply('x', 429))).toBe('The AI service is busy.');
+    expect(await message(async () => reply('x', 500))).toBe('The AI service returned an error (500).');
+    expect(await message(async () => reply(42))).toBe('The AI service sent an unexpected reply.');
+    expect(await message(async () => { throw new Error('down'); })).toBe('Could not reach the AI service.');
+    expect(await message(async () => reply('x'), {})).toBe('No cloud key is loaded.');
+  });
+
+  it('re-picks a listed Groq model once when the default is retired, and keeps it', async () => {
+    const gone = () => new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 404 });
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'openai/gpt-oss-120b' }] }));
+      return JSON.parse(String(init?.body)).model === 'llama-3.3-70b-versatile' ? gone() : reply('healed');
+    });
+    expect(await chat(msgs, {}, f)).toBe('healed');
+    expect(await chat(msgs, {}, f)).toBe('healed');
+    expect(f.mock.calls.filter(([u]) => u.endsWith('/models'))).toHaveLength(1);
+    expect(f).toHaveBeenCalledTimes(4);
+  });
+});
+
 describe('pickProvider', () => {
   it('takes the first provider with a key, or the requested one', () => {
     expect(pickProvider({ OPENAI_API_KEY: 'sk-test', GROQ_API_KEY: 'gsk_test' })?.id).toBe('groq');

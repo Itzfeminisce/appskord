@@ -5,8 +5,21 @@
  */
 import { availabilityOf } from './check/results';
 import { type KeyStatus } from './penv';
-import { detectKey, jobsFor, serviceLabel, type KeyName } from './keyDetect';
+import { detectKey, isProviderKeyName, serviceLabel, type ProviderKeyName } from '@appskord/llm';
 import type { AiMode, NotesEngine, Settings } from './types';
+
+/** The keys Klipkord uses. */
+export type KeyName = ProviderKeyName;
+export type KeyJob = 'transcripts' | 'notes';
+const KEY_NAMES: KeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY'];
+
+/** True for a key name Klipkord can use. */
+export const isKeyName = (name: string): name is KeyName => isProviderKeyName(name);
+
+/** What a key covers in Klipkord: Groq does transcripts and notes; the others write notes. */
+export function jobsFor(name: KeyName): KeyJob[] {
+  return name === 'GROQ_API_KEY' ? ['transcripts', 'notes'] : ['notes'];
+}
 
 export const PENV_CLOUD_URL = 'https://penv.cloud';
 export const GROQ_KEYS_URL = 'https://console.groq.com/keys';
@@ -109,7 +122,7 @@ export type PasteClass =
 /** What a pasted value is: a recognised key (with row wording), or one Klipkord can't place. */
 export function classifyPaste(value: string): PasteClass {
   if (!value.trim()) return { kind: 'empty' };
-  const name = detectKey(value);
+  const name = detectKey(value, { names: KEY_NAMES });
   if (!name) return { kind: 'unknown' };
   return { kind: 'known', name, title: `This is a ${serviceLabel(name)} key`, jobs: `Covers ${jobsPhrase(name)}` };
 }
