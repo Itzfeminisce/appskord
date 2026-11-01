@@ -3,7 +3,7 @@ import { PROVIDER_IDS, PROVIDERS } from '../lib/providers';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { getBrandKit } from '../lib/db';
 import { chooseFolder } from '../lib/folder';
-import { loadKeys } from '../lib/keys';
+import { loadKeys } from '../lib/penv';
 import { sourcesSummary } from '../lib/media/sources/summary';
 import { getSettings, onSettingsChanged, updateSettings, type SettingsPatch } from '../lib/settings';
 import type { BrandKit, FileKind, Provider, Quality, Settings as SettingsData } from '../lib/types';

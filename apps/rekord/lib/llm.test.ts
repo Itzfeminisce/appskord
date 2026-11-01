@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { saveKeys } from './keys';
+import { saveKeys } from './penv';
 import { resetGroqModelsCache } from './groqModels';
 import { chat, LLMError, speakerName, transcriptLines } from './llm';
 import { DEFAULT_SETTINGS, getSettings, updateSettings } from './settings';

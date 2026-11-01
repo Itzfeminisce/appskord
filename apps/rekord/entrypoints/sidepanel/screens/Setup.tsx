@@ -1,7 +1,8 @@
 import { useEffect, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
-import { loadToken, transcriptionKeyName } from '@/lib/connect';
+import { transcriptionKeyName } from '@/lib/connect';
+import { loadToken } from '@/lib/penv';
 import { serviceLabel, type KeyName } from '@/lib/keyDetect';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { applyPreset, canStart, classifyPaste, KEY_PAGE, neededKeys, rowDetail, SERVICE_CHOICES, startHint } from '@/lib/setup';

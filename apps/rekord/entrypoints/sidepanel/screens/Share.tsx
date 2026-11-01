@@ -7,7 +7,7 @@ import { getSettings } from '@/lib/settings';
 import { GoogleError, type GoogleDeps } from '@/lib/google';
 import { gdocsShare, shareLink, shareToDocs } from '@/lib/share/gdocs';
 import { toHtml } from '@/lib/share/render';
-import { loadKeys } from '@/lib/keys';
+import { loadKeys } from '@/lib/penv';
 import { NOTION_HOSTS, requestHosts } from '@/lib/hosts';
 import { buildBlocks, NotionError, notionShare, shareToNotion } from '@/lib/share/notion';
 import { notionDeps } from './NotionConnect';

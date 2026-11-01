@@ -1,27 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import {
-  connectErrorMessage,
-  connectPaste,
-  connectPenv,
-  ensureKeys,
-  forgetAll,
-  loadToken,
-  loadTokenTarget,
-  parseEnvPath,
-  reconnect,
-  optionalKeyNames,
-  requiredKeyNames,
-  verifyTranscriptionKey,
-  checkKeys,
-  pickProviders,
-  saveKeyStatus,
-  transcriptionKeyRejected,
-  type KeyResults,
-} from './connect';
-import { loadKeys, saveKeys } from './keys';
-import { PenvError } from './penv';
-import { DEFAULT_SETTINGS, updateSettings } from './settings';
+import { connectErrorMessage, optionalKeyNames, pickProviders, requiredKeyNames, transcriptionKeyRejected, verifyTranscriptionKey } from './connect';
+import { checkKeys, connectPaste, connectPenv, ensureKeys, forgetAll, type KeyResults, loadKeys, loadToken, PenvError, saveKeyStatus } from './penv';
+import { DEFAULT_SETTINGS } from './settings';
 
 const TARGET = { org: 'acme', project: 'notes', env: 'dev' };
 const penvOk = () =>
@@ -30,64 +11,11 @@ const penvOk = () =>
 describe('connect', () => {
   beforeEach(() => fakeBrowser.reset());
 
-  it('parses org/project/env', () => {
-    expect(parseEnvPath(' acme/notes/dev ')).toEqual(TARGET);
-    expect(parseEnvPath('acme/notes')).toBeNull();
-    expect(parseEnvPath('acme//dev')).toBeNull();
-  });
-
   it('lists the key names the chosen providers need', () => {
     expect(requiredKeyNames(DEFAULT_SETTINGS)).toEqual(['GROQ_API_KEY']);
     expect(
       requiredKeyNames({ transcription: { provider: 'openai', model: 'whisper-1' }, summary: { provider: 'ollama', model: 'x' } }),
     ).toEqual(['OPENAI_API_KEY']);
-  });
-
-  it('connectPenv keeps token and keys in session storage only and returns names', async () => {
-    const fetchImpl = penvOk();
-    expect(await connectPenv('pck_test', TARGET, fetchImpl)).toEqual(['GROQ_API_KEY']);
-    expect(await loadToken()).toBe('pck_test');
-    expect(await loadKeys()).toEqual({ GROQ_API_KEY: 'gsk_test' });
-    expect(await fakeBrowser.storage.local.get(null)).toEqual({});
-  });
-
-  it('connectPaste drops blank keys', async () => {
-    expect(await connectPaste({ GROQ_API_KEY: ' gsk_test ', OPENAI_API_KEY: '  ' })).toEqual(['GROQ_API_KEY']);
-    expect(await loadKeys()).toEqual({ GROQ_API_KEY: 'gsk_test' });
-  });
-
-  it('connectPaste merges with keys already in memory', async () => {
-    await connectPaste({ GROQ_API_KEY: 'gsk_test', DEEPGRAM_API_KEY: 'dg_test' });
-    expect(await connectPaste({ GROQ_API_KEY: 'gsk_new', DEEPGRAM_API_KEY: '' })).toEqual(['DEEPGRAM_API_KEY', 'GROQ_API_KEY']);
-    expect(await loadKeys()).toEqual({ GROQ_API_KEY: 'gsk_new', DEEPGRAM_API_KEY: 'dg_test' });
-  });
-
-  it('reconnect returns null without a token and refetches with one', async () => {
-    expect(await reconnect(penvOk())).toBeNull();
-    await fakeBrowser.storage.session.set({ penvToken: 'pck_test' });
-    const fetchImpl = penvOk();
-    expect(await reconnect(fetchImpl)).toEqual(['GROQ_API_KEY']);
-    expect(fetchImpl).toHaveBeenCalledOnce();
-  });
-
-  it('ensureKeys reports ready or reconnect', async () => {
-    expect(await ensureKeys(penvOk())).toBe('reconnect');
-    await fakeBrowser.storage.session.set({ penvToken: 'pck_test' });
-    expect(await ensureKeys(penvOk())).toBe('ready');
-    await forgetAll();
-    await fakeBrowser.storage.session.set({ penvToken: 'pck_test' });
-    expect(await ensureKeys(vi.fn(async () => new Response('', { status: 401 })))).toBe('reconnect');
-    expect(await loadToken()).toBe('pck_test');
-  });
-
-  it('reconnect uses the env the token was saved with, not settings.penv', async () => {
-    await connectPenv('pck_test', TARGET, penvOk());
-    expect(await loadTokenTarget()).toEqual(TARGET);
-    await updateSettings({ penv: { org: 'old', project: 'old', env: 'old' } });
-    const fetchImpl = penvOk();
-    await reconnect(fetchImpl);
-    expect(String((fetchImpl.mock.calls[0] as unknown[])[0])).toContain('acme');
-    expect(String((fetchImpl.mock.calls[0] as unknown[])[0])).not.toContain('old');
   });
 
   it('checkKeys checks each key against its own provider', async () => {
@@ -127,11 +55,6 @@ describe('connect', () => {
     expect(JSON.stringify(results)).not.toMatch(/_test/);
   });
 
-  it('checkKeys marks a key unreachable when the provider never answers', async () => {
-    const hang = vi.fn(() => new Promise<Response>(() => {}));
-    expect(await checkKeys({ GROQ_API_KEY: 'gsk_test' }, hang as typeof fetch, 20)).toEqual({ GROQ_API_KEY: 'unreachable' });
-  });
-
   it('pickProviders keeps working providers and falls back in order', () => {
     const base = { ...DEFAULT_SETTINGS, features: { ...DEFAULT_SETTINGS.features } };
     const all: KeyResults = { GROQ_API_KEY: 'ok', DEEPGRAM_API_KEY: 'ok' };
@@ -169,14 +92,6 @@ describe('connect', () => {
     await saveKeyStatus(results);
     await forgetAll();
     expect(await transcriptionKeyRejected(DEFAULT_SETTINGS)).toBe(false);
-  });
-
-  it('forgetAll clears token and keys', async () => {
-    await saveKeys({ GROQ_API_KEY: 'gsk_test' });
-    await fakeBrowser.storage.session.set({ penvToken: 'pck_test' });
-    await forgetAll();
-    expect(await loadKeys()).toEqual({});
-    expect(await loadToken()).toBeUndefined();
   });
 
   it('verifies the transcription key with GET /models', async () => {

@@ -3,7 +3,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { closeDB, getMeeting, listRecordingParts, listSegments, putMeeting, putRecordingPart, putSegment } from './db';
-import { saveKeys } from './keys';
+import { saveKeys } from './penv';
 import { DEFAULT_SETTINGS, updateSettings } from './settings';
 import { chipsFor, displayName, inviteCandidates, liveLineName, matchInvitee, parseSuggestions, unnamedInvitees, runSpeakerStep, saveSpeakerNames, skipSpeakers, speakerStats, suggestNames, toRecordingMs } from './speakers';
 

@@ -7,7 +7,7 @@ import { command, onStartRequest, takeStartRequest, useRecorder } from '@/lib/ca
 import { meterBars, rms } from '@/lib/mix';
 import { shortClock } from '@/lib/recorder';
 import type { CaptureMode, NoteStyle, Quality, Recording, Settings } from '@/lib/types';
-import { wasDisconnected } from '@/lib/penvApp';
+import { wasDisconnected } from '@/lib/penv';
 import { useOffline } from './Offline';
 import { BannerAction, StateBanner } from './Setup';
 

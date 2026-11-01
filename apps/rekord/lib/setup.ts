@@ -2,16 +2,8 @@
  * Smart setup: what each preset means for settings, which keys it needs, and how a pasted key is described.
  * No key value is ever returned or logged here; keys only go to the existing in-memory key store.
  */
-import {
-  checkKeys,
-  connectPaste,
-  loadKeyStatus,
-  saveKeyStatus,
-  summaryFor,
-  transcriptionFor,
-  transcriptionKeyName,
-  type KeyStatus,
-} from './connect';
+import { summaryFor, transcriptionFor, transcriptionKeyName } from './connect';
+import { checkKeys, connectPaste, type KeyStatus, loadKeyStatus, saveKeyStatus } from './penv';
 import { detectKey, jobsFor, serviceLabel, type KeyJob, type KeyName } from './keyDetect';
 import { PROVIDERS } from './settings';
 import type { SetupPreset, Settings } from './types';

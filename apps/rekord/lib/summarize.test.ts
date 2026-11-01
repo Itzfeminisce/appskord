@@ -3,7 +3,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { closeDB, getMeeting, putMeeting, putSegment } from './db';
-import { saveKeys } from './keys';
+import { saveKeys } from './penv';
 import { updateSettings } from './settings';
 import { buildPrompt, normalizeDecisions, parseSummary, summarize, truncateMiddle } from './summarize';
 

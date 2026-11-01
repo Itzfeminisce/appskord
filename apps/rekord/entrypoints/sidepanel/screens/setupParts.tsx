@@ -1,9 +1,8 @@
 /** Pieces shared by the setup screens (Setup, SetupCustom, PenvConnect, SettingsAI). Styles follow the V3 frames. */
 import { useCallback, useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
-import { checkKeys, loadKeyStatus, saveKeyStatus } from '@/lib/connect';
+import { checkKeys, loadKeys, loadKeyStatus, saveKeyStatus } from '@/lib/penv';
 import { serviceLabel, type KeyName } from '@/lib/keyDetect';
 import { hostsForKeys, requestHosts } from '@/lib/hosts';
-import { loadKeys } from '@/lib/keys';
 import { addKey, STATUS_WORD, type RowStatus } from '@/lib/setup';
 
 export const PAGE: CSSProperties = {

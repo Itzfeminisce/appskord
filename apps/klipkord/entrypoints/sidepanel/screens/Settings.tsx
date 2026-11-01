@@ -4,7 +4,7 @@ import { useRouter } from '../router';
 import { bubbleMode } from '@/lib/bubble';
 import { putFolderHandle } from '@/lib/db';
 import { forgetGoogleToken, getGoogleToken } from '@/lib/googleAuth';
-import { wasDisconnected } from '@/lib/penvApp';
+import { wasDisconnected } from '@/lib/penv';
 import { getSettings, onSettingsChanged, updateSettings } from '@/lib/settings';
 import { notesOptions, penvRowStatus, REPO_URL, SHORTCUTS_URL, transcriptsStatus } from '@/lib/setup';
 import { formatBytes } from '@/lib/time';

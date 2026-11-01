@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { closeDB, getMeeting, listSegments, putMeeting, putRecordingMeta, putRecordingPart, putSegment } from './db';
 import { assignLabels, diarize, DiarizeError, toMeetingMs } from './diarize';
-import { saveKeys } from './keys';
+import { saveKeys } from './penv';
 import type { Segment } from './types';
 
 const seg = (id: string, startMs: number, endMs: number, speaker: Segment['speaker'] = 'others'): Segment =>

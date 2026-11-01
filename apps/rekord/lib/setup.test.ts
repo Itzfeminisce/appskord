@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { loadKeyStatus } from './connect';
-import { loadKeys } from './keys';
+import { loadKeys, loadKeyStatus } from './penv';
 import { DEFAULT_SETTINGS } from './settings';
 import {
   addKey,

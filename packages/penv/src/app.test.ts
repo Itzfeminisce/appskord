@@ -1,32 +1,41 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { ensureKeys } from './connect';
-import { loadKeys, saveKeys } from './keys';
-import { PenvError } from './penv';
-import {
+import { createPenv, type PenvSettings } from './connect';
+import { PenvError } from './env';
+import { createPkce, PenvAppError, pkceChallenge } from './app';
+
+let settings: PenvSettings = {};
+const updateSettings = async (patch: PenvSettings) => {
+  settings = { ...settings, ...patch };
+};
+// Shaped like Rekord: keys in one `apiKeys` map, optional keys asked for on every connect.
+const {
   buildConnectUrl,
   connectKeyNames,
   connectPenvApp,
-  createPkce,
   disconnectPenvApp,
+  ensureKeys,
   invalidateAppLoads,
   loadGrant,
+  loadKeys,
   loadPenvAppKeys,
-  PenvAppError,
-  penvAppAvailable,
-  pkceChallenge,
-  resetPenvAppAvailable,
+  saveKeys,
   wasDisconnected,
-} from './penvApp';
-import { missingKeys } from './setup';
-import { updateSettings } from './settings';
+} = createPenv({
+  appName: 'Rekord',
+  clientId: 'rekord',
+  optionalKeys: ['DEEPGRAM_API_KEY', 'NOTION_TOKEN'],
+  keys: { kind: 'map', storageKey: 'apiKeys' },
+  settings: async () => settings,
+});
 
 const REDIRECT = 'https://abc.chromiumapp.org/penv';
 const TARGET = { org: 'acme', project: 'notes', env: 'dev' };
 /** The connection as Penv Cloud sends it (`environment`, not `env`). */
 const CONNECTION = { id: 'c1', org: 'acme', project: 'notes', environment: 'dev', keys: ['GROQ_API_KEY'] };
 /** The grant a /auth/app call sent in its JSON body (it never goes in a header). */
-const grantOf = (init?: RequestInit): string => (JSON.parse(String(init?.body ?? '{}')) as { grant?: string }).grant ?? '';
+const grantOf = (init?: RequestInit): string =>
+  (JSON.parse(String(init?.body ?? '{}')) as { grant?: string }).grant ?? '';
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
 /** Fake approval window: echoes the state from the URL with the given params. */
@@ -37,11 +46,21 @@ const allow = (extra: Record<string, string> = { code: 'code_test' }, stateOverr
   });
 
 /** Fake Penv Cloud: code → grant; grant → pck_ + rotated grant; env read. */
-function fakePenv(opts: { appStatus?: number; appBody?: unknown; keys?: ({ name: string; value: string } | { name: string; redacted: true })[] } = {}) {
+function fakePenv(
+  opts: {
+    appStatus?: number;
+    appBody?: unknown;
+    keys?: ({ name: string; value: string } | { name: string; redacted: true })[];
+  } = {},
+) {
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
     if (u.endsWith('/auth/app/token')) return json({ grant: 'pca_one', connection: CONNECTION }, 201);
-    if (u.endsWith('/auth/app')) return json(opts.appBody ?? { credential: 'pck_test', expiresAt: '2026-10-29T12:15:00Z', grant: 'pca_two' }, opts.appStatus ?? 201);
+    if (u.endsWith('/auth/app'))
+      return json(
+        opts.appBody ?? { credential: 'pck_test', expiresAt: '2026-10-29T12:15:00Z', grant: 'pca_two' },
+        opts.appStatus ?? 201,
+      );
     if (u.endsWith('/auth/revoke')) return new Response(null, { status: 204 });
     if (u.includes('/envs/')) {
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer pck_test');
@@ -51,7 +70,9 @@ function fakePenv(opts: { appStatus?: number; appBody?: unknown; keys?: ({ name:
   });
 }
 
-const ticks = async (n: number) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0)); };
+const ticks = async (n: number) => {
+  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
+};
 
 /**
  * Storage that applies each call in call order (like chrome.storage) but resolves it a few ticks later, so
@@ -60,7 +81,11 @@ const ticks = async (n: number) => { for (let i = 0; i < n; i++) await new Promi
 function slowStorage() {
   const session = fakeBrowser.storage.session;
   const real = { get: session.get.bind(session), set: session.set.bind(session), remove: session.remove.bind(session) };
-  const later = <T>(p: Promise<T>) => p.then(async (v) => { await ticks(3); return v; });
+  const later = <T>(p: Promise<T>) =>
+    p.then(async (v) => {
+      await ticks(3);
+      return v;
+    });
   vi.spyOn(session, 'get').mockImplementation(((k: never) => later(real.get(k))) as typeof session.get);
   vi.spyOn(session, 'set').mockImplementation(((v: never) => later(real.set(v))) as typeof session.set);
   vi.spyOn(session, 'remove').mockImplementation(((k: never) => later(real.remove(k))) as typeof session.remove);
@@ -75,7 +100,9 @@ function rotatingPenv(refused: string[] = []) {
     if (u.endsWith('/auth/app/token')) return json({ grant: 'pca_B', connection: CONNECTION }, 201);
     if (u.endsWith('/auth/app')) {
       const g = grantOf(init);
-      return refused.includes(g) ? json({ error: 'invalid_grant' }, 400) : json({ credential: 'pck_test', grant: `${g}2` }, 201);
+      return refused.includes(g)
+        ? json({ error: 'invalid_grant' }, 400)
+        : json({ credential: 'pck_test', grant: `${g}2` }, 201);
     }
     return base(url, init);
   });
@@ -89,7 +116,7 @@ describe('penvApp', () => {
   beforeEach(() => {
     vi.restoreAllMocks(); // slowStorage spies
     fakeBrowser.reset();
-    resetPenvAppAvailable();
+    settings = {};
   });
 
   it('makes a PKCE S256 pair and the connect URL', async () => {
@@ -97,25 +124,37 @@ describe('penvApp', () => {
     expect(verifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(challenge).toBe(await pkceChallenge(verifier));
     // RFC 7636 appendix B example
-    expect(await pkceChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
-    const url = new URL(buildConnectUrl({ redirectUri: REDIRECT, state: 'st', challenge, keys: connectKeyNames(['GROQ_API_KEY']) }));
+    expect(await pkceChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe(
+      'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+    );
+    const url = new URL(
+      buildConnectUrl({ redirectUri: REDIRECT, state: 'st', challenge, keys: connectKeyNames(['GROQ_API_KEY']) }),
+    );
     expect(url.origin + url.pathname).toBe('https://penv.cloud/connect');
     const q = url.searchParams;
-    expect(q.get('client_id')).toBe('klipkord');
+    expect(q.get('client_id')).toBe('rekord');
     expect(q.get('response_type')).toBeNull();
     expect(q.get('scope')).toBeNull();
-    expect([...q.keys()].sort()).toEqual(['client_id', 'code_challenge', 'code_challenge_method', 'keys', 'redirect_uri', 'state']);
+    expect([...q.keys()].sort()).toEqual([
+      'client_id',
+      'code_challenge',
+      'code_challenge_method',
+      'keys',
+      'redirect_uri',
+      'state',
+    ]);
     expect(q.get('code_challenge_method')).toBe('S256');
     expect(q.get('code_challenge')).toBe(challenge);
     expect(q.get('redirect_uri')).toBe(REDIRECT);
     expect(q.get('state')).toBe('st');
-    expect(q.get('keys')).toBe('GROQ_API_KEY');
+    expect(q.get('keys')).toBe('GROQ_API_KEY,DEEPGRAM_API_KEY,NOTION_TOKEN');
   });
 
   it('rejects a state mismatch and keeps no grant', async () => {
     const fetchImpl = fakePenv();
-    await expect(connectPenvApp({ keys: ['GROQ_API_KEY'], launch: allow(undefined, 'other'), fetchImpl, redirect: REDIRECT }))
-      .rejects.toMatchObject({ code: 'state-mismatch' });
+    await expect(
+      connectPenvApp({ keys: ['GROQ_API_KEY'], launch: allow(undefined, 'other'), fetchImpl, redirect: REDIRECT }),
+    ).rejects.toMatchObject({ code: 'state-mismatch' });
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(await loadGrant()).toBeUndefined();
   });
@@ -128,7 +167,7 @@ describe('penvApp', () => {
     const sent = JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body));
     const challenge = new URL(launch.mock.calls[0]![0]).searchParams.get('code_challenge');
     expect(Object.keys(sent).sort()).toEqual(['client_id', 'code', 'code_verifier', 'redirect_uri']);
-    expect(sent).toMatchObject({ code: 'code_test', client_id: 'klipkord', redirect_uri: REDIRECT });
+    expect(sent).toMatchObject({ code: 'code_test', client_id: 'rekord', redirect_uri: REDIRECT });
     expect(sent.code_verifier).toMatch(/^[A-Za-z0-9._~-]{43,128}$/);
     expect(await pkceChallenge(sent.code_verifier)).toBe(challenge);
     expect(await loadGrant()).toBe('pca_one');
@@ -158,21 +197,26 @@ describe('penvApp', () => {
   });
 
   it('closed window or access_denied → not connected', async () => {
-    const closed = vi.fn(async () => { throw new Error('The user did not approve access.'); });
-    await expect(connectPenvApp({ keys: [], launch: closed, fetchImpl: fakePenv(), redirect: REDIRECT }))
-      .rejects.toMatchObject({ code: 'not-connected' });
+    const closed = vi.fn(async () => {
+      throw new Error('The user did not approve access.');
+    });
+    await expect(
+      connectPenvApp({ keys: [], launch: closed, fetchImpl: fakePenv(), redirect: REDIRECT }),
+    ).rejects.toMatchObject({ code: 'not-connected' });
     const denied = allow({ error: 'access_denied' });
-    const err = await connectPenvApp({ keys: [], launch: denied, fetchImpl: fakePenv(), redirect: REDIRECT }).catch((e) => e);
+    const err = await connectPenvApp({ keys: [], launch: denied, fetchImpl: fakePenv(), redirect: REDIRECT }).catch(
+      (e) => e,
+    );
     expect(err).toBeInstanceOf(PenvAppError);
     expect(err.code).toBe('not-connected');
     expect(await loadGrant()).toBeUndefined();
   });
 
   it('shared keys missing what the setup needs are detected', async () => {
-    const fetchImpl = fakePenv({ keys: [{ name: 'OPENROUTER_API_KEY', value: 'sk-or-test' }] });
+    const fetchImpl = fakePenv({ keys: [{ name: 'NOTION_TOKEN', value: 'ntn_test' }] });
     await connectPenvApp({ keys: ['GROQ_API_KEY'], launch: allow(), fetchImpl, redirect: REDIRECT });
     const names = await loadPenvAppKeys(TARGET, fetchImpl);
-    expect(missingKeys(['GROQ_API_KEY'], names!)).toEqual(['GROQ_API_KEY']);
+    expect(names).toEqual(['NOTION_TOKEN']);
   });
 
   it('disconnect revokes the grant as bearer and clears keys', async () => {
@@ -192,7 +236,13 @@ describe('penvApp', () => {
   it('disconnect still clears locally when the revoke fails, and says so', async () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
     await saveKeys({ GROQ_API_KEY: 'gsk_test' });
-    expect(await disconnectPenvApp(vi.fn(async () => { throw new TypeError('offline'); }))).toBe(false);
+    expect(
+      await disconnectPenvApp(
+        vi.fn(async () => {
+          throw new TypeError('offline');
+        }),
+      ),
+    ).toBe(false);
     expect(await loadGrant()).toBeUndefined();
     expect(await loadKeys()).toEqual({});
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
@@ -204,11 +254,13 @@ describe('penvApp', () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
     let during: string | undefined = 'unset';
     let auth: string | undefined;
-    await disconnectPenvApp(vi.fn(async (_u: unknown, init?: RequestInit) => {
-      during = await loadGrant();
-      auth = (init?.headers as Record<string, string>).Authorization;
-      return new Response(null, { status: 204 });
-    }) as unknown as typeof fetch);
+    await disconnectPenvApp(
+      vi.fn(async (_u: unknown, init?: RequestInit) => {
+        during = await loadGrant();
+        auth = (init?.headers as Record<string, string>).Authorization;
+        return new Response(null, { status: 204 });
+      }) as unknown as typeof fetch,
+    );
     expect(during).toBeUndefined();
     expect(auth).toBe('Bearer pca_one');
   });
@@ -216,7 +268,9 @@ describe('penvApp', () => {
   it('a reconnect during an in-flight load keeps the new grant and revokes the rotated old one', async () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_A' });
     let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
     const base = fakePenv();
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).endsWith('/auth/app')) {
@@ -226,7 +280,8 @@ describe('penvApp', () => {
         }
         return json({ credential: 'pck_test', grant: 'pca_B2' }, 201);
       }
-      if (String(url).endsWith('/auth/token') || String(url).endsWith('/auth/app/token')) return json({ grant: 'pca_B', connection: CONNECTION }, 201);
+      if (String(url).endsWith('/auth/token') || String(url).endsWith('/auth/app/token'))
+        return json({ grant: 'pca_B', connection: CONNECTION }, 201);
       return base(url, init);
     });
     const oldLoad = loadPenvAppKeys(TARGET, fetchImpl);
@@ -239,7 +294,8 @@ describe('penvApp', () => {
     await newLoad;
     await new Promise((r) => setTimeout(r, 0));
     expect(await loadGrant()).toBe('pca_B2');
-    const revoked = fetchImpl.mock.calls.filter(([u]) => String(u).endsWith('/auth/revoke'))
+    const revoked = fetchImpl.mock.calls
+      .filter(([u]) => String(u).endsWith('/auth/revoke'))
       .map(([, i]) => (i?.headers as Record<string, string>).Authorization);
     expect(revoked).toEqual(['Bearer pca_A2']);
   });
@@ -284,13 +340,21 @@ describe('penvApp', () => {
       // The server replaced grant A when B was issued: A's exchange is held until the connect has stored B, then refused.
       const inner = rotatingPenv(['pca_A']);
       let release!: () => void;
-      const gate = new Promise<void>((r) => { release = r; });
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
       const heldA: string[] = [];
       const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-        if (String(url).endsWith('/auth/app') && grantOf(init) === 'pca_A') { heldA.push('pca_A'); await gate; }
+        if (String(url).endsWith('/auth/app') && grantOf(init) === 'pca_A') {
+          heldA.push('pca_A');
+          await gate;
+        }
         return inner(url, init);
       });
-      const load = loadPenvAppKeys(TARGET, fetchImpl).then((v) => ({ v }), (e) => ({ e: e as Error }));
+      const load = loadPenvAppKeys(TARGET, fetchImpl).then(
+        (v) => ({ v }),
+        (e) => ({ e: e as Error }),
+      );
       await ticks(d);
       await connectPenvApp({ keys: ['GROQ_API_KEY'], launch: allow(), fetchImpl, redirect: REDIRECT });
       expect(await loadGrant()).toBe('pca_B'); // stored before the old exchange is answered
@@ -353,7 +417,9 @@ describe('penvApp', () => {
   it('a disconnect during an in-flight load returns without waiting, and the load saves nothing', async () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
     let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
     const base = fakePenv();
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).endsWith('/auth/app')) await gate;
@@ -368,7 +434,8 @@ describe('penvApp', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(await loadGrant()).toBeUndefined();
     expect(await loadKeys()).toEqual({});
-    const revoked = fetchImpl.mock.calls.filter(([u]) => String(u).endsWith('/auth/revoke'))
+    const revoked = fetchImpl.mock.calls
+      .filter(([u]) => String(u).endsWith('/auth/revoke'))
       .map(([, i]) => (i?.headers as Record<string, string>).Authorization);
     expect(revoked).toEqual(['Bearer pca_one', 'Bearer pca_two']);
   });
@@ -376,7 +443,9 @@ describe('penvApp', () => {
   it('a load started during the revoke finds no grant', async () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
     let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
     const base = fakePenv();
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).endsWith('/auth/revoke')) await gate;
@@ -398,7 +467,8 @@ describe('penvApp', () => {
     const stall = (match: string) => {
       const base = fakePenv();
       return vi.fn((url: string | URL | Request, init?: RequestInit) =>
-        String(url).includes(match) ? new Promise<Response>(() => undefined) : base(url, init)) as unknown as typeof fetch;
+        String(url).includes(match) ? new Promise<Response>(() => undefined) : base(url, init),
+      ) as unknown as typeof fetch;
     };
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
     await expect(loadPenvAppKeys(TARGET, stall('/auth/app'), 20)).rejects.toMatchObject({ code: 'http' });
@@ -410,7 +480,9 @@ describe('penvApp', () => {
   it('token path: invalidating first keeps the new keys, and the grant still works if the connect fails', async () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
     let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
     const base = fakePenv();
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).endsWith('/auth/app')) await gate;
@@ -432,7 +504,9 @@ describe('penvApp', () => {
   it('pickPaste: invalidate, clear keys, then a keepKeys disconnect leaves nothing behind', async () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
     let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
     const base = fakePenv();
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).endsWith('/auth/app')) await gate;
@@ -461,8 +535,12 @@ describe('penvApp', () => {
 
   it('the revoke times out instead of hanging', async () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
-    const fetchImpl = vi.fn((_u: unknown, init?: RequestInit) =>
-      new Promise<Response>((_res, rej) => init?.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))));
+    const fetchImpl = vi.fn(
+      (_u: unknown, init?: RequestInit) =>
+        new Promise<Response>((_res, rej) =>
+          init?.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError'))),
+        ),
+    );
     expect(await disconnectPenvApp(fetchImpl as unknown as typeof fetch, { timeoutMs: 20 })).toBe(false);
     expect(await loadGrant()).toBeUndefined();
   });
@@ -471,7 +549,9 @@ describe('penvApp', () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
     const fetchImpl = fakePenv();
     const [a, b, c] = await Promise.all([
-      loadPenvAppKeys(TARGET, fetchImpl), loadPenvAppKeys(TARGET, fetchImpl), loadPenvAppKeys(TARGET, fetchImpl),
+      loadPenvAppKeys(TARGET, fetchImpl),
+      loadPenvAppKeys(TARGET, fetchImpl),
+      loadPenvAppKeys(TARGET, fetchImpl),
     ]);
     expect(a).toEqual(['GROQ_API_KEY']);
     expect(b).toEqual(a);
@@ -497,17 +577,32 @@ describe('penvApp', () => {
 
   it('access_denied is reported before the state is checked, and a code never needs exchanging', async () => {
     const fetchImpl = fakePenv();
-    const err = await connectPenvApp({ keys: [], launch: allow({ error: 'access_denied' }, 'other'), fetchImpl, redirect: REDIRECT }).catch((e) => e);
+    const err = await connectPenvApp({
+      keys: [],
+      launch: allow({ error: 'access_denied' }, 'other'),
+      fetchImpl,
+      redirect: REDIRECT,
+    }).catch((e) => e);
     expect(err.code).toBe('not-connected');
     expect(fetchImpl).not.toHaveBeenCalled();
-    const bad = await connectPenvApp({ keys: [], launch: allow({ code: 'c' }, 'other'), fetchImpl, redirect: REDIRECT }).catch((e) => e);
+    const bad = await connectPenvApp({
+      keys: [],
+      launch: allow({ code: 'c' }, 'other'),
+      fetchImpl,
+      redirect: REDIRECT,
+    }).catch((e) => e);
     expect(bad.code).toBe('state-mismatch');
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('reads the 201 exchange (credential, body grant) and skips redacted keys', async () => {
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
-    const fetchImpl = fakePenv({ keys: [{ name: 'GROQ_API_KEY', value: 'gsk_test' }, { name: 'OPENROUTER_API_KEY', redacted: true }] });
+    const fetchImpl = fakePenv({
+      keys: [
+        { name: 'GROQ_API_KEY', value: 'gsk_test' },
+        { name: 'NOTION_TOKEN', redacted: true },
+      ],
+    });
     expect(await loadPenvAppKeys(TARGET, fetchImpl)).toEqual(['GROQ_API_KEY']);
     const [, init] = fetchImpl.mock.calls.find(([u]) => String(u).endsWith('/auth/app'))!;
     expect(init?.headers).not.toHaveProperty('Authorization');
@@ -517,37 +612,33 @@ describe('penvApp', () => {
   });
 
   it('invalid_client / invalid_redirect_uri → not connected; rate_limited → retryable', async () => {
-    for (const [status, error] of [[401, 'invalid_client'], [400, 'invalid_redirect_uri']] as const) {
+    for (const [status, error] of [
+      [401, 'invalid_client'],
+      [400, 'invalid_redirect_uri'],
+    ] as const) {
       const fetchImpl = vi.fn(async () => json({ error }, status));
-      const err = await connectPenvApp({ keys: ['GROQ_API_KEY'], launch: allow(), fetchImpl, redirect: REDIRECT }).catch((e) => e);
+      const err = await connectPenvApp({
+        keys: ['GROQ_API_KEY'],
+        launch: allow(),
+        fetchImpl,
+        redirect: REDIRECT,
+      }).catch((e) => e);
       expect(err).toBeInstanceOf(PenvAppError);
       expect(err.code).toBe('not-connected');
       expect(await loadGrant()).toBeUndefined();
     }
     const limited = vi.fn(async () => json({ error: 'rate_limited' }, 429));
-    const err = await connectPenvApp({ keys: ['GROQ_API_KEY'], launch: allow(), fetchImpl: limited, redirect: REDIRECT }).catch((e) => e);
+    const err = await connectPenvApp({
+      keys: ['GROQ_API_KEY'],
+      launch: allow(),
+      fetchImpl: limited,
+      redirect: REDIRECT,
+    }).catch((e) => e);
     expect(err).toBeInstanceOf(PenvError);
     expect(err).toMatchObject({ code: 'http', status: 429 });
     await fakeBrowser.storage.session.set({ penvGrant: 'pca_one' });
     await expect(loadPenvAppKeys(TARGET, limited)).rejects.toMatchObject({ code: 'http', status: 429 });
     expect(await loadGrant()).toBe('pca_one'); // a busy server is not a lost connection
     expect(await wasDisconnected()).toBe(false);
-  });
-
-  it('detects whether app connections are live', async () => {
-    const f404 = vi.fn(async () => new Response(null, { status: 404 }));
-    expect(await penvAppAvailable(f404)).toBe(false);
-    const [url, init] = f404.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('https://penv.cloud/api/v1/auth/app/token');
-    expect(init).toMatchObject({ method: 'POST', body: '{}', credentials: 'omit' });
-    expect(await penvAppAvailable(vi.fn(async () => { throw new TypeError('offline'); }))).toBe(false);
-    for (const status of [403, 500, 404]) {
-      expect(await penvAppAvailable(vi.fn(async () => new Response(null, { status })))).toBe(false);
-    }
-    expect(await penvAppAvailable(vi.fn(async () => json({ error: 'invalid_request' }, 400)))).toBe(true);
-    // true is kept for the session
-    const again = vi.fn(async () => new Response(null, { status: 404 }));
-    expect(await penvAppAvailable(again)).toBe(true);
-    expect(again).not.toHaveBeenCalled();
   });
 });

@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
-import { forgetAll, loadKeyStatus } from '@/lib/connect';
+import { disconnectPenvApp, forgetAll, loadKeyStatus } from '@/lib/penv';
 import { jobsFor, serviceLabel, type KeyName } from '@/lib/keyDetect';
-import { disconnectPenvApp } from '@/lib/penvApp';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { canStart, cloudSettings, noUsableKeys, notesEngineFor, PENV_CLOUD_URL, STATUS_WORD } from '@/lib/setup';
 import type { Settings } from '@/lib/types';

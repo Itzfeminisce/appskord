@@ -6,7 +6,7 @@ import { deleteRecording, getMeeting, listSegments, putMeeting, putSegment } fro
 import { diarize } from './diarize';
 import { liveLabels } from './transcribe/stream';
 import { chat, transcriptLines, type FetchLike } from './llm';
-import { loadKeys } from './keys';
+import { loadKeys } from './penv';
 import { send } from './messages';
 import { getSettings } from './settings';
 import type { CalendarEvent, Meeting, RecordingMeta, Segment } from './types';

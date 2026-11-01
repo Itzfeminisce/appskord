@@ -7,7 +7,7 @@ import { command, useNow, useRecordedSource, useRecorder } from '@/lib/capture';
 import { sourceChip } from '@/lib/sourceChip';
 import type { CaptureMode, Marker, MarkerKind, Segment } from '@/lib/types';
 import { getRecording } from '@/lib/db';
-import { loadKeys } from '@/lib/keys';
+import { loadKeys } from '@/lib/penv';
 import { PROVIDERS } from '@/lib/llm';
 import { onMessage, send } from '@/lib/messages';
 import type { TranscriptStatus } from '@/lib/transcribe/queue';

@@ -4,7 +4,7 @@
  * No key value is ever returned or logged here.
  */
 import { availabilityOf } from './check/results';
-import type { KeyStatus } from './connect';
+import { type KeyStatus } from './penv';
 import { detectKey, jobsFor, serviceLabel, type KeyName } from './keyDetect';
 import type { AiMode, NotesEngine, Settings } from './types';
 

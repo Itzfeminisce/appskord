@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
-import { checkKeys, connectErrorMessage, connectPenv, formatEnvPath, loadToken, parseEnvPath, saveKeyStatus } from '@/lib/connect';
+import { connectErrorMessage } from '@/lib/connect';
+import { checkKeys, clearKeys, connectKeyNames, connectPenv, connectPenvApp, disconnectPenvApp, formatEnvPath, invalidateAppLoads, loadKeys, loadPenvAppKeys, loadToken, parseEnvPath, PenvAppError, saveKeyStatus, wasDisconnected } from '@/lib/penv';
 import { hostsForKeys, hostsForSettings, PENV_HOSTS, requestHosts } from '@/lib/hosts';
 import { serviceLabel } from '@/lib/keyDetect';
-import { clearKeys, loadKeys } from '@/lib/keys';
 import { getSettings, updateSettings } from '@/lib/settings';
-import { connectKeyNames, connectPenvApp, disconnectPenvApp, invalidateAppLoads, loadPenvAppKeys, PenvAppError, wasDisconnected } from '@/lib/penvApp';
 import { canStart, keyUse, neededKeys, startHint } from '@/lib/setup';
 import type { Settings } from '@/lib/types';
 import {

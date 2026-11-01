@@ -7,7 +7,7 @@ import { requestPageAccess, useActiveTabUrl } from '../lib/grab/access';
 import { HOSTS, requestHost } from '../lib/hostAccess';
 import { canMake, draft, runner, useDraft, useSettings } from '../lib/makeClip';
 import { send } from '../lib/messages';
-import { restoreKeys, wasDisconnected } from '../lib/penvApp';
+import { restoreKeys, wasDisconnected } from '../lib/penv';
 import { formatLength, getTemplate } from '../lib/templates';
 import type { Aspect, Clip } from '../lib/types';
 import { displayName } from '../lib/yourMedia';
