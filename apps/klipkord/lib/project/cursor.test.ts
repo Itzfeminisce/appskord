@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLICK_MS, clickAt, CURSOR_SETTLE_MS, cursorAt, smoothAt } from './cursor';
+import { CLICK_MS, clickAt, CONVERGE_MS, CURSOR_SETTLE_MS, cursorAt, smoothAt } from './cursor';
 import type { RecEvent } from './types';
 
 describe('smooth cursor', () => {
@@ -48,5 +48,16 @@ describe('smooth cursor', () => {
   it('has no cursor before the first move', () => {
     expect(cursorAt([{ t: 50, type: 'page' }], 100, true)).toBeNull();
     expect(cursorAt([{ t: 50, type: 'move', x: 0, y: 0 }], 10, true)).toBeNull();
+  });
+
+  it('lands the smooth cursor on the click, and rings the clicked spot', () => {
+    // A 0.3-wide sweep over 200 ms, then a click 100 ms after the last move.
+    const events: RecEvent[] = [{ t: 0, type: 'move', x: 0.2, y: 0.4 }];
+    for (let t = 1000; t <= 1200; t += 40) events.push({ t, type: 'move', x: 0.2 + (0.3 * (t - 1000)) / 200, y: 0.4 });
+    events.push({ t: 1300, type: 'click', x: 0.5, y: 0.4 });
+    expect(smoothAt(events, 1300)!.x).toBeLessThan(0.499);
+    expect(cursorAt(events, 1300, true)).toMatchObject({ x: 0.5, y: 0.4, click: 1, ring: { x: 0.5, y: 0.4 } });
+    expect(cursorAt(events, 1300 - CONVERGE_MS - 1, true)!.x).toBe(smoothAt(events, 1300 - CONVERGE_MS - 1)!.x);
+    expect(cursorAt(events, 1700, true)!.ring).toEqual({ x: 0.5, y: 0.4 });
   });
 });

@@ -13,7 +13,7 @@ export function clickRing(click: number, height: number): { radius: number; alph
   return { radius: height * (0.35 + 0.45 * (1 - click)), alpha: 0.6 * click, width: height * 0.08 };
 }
 
-/** The smooth cursor and its click ring. The context is in frame px. */
+/** The smooth cursor and its click ring, drawn on the clicked spot. The context is in frame px. */
 export function drawCursor(ctx: Ctx2D, cursor: NonNullable<RenderPlan['cursor']>): void {
   const h = CURSOR_PX * Math.max(0.25, cursor.size);
   ctx.save();
@@ -21,8 +21,9 @@ export function drawCursor(ctx: Ctx2D, cursor: NonNullable<RenderPlan['cursor']>
     const ring = clickRing(cursor.click, h);
     ctx.strokeStyle = `rgba(${RING},${ring.alpha})`;
     ctx.lineWidth = ring.width;
+    const at = cursor.ring ?? cursor;
     ctx.beginPath();
-    ctx.arc(cursor.x, cursor.y, ring.radius, 0, Math.PI * 2);
+    ctx.arc(at.x, at.y, ring.radius, 0, Math.PI * 2);
     ctx.stroke();
   }
   const k = h / 18;

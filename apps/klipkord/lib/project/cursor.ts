@@ -1,14 +1,17 @@
-import { omega, springStep, type SpringState } from '../render/spring';
+import { ease, omega, springStep, type SpringState } from '../render/spring';
 import type { RecEvent } from './types';
 
 /** A click ring fades over this long. */
 export const CLICK_MS = 500;
 /** The smooth cursor settles on a new spot in this long. */
 export const CURSOR_SETTLE_MS = 180;
+/** The smooth cursor lands on a click's own spot over this long before it. */
+export const CONVERGE_MS = 150;
 // Older moves have decayed below a hundredth of a pixel by this many settle times.
 const WINDOW_MS = CURSOR_SETTLE_MS * 1.6;
 
 type Pointer = Extract<RecEvent, { type: 'move' | 'click' }>;
+type Click = Extract<RecEvent, { type: 'click' }>;
 const isPointer = (e: RecEvent): e is Pointer => e.type === 'move' || e.type === 'click';
 
 /** Index of the last event at or before `t` (events sorted by t), or -1. */
@@ -32,12 +35,39 @@ function pointerBefore(events: RecEvent[], from: number): number {
   return i;
 }
 
+/** The click whose ring shows at `rec`: the latest one less than CLICK_MS before it. */
+function ringClick(events: RecEvent[], rec: number, last: number): Click | null {
+  for (let j = last; j >= 0 && rec - events[j]!.t < CLICK_MS; j--) {
+    const e = events[j]!;
+    if (e.type === 'click') return e;
+  }
+  return null;
+}
+
 /** Click ring at `rec`: 1 at the click, fading to 0 over CLICK_MS. */
 export function clickAt(events: RecEvent[], rec: number, last = lastAt(events, rec)): number {
-  for (let j = last; j >= 0 && rec - events[j]!.t < CLICK_MS; j--) {
-    if (events[j]!.type === 'click') return 1 - (rec - events[j]!.t) / CLICK_MS;
+  const c = ringClick(events, rec, last);
+  return c ? 1 - (rec - c.t) / CLICK_MS : 0;
+}
+
+/** How hard a click holds the smooth cursor on its spot: eases on over CONVERGE_MS before it, off over CURSOR_SETTLE_MS after. */
+function pull(events: RecEvent[], rec: number, last: number): { w: number; x: number; y: number } | null {
+  let best: { w: number; x: number; y: number } | null = null;
+  for (let j = last + 1; j < events.length && events[j]!.t - rec <= CONVERGE_MS; j++) {
+    const e = events[j]!;
+    if (e.type === 'click') {
+      best = { w: ease(1 - (e.t - rec) / CONVERGE_MS), x: e.x, y: e.y };
+      break;
+    }
   }
-  return 0;
+  for (let j = last; j >= 0 && rec - events[j]!.t < CURSOR_SETTLE_MS; j--) {
+    const e = events[j]!;
+    if (e.type !== 'click') continue;
+    const w = 1 - ease((rec - e.t) / CURSOR_SETTLE_MS);
+    if (!best || w > best.w) best = { w, x: e.x, y: e.y };
+    break;
+  }
+  return best;
 }
 
 /**
@@ -72,14 +102,24 @@ export function smoothAt(events: RecEvent[], rec: number, last = lastAt(events, 
   return { x: sx.x, y: sy.x };
 }
 
-/** Cursor position (0..1 of the viewport) at a recording time, smoothed or as recorded, with its click ring. */
-export function cursorAt(events: RecEvent[], rec: number, smooth: boolean): { x: number; y: number; click: number } | null {
+/**
+ * Cursor position (0..1 of the viewport) at a recording time, smoothed or as recorded, with its click ring.
+ * The smooth cursor lands on each click's spot; `ring` is the clicked spot, where the ring is drawn.
+ */
+export function cursorAt(
+  events: RecEvent[], rec: number, smooth: boolean,
+): { x: number; y: number; click: number; ring?: { x: number; y: number } } | null {
   const last = lastAt(events, rec);
+  const c = ringClick(events, rec, last);
+  const ring = c ? { click: 1 - (rec - c.t) / CLICK_MS, ring: { x: c.x, y: c.y } } : { click: 0 };
   if (smooth) {
     const at = smoothAt(events, rec, last);
-    return at && { ...at, click: clickAt(events, rec, last) };
+    if (!at) return null;
+    const p = pull(events, rec, last);
+    const x = p ? at.x + (p.x - at.x) * p.w : at.x;
+    const y = p ? at.y + (p.y - at.y) * p.w : at.y;
+    return { x, y, ...ring };
   }
   const p = events[pointerBefore(events, last)];
-  return p && isPointer(p) ? { x: p.x, y: p.y, click: clickAt(events, rec, last) } : null;
+  return p && isPointer(p) ? { x: p.x, y: p.y, ...ring } : null;
 }
-

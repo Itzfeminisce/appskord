@@ -4,7 +4,10 @@ import { captionLines } from '../project/captions';
 import { currentCut } from '../project/history';
 import { fromRecording } from '../project/migrate';
 import type { Box, Cut, EventsTrack, Project, RecEvent, Source } from '../project/types';
+import { autoZoom } from '../project/autoZoom';
 import { arrange, cursorAt, FRAME, layoutAt, renderPlan } from './plan';
+
+const click = (t: number, x: number, y: number): RecEvent => ({ t, type: 'click', x, y });
 import { ease, MAX_ZOOM_RATE } from './spring';
 
 const src = (id: string, kind: Source['kind'], w: number, h: number): Source =>
@@ -84,6 +87,23 @@ describe('renderPlan', () => {
     expect(fastest).toBeGreaterThan(MAX_ZOOM_RATE * 0.9);
   });
 
+  it('pans between neighbouring zooms 600 ms apart without zooming out, fully in at each click', () => {
+    const zooms = autoZoom([click(1000, 0.1, 0.1), click(1600, 0.9, 0.9)]);
+    const { project, cut } = setup({ zooms });
+    const depth = zooms[1]!.depth;
+    expect(renderPlan(project, cut, 1000).screen!.crop).toMatchObject({ x: 0, y: 0, w: expect.closeTo(1 / depth) });
+    expect(renderPlan(project, cut, 1600).screen!.crop).toMatchObject({ x: expect.closeTo(1 - 1 / depth), w: expect.closeTo(1 / depth) });
+    for (let out = 1000; out <= 1600; out += 20) expect(renderPlan(project, cut, out).screen!.crop.w).toBeCloseTo(1 / depth);
+  });
+
+  it('is fully in at a click with less time than the ramp, at the start and near the end', () => {
+    const early = setup({ zooms: autoZoom([click(100, 0.5, 0.5)], 'smooth', 4000) });
+    expect(renderPlan(early.project, early.cut, 100).screen!.crop.w).toBeCloseTo(1 / early.cut.zooms[0]!.depth);
+    const late = setup({ zooms: autoZoom([click(3900, 0.5, 0.5)], 'smooth', 4000) });
+    expect(renderPlan(late.project, late.cut, 3900).screen!.crop.w).toBeCloseTo(1 / late.cut.zooms[0]!.depth);
+    expect(renderPlan(late.project, late.cut, 3999).screen!.crop.w).toBeGreaterThan(0.9);
+  });
+
   it('follows layout switches, smoothly fading the camera out', () => {
     const { project, cut } = setup({
       layouts: [{ id: 's', at: 0, layout: 'side', switch: 'cut' }, { id: 'o', at: 2000, layout: 'screen', switch: 'smooth' }],
@@ -115,7 +135,7 @@ describe('renderPlan', () => {
     const plan = renderPlan(project, cut, 1250, events);
     const d = plan.screen!.dest;
     expect(plan.cursor!.x).toBeCloseTo(d.x + 0.75 * d.w, 1);
-    expect(plan.cursor).toMatchObject({ size: 1, click: 0.5 });
+    expect(plan.cursor).toMatchObject({ size: 1, click: 0.5, ring: { x: expect.closeTo(d.x + 0.75 * d.w), y: expect.closeTo(d.y + 0.5 * d.h) } });
     expect(renderPlan({ ...project, events: false }, cut, 1250, events).cursor).toBeUndefined();
   });
 

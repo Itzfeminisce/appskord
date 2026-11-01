@@ -19,7 +19,8 @@ describe('autoZoom', () => {
     const far = autoZoom([click(1000, 0.1, 0.1), click(1500, 0.9, 0.9)]);
     expect(far).toHaveLength(2);
     expect(far[0]!.end).toBe(far[1]!.at);
-    expect(far[0]!.end).toBe(1250);
+    expect(far[0]!.end).toBe(1000);
+    expect(far[1]!.rampIn).toBe(500);
     expect(autoZoom([click(1000, 0.2, 0.2), { t: 1100, type: 'scroll', dy: 0.3 }, click(1200, 0.2, 0.2)])).toHaveLength(2);
     expect(autoZoom([click(1000, 0.2, 0.2), { t: 1100, type: 'page' }, click(1200, 0.2, 0.2)])).toHaveLength(2);
   });
@@ -58,5 +59,19 @@ describe('autoZoom', () => {
       if (i) expect(z.at).toBeGreaterThanOrEqual(zooms[i - 1]!.end);
     }
     expect(new Set(zooms.map((z) => z.id)).size).toBe(zooms.length);
+  });
+
+  it('is fully in at the first action when there is less time than the ramp', () => {
+    const [z] = autoZoom([click(100, 0.3, 0.3)], 'smooth', 5000);
+    expect(z).toMatchObject({ at: 0, rampIn: 100 });
+    expect(z!.rampOut).toBeUndefined();
+    const [end] = autoZoom([click(4900, 0.3, 0.3)], 'smooth', 5000);
+    expect(end).toMatchObject({ end: 5000, rampOut: 100 });
+    expect(end!.rampIn).toBeUndefined();
+  });
+
+  it('gives each zoom its own id, even for actions at the same time', () => {
+    const zooms = autoZoom([click(1000, 0.1, 0.1), click(1000, 0.9, 0.9)]);
+    expect(zooms.map((z) => z.id)).toEqual(['auto-1000', 'auto-1000-2']);
   });
 });

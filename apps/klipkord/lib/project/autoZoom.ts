@@ -88,11 +88,15 @@ export function autoZoom(events: RecEvent[], feel: Feel = 'smooth', duration = I
       merged[merged.length - 1] = grow(prev, g);
     } else merged.push(g);
   }
+  const ids = new Set<string>();
   const zooms: Zoom[] = merged.map((g) => {
     const depth = depthFor(g, typing(g));
     const ramp = rampMs(depth, feel);
-    return {
-      id: `auto-${Math.round(first(g))}`,
+    let id = `auto-${Math.round(first(g))}`;
+    for (let n = 2; ids.has(id); n++) id = `auto-${Math.round(first(g))}-${n}`;
+    ids.add(id);
+    const z: Zoom = {
+      id,
       at: Math.max(0, first(g) - ramp),
       end: Math.min(duration, last(g) + HOLD_MS + ramp),
       depth,
@@ -101,16 +105,28 @@ export function autoZoom(events: RecEvent[], feel: Feel = 'smooth', duration = I
       auto: true,
       why: whyFor(g),
     };
+    return shorten(z, first(g) - z.at, z.end - last(g), ramp);
   });
-  // Zooms on different places that still meet hand over halfway between their actions.
+  // Zooms on different places that still meet touch, and the plan pans from one to the next without zooming out:
+  // the next one is fully in at its first action, the one before stays in to its last.
   for (let i = 1; i < zooms.length; i++) {
     const a = zooms[i - 1]!;
     const b = zooms[i]!;
     if (b.at < a.end) {
-      const mid = (last(merged[i - 1]!) + first(merged[i]!)) / 2;
-      a.end = mid;
-      b.at = mid;
+      const at = Math.min(first(merged[i]!), Math.max(last(merged[i - 1]!), b.at));
+      a.end = at;
+      b.at = at;
+      shorten(b, first(merged[i]!) - at, b.end - last(merged[i]!), rampMs(b.depth, feel));
     }
   }
   return zooms.filter((z) => z.end > z.at);
+}
+
+/** Sets the in and out ramps a zoom renders with when there is less time than the full `ramp`. */
+function shorten(z: Zoom, room: number, tail: number, ramp: number): Zoom {
+  if (room < ramp) z.rampIn = Math.max(0, room);
+  else delete z.rampIn;
+  if (tail < ramp) z.rampOut = Math.max(0, tail);
+  else delete z.rampOut;
+  return z;
 }

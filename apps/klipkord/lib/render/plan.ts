@@ -3,7 +3,7 @@ import { captionAt, type Caption } from '../project/captions';
 import { cursorAt } from '../project/cursor';
 import { spanAt, toOut } from '../project/time';
 import type {
-  Box, Camera, Cut, EventsTrack, LayoutKind, Look, Project, RenderPlan, Shape, Source,
+  Box, Camera, Cut, EventsTrack, LayoutKind, Look, Project, RenderPlan, Shape, Source, Zoom,
 } from '../project/types';
 import { ease, rampMs } from './spring';
 
@@ -108,20 +108,45 @@ function cropFor(cut: Cut, rec: number, dest: Box, screenAspect: number, follow:
     base = { x: clamp01(Math.min(1 - w, centre.x - w / 2)), y: clamp01(Math.min(1 - h, centre.y - h / 2)), w, h };
   }
   if (cut.tracks.zooms?.hidden) return base;
-  const zoom = [...cut.zooms].reverse().find((z) => rec >= z.at && rec < z.end);
+  const zoom = zoomAt(cut.zooms, rec);
   if (!zoom) return base;
-  const ms = rampMs(zoom.depth, zoom.feel);
-  const e = Math.min(ease((rec - zoom.at) / ms), ease((zoom.end - rec) / ms));
+  // A zoom that starts where another ends pans across from it at full depth instead of zooming out between.
+  const prev = cut.zooms.find((z) => z !== zoom && z.end === zoom.at && z.at < z.end);
+  const next = cut.zooms.some((z) => z !== zoom && z.at === zoom.end && z.at < z.end);
+  const ramp = rampMs(zoom.depth, zoom.feel);
+  const into = progress(rec - zoom.at, Math.min(ramp, zoom.rampIn ?? ramp));
+  const out = next ? 1 : progress(zoom.end - rec, Math.min(ramp, zoom.rampOut ?? ramp));
+  const at = (z: Zoom) => (z.focus === 'cursor' ? centre : z.focus);
+  let depth = Math.max(1, zoom.depth);
+  let focus = at(zoom);
+  let e = Math.min(into, out);
   // Scale moves geometrically, so each step in looks the same size.
-  const scale = Math.max(1, zoom.depth) ** e;
+  if (prev) {
+    depth = Math.max(1, prev.depth) ** (1 - into) * depth ** into;
+    const from = at(prev);
+    focus = { x: lerp(from.x, focus.x, into), y: lerp(from.y, focus.y, into) };
+    e = out;
+  }
+  const scale = depth ** e;
   if (scale === 1) return base;
-  const focus = zoom.focus === 'cursor' ? centre : zoom.focus;
   const w = base.w / scale;
   const h = base.h / scale;
   const x = Math.min(base.x + base.w - w, Math.max(base.x, focus.x - w / 2));
   const y = Math.min(base.y + base.h - h, Math.max(base.y, focus.y - h / 2));
   return { x, y, w, h };
 }
+
+/** The zoom on at `rec`; where zooms overlap, the last listed wins. */
+function zoomAt(zooms: Zoom[], rec: number): Zoom | undefined {
+  for (let i = zooms.length - 1; i >= 0; i--) {
+    const z = zooms[i]!;
+    if (rec >= z.at && rec < z.end) return z;
+  }
+  return undefined;
+}
+
+/** Spring progress `ms` into a ramp that lasts `ramp`; a ramp of no length is already done. */
+const progress = (ms: number, ramp: number) => (ramp > 0 ? ease(ms / ramp) : 1);
 
 const sourceTime = (s: Source, rec: number) => rec - s.offset;
 const covers = (s: Source, rec: number) => rec >= s.offset && rec < s.offset + s.duration;
@@ -160,6 +185,12 @@ export function renderPlan(project: Project, cut: Cut, out: number, events?: Eve
         y: screenBox.y + ((pointer.y - crop.y) / crop.h) * screenBox.h,
         size: cut.look.cursor.size, click: cut.look.cursor.clicks ? pointer.click : 0,
       };
+      if (plan.cursor.click > 0 && pointer.ring) {
+        plan.cursor.ring = {
+          x: screenBox.x + ((pointer.ring.x - crop.x) / crop.w) * screenBox.w,
+          y: screenBox.y + ((pointer.ring.y - crop.y) / crop.h) * screenBox.h,
+        };
+      }
     }
   }
 
