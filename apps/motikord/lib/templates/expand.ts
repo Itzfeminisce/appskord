@@ -10,6 +10,8 @@ type Boxes = Record<Aspect, { x: number; y: number; w: number; h: number }>;
 
 // Type scale in px at a 1080 short side (SceneTemplates, Clean at 9:16), and each pack's weight and tracking (em).
 const SCALE_PX: Record<TypeScale, number> = { display: 140, headline: 88, body: 54, caption: 40, number: 380 };
+// Slots whose copy at the full word limit does not fit at their scale's size on every shape: the size they are drawn at.
+const SLOT_PX: Record<string, number> = { 'stat-reveal.number': 320, 'quote.quote': 62, 'list.items': 45, 'hero.headline': 100, 'hero.line': 46, 'end-card.cta': 100 };
 const LINE_HEIGHT: Record<TypeScale, number> = { display: 1, headline: 1.08, body: 1.3, caption: 1.3, number: 0.9 };
 type Face = Record<TypeScale, { weight: number; tracking: number }>;
 const FACE: Record<StyleId, Face> = {
@@ -33,8 +35,33 @@ export function cutWords(text: string, limit: number | undefined): string {
 }
 
 interface Look {
-  pack: StylePack; face: Face; ink: string; muted: string; accent: string; bg: string;
+  pack: StylePack; face: Face; ink: string; muted: string; accent: string; accentText: string; bg: string;
   fonts: StylePack['fonts']; headingWeight?: number; background: Background;
+}
+
+const lum = (hex: string): number | undefined => {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return undefined;
+  const c = [0, 2, 4].map((i) => parseInt(m[1]!.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+};
+const ratio = (a: string, b: string): number => {
+  const [x, y] = [lum(a), lum(b)];
+  if (x === undefined || y === undefined) return 21;
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+};
+const mix = (a: string, b: string, t: number): string => {
+  const ch = (h: string, i: number) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+  return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) * (1 - t) + ch(b, i) * t).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+};
+/** The accent as text colour: pulled toward the ink until it reads (4.5:1) on the background; unchanged when it already does. */
+function accentOnText(accent: string, ink: string, bg: string): string {
+  if (lum(accent) === undefined || lum(ink) === undefined) return accent;
+  for (let t = 0; t <= 1.0001; t += 0.05) {
+    const c = t === 0 ? accent : mix(accent, ink, t);
+    if (ratio(c, bg) >= 4.5) return c;
+  }
+  return ink;
 }
 
 /** The pack's look with the brand kit's colours and fonts laid over it (layout, motion and transitions stay the pack's). */
@@ -50,7 +77,7 @@ function lookFor(pack: StylePack, brand?: BrandKit): Look {
   if (role('background')) swap.set(p.bg2.toUpperCase(), bg);
   const colours = pack.background.colours.map((c) => swap.get(c.toUpperCase()) ?? c);
   return {
-    pack, face: FACE[pack.id] ?? FACE.clean, ink, accent, bg,
+    pack, face: FACE[pack.id] ?? FACE.clean, ink, accent, accentText: accentOnText(accent, ink, bg), bg,
     muted: role('text') || role('background') ? ink : p.muted,
     fonts: { display: brand?.headingFont ?? pack.fonts.display, text: brand?.bodyFont ?? pack.fonts.text, number: pack.fonts.number },
     headingWeight: brand?.headingFont ? 700 : undefined,
@@ -105,10 +132,10 @@ function text(c: Ctx, def: SlotDef, value: string, order: number, boxes: Boxes, 
   const scale = opts.scale ?? def.scale ?? 'body';
   const face = c.look.face[scale];
   const font = scale === 'number' ? c.look.fonts.number : HEADING.includes(scale) ? c.look.fonts.display : c.look.fonts.text;
-  const colour = opts.colour ?? (c.overMedia ? '#FFFFFF' : def.kind === 'text' && scale === 'caption' ? (def.id === 'kicker' ? c.look.accent : c.look.muted) : c.look.ink);
+  const colour = opts.colour ?? (c.overMedia ? '#FFFFFF' : def.kind === 'text' && scale === 'caption' ? (def.id === 'kicker' ? c.look.accentText : c.look.muted) : c.look.ink);
   return {
     ...base(c, def, order, opts.item ?? 0, opts.suffix), ...withBoxes(boxes), type: 'text', role: ROLE[scale], text: value,
-    font, sizePx: opts.sizePx ?? SCALE_PX[scale], weight: HEADING.includes(scale) ? c.look.headingWeight ?? face.weight : face.weight,
+    font, sizePx: opts.sizePx ?? SLOT_PX[`${c.t.id}.${def.id}`] ?? SCALE_PX[scale], weight: HEADING.includes(scale) ? c.look.headingWeight ?? face.weight : face.weight,
     colour, align: def.align ?? 'left', lineHeight: LINE_HEIGHT[scale], letterSpacing: face.tracking,
     ...(opts.stagger !== false && def.motion.stagger ? { stagger: def.motion.stagger } : {}),
     ...(c.overMedia ? { shadow: true } : {}),
@@ -144,7 +171,7 @@ function items(c: Ctx, def: SlotDef, values: string[], order: number): Layer[] {
       return { x: m.x + m.w + gap, y: b.y, w: b.w - m.w - gap, h: b.h };
     });
     if (steps) {
-      layers.push(text(c, def, String(i + 1), order, mark, { item: i, suffix: `:${i}:number`, scale: 'number', sizePx: SCALE_PX.headline, colour: c.look.accent, stagger: false }));
+      layers.push(text(c, def, String(i + 1), order, mark, { item: i, suffix: `:${i}:number`, scale: 'number', sizePx: SCALE_PX.headline, colour: c.look.accentText, stagger: false }));
     } else {
       const tick: ShapeLayer = { ...base(c, def, order, i, `:${i}:tick`), ...withBoxes(mark), type: 'shape', shape: 'circle', fill: c.look.accent };
       layers.push(tick);
@@ -155,13 +182,13 @@ function items(c: Ctx, def: SlotDef, values: string[], order: number): Layer[] {
 }
 
 function quoteMark(c: Ctx, def: SlotDef, order: number): TextLayer {
-  const s = 0.16;
+  const s = 0.17;   // short side fraction; the glyph is sized from the box so it never overflows
   const boxes = mapBoxes(def.boxes, (b, a) => {
     const w = a === '9:16' ? s : a === '16:9' ? s / RATIO[a] : s;
     const h = a === '9:16' ? s * RATIO[a] : s;
     return a === '16:9' ? { x: b.x - w - 0.02, y: b.y, w, h } : { x: b.x, y: b.y - h - 0.01, w, h };
   });
-  const layer = text(c, { ...def, name: 'Quote mark' }, '“', order, boxes, { suffix: ':mark', scale: 'display', sizePx: 220, colour: c.look.accent, stagger: false });
+  const layer = text(c, { ...def, name: 'Quote mark' }, '“', order, boxes, { suffix: ':mark', scale: 'display', sizePx: Math.floor(s * 1080 * 0.98), colour: c.look.accentText, stagger: false });
   return { ...layer, in: motionOf('pop-in', c.look, c.look.pack.motionMs) };
 }
 
@@ -220,7 +247,7 @@ export function expandScene(scene: Scene, pack: StylePack, brand?: BrandKit): Sc
     const layer = text(c, def, v, order, def.boxes);
     if (def.highlight) {
       const word = highlightIndex(v, slots.highlight);
-      if (word >= 0) layer.highlight = { word, colour: look.accent };
+      if (word >= 0) layer.highlight = { word, colour: look.accentText };
     }
     layers.push(layer);
   });

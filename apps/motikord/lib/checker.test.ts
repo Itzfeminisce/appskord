@@ -193,7 +193,8 @@ describe('checker v2', () => {
 
   it('overlap: a templated scene falls back to the template boxes', () => {
     const s = tpl('s1', 'title-hook');
-    s.layers = s.layers.map((l, i) => (i === 1 ? { ...l, boxes: { ...l.boxes, '9:16': { ...s.layers[0]!.boxes!['9:16']! } } } : l));
+    const [first, second] = s.layers.filter((l) => l.type === 'text');
+    s.layers = s.layers.map((l) => (l === second ? { ...l, boxes: { ...l.boxes, '9:16': { ...first!.boxes!['9:16']! } } } : l));
     const r = v2([s]);
     expect(same(r, 'overlap').length).toBeGreaterThan(0);
     expect(same(apply(r, 'overlap'), 'overlap')).toEqual([]);
