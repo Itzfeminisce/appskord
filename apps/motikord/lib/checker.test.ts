@@ -299,3 +299,33 @@ describe('checker v2', () => {
     expect(autoFix(crowded, { measure }).fixed).toEqual([]);
   });
 });
+
+describe('contrast judges what is actually behind the text', () => {
+  const bold = (boxes: Record<string, { x: number; y: number; w: number; h: number }>, bg: Scene['bg']): Recipe => ({
+    ...clip([title({ colour: '#FFFFFF', box: boxes['16:9'], boxes } as Partial<Layer>)]), version: 2, style: 'bold', aspect: '16:9',
+    scenes: [{ id: 's1', durationMs: 3000, background: '#0A0A0A', layout: 'center', layers: [title({ colour: '#FFFFFF', box: boxes['16:9'], boxes } as Partial<Layer>)], bg }],
+  });
+  const onBand = { '9:16': { x: 0.1, y: 0.2, w: 0.8, h: 0.2 }, '1:1': { x: 0.1, y: 0.2, w: 0.5, h: 0.2 }, '16:9': { x: 0.05, y: 0.5, w: 0.9, h: 0.3 } };
+  it('flags white text running onto the yellow slab of an older blocks background', () => {
+    const r = bold(onBand, { kind: 'blocks', colours: ['#0A0A0A', '#FACC15'] });
+    const hit = check(r, { measure }).filter((i) => i.kind === 'contrast');
+    expect(hit.map((i) => i.aspect)).toEqual(['16:9']);
+    expect(hit[0]!.note).toContain('block');
+    expect(check(applyPatch(r, hit[0]!.fix).doc as Recipe, { measure }).filter((i) => i.kind === 'contrast')).toEqual([]);
+  });
+  it('passes text kept off a planned slab', () => {
+    const shapes = { '9:16': [[0, 0.8], [1, 0.75], [1, 1], [0, 1]], '1:1': [[0.7, 0], [1, 0], [1, 1], [0.7, 1]], '16:9': [[0, 0.9], [1, 0.9], [1, 1], [0, 1]] } as never;
+    expect(check(bold(onBand, { kind: 'blocks', colours: ['#0A0A0A', '#FACC15'], shapes }), { measure }).filter((i) => i.kind === 'contrast')).toEqual([]);
+  });
+  it('judges both ends of a gradient', () => {
+    const r = bold(onBand, { kind: 'gradient', colours: ['#0A0A0A', '#FFFFFF'] });
+    expect(check(r, { measure }).some((i) => i.kind === 'contrast')).toBe(true);
+  });
+  it('asks for a shadow on text over a picture, and accepts one', () => {
+    const photo: Layer = { id: 'p', name: 'Photo', type: 'image', assetId: 'photo', startMs: 0, endMs: 3000, opacity: 1, box: { x: 0, y: 0, w: 1, h: 1 }, fit: 'cover' } as Layer;
+    const r = clip([photo, title()]);
+    const hit = check(r, { measure }).filter((i) => i.kind === 'contrast');
+    expect(hit).toHaveLength(1);
+    expect(check(clip([photo, title({ shadow: true } as Partial<Layer>)]), { measure }).filter((i) => i.kind === 'contrast')).toEqual([]);
+  });
+});

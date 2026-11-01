@@ -57,11 +57,12 @@ const mix = (a: string, b: string, t: number): string => {
   return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) * (1 - t) + ch(b, i) * t).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
 };
 /** The accent as text colour: pulled toward the ink until it reads (4.5:1) on the background; unchanged when it already does. */
-function accentOnText(accent: string, ink: string, bg: string): string {
+function accentOnText(accent: string, ink: string, bg: string | string[]): string {
   if (lum(accent) === undefined || lum(ink) === undefined) return accent;
+  const bgs = Array.isArray(bg) ? bg : [bg];
   for (let t = 0; t <= 1.0001; t += 0.05) {
     const c = t === 0 ? accent : mix(accent, ink, t);
-    if (ratio(c, bg) >= 4.5) return c;
+    if (bgs.every((b) => ratio(c, b) >= 4.5)) return c;
   }
   return ink;
 }
@@ -78,9 +79,11 @@ function lookFor(pack: StylePack, brand?: BrandKit): Look {
   if (p.accent2) swap.set(p.accent2.toUpperCase(), accent2);
   if (role('background')) swap.set(p.bg2.toUpperCase(), bg);
   const colours = pack.background.colours.map((c) => swap.get(c.toUpperCase()) ?? c);
+  // Small text reads on every colour the field shows: a gradient's both ends, the blobs; a block's slab is kept off text.
+  const field = pack.background.kind === 'blocks' || pack.background.kind === 'solid' ? [bg] : [bg, ...colours];
   return {
-    pack, face: FACE[pack.id] ?? FACE.clean, ink, accent, accentText: accentOnText(accent, ink, bg), bg,
-    muted: role('text') || role('background') ? ink : p.muted,
+    pack, face: FACE[pack.id] ?? FACE.clean, ink, accent, accentText: accentOnText(accent, ink, field), bg,
+    muted: role('text') || role('background') ? ink : accentOnText(p.muted, ink, field),
     fonts: { display: brand?.headingFont ?? pack.fonts.display, text: brand?.bodyFont ?? pack.fonts.text, number: pack.fonts.number },
     headingWeight: brand?.headingFont ? 700 : undefined,
     background: { ...pack.background, colours },
