@@ -1,7 +1,10 @@
-import type { Aspect, Box, Issue, Layer, LicenceId, PatchOp, Recipe, Scene, TextLayer } from './types';
+import type { Aspect, Box, BrandKit, Issue, Layer, LicenceId, PatchOp, Recipe, Scene, SlotDef, SlotValue, TemplateId, TextLayer } from './types';
+import { applyPatch } from './patch';
+import { cutWords, expandScene } from './templates/expand';
+import { getPack, getSceneTemplate, insideSafeArea, isBackgroundBox, SAFE_AREA, STYLE_PACKS } from './templates/scenes';
 import { ASPECTS } from './recipe/validate';
 import { getPreset } from './render/presets';
-import { boxFor, canvasSize, clampToSafe, insideSafe, isFullBleed } from './render/reflow';
+import { boxFor, canvasSize, clampToSafe, insideSafe, isFullBleed, safeBox } from './render/reflow';
 import { fitText, type Measure } from './render/textFit';
 
 const ATTRIBUTION: readonly LicenceId[] = ['cc-by', 'cc-by-sa', 'cc-by-nc'];
@@ -14,7 +17,7 @@ const DARK = '#111114';
 /** A rough average glyph width, for when no canvas is at hand (AI gating in the background). */
 export const estimateMeasure: Measure = (text, sizePx) => text.length * sizePx * 0.56;
 
-export interface CheckOptions { measure?: Measure }
+export interface CheckOptions { measure?: Measure; brand?: BrandKit }
 
 const id = (kind: Issue['kind'], sceneId: string, layerId: string, aspect: Aspect) => `${kind}/${sceneId}/${layerId}/${aspect}`;
 const layerPath = (si: number, li: number) => `/scenes/${si}/layers/${li}`;
@@ -33,6 +36,9 @@ export function check(recipe: Recipe, opts: CheckOptions = {}): Issue[] {
       credit(at, issues);
     });
   });
+  // v1 clips keep v1's checks; the layout checks judge v2 clips, whose boxes come from templates.
+  recipe.scenes.forEach((scene, si) => { if (recipe.version === 2 || scene.template) layout(recipe, scene, si, opts, issues); });
+  repeats(recipe, opts, issues);
   const music = recipe.music && recipe.assets[recipe.music.assetId];
   if (music?.credit && ATTRIBUTION.includes(music.credit.licence) && !recipe.creditsEndCard) {
     issues.push({ id: id('credit-missing', '', 'music', recipe.aspect), sceneId: '', layerId: 'music', aspect: recipe.aspect, kind: 'credit-missing', fix: [creditsOn()] });
@@ -88,9 +94,22 @@ function needsSafe(recipe: Recipe, layer: Layer): boolean {
 function safeArea({ recipe, scene, layer, si, li }: At, aspect: Aspect, out: Issue[]) {
   if (!needsSafe(recipe, layer)) return;
   const b = boxFor(layer, aspect, recipe.aspect, scene.layout);
-  if (isFullBleed(b) || insideSafe(b, aspect)) return;
-  out.push({ id: id('safe-area', scene.id, layer.id, aspect), sceneId: scene.id, layerId: layer.id, aspect, kind: 'safe-area', fix: [boxFix(recipe, layer, si, li, aspect, clampToSafe(b, aspect))] });
+  // A templated scene keeps to the template safe area; a full-frame background may run under it.
+  const t = !!scene.template;
+  if (isFullBleed(b) || (t && isBackgroundBox(b)) || (t ? insideSafeArea(b, aspect) : insideSafe(b, aspect))) return;
+  out.push({ id: id('safe-area', scene.id, layer.id, aspect), sceneId: scene.id, layerId: layer.id, aspect, kind: 'safe-area', fix: [boxFix(recipe, layer, si, li, aspect, t ? clampInto(b, SAFE_AREA[aspect]) : clampToSafe(b, aspect))] });
 }
+
+/** Shrinks (keeping shape) and then shifts a box until it sits inside `s`. */
+function clampInto(b: Box, s: Box): Box {
+  const k = Math.min(1, s.w / Math.max(b.w, 1e-3), s.h / Math.max(b.h, 1e-3));
+  const w = b.w * k;
+  const h = b.h * k;
+  const x = Math.min(Math.max(b.x + b.w / 2 - w / 2, s.x), s.x + s.w - w);
+  const y = Math.min(Math.max(b.y + b.h / 2 - h / 2, s.y), s.y + s.h - h);
+  return { ...b, x: round4(x), y: round4(y), w: round4(w), h: round4(h) };
+}
+const round4 = (v: number) => Math.round(v * 10000) / 10000;
 
 function boxFix(recipe: Recipe, layer: Layer, si: number, li: number, aspect: Aspect, box: Box): PatchOp {
   const base = layerPath(si, li);
@@ -218,4 +237,317 @@ function credit({ recipe, scene, layer }: At, out: Issue[]) {
   const c = recipe.assets[layer.assetId]?.credit;
   if (!c || !ATTRIBUTION.includes(c.licence)) return;
   out.push({ id: id('credit-missing', scene.id, layer.id, recipe.aspect), sceneId: scene.id, layerId: layer.id, aspect: recipe.aspect, kind: 'credit-missing', fix: [creditsOn()] });
+}
+
+// ---- v2 layout checks: overlap, crowding, empty, align, words, template-repeat ----
+
+const OVERLAP = 0.04;
+const CROWD_BLOCKS = 3;
+const CROWD_AREA = 0.45;
+const BIG_PX = 300;
+const EMPTY_AREA = 0.12;
+const EMPTY_MS = 1000;
+const ALIGN_NEAR = 0.02;
+const ALIGN_SAME = 0.0005;
+const REPEAT_RUN = 3;
+const AUTO_KINDS: readonly Issue['kind'][] = ['words', 'align', 'empty', 'template-repeat'];
+
+interface Vis { layer: Layer; li: number; box: Box; logo: boolean }
+const area = (b: Box) => b.w * b.h;
+const together = (a: Layer, b: Layer) => a.startMs < b.endMs && b.startMs < a.endMs;
+const safeOf = (scene: Scene, aspect: Aspect) => (scene.template ? SAFE_AREA[aspect] : safeBox(aspect));
+const sceneNo = (recipe: Recipe, sceneId: string) => recipe.scenes.findIndex((s) => s.id === sceneId) + 1;
+
+/** Visible text, logo and picture layers with their box on `aspect`; a full-frame background is left out unless asked for. */
+function visibles(recipe: Recipe, scene: Scene, aspect: Aspect, withBackground = false): Vis[] {
+  const out: Vis[] = [];
+  scene.layers.forEach((layer, li) => {
+    if (layer.opacity <= 0) return;
+    const isText = layer.type === 'text' && layer.text.trim() !== '';
+    const isPic = layer.type === 'image' || layer.type === 'video';
+    if (!isText && !isPic) return;
+    const box = boxFor(layer, aspect, recipe.aspect, scene.layout);
+    if (!withBackground && (isFullBleed(box) || isBackgroundBox(box))) return;
+    out.push({ layer, li, box, logo: layer.type === 'image' && recipe.assets[layer.assetId]?.kind === 'logo' });
+  });
+  return out;
+}
+
+const overlapArea = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+const alignOf = (v: Vis) => (v.layer.type === 'text' ? v.layer.align : 'left');
+const label = (v: Vis) => (v.logo ? 'Logo' : v.layer.name);
+
+function packOf(recipe: Recipe, opts: CheckOptions) {
+  return getPack(recipe.style ?? 'clean') ?? STYLE_PACKS[0];
+}
+
+/** The scene's layers drawn again from its template; undefined for a scene without one. */
+function reexpand(recipe: Recipe, scene: Scene, opts: CheckOptions): Scene | undefined {
+  const pack = packOf(recipe, opts);
+  return scene.template && pack ? expandScene(scene, pack, opts.brand) : undefined;
+}
+
+/** Puts each layer's box on `aspect` back to the template's, for layers that still carry a template id. */
+function templateBoxes(recipe: Recipe, scene: Scene, si: number, aspect: Aspect, opts: CheckOptions): PatchOp[] {
+  const fresh = reexpand(recipe, scene, opts);
+  if (!fresh) return [];
+  const ops: PatchOp[] = [];
+  scene.layers.forEach((layer, li) => {
+    const want = fresh.layers.find((l) => l.id === layer.id)?.boxes?.[aspect];
+    const have = boxFor(layer, aspect, recipe.aspect, scene.layout);
+    if (want && JSON.stringify(want) !== JSON.stringify(have)) ops.push(boxFix(recipe, layer, si, li, aspect, want));
+  });
+  return ops;
+}
+
+/** A corner of the safe area where the logo meets nothing else, or undefined. */
+function logoCorner(recipe: Recipe, scene: Scene, si: number, logo: Vis, others: Vis[], aspect: Aspect): PatchOp | undefined {
+  const s = safeOf(scene, aspect);
+  const { w, h } = logo.box;
+  const spots = [[s.x + s.w - w, s.y], [s.x, s.y], [s.x + s.w - w, s.y + s.h - h], [s.x, s.y + s.h - h]];
+  for (const [x, y] of spots) {
+    const b = { ...logo.box, x: round4(x!), y: round4(y!) };
+    if (others.every((o) => overlapArea(b, o.box) <= OVERLAP * Math.min(area(b), area(o.box)))) return boxFix(recipe, logo.layer, si, logo.li, aspect, b);
+  }
+  return undefined;
+}
+
+function layout(recipe: Recipe, scene: Scene, si: number, opts: CheckOptions, out: Issue[]) {
+  const measure = opts.measure ?? estimateMeasure;
+  const n = si + 1;
+  for (const aspect of ASPECTS) {
+    const vis = visibles(recipe, scene, aspect);
+    // overlap
+    for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
+      const a = vis[i]!;
+      const b = vis[j]!;
+      if (!together(a.layer, b.layer)) continue;
+      if (overlapArea(a.box, b.box) <= OVERLAP * Math.min(area(a.box), area(b.box))) continue;
+      const logo = a.logo ? a : b.logo ? b : undefined;
+      const other = logo === a ? b : a;
+      const corner = logo && logoCorner(recipe, scene, si, logo, vis.filter((v) => v !== logo), aspect);
+      const fix = corner ? [corner] : templateBoxes(recipe, scene, si, aspect, opts);
+      const lead = logo ?? b;
+      out.push({
+        id: id('overlap', scene.id, `${a.layer.id}+${b.layer.id}`, aspect), sceneId: scene.id, layerId: lead.layer.id, aspect, kind: 'overlap', fix,
+        note: logo ? `Logo overlaps ${label(other).toLowerCase()} in scene ${n}` : `${label(a)} overlaps ${label(b).toLowerCase()} in scene ${n}`,
+      });
+    }
+    // align: left edges or centres within 2% of each other, but not equal
+    for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
+      const a = vis[i]!;
+      const b = vis[j]!;
+      if (!together(a.layer, b.layer)) continue;
+      // Left edges matter for left-set layers, centres for centred ones; boxes of other kinds are not compared.
+      const mode = alignOf(a);
+      if (mode !== alignOf(b) || mode === 'right') continue;
+      const left = b.box.x - a.box.x;
+      const mid = b.box.x + b.box.w / 2 - (a.box.x + a.box.w / 2);
+      const useLeft = mode === 'left' && Math.abs(left) > ALIGN_SAME && Math.abs(left) <= ALIGN_NEAR;
+      const useMid = mode === 'center' && Math.abs(mid) > ALIGN_SAME && Math.abs(mid) <= ALIGN_NEAR;
+      if (!useLeft && !useMid) continue;
+      const x = round4(useLeft ? a.box.x : a.box.x + a.box.w / 2 - b.box.w / 2);
+      const to = { ...b.box, x };
+      const ok = x >= 0 && x + b.box.w <= 1;
+      out.push({
+        id: id('align', scene.id, `${a.layer.id}+${b.layer.id}`, aspect), sceneId: scene.id, layerId: b.layer.id, aspect, kind: 'align',
+        fix: ok ? [boxFix(recipe, b.layer, si, b.li, aspect, to)] : [],
+        note: `${label(b)} lined up with ${label(a).toLowerCase()} in scene ${n}`,
+      });
+    }
+    // empty: visible content under 12% of the frame for over a second
+    const all = visibles(recipe, scene, aspect, true);
+    const content = [...all.map((v) => v), ...scene.layers.flatMap((l, li) => (l.type === 'chart' && l.opacity > 0 ? [{ layer: l, li, box: boxFor(l, aspect, recipe.aspect, scene.layout), logo: false }] : []))];
+    if (emptyMs(content, scene.durationMs) > EMPTY_MS) {
+      out.push({
+        id: id('empty', scene.id, '', aspect), sceneId: scene.id, layerId: '', aspect, kind: 'empty',
+        fix: templateBoxes(recipe, scene, si, aspect, opts), note: `Scene ${n} now uses the ${aspect} layout`,
+      });
+    }
+    // crowding: more than 3 text blocks at once, or text over 45% of the safe area
+    const text = vis.filter((v) => v.layer.type === 'text');
+    const blocks = peakBlocks(text);
+    // A big numeral (stat reveal) is one mark, so its box is not counted as text.
+    const textArea = Math.max(0, ...text.filter((v) => (v.layer as TextLayer).sizePx < BIG_PX).map((v) => text.filter((o) => (o.layer as TextLayer).sizePx < BIG_PX && together(o.layer, v.layer)).reduce((sum, o) => sum + inkArea(o, aspect, measure), 0)));
+    const countHit = blocks > CROWD_BLOCKS && aspect === recipe.aspect;
+    // A template's word limits already cap its text, so only free layers get the area rule (and a lone statement may fill the frame).
+    if (countHit || (!scene.template && blocks > 1 && textArea > CROWD_AREA * area(safeOf(scene, aspect)))) {
+      const last = text[text.length - 1]!;
+      out.push({
+        id: id('crowding', scene.id, '', aspect), sceneId: scene.id, layerId: last.layer.id, aspect, kind: 'crowding',
+        fix: [{ op: 'remove', path: layerPath(si, last.li) }], note: `Scene ${n} is crowded`,
+      });
+    }
+  }
+  words(recipe, scene, si, opts, out);
+}
+
+/** The share of the frame the words cover once fitted to their box: the lines drawn at the size that fits. */
+function inkArea(v: Vis, aspect: Aspect, measure: Measure): number {
+  const l = v.layer as TextLayer;
+  const { w, h } = canvasSize(aspect, 1080);
+  const pad = l.background ? 32 : 0;
+  const fit = fitText({ text: l.text, width: v.box.w * w - pad, height: v.box.h * h - pad, maxSize: l.sizePx, lineHeight: l.lineHeight, measure });
+  const widest = Math.max(0, ...fit.lines.map((line) => measure(line, fit.sizePx)));
+  return Math.min(area(v.box), (widest * fit.lines.length * fit.sizePx * l.lineHeight) / (w * h));
+}
+
+/** Most text blocks on screen at once; layers of one slot (list items) count as one block. */
+function peakBlocks(text: Vis[]): number {
+  let peak = 0;
+  for (const v of text) {
+    const keys = new Set(text.filter((o) => together(o.layer, v.layer)).map((o) => o.layer.id.replace(/^(.*:slot:[^:]+).*$/, '$1')));
+    peak = Math.max(peak, keys.size);
+  }
+  return peak;
+}
+
+/** Milliseconds in the scene where the visible boxes cover under 12% of the frame. */
+function emptyMs(content: Vis[], durationMs: number): number {
+  const marks = [0, durationMs, ...content.flatMap((v) => [v.layer.startMs, v.layer.endMs])]
+    .map((t) => Math.min(Math.max(t, 0), durationMs)).sort((p, q) => p - q);
+  let ms = 0;
+  for (let k = 0; k + 1 < marks.length; k++) {
+    const [from, to] = [marks[k]!, marks[k + 1]!];
+    if (to <= from) continue;
+    const covered = content.filter((v) => v.layer.startMs <= from && v.layer.endMs >= to).reduce((sum, v) => sum + area(v.box), 0);
+    if (covered < EMPTY_AREA) ms += to - from;
+  }
+  return ms;
+}
+
+const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+const overLimit = (def: SlotDef, v: SlotValue | undefined): boolean => {
+  if (def.words === undefined) return false;
+  if (typeof v === 'string') return wordCount(v) > def.words;
+  if (!Array.isArray(v)) return false;
+  return (v as unknown[]).some((x) => wordCount(typeof x === 'string' ? x : String((x as { label?: string }).label ?? '')) > def.words!);
+};
+
+function words(recipe: Recipe, scene: Scene, si: number, opts: CheckOptions, out: Issue[]) {
+  const t = scene.template ? getSceneTemplate(scene.template) : undefined;
+  const bad = t?.slots.filter((d) => d.kind !== 'media' && d.kind !== 'logo' && overLimit(d, scene.slots?.[d.id]));
+  if (!t || !bad?.length) return;
+  const fresh = reexpand(recipe, scene, opts);
+  out.push({
+    id: id('words', scene.id, bad[0]!.id, recipe.aspect), sceneId: scene.id, layerId: bad[0]!.id, aspect: recipe.aspect, kind: 'words',
+    fix: fresh ? [{ op: 'replace', path: `/scenes/${si}`, value: fresh }] : [],
+    note: `Scene ${si + 1} shortened to fit ${t.name}`,
+  });
+}
+
+// "Nearest" templates for a repeated one, best first.
+const NEAR: Record<TemplateId, TemplateId[]> = {
+  'title-hook': ['big-statement', 'hero', 'end-card'],
+  'big-statement': ['title-hook', 'quote', 'hero', 'end-card'],
+  'stat-reveal': ['big-statement', 'chart', 'title-hook'],
+  chart: ['stat-reveal', 'list', 'steps'],
+  quote: ['big-statement', 'split', 'title-hook'],
+  list: ['steps', 'split', 'chart', 'big-statement'],
+  hero: ['split', 'title-hook', 'before-after'],
+  split: ['hero', 'list', 'quote'],
+  'before-after': ['split', 'hero'],
+  steps: ['list', 'split'],
+  'logo-sting': ['end-card', 'hero'],
+  'end-card': ['logo-sting', 'title-hook', 'big-statement'],
+};
+const isAssetValue = (v: SlotValue | undefined): v is { assetId: string } => !!v && typeof v === 'object' && !Array.isArray(v) && 'assetId' in v;
+
+/** The scene's words, pictures and items poured into another template's slots, or undefined when they do not fit whole. */
+function pour(scene: Scene, from: TemplateId, to: TemplateId): Record<string, SlotValue> | undefined {
+  const src = getSceneTemplate(from);
+  const dst = getSceneTemplate(to);
+  if (!src || !dst) return undefined;
+  const texts: string[] = [];
+  const lists: string[][] = [];
+  const pics: { assetId: string }[] = [];
+  let chart: SlotValue | undefined;
+  for (const d of src.slots) {
+    const v = scene.slots?.[d.id];
+    if (v === undefined || d.id === 'highlight') continue;
+    if (typeof v === 'string') { if (v.trim()) texts.push(v.trim()); }
+    else if (isAssetValue(v)) pics.push(v);
+    else if (Array.isArray(v) && d.kind === 'chart') chart = v;
+    else if (Array.isArray(v)) lists.push((v as string[]).map(String));
+  }
+  const need = dst.slots.filter((d) => d.kind === 'text' && !d.optional && d.id !== 'highlight').length;
+  // One short text may split at its first break to fill a second slot.
+  if (texts.length < need && texts.length) {
+    const m = /^(.+?[.!?:;,–—])\s+(\S.*)$/.exec(texts[0]!);
+    if (m) texts.splice(0, 1, m[1]!.replace(/[.,;:–—]+$/, ''), m[2]!);
+  }
+  const out: Record<string, SlotValue> = {};
+  for (const d of dst.slots) {
+    if (d.id === 'highlight') continue;
+    if (d.kind === 'text') {
+      const t = texts.shift();
+      if (t === undefined) { if (d.optional) continue; return undefined; }
+      out[d.id] = t;
+    } else if (d.kind === 'items') {
+      const l = lists.shift();
+      if (!l || !d.items || l.length < d.items[0] || l.length > d.items[1]) return undefined;
+      out[d.id] = l;
+    } else if (d.kind === 'chart') {
+      if (!chart || !Array.isArray(chart) || (d.items && ((chart as unknown[]).length < d.items[0] || (chart as unknown[]).length > d.items[1]))) return undefined;
+      out[d.id] = chart; chart = undefined;
+    } else {
+      const p = pics.shift();
+      if (!p) { if (d.optional) continue; return undefined; }
+      out[d.id] = p;
+    }
+  }
+  if (texts.length || lists.length || pics.length || chart) return undefined;
+  for (const d of dst.slots) if (d.kind === 'text' && overLimit(d, out[d.id])) return undefined;
+  return out;
+}
+
+const REASON: Partial<Record<`${TemplateId}>${TemplateId}`, string>> = {
+  'list>steps': 'Its items read as steps.',
+  'steps>list': 'Its steps read as a list.',
+};
+
+function repeats(recipe: Recipe, opts: CheckOptions, out: Issue[]) {
+  const pack = packOf(recipe, opts);
+  for (let i = REPEAT_RUN - 1; i < recipe.scenes.length; i++) {
+    const run = recipe.scenes.slice(i - REPEAT_RUN + 1, i + 1);
+    const tpl = run[0]!.template;
+    if (!tpl || run.some((s) => s.template !== tpl)) continue;
+    // Only the scene that makes the run reach 3 is reported, not every scene after it.
+    if (i > REPEAT_RUN - 1 && recipe.scenes[i - REPEAT_RUN]!.template === tpl) continue;
+    const scene = recipe.scenes[i]!;
+    const names = getSceneTemplate(tpl)?.name ?? tpl;
+    let fix: PatchOp[] = [];
+    let note = `Scene ${i + 1} uses ${names} again`;
+    for (const cand of NEAR[tpl] ?? []) {
+      const next = recipe.scenes.slice(i + 1, i + 3);
+      if (next.length === 2 && next.every((s) => s.template === cand)) continue;
+      const slots = pour(scene, tpl, cand);
+      if (!slots || !pack) continue;
+      const swapped = expandScene({ ...scene, template: cand, slots, original: undefined, layers: [] }, pack, opts.brand);
+      fix = [{ op: 'replace', path: `/scenes/${i}`, value: swapped }];
+      note = `Scene ${i + 1} swapped from ${names} to ${getSceneTemplate(cand)?.name ?? cand}\n${REASON[`${tpl}>${cand}`] ?? `Its words fit ${getSceneTemplate(cand)?.name ?? cand}.`}`;
+      break;
+    }
+    out.push({ id: id('template-repeat', scene.id, '', recipe.aspect), sceneId: scene.id, layerId: '', aspect: recipe.aspect, kind: 'template-repeat', fix, note });
+  }
+}
+
+/**
+ * Applies the safe fixes (words, align, empty, template-repeat) one at a time and returns the new recipe with each fix
+ * as an issue marked `auto`, its `note` the "Fixed for you" line. A fix that does not clear its issue is undone.
+ */
+export function autoFix(recipe: Recipe, opts: CheckOptions = {}): { recipe: Recipe; fixed: Issue[] } {
+  let cur = recipe;
+  const fixed: Issue[] = [];
+  const tried = new Set<string>();
+  for (let n = 0; n < 50; n++) {
+    const next = check(cur, opts).find((i) => AUTO_KINDS.includes(i.kind) && i.fix.length > 0 && !tried.has(i.id));
+    if (!next) break;
+    tried.add(next.id);
+    const after = applyPatch(cur, next.fix).doc;
+    if (check(after, opts).some((i) => i.id === next.id)) continue;
+    cur = after;
+    fixed.push({ ...next, auto: true });
+  }
+  return { recipe: cur, fixed };
 }
