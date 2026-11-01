@@ -41,3 +41,9 @@ Record the screen and turn the spoken words into a transcript, summary and notes
 - Icons: `public/icon/` (16, 32, 48, 128).
 - Screenshots 1280x800, at least one: recording, review with transcript, library.
 - Small promo tile 440x280.
+
+## Release steps
+- Bump `version` in `apps/klipkord/package.json`, merge to `main`, then tag from `main`: `git tag klipkord@x.y.z && git push origin klipkord@x.y.z`.
+- CI runs the tests, builds, checks the tag matches the manifest version, and makes a GitHub release with the zip.
+- Store upload is automatic once the Chrome Web Store secrets exist (`CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN`, `CWS_EXTENSION_ID_KLIPKORD`). Until then, download the zip from the release and upload it by hand.
+- Dry run: tag `klipkord@x.y.z-test` makes a prerelease and never uploads.
