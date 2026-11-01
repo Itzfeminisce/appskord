@@ -53,14 +53,14 @@ export function MakingFailed({ onTryAgain, onTemplates }: { onTryAgain?: () => v
 }
 export function ProviderBusy({ provider = 'groq', seconds = 20, onTryNow }: { provider?: Provider; seconds?: number; onTryNow?: () => void }) {
   return (
-    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is busy right now`} actions={<button type="button" onClick={onTryNow} style={actionStyle}>Try now</button>}>
+    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is busy right now`} actions={<button type="button" onClick={onTryNow} style={secondary}>Try now</button>}>
       {`You’ve reached ${label(provider)}’s limit for the moment. Motikord will try again in ${seconds} seconds.`}
     </Notice>
   );
 }
 export function ProviderBusyRetried({ provider = 'groq', onTryNow }: { provider?: Provider; onTryNow?: () => void }) {
   return (
-    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is still busy`} actions={<button type="button" onClick={onTryNow} style={actionStyle}>Try now</button>}>
+    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is still busy`} actions={<button type="button" onClick={onTryNow} style={secondary}>Try now</button>}>
       {`Motikord tried again and ${label(provider)} is still at its limit. Try now, or come back in a few minutes.`}
     </Notice>
   );
