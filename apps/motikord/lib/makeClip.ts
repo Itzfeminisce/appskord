@@ -377,7 +377,9 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
     release('replan');
   }
 
-  return { get: store.get, subscribe: store.subscribe, start, openNow, cancel, pause, resume, replan, reset: () => { sequence++; controller?.abort(); store.set(IDLE); } };
+  return { get: store.get, subscribe: store.subscribe, start, openNow, cancel, pause, resume, replan, reset: () => { sequence++; controller?.abort(); store.set(IDLE); },
+    /** Dev tools only (`#/dev/Making`): shows a sample run state. */
+    show: (state: RunState) => store.set(state) };
 }
 
 export const runner = createRunner();

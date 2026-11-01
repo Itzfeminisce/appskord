@@ -190,7 +190,7 @@ export function CriticOff() {
 /** The footer under v2 Making; after the critic looked at frames it says what else left. */
 export function MakeFooter({ by, frames }: { by: Provider | 'builtin'; frames?: number }) {
   if (by === 'builtin') return <AiFooter by={by} />;
-  return <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>{frames
+  return <span style={{ textAlign: 'center', fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>{frames
     ? `Your words and ${frames} small preview frames went to ${label(by)}. Nothing else left this computer.`
     : `Your words go to ${label(by)}. Your media stays on this computer.`}</span>;
 }

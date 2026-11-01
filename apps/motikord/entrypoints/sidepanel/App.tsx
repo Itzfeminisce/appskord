@@ -46,6 +46,16 @@ function GoOnRequest() {
   return null;
 }
 
+/** Dev builds only: `#/dev/<frame>` for a make screen shows a sample run (MakingCheck opens Making). */
+async function devScreen(): Promise<void> {
+  if (typeof __MOTIKORD_DEV_TOOLS__ === 'undefined' || !__MOTIKORD_DEV_TOOLS__) return;
+  const asked = /^#\/dev\/(\w+)/.exec(location.hash)?.[1];
+  if (!asked) return;
+  const { devDemo } = await import('./devDemo');
+  const screen = devDemo(asked);
+  if (screen !== asked) history.replaceState(history.state, '', `#/dev/${screen}`);
+}
+
 export default function App() {
   const [first, setFirst] = useState<SidepanelScreen | null>(null);
   useEffect(() => {
@@ -54,7 +64,7 @@ export default function App() {
       console.error('Motikord: could not read the interrupted export', error);
       return [];
     });
-    Promise.all([getSettings(), interrupted])
+    Promise.all([getSettings(), interrupted, devScreen()])
       .then(([s, jobs]) => setFirst(jobs.length > 0 ? 'Recovered' : s.onboarded ? 'Home' : 'Main'))
       .catch((error: unknown) => {
         console.error('Motikord: could not read settings', error);
