@@ -59,7 +59,7 @@ export default function Music() {
         if (!live) return;
         setPeaks(found.peaks);
         const r = recipeRef.current;
-        const edit = r && beatSyncEdit(r, found.bpm ? found.beats : [], !!r.beatSync && !!found.bpm);
+        const edit = r && beatSyncEdit(r, found.bpm ? found.beats : [], !!r.beatSync);
         if (edit && JSON.stringify(found.bpm ? found.beats : []) !== JSON.stringify(r?.beats)) await commit({ ...edit, summary: 'Beats found' });
       } catch (error) {
         console.error('Motikord: could not find the beats', error);

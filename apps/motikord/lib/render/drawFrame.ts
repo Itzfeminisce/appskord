@@ -253,7 +253,7 @@ interface Word { text: string; x: number; y: number; w: number; index: number; l
 
 // Word positions only change with the fit, so they are measured once and reused every frame.
 function layoutWords(ctx: Ctx, cache: MediaCache, l: TextLayer, fit: Fit, x: number, step: number): Word[] {
-  const key = `words|${l.font}|${l.weight}|${l.letterSpacing ?? 0}|${l.align}|${fit.sizePx}|${x.toFixed(1)}|${step.toFixed(1)}|${fit.lines.join('\n')}`;
+  const key = `words|${l.font}|${cache.fontReady(l.font) ? 1 : 0}|${l.weight}|${l.letterSpacing ?? 0}|${l.align}|${fit.sizePx}|${x.toFixed(1)}|${step.toFixed(1)}|${fit.lines.join('\n')}`;
   return cache.paint(key, () => {
     const words: Word[] = [];
     let index = 0;

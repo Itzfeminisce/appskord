@@ -74,8 +74,12 @@ export function snapCuts(sceneDurations: readonly number[], beats: readonly numb
   sceneDurations.forEach((d, i) => {
     at += d;
     if (i === sceneDurations.length - 1) { out.push(total - prev); return; }
+    const next = at + sceneDurations[i + 1]!;
     let cut = nearestBeat(at, beats, tolMs);
-    if (cut - prev < MIN_SCENE_MS) cut = at;
+    if (cut - prev < MIN_SCENE_MS || next - cut < MIN_SCENE_MS) {
+      cut = prev + d;
+      if (next - cut < MIN_SCENE_MS) cut = Math.min(cut, Math.max(next - MIN_SCENE_MS, prev + Math.min(d, MIN_SCENE_MS)));
+    }
     out.push(cut - prev);
     prev = cut;
   });
@@ -94,7 +98,12 @@ export function beatSyncEdit(r: Recipe, beats: readonly number[] | undefined, on
       const ms = next[si]!;
       if (ms === s.durationMs) return;
       ops.push({ op: 'replace', path: `/scenes/${si}/durationMs`, value: ms });
-      s.layers.forEach((l, li) => { if (l.endMs >= s.durationMs || l.endMs > ms) ops.push({ op: 'replace', path: `/scenes/${si}/layers/${li}/endMs`, value: ms }); });
+      s.layers.forEach((l, li) => {
+        const start = Math.min(l.startMs, Math.max(0, ms - 100));
+        const end = Math.max(l.endMs >= s.durationMs || l.endMs > ms ? ms : l.endMs, start + 1);
+        if (start !== l.startMs) ops.push({ op: 'replace', path: `/scenes/${si}/layers/${li}/startMs`, value: start });
+        if (end !== l.endMs) ops.push({ op: 'replace', path: `/scenes/${si}/layers/${li}/endMs`, value: end });
+      });
     });
   }
   return ops.length ? { ops, summary: on ? 'Beat sync on' : 'Beat sync off' } : undefined;

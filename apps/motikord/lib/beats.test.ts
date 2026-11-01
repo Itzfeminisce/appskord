@@ -32,14 +32,31 @@ describe('snapCuts', () => {
     expect(out).toEqual([1000, 1000, 980]);
     expect(out.reduce((a, b) => a + b)).toBe(2980);
   });
+  it('never makes a scene under 500 ms by snapping', () => {
+    const a = snapCuts([1000, 1000, 100], [2100]);
+    expect(a.reduce((x, y) => x + y, 0)).toBe(2100);
+    expect(Math.min(...a)).toBeGreaterThanOrEqual(100);
+    expect(a[1]).toBeGreaterThan(0);
+    const b = snapCuts([1000, 600, 600], [1140]);
+    expect(b).toEqual([1000, 600, 600]);
+  });
   it('leaves cuts with no beat nearby', () => expect(snapCuts([1250, 1000], beats, 150)).toEqual([1250, 1000]));
 });
 
 describe('beatSyncEdit', () => {
   it('stores beats, the switch and snapped lengths in one change', () => {
-    const r = { scenes: [{ durationMs: 1080, layers: [{ endMs: 1080 }] }, { durationMs: 1500, layers: [] }] } as never;
+    const r = { scenes: [{ durationMs: 1080, layers: [{ startMs: 0, endMs: 1080 }] }, { durationMs: 1500, layers: [] }] } as never;
     const e = beatSyncEdit(r, [0, 500, 1000, 1500, 2000], true)!;
     expect(e.ops.map((o) => o.path)).toEqual(['/beats', '/beatSync', '/scenes/0/durationMs', '/scenes/0/layers/0/endMs', '/scenes/1/durationMs']);
+  });
+  it('keeps every layer inside a shrunken scene', () => {
+    const r = { scenes: [{ durationMs: 1200, layers: [{ startMs: 1150, endMs: 1200 }] }, { durationMs: 1000, layers: [] }] } as never;
+    const e = beatSyncEdit(r, [1100], true)!;
+    const v = (p: string) => e.ops.find((o) => o.path === p && 'value' in o) as { value: number } | undefined;
+    const ms = v('/scenes/0/durationMs')!.value;
+    const start = v('/scenes/0/layers/0/startMs')!.value, end = v('/scenes/0/layers/0/endMs')!.value;
+    expect(ms).toBe(1100);
+    expect(0 <= start && start < end && end <= ms).toBe(true);
   });
   it('bpmOf reads stored beats', () => expect(bpmOf([0, 500, 1000, 1500, 2000])).toBe(120));
 });
