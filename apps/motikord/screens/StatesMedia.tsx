@@ -98,6 +98,40 @@ export function AllLicencesOn() {
   );
 }
 
+const cross = <svg {...icon} stroke="var(--error-ink)"><circle cx="12" cy="12" r="9" /><path d="M9 9l6 6M15 9l-6 6" /></svg>;
+const info = <svg {...icon} stroke="var(--muted)"><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16.5v.01" /></svg>;
+const keyGlyph = <svg {...icon} stroke="var(--accent)"><circle cx="8" cy="14" r="4" /><path d="M11 11l9-9M17 5l2 2M15 7l2 2" /></svg>;
+
+export function ImageKeyMissing({ onConnect, onPaste }: { onConnect?: () => void; onPaste?: () => void }) {
+  return <Row glyph={keyGlyph} title="Add an image key to make images" actions={[btn('Connect Penv Cloud', onConnect), btn('Paste a key', onPaste, ghostAction)]}>Images come from OpenAI. Only the few-word description is sent.</Row>;
+}
+
+export function ImageKeyRejected({ onPaste }: { onPaste?: () => void }) {
+  return <Row role="alert" tone="error" glyph={cross} title="OpenAI refused the image key" actions={btn('Paste a key', onPaste)}>Check it, or paste another.</Row>;
+}
+
+export function ImageMaking() {
+  return (
+    <div role="status" style={{ height: 112, borderRadius: 10, background: 'var(--stage)', display: 'grid', placeItems: 'center', fontSize: 12, color: 'var(--muted)' }}>Making…</div>
+  );
+}
+
+export function ImageRefused() {
+  return <Row role="alert" tone="error" glyph={cross} title="OpenAI didn't make this image. Try different words."><span /></Row>;
+}
+
+export function ImageQuota({ onSearch }: { onSearch?: () => void }) {
+  return <Row role="status" glyph={info} title="Your OpenAI image limit is used up for now. Free media still works." actions={btn('Search free media', onSearch)}><span /></Row>;
+}
+
+export function ImageOffline({ onRetry }: { onRetry?: () => void }) {
+  return <Row role="status" glyph={info} title="Couldn't reach OpenAI. Check your connection." actions={btn('Try again', onRetry)}><span /></Row>;
+}
+
+export function AiImagesOff({ onOpenSettings }: { onOpenSettings?: () => void }) {
+  return <Row glyph={info} title="No photo fits? Turn on AI images in Settings." actions={btn('Open Settings', onOpenSettings, ghostAction)}><span /></Row>;
+}
+
 /** Every state on one page, for review. */
 export default function StatesMedia() {
   return (
@@ -113,6 +147,13 @@ export default function StatesMedia() {
       <MediaDownloadFailed what="video" />
       <MediaDownloadFailed what="track" />
       <AllLicencesOn />
+      <ImageKeyMissing />
+      <ImageKeyRejected />
+      <ImageMaking />
+      <ImageRefused />
+      <ImageQuota />
+      <ImageOffline />
+      <AiImagesOff />
     </main>
   );
 }

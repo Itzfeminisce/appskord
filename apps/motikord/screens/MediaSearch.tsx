@@ -5,6 +5,7 @@ import { commitEdit, downloadResult, addMediaEdit, readClipRecipe } from '../lib
 import type { Edit } from '../lib/editor/store';
 import { HOSTS, requestHost } from '../lib/hostAccess';
 import { deleteMedia } from '../lib/media';
+import { IMAGE_CREDIT, IMAGE_WORD_LIMIT, ImageError, limitWords, makeImage, saveImage, wordCount, type ImageFailure } from '../lib/aiImage';
 import { clock, chooseMusicEdit } from '../lib/music';
 import { LICENCE_TAG, needsCredit } from '../lib/media/licence';
 import type { MediaKind, MediaResult } from '../lib/media/openverse';
@@ -15,7 +16,7 @@ import { PANEL_GOTO, send } from '../lib/messages';
 import { getKey, getSettings, onSettingsChanged, type KeyName } from '../lib/settings';
 import { openSidePanelOn } from '../lib/sidepanelGo';
 import type { Recipe, Settings } from '../lib/types';
-import { AllLicencesOn, LibraryDenied, MediaDownloadFailed, MediaNoResults, MediaOffline, MediaSearching, PexelsNeedsKey } from './StatesMedia';
+import { AiImagesOff, AllLicencesOn, ImageKeyMissing, ImageKeyRejected, ImageMaking, ImageOffline, ImageQuota, ImageRefused, LibraryDenied, MediaDownloadFailed, MediaNoResults, MediaOffline, MediaSearching, PexelsNeedsKey } from './StatesMedia';
 import { CustomLicenceUnknown, SourceAccess, SourceBusy, SourceDown, SourceKeyRejected, SourceNeedsKey } from './StatesSources';
 
 type Tab = MediaKind;
@@ -99,12 +100,102 @@ const hostOf = (origins: string[]) => { try { return new URL((origins[0] ?? '').
 type Problems = Pick<SearchOutcome, 'down' | 'busy' | 'rejected'> & { access: SourceRun[] };
 const NO_PROBLEMS: Problems = { down: [], busy: [], rejected: [], access: [] };
 
+type Made = { id: string; src: string; asset: Awaited<ReturnType<typeof saveImage>> };
+
+/** The "Make an image" tab: one OpenAI request per image, saved as local media with the credit "AI image, OpenAI". */
+function MakeImagePanel({ recipe, sceneId, commit, close, initial }: { recipe?: Recipe; sceneId?: string; commit: (e: Edit | undefined) => Promise<boolean>; close: () => void; initial: string }) {
+  const { navigate, route } = useRouter();
+  const [text, setText] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<ImageFailure>();
+  const [made, setMade] = useState<Made[]>([]);
+  const [error, setError] = useState(false);
+  const words = wordCount(text);
+  const over = words > IMAGE_WORD_LIMIT;
+  useEffect(() => () => made.forEach((m) => URL.revokeObjectURL(m.src)), [made]);
+
+  async function make() {
+    const description = limitWords(text);
+    if (!description || busy) return;
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      const img = await makeImage(description, recipe?.aspect ?? '9:16', { fetch: (u, i) => fetch(u, i) });
+      const asset = await saveImage(img);
+      setMade((m) => [{ id: asset.id, src: URL.createObjectURL(img.blob), asset }, ...m]);
+    } catch (e) {
+      if (e instanceof ImageError) setFailure(e.state);
+      else { console.error('Motikord: could not make the image', e); setFailure('image-offline'); }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function use(m: Made) {
+    if (!recipe) return;
+    setError(false);
+    const scene = recipe.scenes.find((s) => s.id === sceneId) ?? recipe.scenes[0];
+    try {
+      if (!(await commit(scene && addMediaEdit(recipe, scene.id, m.asset, crypto.randomUUID())))) throw new Error('The edit did not apply');
+      close();
+    } catch (e) {
+      console.error('Motikord: could not add the AI image', e);
+      setError(true);
+    }
+  }
+
+  const gotoKey = () => { void browser.windows.getCurrent().then((w) => { if (w.id !== undefined) openSidePanelOn(w.id, 'ImageKey'); }).catch(() => undefined); };
+  return (
+    <>
+      <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 20px 0', minHeight: 0, overflowY: 'auto' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 600 }}>
+          Describe the image
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} aria-label="Describe the image"
+            style={{ borderRadius: 10, border: '1px solid var(--accent)', padding: 10, font: '14px var(--font)', color: 'var(--ink)', background: 'transparent', resize: 'none' }} />
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+          <span style={chip(true)}>{recipe?.aspect ?? '9:16'}</span>
+          <span style={{ flexGrow: 1 }} />
+          <span style={{ fontFamily: 'var(--mono)', color: over ? 'var(--error-ink)' : 'var(--muted)' }}>{`${words} of ${IMAGE_WORD_LIMIT} words`}</span>
+        </div>
+        <Button disabled={!words || over} busy={busy} onClick={() => void make()}>Make image</Button>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Only this description goes to OpenAI.</span>
+        {failure === 'image-key-missing' && <ImageKeyMissing onConnect={gotoKey} onPaste={gotoKey} />}
+        {failure === 'image-key-rejected' && <ImageKeyRejected onPaste={gotoKey} />}
+        {failure === 'image-refused' && <ImageRefused />}
+        {failure === 'image-quota' && <ImageQuota onSearch={() => navigate('MediaSearch', route.params)} />}
+        {failure === 'image-offline' && <ImageOffline onRetry={() => void make()} />}
+        {error && <MediaDownloadFailed onRetry={() => setError(false)} />}
+        {(busy || made.length > 0) && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+            {busy && <ImageMaking />}
+            {made.map((m) => (
+              <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span role="img" aria-label={m.asset.name} style={{ position: 'relative', height: 112, borderRadius: 10, background: `var(--stage) url("${m.src}") center / cover` }}>
+                  <span style={{ ...tag, position: 'absolute', left: 6, bottom: 6 }}>AI image</span>
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>{IMAGE_CREDIT}</span>
+                <Button variant="secondary" disabled={!recipe} onClick={() => void use(m)} style={{ height: 28, padding: '0 10px', fontSize: 12 }}>Use</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ padding: '12px 20px 14px', marginTop: 12, borderTop: '1px solid var(--line)', display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: 'var(--faint)' }}>
+        <span style={{ flexGrow: 1 }}>Images you make are saved with your clip and listed in Credits.</span>
+        <a href="#credits" onClick={(e) => { e.preventDefault(); navigate('Credits', route.params); }} style={{ fontWeight: 500 }}>See credits</a>
+      </div>
+    </>
+  );
+}
+
 /** Free media: every source that is on, searched in parallel. Chrome's host prompt opens inside the search click. */
 export default function MediaSearch() {
   const { navigate, route } = useRouter();
   const { recipe, sceneId, commit, close } = useStoredClip();
   const settings = useSettings();
   const [tab, setTab] = useState<Tab>(() => { const t = nextTab ?? 'image'; nextTab = undefined; return t; });
+  const [making, setMaking] = useState(false);
   const [q, setQ] = useState('');
   const [source, setSource] = useState<string>('all');
   const [freeOnly, setFreeOnly] = useState(true);
@@ -265,13 +356,18 @@ export default function MediaSearch() {
         <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, flexGrow: 1 }}>Free media</h1>
         <div role="tablist" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: 'var(--stage)' }}>
           {TABS.map(([t, label]) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => switchTab(t)}
-              style={{ height: 30, padding: '0 14px', border: 0, borderRadius: 6, background: tab === t ? 'var(--surface)' : 'transparent', boxShadow: tab === t ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', color: tab === t ? 'var(--ink)' : 'var(--muted)', font: `${tab === t ? 600 : 400} 12px/1 var(--font)`, cursor: 'pointer' }}>{label}</button>
+            <button key={t} type="button" role="tab" aria-selected={!making && tab === t} onClick={() => { setMaking(false); switchTab(t); }}
+              style={{ height: 30, padding: '0 14px', border: 0, borderRadius: 6, background: !making && tab === t ? 'var(--surface)' : 'transparent', boxShadow: !making && tab === t ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', color: !making && tab === t ? 'var(--ink)' : 'var(--muted)', font: `${!making && tab === t ? 600 : 400} 12px/1 var(--font)`, cursor: 'pointer' }}>{label}</button>
           ))}
+          {settings?.aiImages && (
+            <button type="button" role="tab" aria-selected={making} onClick={() => setMaking(true)}
+              style={{ height: 30, padding: '0 14px', border: 0, borderRadius: 6, background: making ? 'var(--surface)' : 'transparent', boxShadow: making ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', color: making ? 'var(--ink)' : 'var(--muted)', font: `${making ? 600 : 400} 12px/1 var(--font)`, cursor: 'pointer' }}>Make an image</button>
+          )}
         </div>
         <IconButton aria-label="Close" onClick={close}><CloseIcon /></IconButton>
       </div>
 
+      {making && settings?.aiImages ? <MakeImagePanel recipe={recipe} sceneId={sceneId} commit={commit} close={close} initial="" /> : <>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 20px 0' }}>
         <label style={{ height: 42, borderRadius: 10, border: '1px solid var(--accent)', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></svg>
@@ -350,6 +446,8 @@ export default function MediaSearch() {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
         Only your search words go to each source. Files you add are downloaded once and kept here.
       </div>
+      {settings && !settings.aiImages && tab === 'image' && status === 'done' && shown.length === 0 && <div style={{ padding: '0 20px 14px' }}><AiImagesOff onOpenSettings={() => windowId.current !== undefined && openSidePanelOn(windowId.current, 'Settings')} /></div>}
+      </>}
     </DialogShell>
   );
 }
