@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "id": "template-word-pop",
+  "name": "Word pop captions",
+  "type": "captions",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc93",
+      "durationMs": 6000,
+      "background": "#111114",
+      "layout": "lower-third",
+      "layers": [
+        {
+          "id": "t92",
+          "name": "Caption",
+          "type": "text",
+          "role": "caption",
+          "text": "and that’s the trick",
+          "font": "Geist",
+          "sizePx": 80,
+          "weight": 800,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 6000,
+          "box": {
+            "x": 0.06,
+            "y": 0.58,
+            "w": 0.88,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "bouncy",
+            "durationMs": 400
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

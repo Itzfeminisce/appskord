@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "id": "template-soft-quote",
+  "name": "Soft quote",
+  "type": "quote",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc33",
+      "durationMs": 8000,
+      "background": "#FCE7F3",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t31",
+          "name": "Quote",
+          "type": "text",
+          "role": "title",
+          "text": "“Small steps still move you forward.”",
+          "font": "Geist",
+          "sizePx": 96,
+          "weight": 600,
+          "colour": "#831843",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 8000,
+          "box": {
+            "x": 0.1,
+            "y": 0.3,
+            "w": 0.8,
+            "h": 0.28
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "blur-in",
+            "feel": "smooth",
+            "durationMs": 600
+          },
+          "during": {
+            "preset": "float",
+            "feel": "smooth",
+            "durationMs": 2400
+          }
+        },
+        {
+          "id": "t32",
+          "name": "Author",
+          "type": "text",
+          "role": "caption",
+          "text": "Someone wise",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 500,
+          "colour": "#5F6168",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 1000,
+          "endMs": 8000,
+          "box": {
+            "x": 0.1,
+            "y": 0.62,
+            "w": 0.8,
+            "h": 0.06
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

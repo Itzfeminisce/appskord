@@ -1,0 +1,223 @@
+{
+  "version": 1,
+  "id": "template-product-drop",
+  "name": "Product drop",
+  "type": "promo",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc4",
+      "durationMs": 4000,
+      "background": "#FCE7F3",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "s1",
+          "name": "Card",
+          "type": "shape",
+          "shape": "rect",
+          "fill": "#FDE68A",
+          "radius": 24,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.2,
+            "w": 0.8,
+            "h": 0.3
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "bouncy",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t2",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Fresh. New. Yours.",
+          "font": "Geist",
+          "sizePx": 80,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.55,
+            "w": 0.8,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t3",
+          "name": "Body",
+          "type": "text",
+          "role": "body",
+          "text": "Say what makes it special",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 500,
+          "colour": "#5F6168",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 500,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.72,
+            "w": 0.8,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc7",
+      "durationMs": 5000,
+      "background": "#111114",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t5",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Made with care",
+          "font": "Geist",
+          "sizePx": 96,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5000,
+          "box": {
+            "x": 0.1,
+            "y": 0.35,
+            "w": 0.8,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "slide-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t6",
+          "name": "Body",
+          "type": "text",
+          "role": "body",
+          "text": "A line about the product and who it is for",
+          "font": "Geist",
+          "sizePx": 48,
+          "weight": 500,
+          "colour": "#E8E8EB",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 400,
+          "endMs": 5000,
+          "box": {
+            "x": 0.1,
+            "y": 0.52,
+            "w": 0.8,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc10",
+      "durationMs": 6000,
+      "background": "#BE185D",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t8",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Order today",
+          "font": "Geist",
+          "sizePx": 110,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 6000,
+          "box": {
+            "x": 0.1,
+            "y": 0.34,
+            "w": 0.8,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "bouncy",
+            "durationMs": 600
+          },
+          "during": {
+            "preset": "pulse",
+            "feel": "steady",
+            "durationMs": 1200
+          }
+        },
+        {
+          "id": "t9",
+          "name": "Body",
+          "type": "text",
+          "role": "body",
+          "text": "yourshop.com",
+          "font": "Geist",
+          "sizePx": 52,
+          "weight": 500,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 600,
+          "endMs": 6000,
+          "box": {
+            "x": 0.1,
+            "y": 0.52,
+            "w": 0.8,
+            "h": 0.08
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

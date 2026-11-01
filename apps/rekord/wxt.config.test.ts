@@ -1,0 +1,40 @@
+import { manifestChecks } from '@appskord/config/checks';
+import { describe, expect, it, vi } from 'vitest';
+
+const PERMISSIONS = ['sidePanel', 'storage', 'tabCapture', 'offscreen', 'activeTab', 'identity'];
+const OPTIONAL_HOSTS = [
+  'https://penv.cloud/*',
+  'https://api.groq.com/*',
+  'https://api.openai.com/*',
+  'https://openrouter.ai/*',
+  'https://api.anthropic.com/*',
+  'https://api.deepgram.com/*',
+  'wss://api.deepgram.com/*',
+  'https://api.notion.com/*',
+  'https://www.googleapis.com/*',
+  'https://oauth2.googleapis.com/*',
+  'http://localhost:11434/*',
+];
+
+manifestChecks({
+  load: () => import('./wxt.config'),
+  extensionId: 'flkicdahoghegnlgpkmdcemlooblblcd',
+  permissions: PERMISSIONS,
+});
+
+async function manifest() {
+  vi.resetModules();
+  return ((await import('./wxt.config')).default as { manifest: Record<string, unknown> }).manifest;
+}
+
+describe('hosts', () => {
+  it('asks for every service host only when its feature is turned on', async () => {
+    const m = await manifest();
+    expect(m.host_permissions).toBeUndefined();
+    expect([...(m.optional_host_permissions as string[])].sort()).toEqual([...OPTIONAL_HOSTS].sort());
+  });
+
+  it('signs in to Google with launchWebAuthFlow, not a manifest oauth2 client', async () => {
+    expect((await manifest()).oauth2).toBeUndefined();
+  });
+});

@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "id": "template-caption-lines",
+  "name": "Caption lines",
+  "type": "captions",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc95",
+      "durationMs": 3000,
+      "background": "#111114",
+      "layout": "lower-third",
+      "layers": [
+        {
+          "id": "t94",
+          "name": "Caption",
+          "type": "text",
+          "role": "caption",
+          "text": "First, say the hook",
+          "font": "Geist",
+          "sizePx": 76,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 3000,
+          "box": {
+            "x": 0.06,
+            "y": 0.56,
+            "w": 0.88,
+            "h": 0.18
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "snappy",
+            "durationMs": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc97",
+      "durationMs": 3000,
+      "background": "#0F172A",
+      "layout": "lower-third",
+      "layers": [
+        {
+          "id": "t96",
+          "name": "Caption",
+          "type": "text",
+          "role": "caption",
+          "text": "Then the one point that matters",
+          "font": "Geist",
+          "sizePx": 76,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 3000,
+          "box": {
+            "x": 0.06,
+            "y": 0.56,
+            "w": 0.88,
+            "h": 0.18
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "snappy",
+            "durationMs": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc99",
+      "durationMs": 3000,
+      "background": "#111114",
+      "layout": "lower-third",
+      "layers": [
+        {
+          "id": "t98",
+          "name": "Caption",
+          "type": "text",
+          "role": "caption",
+          "text": "Last, tell them what to do",
+          "font": "Geist",
+          "sizePx": 76,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 3000,
+          "box": {
+            "x": 0.06,
+            "y": 0.56,
+            "w": 0.88,
+            "h": 0.18
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "snappy",
+            "durationMs": 400
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "id": "template-rising-line",
+  "name": "Rising line",
+  "type": "chart",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc48",
+      "durationMs": 5000,
+      "background": "#0F172A",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t46",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Visitors this year",
+          "font": "Geist",
+          "sizePx": 80,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.14,
+            "w": 0.84,
+            "h": 0.1
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "c47",
+          "name": "Chart",
+          "type": "chart",
+          "chart": "line",
+          "values": [
+            {
+              "label": "Jan",
+              "value": 8
+            },
+            {
+              "label": "Apr",
+              "value": 14
+            },
+            {
+              "label": "Jul",
+              "value": 22
+            },
+            {
+              "label": "Oct",
+              "value": 36
+            }
+          ],
+          "colour": "#38BDF8",
+          "startMs": 400,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.28,
+            "w": 0.84,
+            "h": 0.46
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "wipe-in",
+            "feel": "smooth",
+            "durationMs": 1600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc50",
+      "durationMs": 4000,
+      "background": "#0EA5E9",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t49",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Still climbing",
+          "font": "Geist",
+          "sizePx": 104,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.38,
+            "w": 0.84,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "slide-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}
