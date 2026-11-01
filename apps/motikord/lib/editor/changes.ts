@@ -2,7 +2,7 @@ import { applyPatch } from '../patch';
 import { getPreset } from '../render/presets';
 import { clipDuration } from '../render/drawFrame';
 import { PROVIDERS } from '../providers';
-import type { Author, Change, PresetSlot, Recipe } from '../types';
+import type { Author, Change, PresetSlot, Recipe, Settings } from '../types';
 
 // The Changes tab: every Change newest first, who made it, and how far "Go back here" undoes.
 
@@ -92,6 +92,13 @@ export function madeLine(r: Recipe, styleName: string | undefined): string {
   return [`${r.scenes.length} ${r.scenes.length === 1 ? 'scene' : 'scenes'}`, styleName, pace].filter(Boolean).join(', ');
 }
 
+/** Who made the clip, for the "Clip made" entry: the AI that wrote it from a prompt, or you when there was none. */
+export function madeBy(r: Recipe, s: Pick<Settings, 'ai' | 'provider'> | null | undefined): string | undefined {
+  if (!r.prompt) return whoLabel('hand');
+  if (!s) return undefined;
+  return whoLabel(s.ai === 'cloud' ? s.provider : 'builtin');
+}
+
 /** The recipe just after each change, newest first, by taking back newer changes one at a time (for thumbnails). */
 export function statesAfter(now: Recipe, past: readonly Change[], limit = 20): Recipe[] {
   const out: Recipe[] = [];
@@ -101,6 +108,14 @@ export function statesAfter(now: Recipe, past: readonly Change[], limit = 20): R
     try { doc = applyPatch(doc, past[i]!.inverse).doc; } catch { break; }
   }
   return out;
+}
+/** The clip as it was made, before every change, for the "Clip made" thumbnail; undefined if a change cannot be taken back. */
+export function madeState(now: Recipe, past: readonly Change[]): Recipe | undefined {
+  let doc = now;
+  for (let i = past.length - 1; i >= 0; i--) {
+    try { doc = applyPatch(doc, past[i]!.inverse).doc; } catch { return undefined; }
+  }
+  return doc;
 }
 /** The first scene a change touched, for its thumbnail. */
 export function sceneOf(c: Change): number | undefined {

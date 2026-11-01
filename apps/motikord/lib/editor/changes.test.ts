@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Change, PatchOp } from '../types';
 import { record, undo, type History } from './history';
 import { devSampleRecipe } from './store';
-import { agoLabel, describe as describeChange, madeLine, metaLine, newestFirst, promptSummary, sceneOf, splitSummary, statesAfter, stepsBack, whenLabel, whoLabel } from './changes';
+import { agoLabel, madeBy, madeState, describe as describeChange, madeLine, metaLine, newestFirst, promptSummary, sceneOf, splitSummary, statesAfter, stepsBack, whenLabel, whoLabel } from './changes';
 
 const r0 = devSampleRecipe('c');
 const size = (v: number): PatchOp[] => [{ op: 'replace', path: '/scenes/0/layers/2/sizePx', value: v }];
@@ -77,9 +77,16 @@ describe('changes v2', () => {
     expect(madeLine({ ...r0, pace: 'normal' }, 'Bold')).toBe('3 scenes, Bold, Normal pace');
   });
 
+  it('names who made the clip on "Clip made"', () => {
+    expect(madeBy({ ...r0, prompt: undefined }, null)).toBe('You');
+    expect(madeBy({ ...r0, prompt: 'Launch day' }, { ai: 'cloud', provider: 'groq' })).toBe('Groq');
+    expect(madeBy({ ...r0, prompt: 'Launch day' }, { ai: 'local', provider: 'groq' })).toBe('Built-in AI');
+  });
+
   it('gives the clip just after each change, newest first, for thumbnails', () => {
     const { doc, h, docs } = threeChanges();
     expect(statesAfter(doc, h.past)).toEqual([docs[3], docs[2], docs[1]]);
     expect(sceneOf(h.past[1]!)).toBe(1);
+    expect(madeState(doc, h.past)).toEqual(docs[0]);
   });
 });
