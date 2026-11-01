@@ -4,6 +4,7 @@ import {
   Mp4OutputFormat,
   Output,
   StreamTarget,
+  type StreamTargetChunk,
   VideoSampleSource,
   WebMOutputFormat,
   canEncodeAudio,
@@ -58,7 +59,7 @@ export interface WriterOptions {
   /** Use the hardware encoder; set it from probeEncoder. */
   hardware?: boolean;
   /** Write as it goes, for long exports; otherwise the file is kept in memory and finish() returns it. */
-  stream?: WritableStream;
+  stream?: WritableStream<StreamTargetChunk>;
 }
 
 export interface Writer {
@@ -116,7 +117,7 @@ export async function createWriter(
     codec: codecs.video,
     bitrate: options.bitrate,
     hardwareAcceleration: options.hardware ? 'prefer-hardware' : 'no-preference',
-    sizeChangeBehavior: 'contain',
+    transform: { width: options.width, height: options.height, fit: 'contain' },
   });
   output.addVideoTrack(video, { frameRate: options.fps });
   let audio: AudioSampleSource | null = null;

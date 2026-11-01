@@ -18,6 +18,8 @@ export interface Packet {
 export interface PacketReader<P extends Packet> {
   /** The last key packet at or before `t` seconds. */
   keyPacket(t: number): Promise<P | null>;
+  /** The first key packet of the track, for a `t` before it. */
+  firstKeyPacket(): Promise<P | null>;
   nextPacket(packet: P): Promise<P | null>;
 }
 
@@ -111,7 +113,7 @@ export class FrameCache<F extends CacheFrame, P extends Packet> {
     const hit = this.lookup(at);
     if (hit || this.closed) return hit;
 
-    const key = await this.reader.keyPacket(Math.max(0, t));
+    const key = (await this.reader.keyPacket(Math.max(0, t))) ?? (await this.reader.firstKeyPacket());
     if (!key) return null;
     const position = this.fed
       ? { fed: this.fed.timestamp, out: this.lastOut ? this.lastOut.frame.timestamp / 1e6 : null }
@@ -202,6 +204,7 @@ export function packetReader(track: InputVideoTrack): PacketReader<EncodedPacket
   const sink = new EncodedPacketSink(track);
   return {
     keyPacket: (t) => sink.getKeyPacket(t, { verifyKeyPackets: true }),
+    firstKeyPacket: () => sink.getFirstKeyPacket({ verifyKeyPackets: true }),
     nextPacket: (packet) => sink.getNextPacket(packet),
   };
 }
@@ -281,6 +284,11 @@ export function framesClient(worker: Worker): FramesClient {
     pending.delete(message.id);
     if (message.type === 'error') waiter.reject(new Error(message.message));
     else waiter.resolve((message.type === 'opened' ? message.info : message.frame) as never);
+  });
+  worker.addEventListener('error', (event: ErrorEvent) => {
+    const error = new Error(event.message || 'Frames worker failed');
+    for (const waiter of pending.values()) waiter.reject(error);
+    pending.clear();
   });
   const ask = <T>(request: FramesRequest & { id: number }): Promise<T> =>
     new Promise<T>((resolve, reject) => {

@@ -28,7 +28,7 @@ export interface OpenedSource {
   duration: number;
   video: VideoTrackInfo | null;
   audio: AudioTrackInfo | null;
-  /** The decoded frame shown at `t` seconds, or null past the end. The caller closes it. */
+  /** The decoded frame shown at `t` seconds, or null when there is no video. Past the end Mediabunny returns the last frame. The caller closes it. */
   frameAt(t: number): Promise<VideoSample | null>;
   /** Decoded video frames from `from` to `to` seconds, in order. The caller closes each one. */
   samples(from: number, to: number): AsyncGenerator<VideoSample, void, unknown>;

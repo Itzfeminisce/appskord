@@ -25,19 +25,22 @@ const reader = {
   async keyPacket(t: number) {
     return [...packets].reverse().find((p) => p.type === 'key' && p.timestamp <= t + 1e-9) ?? null;
   },
+  async firstKeyPacket() {
+    return packets.find((p) => p.type === 'key') ?? null;
+  },
   async nextPacket(p: Packet) {
     return packets[packets.indexOf(p) + 1] ?? null;
   },
 };
 
-function setup(options: { capacity?: number; withDuration?: boolean; lag?: number } = {}) {
-  const { capacity = 8, withDuration = true, lag = 0 } = options;
+function setup(options: { capacity?: number; withDuration?: boolean; lag?: number; reader?: typeof reader } = {}) {
+  const { capacity = 8, withDuration = true, lag = 0, reader: source = reader } = options;
   const made: FakeFrame[] = [];
   const log: { reset: number; fed: number[] } = { reset: 0, fed: [] };
   let held: Packet[] = [];
   let needKey = true;
   const cache = new FrameCache<FakeFrame, Packet>({
-    reader,
+    reader: source,
     capacity,
     createDecoder(onFrame): FrameDecoder<Packet> {
       const emit = (p: Packet) => {
@@ -108,6 +111,11 @@ describe('FrameCache', () => {
     await cache.frameAt(3 / FPS);
     expect(frameIndex(await cache.frameAt(25 / FPS))).toBe(25);
     expect(log.fed.slice(4)).toEqual([20, 21, 22, 23, 24, 25]);
+  });
+
+  it('falls back to the first key packet when t precedes it', async () => {
+    const { cache } = setup({ reader: { ...reader, keyPacket: async () => null } });
+    expect(frameIndex(await cache.frameAt(0))).toBe(0);
   });
 
   it('serves a cached frame without decoding', async () => {
