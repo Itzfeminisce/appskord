@@ -1,38 +1,69 @@
 import { MIN_KEPT_MS } from '../editList';
+import { formatClock } from '../time';
 import type { Chapter } from '../types';
 import { wordCount, wordsToRanges, type Unit } from '../wordCuts';
 import { commit, currentCut } from './history';
 import { clipLength, spans, toOut } from './time';
-import type { AudioMix, Camera, CaptionStyle, Card, Clip, Cut, LayoutSwitch, Look, Overlay, Placed, Project, Zoom } from './types';
+import type { AudioMix, Camera, CaptionStyle, Card, Clip, Cut, LayoutKind, LayoutSwitch, Look, Overlay, Placed, Project, Zoom } from './types';
 
 export const MIN_SPEED = 0.5;
 export const MAX_SPEED = 4;
 
-/**
- * History labels. Frame copy: "Deleted 13 words", "Added 6 zooms", "Changed background to Ember" (caller's label),
- * "Moved “Pick a role…” before Members" (caller's label). The rest await designer copy; every op takes `label` to override.
- */
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** Quoted text in a label: the first 3 words, then "…" when there are more. */
+export function quote(text: string): string {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  return `“${words.slice(0, 3).join(' ')}${words.length > 3 ? '…' : ''}”`;
+}
+
+const LAYOUT_NAMES: Record<LayoutKind, string> = { bubble: 'Bubble', side: 'Side by side', camera: 'Camera full', screen: 'Screen only' };
+const TRANSITION_NAMES = { fade: 'Cross-fade', zoom: 'Zoom' } as const;
+
+/** History labels: the official copy in apps/klipkord/v3/frames/FRAMES.md, "Undo step labels". Every op takes `label` to override. */
 export const LABELS = {
-  deleteWords: (n: number) => `Deleted ${n} ${n === 1 ? 'word' : 'words'}`,
-  restoreWords: (n: number) => `Brought back ${n} ${n === 1 ? 'word' : 'words'}`,
-  cutRange: 'Cut a part',
-  split: 'Split a clip',
-  deleteClip: 'Deleted a clip',
-  moveRange: 'Moved a part',
+  opened: 'Opened the project',
+  deleteWords: (n: number) => `Cut ${plural(n, 'word')}`,
+  restoreWords: (n: number) => `Brought back ${plural(n, 'word')}`,
+  fixWord: (word: string) => `Fixed ${quote(word)}`,
+  replaceAll: (old: string, fresh: string) => `Replaced ${quote(old)} with ${quote(fresh)}`,
+  cleanUp: (n: number) => `Cut ${n} with Clean up`,
+  quickWin: (title: string) => `Applied ${quote(title)}`,
+  quickWins: (n: number) => `Applied ${plural(n, 'quick win')}`,
+  aiDraft: (n: number) => `Applied AI edit · ${plural(n, 'change')}`,
+  highlight: (cutName: string) => `Made the cut ${quote(cutName)}`,
+  /** `before`: the chapter name or the first words after the drop point, already quoted when they are words. */
+  moveRange: (firstWords: string, before: string) => `Moved ${quote(firstWords)} before ${before}`,
+  cutRange: 'Cut a part',   // not in the official table; callers pass the action's own label (e.g. LABELS.cleanUp)
+  split: (at: number) => `Split a clip at ${formatClock(at)}`,
+  deleteClip: (leaveGap: boolean) => (leaveGap ? 'Deleted a clip, kept the gap' : 'Deleted a clip'),
+  trim: 'Trimmed a clip',
   setSpeed: (speed: number) => `Set speed to ${speed}x`,
-  setTransition: 'Changed a transition',
+  silences: (n: number) => `Sped up ${plural(n, 'pause')}`,
+  setTransition: (kind?: keyof typeof TRANSITION_NAMES) => `Set the transition to ${kind ? TRANSITION_NAMES[kind] : 'None'}`,
   duplicateClip: 'Duplicated a clip',
-  pasteAfter: 'Pasted',
-  added: (n: number, noun: string) => `Added ${n} ${noun}`,
-  changed: (noun: string) => `Changed ${noun}`,
-  removed: (noun: string) => `Removed ${noun}`,
-  look: 'Changed the look',
+  pasteAfter: (n: number) => `Pasted ${plural(n, 'item')}`,
+  /** `nouns`: [singular, plural], e.g. ['zoom', 'zooms']. */
+  added: (n: number, [one, many]: [string, string]) => `Added ${n === 1 ? `a ${one}` : `${n} ${many}`}`,
+  addedMedia: (fileName: string) => `Added ${quote(fileName)}`,
+  voiceover: 'Recorded a voiceover',
+  switched: (layout: LayoutKind, at: number) => `Switched to ${LAYOUT_NAMES[layout]} at ${formatClock(at)}`,
+  changed: (one: string, at: number) => `Changed the ${one} at ${formatClock(at)}`,
+  changedMany: (n: number, many: string) => `Changed ${n} ${many}`,
+  removed: (n: number, [one, many]: [string, string]) => `Removed ${n === 1 ? `a ${one}` : `${n} ${many}`}`,
+  background: (name: string) => `Changed background to ${name}`,
+  frame: 'Changed the frame',
+  cursor: 'Changed the cursor',
   camera: 'Changed the camera',
   captions: 'Changed captions',
+  translated: (language: string) => `Added ${language} captions`,
   audio: 'Changed audio',
-  track: 'Changed a track',
-  fixWord: 'Fixed a word',
+  music: (track: string) => `Set music to ${quote(track)}`,
+  track: (verb: 'Hid' | 'Showed' | 'Locked' | 'Unlocked' | 'Muted' | 'Unmuted', track: string) => `${verb} the ${track} track`,
+  chapter: (verb: 'Added' | 'Renamed' | 'Moved' | 'Deleted', name: string) => `${verb} the chapter ${quote(name)}`,
   shape: (shape: string) => `Changed shape to ${shape}`,
+  brandKit: 'Changed the brand kit',
+  rename: (name: string) => `Renamed to ${quote(name)}`,
 } as const;
 
 /** Every op may override its default history label. */
@@ -161,7 +192,7 @@ export function fixWord(project: Project, { index, text, label }: Labelled<{ ind
   if (text.trim()) wordFixes[index] = text.trim();
   else delete wordFixes[index];
   if (project.wordFixes[index] === wordFixes[index]) return project;
-  return commit(project, label ?? LABELS.fixWord, { ...project, wordFixes });
+  return commit(project, label ?? LABELS.fixWord(wordFixes[index] ?? project.wordFixes[index] ?? ''), { ...project, wordFixes });
 }
 
 // ---- Clips ----
@@ -176,12 +207,12 @@ export function cutRange(project: Project, { from, to, time = 'rec', label }: La
 
 /** Splits the clip under output time `at`. */
 export function split(project: Project, { at, label }: Labelled<{ at: number }>): Project {
-  return editCut(project, label ?? LABELS.split, (c) => withClips(c, splitAt(c.clips, at)));
+  return editCut(project, label ?? LABELS.split(at), (c) => withClips(c, splitAt(c.clips, at)));
 }
 
 /** Deletes a clip and closes the gap, or leaves a gap that shows the background. Never the last picture. */
 export function deleteClip(project: Project, { id, leaveGap = false, label }: Labelled<{ id: string; leaveGap?: boolean }>): Project {
-  return editCut(project, label ?? LABELS.deleteClip, (c) => {
+  return editCut(project, label ?? LABELS.deleteClip(leaveGap), (c) => {
     const clip = c.clips.find((x) => x.id === id);
     if (!clip) return c;
     const gap: Clip = { id: newId(), in: 0, out: clipLength(clip), speed: 1, gap: true };
@@ -190,12 +221,15 @@ export function deleteClip(project: Project, { id, leaveGap = false, label }: La
   });
 }
 
-/** Moves the selection `from`..`to` (output ms) so it plays from output time `at` of the current timeline. */
-export function moveRange(project: Project, { from, to, at, label }: Labelled<{ from: number; to: number; at: number }>): Project {
+/**
+ * Moves the selection `from`..`to` (output ms) so it plays from output time `at` of the current timeline.
+ * `label` is required: only the caller knows the words (LABELS.moveRange). A drop inside or on the edge of the selection does nothing.
+ */
+export function moveRange(project: Project, { from, to, at, label }: { from: number; to: number; at: number; label: string }): Project {
   const a = Math.min(from, to);
   const b = Math.max(from, to);
-  if (b <= a || (at > a && at < b)) return project;
-  return editCut(project, label ?? LABELS.moveRange, (c) => {
+  if (b <= a || (at >= a && at <= b)) return project;
+  return editCut(project, label, (c) => {
     const placed = spans({ ...c, clips: splitAt(splitAt(splitAt(c.clips, a), b), at) });
     const moved = placed.filter((s) => s.start >= a && s.end <= b).map((s) => s.clip);
     const rest = placed.filter((s) => s.end <= a || s.start >= b);
@@ -217,7 +251,10 @@ export interface SpeedArgs {
 export function setSpeed(project: Project, { ids, speed, naturalVoice, silences, label }: Labelled<SpeedArgs>): Project {
   const rate = Math.min(MAX_SPEED, Math.max(MIN_SPEED, speed));
   const chosen = new Set(ids);
-  return editCut(project, label ?? LABELS.setSpeed(rate), (c) => {
+  const pauses = silences
+    ? currentCut(project).clips.filter((c) => chosen.has(c.id) && !c.gap).reduce((n, c) => n + silentParts(c, silences).filter((p) => p.silent).length, 0)
+    : 0;
+  return editCut(project, label ?? (silences ? LABELS.silences(pauses) : LABELS.setSpeed(rate)), (c) => {
     const clips = c.clips.flatMap((clip): Clip[] => {
       if (!chosen.has(clip.id) || clip.gap) return [clip];
       const flags = { ...(naturalVoice !== undefined && { naturalVoice }) };
@@ -254,7 +291,7 @@ function silentParts(clip: Clip, silences: { start: number; end: number }[]) {
 
 /** Sets or clears the transition into a clip. */
 export function setTransition(project: Project, { id, transition, label }: Labelled<{ id: string; transition?: Clip['transition'] }>): Project {
-  return editCut(project, label ?? LABELS.setTransition, (c) => withClips(c, c.clips.map((clip) => {
+  return editCut(project, label ?? LABELS.setTransition(transition?.kind), (c) => withClips(c, c.clips.map((clip) => {
     if (clip.id !== id) return clip;
     const { transition: _old, ...rest } = clip;
     void _old;
@@ -274,7 +311,7 @@ export function duplicateClip(project: Project, { id, label }: Labelled<{ id: st
 /** Inserts copies of copied clips at output time `at`. */
 export function pasteAfter(project: Project, { clips: copied, at, label }: Labelled<{ clips: Clip[]; at: number }>): Project {
   if (copied.length === 0) return project;
-  return editCut(project, label ?? LABELS.pasteAfter, (c) => {
+  return editCut(project, label ?? LABELS.pasteAfter(copied.length), (c) => {
     const placed = spans({ ...c, clips: splitAt(c.clips, at) });
     const index = placed.findIndex((s) => s.start >= at);
     const list = placed.map((s) => s.clip);
@@ -291,14 +328,52 @@ type New<T> = Omit<T, 'id'> & { id?: string };
 
 const NOUNS: Record<LayerKind, [string, string]> = {
   zooms: ['zoom', 'zooms'], layouts: ['layout switch', 'layout switches'], overlays: ['overlay', 'overlays'],
-  cards: ['card', 'cards'], media: ['media', 'media'], voiceovers: ['voiceover', 'voiceovers'],
+  cards: ['card', 'cards'], media: ['media file', 'media files'], voiceovers: ['voiceover', 'voiceovers'],
 };
-const noun = (kind: LayerKind, n: number) => NOUNS[kind][n === 1 ? 0 : 1];
+const OVERLAY_NOUNS: Record<Overlay['kind'], [string, string]> = {
+  text: ['text', 'texts'], arrow: ['arrow', 'arrows'], callout: ['callout', 'callouts'],
+  highlight: ['highlight', 'highlights'], spotlight: ['spotlight', 'spotlights'], blur: ['blur', 'blurs'],
+};
+const cardNoun = (template: string): [string, string] => {
+  const one = template.replace(/[-_]+/g, ' ').toLowerCase();
+  return [one, `${one}s`];
+};
+
+/** The nouns of a set of layers: the overlay kind or card template when they all share one, else the layer kind. */
+function nounsOf<K extends LayerKind>(kind: K, items: Partial<Layers[K]>[]): [string, string] {
+  const one = <T>(pick: (x: Partial<Layers[K]>) => T | undefined) => {
+    const all = new Set(items.map(pick));
+    return all.size === 1 ? [...all][0] : undefined;
+  };
+  if (kind === 'overlays') {
+    const k = one((x) => (x as Partial<Overlay>).kind);
+    if (k) return OVERLAY_NOUNS[k];
+  }
+  if (kind === 'cards') {
+    const t = one((x) => (x as Partial<Card>).template);
+    if (t) return cardNoun(t);
+  }
+  return NOUNS[kind];
+}
+
+function addedLabel<K extends LayerKind>(project: Project, kind: K, items: New<Layers[K]>[]): string {
+  const first: unknown = items[0];
+  if (kind === 'voiceovers') return LABELS.voiceover;
+  if (kind === 'layouts' && items.length === 1) {
+    const s = first as LayoutSwitch;
+    return LABELS.switched(s.layout, s.at);
+  }
+  if (kind === 'media' && items.length === 1) {
+    const name = project.sources.find((x) => x.id === (first as Placed).source)?.name;
+    if (name) return LABELS.addedMedia(name);
+  }
+  return LABELS.added(items.length, nounsOf(kind, items as Partial<Layers[K]>[]));
+}
 
 /** Adds layers of one kind, kept in order of their anchor time. */
 export function addLayer<K extends LayerKind>(project: Project, { kind, items, label }: Labelled<{ kind: K; items: New<Layers[K]>[] }>): Project {
   if (items.length === 0) return project;
-  return editCut(project, label ?? LABELS.added(items.length, noun(kind, items.length)), (c) => {
+  return editCut(project, label ?? addedLabel(project, kind, items), (c) => {
     const list = [...(c[kind] as Layers[K][]), ...items.map((x) => ({ ...x, id: x.id ?? newId() }) as Layers[K])];
     return { ...c, [kind]: list.sort((x, y) => x.at - y.at) };
   });
@@ -307,7 +382,9 @@ export function addLayer<K extends LayerKind>(project: Project, { kind, items, l
 export function updateLayer<K extends LayerKind>(
   project: Project, { kind, id, patch, label }: Labelled<{ kind: K; id: string; patch: Partial<Omit<Layers[K], 'id'>> }>,
 ): Project {
-  return editCut(project, label ?? LABELS.changed(`a ${noun(kind, 1)}`), (c) => {
+  const item = (currentCut(project)[kind] as Layers[K][]).find((x) => x.id === id);
+  if (!item) return project;
+  return editCut(project, label ?? LABELS.changed(nounsOf(kind, [item])[0], item.at), (c) => {
     const list = c[kind] as Layers[K][];
     if (!list.some((x) => x.id === id)) return c;
     return { ...c, [kind]: list.map((x) => (x.id === id ? { ...x, ...patch, id } : x)).sort((x, y) => x.at - y.at) };
@@ -316,7 +393,8 @@ export function updateLayer<K extends LayerKind>(
 
 export function removeLayer<K extends LayerKind>(project: Project, { kind, ids, label }: Labelled<{ kind: K; ids: string[] }>): Project {
   const gone = new Set(ids);
-  return editCut(project, label ?? LABELS.removed(gone.size === 1 ? `a ${noun(kind, 1)}` : `${gone.size} ${noun(kind, gone.size)}`), (c) => {
+  const items = (currentCut(project)[kind] as Layers[K][]).filter((x) => gone.has(x.id));
+  return editCut(project, label ?? LABELS.removed(items.length, nounsOf(kind, items)), (c) => {
     const list = c[kind] as Layers[K][];
     const kept = list.filter((x) => !gone.has(x.id));
     return kept.length === list.length ? c : { ...c, [kind]: kept };
@@ -328,22 +406,32 @@ export function removeLayer<K extends LayerKind>(project: Project, { kind, ids, 
 const byAt = (a: Chapter, b: Chapter) => a.at - b.at;
 
 export function addChapter(project: Project, { chapter, label }: Labelled<{ chapter: Chapter }>): Project {
-  return commit(project, label ?? LABELS.added(1, 'chapter'), { ...project, chapters: [...project.chapters, chapter].sort(byAt) });
+  return commit(project, label ?? LABELS.chapter('Added', chapter.title), { ...project, chapters: [...project.chapters, chapter].sort(byAt) });
 }
 export function updateChapter(project: Project, { index, patch, label }: Labelled<{ index: number; patch: Partial<Chapter> }>): Project {
-  if (!project.chapters[index]) return project;
+  const old = project.chapters[index];
+  if (!old) return project;
   const chapters = project.chapters.map((c, i) => (i === index ? { ...c, ...patch } : c)).sort(byAt);
-  return commit(project, label ?? LABELS.changed('a chapter'), { ...project, chapters });
+  const verb = patch.title !== undefined && patch.title !== old.title ? 'Renamed' : 'Moved';
+  return commit(project, label ?? LABELS.chapter(verb, patch.title ?? old.title), { ...project, chapters });
 }
 export function removeChapter(project: Project, { index, label }: Labelled<{ index: number }>): Project {
-  if (!project.chapters[index]) return project;
-  return commit(project, label ?? LABELS.removed('a chapter'), { ...project, chapters: project.chapters.filter((_, i) => i !== index) });
+  const old = project.chapters[index];
+  if (!old) return project;
+  return commit(project, label ?? LABELS.chapter('Deleted', old.title), { ...project, chapters: project.chapters.filter((_, i) => i !== index) });
 }
 
 // ---- Cut settings ----
 
+function musicLabel(project: Project, patch: Partial<AudioMix>): string {
+  const source = patch.music?.source;
+  if (!source || source === currentCut(project).audio.music?.source) return LABELS.audio;
+  const name = project.sources.find((x) => x.id === source)?.name;
+  return name ? LABELS.music(name) : LABELS.audio;
+}
+
 export function setLook(project: Project, { patch, label }: Labelled<{ patch: Partial<Look> }>): Project {
-  return editCut(project, label ?? LABELS.look, (c) => ({ ...c, look: { ...c.look, ...patch } }));
+  return editCut(project, label ?? (patch.background ? LABELS.background(patch.background.value) : patch.cursor ? LABELS.cursor : LABELS.frame), (c) => ({ ...c, look: { ...c.look, ...patch } }));
 }
 export function setCamera(project: Project, { patch, label }: Labelled<{ patch: Partial<Camera> }>): Project {
   return editCut(project, label ?? LABELS.camera, (c) => ({ ...c, camera: { ...c.camera, ...patch } }));
@@ -352,10 +440,17 @@ export function setCaptions(project: Project, { patch, label }: Labelled<{ patch
   return editCut(project, label ?? LABELS.captions, (c) => ({ ...c, captions: { ...c.captions, ...patch } }));
 }
 export function setAudio(project: Project, { patch, label }: Labelled<{ patch: Partial<AudioMix> }>): Project {
-  return editCut(project, label ?? LABELS.audio, (c) => ({ ...c, audio: { ...c.audio, ...patch } }));
+  return editCut(project, label ?? musicLabel(project, patch), (c) => ({ ...c, audio: { ...c.audio, ...patch } }));
 }
+function trackLabel(name: string, patch: { hidden?: boolean; locked?: boolean; muted?: boolean }): string {
+  const verb = patch.hidden !== undefined ? (patch.hidden ? 'Hid' : 'Showed')
+    : patch.locked !== undefined ? (patch.locked ? 'Locked' : 'Unlocked')
+    : patch.muted ? 'Muted' : 'Unmuted';
+  return LABELS.track(verb, name);
+}
+
 export function setTrack(
   project: Project, { name, patch, label }: Labelled<{ name: string; patch: { hidden?: boolean; locked?: boolean; muted?: boolean } }>,
 ): Project {
-  return editCut(project, label ?? LABELS.track, (c) => ({ ...c, tracks: { ...c.tracks, [name]: { ...c.tracks[name], ...patch } } }));
+  return editCut(project, label ?? trackLabel(name, patch), (c) => ({ ...c, tracks: { ...c.tracks, [name]: { ...c.tracks[name], ...patch } } }));
 }

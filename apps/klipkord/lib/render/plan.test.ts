@@ -3,7 +3,7 @@ import type { Recording } from '../types';
 import { captionLines } from '../project/captions';
 import { currentCut } from '../project/history';
 import { fromRecording } from '../project/migrate';
-import type { Box, Cut, EventsTrack, Project, Source } from '../project/types';
+import type { Box, Cut, EventsTrack, Project, RecEvent, Source } from '../project/types';
 import { arrange, cursorAt, FRAME, layoutAt, renderPlan } from './plan';
 
 const src = (id: string, kind: Source['kind'], w: number, h: number): Source =>
@@ -87,6 +87,9 @@ describe('renderPlan', () => {
     expect(cursorAt(events.events, 500, false)).toMatchObject({ x: 0.5 });
     expect(cursorAt(events.events, 1250, true)).toEqual({ x: 0.75, y: 0.5, click: 0.5 });
     expect(cursorAt(events.events, -1, true)).toBeNull();
+    const mixed: RecEvent[] = [{ t: 0, type: 'move', x: 0, y: 0 }, { t: 100, type: 'scroll', dy: 0.1 }, { t: 200, type: 'page' }, { t: 1000, type: 'move', x: 1, y: 1 }];
+    expect(cursorAt(mixed, 500, true)).toEqual({ x: 0.5, y: 0.5, click: 0 });
+    expect(cursorAt(mixed, 2000, true)).toEqual({ x: 1, y: 1, click: 0 });
     const { project, cut } = setup();
     const plan = renderPlan(project, cut, 1250, events);
     const d = plan.screen!.dest;

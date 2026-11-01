@@ -6,7 +6,7 @@ import { fromRecording } from './migrate';
 import {
   addChapter, addLayer, cutRange, deleteClip, deleteWords, duplicateClip, fixWord, moveRange, pasteAfter, removeChapter,
   removeLayer, restoreWords, setAudio, setCamera, setCaptions, setLook, setSpeed, setTrack, setTransition, split,
-  updateChapter, updateLayer,
+  updateChapter, updateLayer, LABELS, quote,
 } from './ops';
 import { cutLength, toOut } from './time';
 import type { Project } from './types';
@@ -22,7 +22,7 @@ describe('word ops', () => {
   it('deletes words with the pause after them and names the step', () => {
     const p = deleteWords(base(), { units, chosen: new Set([1, 2]) });
     expect(ends(p)).toEqual([[0, 1000], [2600, 10_000]]);
-    expect(label(p)).toBe('Deleted 2 words');
+    expect(label(p)).toBe('Cut 2 words');
   });
 
   it('joins a new deletion to words already cut', () => {
@@ -84,17 +84,19 @@ describe('clip ops', () => {
     expect(ends(closed)).toEqual([[4000, 10_000]]);
     const gap = deleteClip(p, { id: a!.id, leaveGap: true });
     expect(cut(gap).clips[0]).toMatchObject({ gap: true, in: 0, out: 4000 });
+    expect(label(gap)).toBe('Deleted a clip, kept the gap');
     expect(cutLength(cut(gap))).toBe(10_000);
     expect(deleteClip(closed, { id: b!.id })).toBe(closed);
   });
 
   it('moves a selection and keeps edits in other cuts', () => {
-    const p = moveRange(base(), { from: 2000, to: 3000, at: 8000 });
+    const p = moveRange(base(), { from: 2000, to: 3000, at: 8000, label: 'Moved “Then pick a…” before Members' });
+    expect(label(p)).toBe('Moved “Then pick a…” before Members');
     expect(ends(p)).toEqual([[0, 2000], [3000, 8000], [2000, 3000], [8000, 10_000]]);
     expect(toOut(cut(p), 2500)).toBe(7500);
     const still = base();
-    expect(moveRange(still, { from: 2000, to: 3000, at: 2500 })).toBe(still);
-    const front = moveRange(base(), { from: 8000, to: 10_000, at: 0 });
+    for (const at of [2000, 2500, 3000]) expect(moveRange(still, { from: 2000, to: 3000, at, label: 'x' })).toBe(still);
+    const front = moveRange(base(), { from: 8000, to: 10_000, at: 0, label: 'x' });
     expect(ends(front)).toEqual([[8000, 10_000], [0, 8000]]);
   });
 
@@ -107,25 +109,43 @@ describe('clip ops', () => {
       [0, 2000, 1, true, true], [2000, 4000, 2, true, true], [4000, 10_000, 1, true, true],
     ]);
     expect(cutLength(cut(p))).toBe(9000);
-    expect(label(p)).toBe('Set speed to 2x');
+    expect(label(p)).toBe('Sped up 1 pause');
+    expect(label(setSpeed(b, { ids: [id], speed: 2 }))).toBe('Set speed to 2x');
   });
 
   it('sets and clears a transition', () => {
     const b = base();
     const id = cut(b).clips[0]!.id;
-    const p = setTransition(b, { id, transition: { kind: 'zoom', ms: 400 } });
-    expect(cut(setTransition(p, { id })).clips[0]!.transition).toBeUndefined();
+    const p = setTransition(b, { id, transition: { kind: 'fade', ms: 400 } });
+    expect(label(p)).toBe('Set the transition to Cross-fade');
+    const q = setTransition(p, { id });
+    expect(cut(q).clips[0]!.transition).toBeUndefined();
+    expect(label(q)).toBe('Set the transition to None');
   });
 
   it('duplicates a clip and pastes clips at a time', () => {
     const p = split(base(), { at: 5000 });
+    expect(label(p)).toBe('Split a clip at 00:05');
     const [a] = cut(p).clips;
     const d = duplicateClip(p, { id: a!.id });
+    expect(label(d)).toBe('Duplicated a clip');
     expect(ends(d)).toEqual([[0, 5000], [0, 5000], [5000, 10_000]]);
     expect(new Set(cut(d).clips.map((c) => c.id)).size).toBe(3);
     const pasted = pasteAfter(p, { clips: [a!], at: 7000 });
     expect(ends(pasted)).toEqual([[0, 5000], [5000, 7000], [0, 5000], [7000, 10_000]]);
+    expect(label(pasted)).toBe('Pasted 1 item');
     expect(pasteAfter(p, { clips: [], at: 0 })).toBe(p);
+  });
+});
+
+describe('labels', () => {
+  it('quotes the first 3 words and counts in the singular for 1', () => {
+    expect(quote('Pick a role for')).toBe('“Pick a role…”');
+    expect(quote(' Members ')).toBe('“Members”');
+    expect(LABELS.deleteWords(1)).toBe('Cut 1 word');
+    expect(LABELS.aiDraft(6)).toBe('Applied AI edit · 6 changes');
+    expect(LABELS.replaceAll('teh', 'the')).toBe('Replaced “teh” with “the”');
+    expect(label(fixWord(base(), { index: 3, text: 'Members' }))).toBe('Fixed “Members”');
   });
 });
 
@@ -137,17 +157,22 @@ describe('layer and setting ops', () => {
     expect(cut(p).zooms.map((z) => z.at)).toEqual([1000, 3000]);
     const id = cut(p).zooms[0]!.id;
     p = updateLayer(p, { kind: 'zooms', id, patch: { at: 5000, end: 6000 } });
+    expect(label(p)).toBe('Changed the zoom at 00:01');
     expect(cut(p).zooms.map((z) => z.at)).toEqual([3000, 5000]);
     p = removeLayer(p, { kind: 'zooms', ids: [id] });
+    expect(label(p)).toBe('Removed a zoom');
     expect(cut(p).zooms).toHaveLength(1);
     expect(updateLayer(p, { kind: 'zooms', id: 'none', patch: { depth: 3 } })).toBe(p);
 
     const placed = { source: 'm', at: 0, trim: [0, 1000] as [number, number], volume: 1, muted: false };
-    p = addLayer(p, { kind: 'layouts', items: [{ at: 0, layout: 'side', switch: 'cut' }] });
-    p = addLayer(p, { kind: 'overlays', items: [{ kind: 'text', at: 0, end: 1, box: { x: 0, y: 0, w: 1, h: 1 }, text: 'Hi', motion: 'fade' }] });
-    p = addLayer(p, { kind: 'cards', items: [{ template: 'title', at: 0, ms: 2000, slots: {}, pack: 'clean' }] });
-    p = addLayer(p, { kind: 'media', items: [placed] });
-    p = addLayer(p, { kind: 'voiceovers', items: [{ ...placed, muteOriginal: true }] });
+    const named = { ...p, sources: [...p.sources, { id: 'm', kind: 'media' as const, file: 'm.mp4', mime: 'video/mp4', offset: 0, duration: 1000, video: true, audio: true, name: 'Product demo final cut.mp4' }] };
+    const added: string[] = [];
+    p = addLayer(named, { kind: 'layouts', items: [{ at: 0, layout: 'side', switch: 'cut' }] }); added.push(label(p)!);
+    p = addLayer(p, { kind: 'overlays', items: [{ kind: 'blur', at: 0, end: 1, box: { x: 0, y: 0, w: 1, h: 1 }, motion: 'fade' }] }); added.push(label(p)!);
+    p = addLayer(p, { kind: 'cards', items: [{ template: 'title-hook', at: 0, ms: 2000, slots: {}, pack: 'clean' }] }); added.push(label(p)!);
+    p = addLayer(p, { kind: 'media', items: [placed] }); added.push(label(p)!);
+    p = addLayer(p, { kind: 'voiceovers', items: [{ ...placed, muteOriginal: true }] }); added.push(label(p)!);
+    expect(added).toEqual(['Switched to Side by side at 00:00', 'Added a blur', 'Added a title hook', 'Added “Product demo final…”', 'Recorded a voiceover']);
     const c = cut(p);
     expect([c.layouts, c.overlays, c.cards, c.media, c.voiceovers].map((l) => l.length)).toEqual([1, 1, 1, 1, 1]);
     expect(cut(removeLayer(p, { kind: 'voiceovers', ids: [c.voiceovers[0]!.id] })).voiceovers).toEqual([]);
@@ -157,9 +182,13 @@ describe('layer and setting ops', () => {
     let p = addChapter(base(), { chapter: { at: 5000, title: 'Roles' } });
     p = addChapter(p, { chapter: { at: 0, title: 'Intro' } });
     expect(p.chapters.map((c) => c.title)).toEqual(['Intro', 'Roles']);
+    expect(label(p)).toBe('Added the chapter “Intro”');
     p = updateChapter(p, { index: 0, patch: { at: 9000 } });
+    expect(label(p)).toBe('Moved the chapter “Intro”');
     expect(p.chapters.map((c) => c.title)).toEqual(['Roles', 'Intro']);
+    expect(label(updateChapter(p, { index: 0, patch: { title: 'Pick a role' } }))).toBe('Renamed the chapter “Pick a role”');
     p = removeChapter(p, { index: 0 });
+    expect(label(p)).toBe('Deleted the chapter “Roles”');
     expect(p.chapters).toEqual([{ at: 9000, title: 'Intro' }]);
     expect(removeChapter(p, { index: 5 })).toBe(p);
   });
@@ -173,6 +202,8 @@ describe('layer and setting ops', () => {
     p = setTrack(p, { name: 'camera', patch: { hidden: true } });
     const c = cut(p);
     expect([c.look.background.value, c.camera.mirror, c.captions.style, c.audio.denoise, c.tracks.camera]).toEqual(['ember', true, 'word', true, { hidden: true }]);
+    expect(steps(p).steps.slice(1).map((s) => s.label)).toEqual(['Changed the camera', 'Changed captions', 'Changed audio', 'Hid the camera track']);
+    expect(label(setLook(p, { patch: { padding: 10 } }))).toBe('Changed the frame');
     expect(steps(p).steps).toHaveLength(5);
     expect(cut(undo(p)).tracks).toEqual({});
   });

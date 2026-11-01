@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canRedo, canUndo, commit, currentCut, goTo, group, MAX_STEPS, redo, steps, undo } from './history';
+import { newCut, selectCut } from './cuts';
 import { fromRecording } from './migrate';
 import { addChapter, cutRange, fixWord } from './ops';
 import type { Recording } from '../types';
@@ -49,6 +50,24 @@ describe('history', () => {
     const back = undo(undo(p));
     expect(back.wordFixes).toEqual({});
     expect(back.chapters).toEqual([]);
+  });
+
+  it('undo in one cut keeps project-level edits made later in another cut', () => {
+    const one = cutRange(base(), { from: 1000, to: 2000 });
+    const first = one.current;
+    const two = fixWord(addChapter(newCut(one, { name: 'Shorts' }), { chapter: { at: 0, title: 'Intro' } }), { index: 3, text: 'Members' });
+    const back = undo(selectCut(two, { id: first }));
+    expect(back.wordFixes).toEqual({ 3: 'Members' });
+    expect(back.chapters).toEqual([{ at: 0, title: 'Intro' }]);
+    expect(ends(back)).toEqual([[0, 10_000]]);
+    expect(ends(redo(back))).toEqual([[0, 1000], [2000, 10_000]]);
+    const step = steps(one).steps[0]!;
+    expect(Object.keys(step.before)).toEqual(['cut']);
+    const fix = fixWord(base(), { index: 1, text: 'Hi' });
+    expect(Object.keys(steps(fix).steps[0]!.before).sort()).toEqual(['cut', 'wordFixes']);
+    const redone = redo(undo(fix));
+    expect(redone.wordFixes).toEqual({ 1: 'Hi' });
+    expect(Object.keys(steps(redone).steps[0]!.before).sort()).toEqual(['cut', 'wordFixes']);
   });
 
   it('keeps 200 steps per cut', () => {

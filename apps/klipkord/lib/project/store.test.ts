@@ -19,6 +19,7 @@ describe('project store', () => {
   afterEach(() => vi.useRealTimers());
 
   it('writes only the newest version, 500 ms after the last edit', async () => {
+    await putRecording(rec);
     vi.useFakeTimers();
     const p = fromRecording(rec);
     const first = putProject({ ...p, name: 'One' });
@@ -40,6 +41,15 @@ describe('project store', () => {
     await putProject(fromRecording(rec));
     expect((await getProject('r'))?.version).toBe(3);
     await deleteRecording('r');
+    expect(await getProject('r')).toBeUndefined();
+  });
+
+  it('never writes a waiting save after its recording is deleted', async () => {
+    await putRecording(rec);
+    const saved = putProject(fromRecording(rec));
+    await deleteRecording('r');
+    await flushProjects();
+    await saved;
     expect(await getProject('r')).toBeUndefined();
   });
 

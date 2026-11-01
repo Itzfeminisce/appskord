@@ -103,21 +103,24 @@ function lastAt(events: RecEvent[], t: number): number {
 
 /** Cursor position (0..1 of the viewport) at a recording time, and the click ring (1 at the click, fading to 0). */
 export function cursorAt(events: RecEvent[], rec: number, smooth: boolean): { x: number; y: number; click: number } | null {
-  let i = lastAt(events, rec);
+  const last = lastAt(events, rec);
+  let i = last;
   while (i >= 0 && !isPointer(events[i]!)) i--;
   const prev = events[i];
   if (!prev || !isPointer(prev)) return null;
   let { x, y } = prev;
   if (smooth) {
-    const next = events.slice(i + 1).find(isPointer);
-    if (next && next.t > prev.t) {
+    let n = i + 1;
+    while (n < events.length && !isPointer(events[n]!)) n++;
+    const next = events[n];
+    if (next && isPointer(next) && next.t > prev.t) {
       const k = (rec - prev.t) / (next.t - prev.t);
       x = lerp(prev.x, next.x, k);
       y = lerp(prev.y, next.y, k);
     }
   }
   let click = 0;
-  for (let j = lastAt(events, rec); j >= 0 && rec - events[j]!.t < CLICK_MS; j--) {
+  for (let j = last; j >= 0 && rec - events[j]!.t < CLICK_MS; j--) {
     if (events[j]!.type === 'click') { click = 1 - (rec - events[j]!.t) / CLICK_MS; break; }
   }
   return { x, y, click };

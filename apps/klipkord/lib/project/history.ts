@@ -9,16 +9,26 @@ export function currentCut(project: Project): Cut {
   return cut;
 }
 
-function snapshot(project: Project): Undoable {
-  return { cut: currentCut(project), wordFixes: project.wordFixes, chapters: project.chapters, translations: project.translations };
+const SHARED = ['wordFixes', 'chapters', 'translations'] as const;
+
+/** The cut plus only the project-level fields `next` changed, so undo in one cut never resets another cut's later edits. */
+function snapshot(project: Project, next: Project): Undoable {
+  const state: Undoable = { cut: currentCut(project) };
+  for (const key of SHARED) if (next[key] !== project[key]) Object.assign(state, { [key]: project[key] });
+  return state;
+}
+
+/** The cut plus the same fields `state` holds, read from `project`: what the opposite stack needs. */
+function mirror(project: Project, state: Undoable): Undoable {
+  const out: Undoable = { cut: currentCut(project) };
+  for (const key of SHARED) if (key in state) Object.assign(out, { [key]: project[key] });
+  return out;
 }
 
 function restore(project: Project, state: Undoable): Project {
-  return {
-    ...project,
-    wordFixes: state.wordFixes, chapters: state.chapters, translations: state.translations,
-    cuts: project.cuts.map((c) => (c.id === state.cut.id ? state.cut : c)),
-  };
+  const back: Project = { ...project, cuts: project.cuts.map((c) => (c.id === state.cut.id ? state.cut : c)) };
+  for (const key of SHARED) if (key in state) Object.assign(back, { [key]: state[key] });
+  return back;
 }
 
 const stacks = (project: Project) => project.history[project.current] ?? { undo: [], redo: [] };
@@ -33,7 +43,7 @@ function withStacks(project: Project, undo: Step[], redo: Step[]): Project {
  */
 export function commit(project: Project, label: string, next: Project, at: number = Date.now()): Project {
   if (next === project) return project;
-  const step: Step = { label, before: snapshot(project), at };
+  const step: Step = { label, before: snapshot(project, next), at };
   const undo = [...stacks(project).undo, step].slice(-MAX_STEPS);
   return withStacks({ ...next, current: project.current }, undo, []);
 }
@@ -56,7 +66,7 @@ export function undo(project: Project): Project {
   const step = done[done.length - 1];
   if (!step) return project;
   const back = restore(project, step.before);
-  return withStacks(back, done.slice(0, -1), [...redo, { ...step, before: snapshot(project) }]);
+  return withStacks(back, done.slice(0, -1), [...redo, { ...step, before: mirror(project, step.before) }]);
 }
 
 export function redo(project: Project): Project {
@@ -64,7 +74,7 @@ export function redo(project: Project): Project {
   const step = ahead[ahead.length - 1];
   if (!step) return project;
   const forward = restore(project, step.before);
-  return withStacks(forward, [...done, { ...step, before: snapshot(project) }], ahead.slice(0, -1));
+  return withStacks(forward, [...done, { ...step, before: mirror(project, step.before) }], ahead.slice(0, -1));
 }
 
 /** Every step of the current cut, oldest first; the first `applied` are done, the rest are undone. */

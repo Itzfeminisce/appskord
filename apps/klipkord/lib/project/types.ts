@@ -59,7 +59,7 @@ export interface Cut {
   overlays: Overlay[]; cards: Card[]; audio: AudioMix; media: Placed[]; voiceovers: Placed[];
   tracks: Record<string, { hidden?: boolean; locked?: boolean; muted?: boolean }>;   // key: track name
 }
-export type Undoable = Pick<Project, 'wordFixes' | 'chapters' | 'translations'> & { cut: Cut };
+export type Undoable = Partial<Pick<Project, 'wordFixes' | 'chapters' | 'translations'>> & { cut: Cut };   // only the fields the step changed
 export interface Step { label: string; before: Undoable; at: number }   // label: "Deleted 13 words"; project-level text undoes too
 
 export interface Project {

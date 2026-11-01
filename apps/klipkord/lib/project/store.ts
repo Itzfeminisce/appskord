@@ -19,7 +19,10 @@ async function write(id: string): Promise<void> {
   pending.delete(id);
   clearTimeout(job.timer);
   try {
-    await (await getDB()).put('projects', { ...job.project, updatedAt: Date.now() });
+    // One transaction with the recording, so a save that lands after deleteRecording never leaves an orphan project.
+    const tx = (await getDB()).transaction(['recordings', 'projects'], 'readwrite');
+    if (await tx.objectStore('recordings').getKey(id)) await tx.objectStore('projects').put({ ...job.project, updatedAt: Date.now() });
+    await tx.done;
     job.waiters.forEach((w) => w.resolve());
   } catch (error) {
     job.waiters.forEach((w) => w.reject(error));
@@ -47,7 +50,7 @@ export async function flushProjects(): Promise<void> {
   await Promise.all([...pending.keys()].map(write));
 }
 
-/** Deletes the project; deleteRecording in lib/db.ts removes it with its recording. */
+/** Deletes the project and drops its waiting save; deleteRecording in lib/db.ts removes it with its recording. */
 export async function deleteProject(id: string): Promise<void> {
   const job = pending.get(id);
   if (job) {
