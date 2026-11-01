@@ -1,12 +1,6 @@
 /* FRAMES.md "Look": the one place colours, fonts and button states are defined. */
 :root {
-  --ground: #F6F6F7;
-  --surface: #FFFFFF;
-  --line: #E8E8EB;
   --line-strong: #D4D4D9;
-  --ink: #111114;
-  --muted: #5F6168;
-  --faint: #6E7079;
   --accent: #BE185D;
   --accent-hover: #9D174D;
   --accent-press: #831843;
@@ -22,8 +16,6 @@
   --success-bg: #F0FDF4;
   --success-line: #BBF7D0;
   --success-ink: #15803D;
-  --font: 'Geist Variable', Geist, system-ui, sans-serif;
-  --mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
   --radius: 10px;
   --radius-sm: 8px;
   color-scheme: light;

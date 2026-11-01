@@ -42,7 +42,7 @@ export default function Library() {
   const now = Date.now();
   const groups = useMemo(() => groupByDay(filterByStyle(list ?? [], filter), now), [list, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!list) return <main className="screen screen-center"><Spinner /></main>;
+  if (!list) return <main className="screen screen-center"><Spinner label="Loading" /></main>;
   if (list.length === 0) return <LibraryEmpty />;
 
   const chip = (value: NoteStyle | 'all', label: string) => {

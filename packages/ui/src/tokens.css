@@ -1,0 +1,11 @@
+/* Neutrals and fonts the three apps already share. Each app sets its own --accent, --accent-hover and button colours. */
+:root {
+  --ground: #f6f6f7;
+  --surface: #ffffff;
+  --line: #e8e8eb;
+  --ink: #111114;
+  --muted: #5f6168;
+  --faint: #6e7079;
+  --font: 'Geist Variable', system-ui, sans-serif;
+  --mono: 'Geist Mono Variable', ui-monospace, monospace;
+}

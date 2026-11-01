@@ -21,7 +21,7 @@ export default function PenvConnected() {
   if (!settings || !keys.ready) {
     return (
       <main className="screen screen-center">
-        <Spinner />
+        <Spinner label="Loading" />
       </main>
     );
   }

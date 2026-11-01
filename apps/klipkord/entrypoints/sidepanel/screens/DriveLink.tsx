@@ -196,7 +196,7 @@ export default function DriveLink() {
     setTimeout(() => setCopied(false), 2000);
   }, (error) => console.error('Klipkord: could not copy the link', error));
 
-  if (rec === undefined) return <main className="screen screen-center"><Spinner /></main>;
+  if (rec === undefined) return <main className="screen screen-center"><Spinner label="Loading" /></main>;
   if (!rec) return <main className="screen screen-center"><BackBar label="Back" onBack={back} /></main>;
 
   const backLink = (label: string) => <button type="button" onClick={back} style={{ ...SMALL_OUTLINE, display: 'flex', alignItems: 'center' }}>{label}</button>;
@@ -205,7 +205,7 @@ export default function DriveLink() {
     <main className="screen" style={{ background: '#F6F6F7', color: '#111114' }}>
       <BackBar label="Back" onBack={phase.kind === 'drive-uploading' ? cancel : back} title="Share a link" size={16} />
 
-      {phase.kind === 'loading' && <div style={{ margin: '24px auto' }}><Spinner /></div>}
+      {phase.kind === 'loading' && <div style={{ margin: '24px auto' }}><Spinner label="Loading" /></div>}
 
       {phase.kind === 'drive-connect' && (
         <StateCard tint={GREY} icon={LINK_ICON} title="Connect your Google account to share a link"

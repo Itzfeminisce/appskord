@@ -101,7 +101,7 @@ export default function App() {
   if (!initial) {
     return (
       <main className="screen screen-center">
-        <Spinner />
+        <Spinner label="Loading" />
       </main>
     );
   }
