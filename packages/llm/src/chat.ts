@@ -34,7 +34,10 @@ const openaiMessage = (m: ChatMessage): unknown =>
   m.images?.length
     ? {
         role: m.role,
-        content: [{ type: 'text', text: m.content }, ...m.images.map((url) => ({ type: 'image_url', image_url: { url } }))],
+        content: [
+          { type: 'text', text: m.content },
+          ...m.images.map((url) => ({ type: 'image_url', image_url: { url } })),
+        ],
       }
     : m;
 
@@ -123,7 +126,9 @@ function requestBody(c: CloudChat, messages: ChatMessage[], r: Req): Record<stri
       max_tokens: r.maxTokens ?? ANTHROPIC_MAX_TOKENS,
       ...temperature,
       ...(system ? { system } : {}),
-      messages: messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: anthropicContent(m) })),
+      messages: messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => ({ role: m.role, content: anthropicContent(m) })),
     };
   }
   const think = reasoning(c.provider, r.model);

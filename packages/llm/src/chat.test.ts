@@ -293,7 +293,13 @@ describe('images', () => {
     await chatCloud([...msgs, ...withImg], base({ fetch: f }));
     expect(sent(f).body.messages).toEqual([
       ...msgs,
-      { role: 'user', content: [{ type: 'text', text: 'look' }, { type: 'image_url', image_url: { url: img } }] },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'look' },
+          { type: 'image_url', image_url: { url: img } },
+        ],
+      },
     ]);
   });
   it('Anthropic: image blocks', async () => {
