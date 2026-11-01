@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "id": "template-big-number",
+  "name": "Big number",
+  "type": "chart",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc53",
+      "durationMs": 6000,
+      "background": "#FDE68A",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t51",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Customers served",
+          "font": "Geist",
+          "sizePx": 52,
+          "weight": 500,
+          "colour": "#3F3F46",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 6000,
+          "box": {
+            "x": 0.08,
+            "y": 0.26,
+            "w": 0.84,
+            "h": 0.08
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "c52",
+          "name": "Number",
+          "type": "chart",
+          "chart": "number",
+          "values": [
+            {
+              "label": "Customers",
+              "value": 12480
+            }
+          ],
+          "colour": "#111114",
+          "startMs": 300,
+          "endMs": 6000,
+          "box": {
+            "x": 0.08,
+            "y": 0.36,
+            "w": 0.84,
+            "h": 0.26
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "grow-in",
+            "feel": "bouncy",
+            "durationMs": 900
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "id": "template-hook-post",
+  "name": "Hook post",
+  "type": "social",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc105",
+      "durationMs": 3000,
+      "background": "#BE185D",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t104",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Stop scrolling",
+          "font": "Geist",
+          "sizePx": 116,
+          "weight": 800,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 3000,
+          "box": {
+            "x": 0.08,
+            "y": 0.36,
+            "w": 0.84,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "bouncy",
+            "durationMs": 600
+          },
+          "during": {
+            "preset": "pulse",
+            "feel": "snappy",
+            "durationMs": 900
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc108",
+      "durationMs": 5000,
+      "background": "#FFFFFF",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t106",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "This one trick saves an hour",
+          "font": "Geist",
+          "sizePx": 88,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.34,
+            "w": 0.84,
+            "h": 0.22
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t107",
+          "name": "Body",
+          "type": "text",
+          "role": "body",
+          "text": "Follow for more",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 500,
+          "colour": "#5F6168",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 600,
+          "endMs": 5000,
+          "box": {
+            "x": 0.08,
+            "y": 0.6,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

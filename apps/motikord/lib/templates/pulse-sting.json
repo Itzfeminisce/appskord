@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "id": "template-pulse-sting",
+  "name": "Pulse sting",
+  "type": "logo",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc87",
+      "durationMs": 5000,
+      "background": "#FCE7F3",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "s85",
+          "name": "Mark",
+          "type": "shape",
+          "shape": "circle",
+          "fill": "#BE185D",
+          "startMs": 200,
+          "endMs": 5000,
+          "box": {
+            "x": 0.34,
+            "y": 0.36,
+            "w": 0.32,
+            "h": 0.18
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "bouncy",
+            "durationMs": 700
+          },
+          "during": {
+            "preset": "pulse",
+            "feel": "steady",
+            "durationMs": 1000
+          }
+        },
+        {
+          "id": "t86",
+          "name": "Name",
+          "type": "text",
+          "role": "title",
+          "text": "Your brand",
+          "font": "Geist",
+          "sizePx": 80,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 900,
+          "endMs": 5000,
+          "box": {
+            "x": 0.1,
+            "y": 0.6,
+            "w": 0.8,
+            "h": 0.09
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

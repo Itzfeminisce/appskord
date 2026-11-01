@@ -1,0 +1,231 @@
+{
+  "version": 1,
+  "id": "template-tip-list",
+  "name": "Quick tips",
+  "type": "explainer",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc67",
+      "durationMs": 4000,
+      "background": "#0F172A",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t66",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "3 quick tips",
+          "font": "Geist",
+          "sizePx": 112,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.08,
+            "y": 0.36,
+            "w": 0.84,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "bouncy",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc70",
+      "durationMs": 4500,
+      "background": "#FFFFFF",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t68",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Tip 1",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 600,
+          "colour": "#BE185D",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4500,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t69",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Start with the main point",
+          "font": "Geist",
+          "sizePx": 84,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 200,
+          "endMs": 4500,
+          "box": {
+            "x": 0.08,
+            "y": 0.4,
+            "w": 0.84,
+            "h": 0.22
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc73",
+      "durationMs": 4500,
+      "background": "#0EA5E9",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t71",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Tip 2",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 600,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4500,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t72",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Keep each line short",
+          "font": "Geist",
+          "sizePx": 84,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 200,
+          "endMs": 4500,
+          "box": {
+            "x": 0.08,
+            "y": 0.4,
+            "w": 0.84,
+            "h": 0.22
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc76",
+      "durationMs": 4500,
+      "background": "#FFFFFF",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t74",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "Tip 3",
+          "font": "Geist",
+          "sizePx": 44,
+          "weight": 600,
+          "colour": "#BE185D",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4500,
+          "box": {
+            "x": 0.08,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.07
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t75",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "End with what to do next",
+          "font": "Geist",
+          "sizePx": 84,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 200,
+          "endMs": 4500,
+          "box": {
+            "x": 0.08,
+            "y": 0.4,
+            "w": 0.84,
+            "h": 0.22
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}

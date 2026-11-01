@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "id": "template-event-invite",
+  "name": "Event invite",
+  "type": "promo",
+  "aspect": "9:16",
+  "scenes": [
+    {
+      "id": "sc20",
+      "durationMs": 4000,
+      "background": "#1E1B4B",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t18",
+          "name": "Label",
+          "type": "text",
+          "role": "label",
+          "text": "You are invited",
+          "font": "Geist",
+          "sizePx": 52,
+          "weight": 500,
+          "colour": "#C7D2FE",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.3,
+            "w": 0.8,
+            "h": 0.08
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t19",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Launch party",
+          "font": "Geist",
+          "sizePx": 112,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.4,
+            "w": 0.8,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "blur-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc23",
+      "durationMs": 4000,
+      "background": "#FFFFFF",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t21",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Friday, 7 pm",
+          "font": "Geist",
+          "sizePx": 96,
+          "weight": 700,
+          "colour": "#111114",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.36,
+            "w": 0.8,
+            "h": 0.12
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "rise-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t22",
+          "name": "Body",
+          "type": "text",
+          "role": "body",
+          "text": "The Warehouse, 12 Mill Lane",
+          "font": "Geist",
+          "sizePx": 48,
+          "weight": 500,
+          "colour": "#5F6168",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 400,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.52,
+            "w": 0.8,
+            "h": 0.08
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc26",
+      "durationMs": 4000,
+      "background": "#BE185D",
+      "layout": "center",
+      "layers": [
+        {
+          "id": "t24",
+          "name": "Title",
+          "type": "text",
+          "role": "title",
+          "text": "Save your seat",
+          "font": "Geist",
+          "sizePx": 100,
+          "weight": 700,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 0,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.36,
+            "w": 0.8,
+            "h": 0.14
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "pop-in",
+            "feel": "bouncy",
+            "durationMs": 600
+          }
+        },
+        {
+          "id": "t25",
+          "name": "Body",
+          "type": "text",
+          "role": "body",
+          "text": "Tickets at yourevent.com",
+          "font": "Geist",
+          "sizePx": 48,
+          "weight": 500,
+          "colour": "#FFFFFF",
+          "align": "center",
+          "lineHeight": 1.15,
+          "startMs": 500,
+          "endMs": 4000,
+          "box": {
+            "x": 0.1,
+            "y": 0.54,
+            "w": 0.8,
+            "h": 0.08
+          },
+          "opacity": 1,
+          "in": {
+            "preset": "fade-in",
+            "feel": "smooth",
+            "durationMs": 600
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {}
+}
