@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { metaLine, newestFirst, splitSummary } from '../../lib/editor/changes';
 import { useEditor } from './Editor';
+import { PanelTabs } from './PanelTabs';
 
 // EditorPrompt frame, right panel: every change, newest first. Undo on the newest; "Go back here" on older ones.
 
@@ -9,7 +10,7 @@ const small = {
   font: '500 12px/1 var(--font)', cursor: 'pointer', flexShrink: 0,
 } as const;
 
-export function ChangesTab({ onLayer }: { onLayer: () => void }) {
+export function ChangesTab(_: { onLayer?: () => void } = {}) {
   const { state, undo, goBack } = useEditor();
   const [now, setNow] = useState(Date.now);
   // "Just now" turns into "1 min ago" while the tab stays open.
@@ -18,10 +19,7 @@ export function ChangesTab({ onLayer }: { onLayer: () => void }) {
   const list = newestFirst(state.clip.history);
   return (
     <>
-      <div style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: 'var(--stage)' }}>
-        <button type="button" onClick={onLayer} style={{ flex: 1, height: 28, border: 0, borderRadius: 6, background: 'transparent', font: '12px/1 var(--font)', color: 'var(--muted)', cursor: 'pointer' }}>Layer</button>
-        <span aria-current="page" style={{ flex: 1, height: 28, borderRadius: 6, background: 'var(--surface)', boxShadow: '0 1px 2px rgba(16,16,20,0.08)', fontSize: 12, fontWeight: 600, display: 'grid', placeItems: 'center' }}>Changes</span>
-      </div>
+      <PanelTabs on="changes" />
       <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>Every change, by words or by hand. Go back to any point.</p>
       <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {list.map((c, i) => {

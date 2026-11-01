@@ -15,7 +15,11 @@ import { goInSidePanel, useWindowId } from '../../lib/sidepanelGo';
 import { MediaCache } from '../../lib/render/cache';
 import { devTools, type RouteParams } from '../../lib/router';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
-import type { Asset, Author, BrandKit, Clip, PresetSlot, Recipe } from '../../lib/types';
+import type { AiMode, Asset, Author, BrandKit, Clip, PresetSlot, Provider, Recipe } from '../../lib/types';
+import { regenerateScene } from '../../lib/ai/writeRecipe';
+import { toAiError } from '../../lib/ai/errors';
+import { HOSTS, requestHost, type HostAccess } from '../../lib/hostAccess';
+import { isV1Clip, remakeEdit } from '../../lib/editor/v2';
 import { useRouter, type EditorScreen } from '../../entrypoints/editor/router';
 import { AddToScene } from './AddToScene';
 import { Canvas } from './Canvas';
@@ -30,6 +34,11 @@ import { ClipNotFound, EditorLoading, FirstRun, MediaMissing, PreviewLight, Save
 import { Timeline } from './Timeline';
 import { TopBar } from './TopBar';
 import { Transport } from './Transport';
+import { NewLookDialog } from './NewLook';
+import { SceneTab } from './SceneTab';
+import { SwapTemplatePopover } from './SwapTemplate';
+import { TransitionPickerPopover } from './TransitionPicker';
+import { Remade, Remaking, Spinner, RestyleDone, RestyleFailed, SceneRemakeFailed, SwapNoFit, TextShortened, V1Clip } from './StatesV2';
 
 /** What every editor part (and T8's timeline, presets and prompt box) reads and calls. */
 export interface EditorApi {
@@ -60,12 +69,36 @@ export interface EditorApi {
   sizeOnly: boolean;
   setSizeOnly: (on: boolean) => void;
   /** A recipe the canvas draws instead of the clip, without recording a change (preset preview). */
-  setPreview: (r: Recipe | undefined) => void;
+  /** `label` names a template preview ("{template} · not applied yet"). */
+  setPreview: (r: Recipe | undefined, label?: string) => void;
+  /** Right panel tab: Scene (v2), Layer or Changes. */
+  tab: EditorTab;
+  setTab: (t: EditorTab) => void;
+  /** The v2 state card shown over the stage (StatesMakeV2). */
+  notice?: Notice;
+  setNotice: (n: Notice | undefined) => void;
+  /** SwapTemplate, NewLook and TransitionPicker. */
+  openPanel: (p: V2Panel) => void;
+  /** The scene being remade (SceneRemaking), if any. */
+  remaking?: string;
+  remake: (sceneId: string, request?: string) => void;
+  /** The clip's recipe right now, for work that finishes after a render (retries, AI replies). */
+  current: () => Recipe;
 }
+
+export type EditorTab = 'scene' | 'layer' | 'changes';
+export type Notice =
+  | { kind: 'text-shortened'; original?: string }
+  | { kind: 'scene-remade'; sceneId: string }
+  | { kind: 'scene-remake-failed'; sceneId: string; request?: string }
+  | { kind: 'swap-no-fit'; sceneId: string }
+  | { kind: 'restyle-done'; style: string }
+  | { kind: 'restyle-failed'; style: string; retry: () => void };
+export type V2Panel = { kind: 'swap'; sceneId: string } | { kind: 'look' } | { kind: 'transition'; sceneId: string };
 
 /** What the editor opens on: a route screen for Presets, Formats or EditorPrompt. */
 export type EditorOpenOn = 'presets' | 'formats' | 'changes';
-type Panel = { kind: 'presets'; sceneId: string; layerId: string; slot: PresetSlot } | { kind: 'formats' };
+type Panel = { kind: 'presets'; sceneId: string; layerId: string; slot: PresetSlot } | { kind: 'formats' } | V2Panel;
 
 const Ctx = createContext<EditorApi | null>(null);
 export function useEditor(): EditorApi {
@@ -186,14 +219,21 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   const [toastText, setToastText] = useState<string>();
   const [firstRun, setFirstRun] = useState(false);
   const [missing, setMissing] = useState(loaded.missing);
-  const [tab, setTab] = useState<'layer' | 'changes'>(open === 'changes' ? 'changes' : 'layer');
+  const [tab, setTab] = useState<EditorTab>(open === 'changes' ? 'changes' : loaded.clip.recipe.scenes.some((s) => s.template) ? 'scene' : 'layer');
+  const [notice, setNotice] = useState<Notice>();
+  const [remaking, setRemaking] = useState<string>();
+  const [keepV1, setKeepV1] = useState(false);
+  const remakeStop = useRef<AbortController>(undefined);
+  const aiMode = useRef<{ ai: AiMode; provider: Provider }>({ ai: 'cloud', provider: 'groq' });
   const [panel, setPanel] = useState<Panel | undefined>(() => {
     if (open === 'formats') return { kind: 'formats' };
     if (open === 'presets' && state.layerId) return { kind: 'presets', sceneId: state.sceneId, layerId: state.layerId, slot: 'in' };
     return undefined;
   });
   const [sizeOnly, setSizeOnly] = useState(false);
-  const [preview, setPreview] = useState<Recipe>();
+  const [preview, setPreviewRecipe] = useState<Recipe>();
+  const [previewLabel, setPreviewLabel] = useState<string>();
+  const setPreview = useCallback((r: Recipe | undefined, label?: string) => { setPreviewRecipe(r); setPreviewLabel(r ? label : undefined); }, []);
   const playhead = useRef(state.timeMs);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -275,11 +315,18 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   }, [state.clip]);
 
   useEffect(() => {
-    void getSettings().then((s) => setSmooth(s.smoothPreview)).catch(() => undefined);
-    const off = onSettingsChanged((s) => setSmooth(s.smoothPreview));
+    void getSettings().then((s) => { setSmooth(s.smoothPreview); aiMode.current = { ai: s.ai, provider: s.provider }; }).catch(() => undefined);
+    const off = onSettingsChanged((s) => { setSmooth(s.smoothPreview); aiMode.current = { ai: s.ai, provider: s.provider }; });
     void browser.storage.local.get(FIRST_RUN_KEY).then((v) => setFirstRun(!v[FIRST_RUN_KEY])).catch(() => undefined);
     return off;
   }, []);
+
+  // Done and shortened cards step aside after a while; failures stay until acted on.
+  useEffect(() => {
+    if (!notice || notice.kind === 'scene-remake-failed' || notice.kind === 'restyle-failed' || notice.kind === 'swap-no-fit') return;
+    const id = setTimeout(() => setNotice(undefined), 10_000);
+    return () => clearTimeout(id);
+  }, [notice]);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const toast = useCallback((text: string) => {
@@ -336,7 +383,41 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
       if (n) setToastText(undefined);
     },
     sizeOnly, setSizeOnly, setPreview,
-  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly]);
+    tab, setTab, notice, setNotice, remaking,
+    openPanel: (p) => setPanel(p),
+    current: () => stateRef.current.clip.recipe,
+    remake: (sceneId, request) => {
+      if (remakeStop.current) return;
+      const { ai, provider } = aiMode.current;
+      // Asked inside the click, before any await, so Chrome shows its prompt.
+      const access: Promise<HostAccess> = ai === 'cloud' ? requestHost(HOSTS[provider]) : Promise.resolve('granted');
+      const ac = new AbortController();
+      remakeStop.current = ac;
+      setRemaking(sceneId);
+      setNotice(undefined);
+      void (async () => {
+        try {
+          if ((await access) === 'denied') throw new Error('host access denied');
+          const from = stateRef.current.clip.recipe;
+          const si = sceneIndex(from, sceneId);
+          const after = await regenerateScene(from, si, request?.trim() || undefined, { signal: ac.signal, brand: loaded.brand });
+          if (ac.signal.aborted) return;
+          // Hand edits made meanwhile stay: only this scene is replaced, in the clip as it is now.
+          const ok = apiRef.current.edit(remakeEdit(stateRef.current.clip.recipe, sceneId, after), { by: ai === 'cloud' ? provider : 'builtin' });
+          setNotice(ok ? { kind: 'scene-remade', sceneId } : { kind: 'scene-remake-failed', sceneId, request });
+        } catch (error) {
+          const e = toAiError(error, 'make');
+          if (e.code === 'cancelled' || ac.signal.aborted) return;
+          console.error('Motikord: could not remake the scene', error);
+          setNotice({ kind: 'scene-remake-failed', sceneId, request });
+        } finally {
+          if (remakeStop.current === ac) remakeStop.current = undefined;
+          setRemaking(undefined);
+        }
+      })();
+    },
+  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly, tab, notice, remaking]);
+  const stopRemake = () => { remakeStop.current?.abort(); remakeStop.current = undefined; setRemaking(undefined); };
   // The canvas alone sees the preview recipe; everything else keeps the clip.
   const canvasApi = useMemo<EditorApi>(() => (preview ? { ...api, state: { ...api.state, clip: { ...api.state.clip, recipe: preview } } } : api), [api, preview]);
 
@@ -397,21 +478,42 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
           </aside>
           <main style={{ position: 'relative', flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--stage)', minWidth: 0, padding: '12px 20px 10px', gap: 8 }}>
             <Ctx.Provider value={canvasApi}><Canvas /></Ctx.Provider>
+            {previewLabel && (
+              <div role="status" style={{ position: 'absolute', top: 16, left: 20, display: 'flex', gap: 8, alignItems: 'center', zIndex: 4 }}>
+                <span style={{ padding: '3px 8px', borderRadius: 6, background: 'var(--accent)', color: '#fff', font: '600 11px/1.2 var(--font)' }}>Preview</span>
+                <span style={{ padding: '3px 8px', borderRadius: 6, background: 'var(--ink)', color: '#fff', font: '500 12px/1.2 var(--font)' }}>{`${previewLabel} · not applied yet`}</span>
+              </div>
+            )}
+            {remaking && <span role="status" style={{ position: 'absolute', top: 16, right: 20, zIndex: 4, display: 'flex', gap: 6, alignItems: 'center', padding: '4px 10px', borderRadius: 8, background: 'var(--ink)', color: '#fff', font: '600 12px/1.2 var(--font)' }}><Spinner colour="#fff" size={12} />{`Remaking scene ${sceneIndex(state.clip.recipe, remaking) + 1}…`}</span>}
             <Transport />
             {light && <div style={{ maxWidth: 520 }}><PreviewLight /></div>}
             <PromptBox />
             <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', width: 'min(440px, calc(100% - 40px))', display: 'flex', flexDirection: 'column', gap: 8, zIndex: 5 }}>
               {save === 'failed' && <SaveFailed onRetry={() => void autosave.current?.flush()} />}
+              {isV1Clip(state.clip.recipe) && !keepV1 && <V1Clip onNewLook={() => setPanel({ kind: 'look' })} onKeep={() => setKeepV1(true)} />}
+              {notice && <NoticeCard notice={notice} api={api} />}
               {missing && <MediaMissing file={missing.file} scene={missing.scene} onReplace={() => { setMissing(undefined); api.go('YourMedia', { sceneId: state.clip.recipe.scenes[missing.scene - 1]?.id }); }} />}
             </div>
             {router.route.screen === 'Checker' && <CheckerPanel />}
             {firstRun && <div style={{ position: 'absolute', top: 12, left: 12, width: 260, zIndex: 6 }}><FirstRun onDone={dismissFirstRun} /></div>}
-            {toastText && <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 320, zIndex: 6 }}><UndoToast text={toastText} onUndo={api.undo} /></div>}
+            {remaking && (
+              <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 360, zIndex: 7 }}>
+                <Remaking n={sceneIndex(state.clip.recipe, remaking) + 1} others={state.clip.recipe.scenes.length - 1} onStop={stopRemake} />
+              </div>
+            )}
+            {!remaking && notice?.kind === 'scene-remade' && (
+              <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 360, zIndex: 7 }}>
+                <Remade n={sceneIndex(state.clip.recipe, notice.sceneId) + 1} onUndo={() => { api.undo(); setNotice(undefined); }} onKeep={() => setNotice(undefined)} />
+              </div>
+            )}
+            {toastText && !remaking && notice?.kind !== 'scene-remade' && <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 320, zIndex: 6 }}><UndoToast text={toastText} onUndo={api.undo} /></div>}
           </main>
           <aside style={{ width: 300, flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', alignContent: 'start', padding: '14px 16px', gap: 12, overflowY: 'auto' }}>
             {tab === 'changes'
               ? <ChangesTab onLayer={() => setTab('layer')} />
-              : <LayerTab key={`${state.sceneId}/${state.layerId ?? ''}/${si}`} />}
+              : tab === 'scene'
+                ? <SceneTab key={`${state.sceneId}/${si}`} />
+                : <LayerTab key={`${state.sceneId}/${state.layerId ?? ''}/${si}`} />}
           </aside>
         </div>
         <section aria-label="Timeline" style={{ height: 196, flexShrink: 0, background: 'var(--surface)', borderTop: '1px solid var(--line)', display: 'flex' }}>
@@ -422,8 +524,26 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
             <PresetsPopover key={`${panel.sceneId}/${panel.layerId}/${panel.slot}`} sceneId={panel.sceneId} layerId={panel.layerId} slot={panel.slot} onClose={() => setPanel(undefined)} />
           </div>
         )}
+        {panel?.kind === 'swap' && <SwapTemplatePopover sceneId={panel.sceneId} onClose={() => { setPreview(undefined); setPanel(undefined); }} />}
+        {panel?.kind === 'look' && <NewLookDialog onClose={() => setPanel(undefined)} />}
+        {panel?.kind === 'transition' && <TransitionPickerPopover sceneId={panel.sceneId} onClose={() => setPanel(undefined)} />}
         {panel?.kind === 'formats' && <FormatsPanel onClose={() => { setSizeOnly(false); setPanel(undefined); }} />}
       </div>
     </Ctx.Provider>
   );
+}
+
+/** The StatesMakeV2 card for the newest v2 action (scene-remade shows as the SceneRemaking toast instead). */
+function NoticeCard({ notice, api }: { notice: Notice; api: EditorApi }) {
+  const r = api.state.clip.recipe;
+  const close = () => api.setNotice(undefined);
+  const undo = () => { api.undo(); close(); };
+  switch (notice.kind) {
+    case 'text-shortened': return <TextShortened original={notice.original} onUndo={undo} />;
+    case 'scene-remade': return null;
+    case 'scene-remake-failed': return <SceneRemakeFailed n={sceneIndex(r, notice.sceneId) + 1} onRetry={() => api.remake(notice.sceneId, notice.request)} />;
+    case 'swap-no-fit': return <SwapNoFit onRemake={() => api.remake(notice.sceneId)} />;
+    case 'restyle-done': return <RestyleDone style={notice.style} onUndo={undo} />;
+    case 'restyle-failed': return <RestyleFailed style={notice.style} onRetry={() => { close(); notice.retry(); }} />;
+  }
 }

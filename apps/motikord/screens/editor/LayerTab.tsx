@@ -5,6 +5,7 @@ import { getPreset } from '../../lib/render/presets';
 import { LAYOUTS, type LayoutId } from '../../lib/render/reflow';
 import type { Layer, Motion, PresetSlot } from '../../lib/types';
 import { useEditor } from './Editor';
+import { PanelTabs } from './PanelTabs';
 
 const label = { fontSize: 12, color: 'var(--muted)' } as const;
 const field = { height: 34, border: '1px solid var(--line)', borderRadius: 8, padding: '0 10px', font: '13px/1 var(--font)', color: 'var(--ink)', background: 'var(--surface)', width: '100%' } as const;
@@ -24,15 +25,12 @@ function Labelled({ name, children }: { name: string; children: ReactNode }) {
 }
 
 export function LayerTab() {
-  const { state, go } = useEditor();
+  const { state } = useEditor();
   const r = state.clip.recipe;
   const f = findLayer(r, state.sceneId, state.layerId);
   return (
     <>
-      <div style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: 'var(--stage)' }}>
-        <span aria-current="page" style={{ flex: 1, height: 28, borderRadius: 6, background: 'var(--surface)', boxShadow: '0 1px 2px rgba(16,16,20,0.08)', fontSize: 12, fontWeight: 600, display: 'grid', placeItems: 'center' }}>Layer</span>
-        <button type="button" onClick={() => go('EditorPrompt')} style={{ flex: 1, height: 28, border: 0, borderRadius: 6, background: 'transparent', font: '12px/1 var(--font)', color: 'var(--muted)', cursor: 'pointer' }}>Changes</button>
-      </div>
+      <PanelTabs on="layer" />
       {f ? <LayerFields f={f} /> : <SceneFields />}
     </>
   );
