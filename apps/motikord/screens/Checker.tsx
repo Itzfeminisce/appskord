@@ -95,6 +95,9 @@ export function cardText(card: Card, r: Recipe): CardText {
       return { where, title: 'Credit needed', action: 'Add an end card with these credits',
         body: c ? `“${c.title}” by ${c.author} · ${LICENCE[c.licence] ?? c.licence}` : '' };
     }
+    // v2 kinds (overlap, crowding, ...) get their frame wording in the v2 checker task.
+    default:
+      return { where, title: name, body: '', action: '' };
   }
 }
 

@@ -1,5 +1,5 @@
 import { DEFAULT_PROVIDER, isProvider } from './providers';
-import type { CustomSource, MediaSettings, Provider, Settings } from './types';
+import type { CustomSource, LookStyle, MediaSettings, Mood, Pace, Provider, Settings } from './types';
 
 const STORAGE_KEY = 'settings';
 
@@ -15,14 +15,26 @@ export const DEFAULT_SETTINGS: Settings = {
   smoothPreview: true,
   media: { on: {}, custom: [], allLicences: false },
   onboarded: false,
+  look: { style: 'auto', pace: 'normal', mood: 'upbeat' },
+  critic: true,
+  beatSync: false,
+  aiImages: false,
+  imageProvider: 'openai',
+  lookCardSeen: false,
 };
 
-type Nested = 'defaultExport' | 'media' | 'models';
+const LOOK_STYLES: readonly LookStyle[] = ['auto', 'clean', 'bold', 'playful', 'corporate'];
+const PACES: readonly Pace[] = ['calm', 'normal', 'fast'];
+const MOODS: readonly Mood[] = ['upbeat', 'calm', 'warm', 'dramatic', 'none'];
+const pick = <T>(list: readonly T[], v: unknown, fallback: T): T => (list.includes(v as T) ? (v as T) : fallback);
+const bool = (v: unknown, fallback: boolean) => (typeof v === 'boolean' ? v : fallback);
+
+type Nested = 'defaultExport' | 'media' | 'models' | 'look';
 /** Settings saved before Media sources kept the two libraries here. */
 interface OldLibraries { openverse?: boolean; pexels?: boolean; allLicences?: boolean }
 export type SettingsPatch = Omit<Partial<Settings>, Nested> & { [K in Nested]?: Partial<Settings[K]> } & { libraries?: OldLibraries };
 
-/** Fills every missing field from the defaults, including inside `defaultExport` and `media`; old `libraries` move into `media`. Settings from before providers get Groq; from before voice prompts get the mic on in Chrome's language. */
+/** Fills every missing field from the defaults, including inside `defaultExport`, `media` and `look`; old `libraries` move into `media`. Settings from before providers get Groq; from before voice prompts get the mic on in Chrome's language. */
 export function mergeSettings(stored: SettingsPatch | undefined): Settings {
   const { libraries, ...s } = stored ?? {};
   return {
@@ -34,6 +46,16 @@ export function mergeSettings(stored: SettingsPatch | undefined): Settings {
     models: cleanModels(s.models),
     defaultExport: { ...DEFAULT_SETTINGS.defaultExport, ...s.defaultExport },
     media: mergeMedia(s.media, libraries),
+    look: {
+      style: pick(LOOK_STYLES, s.look?.style, DEFAULT_SETTINGS.look.style),
+      pace: pick(PACES, s.look?.pace, DEFAULT_SETTINGS.look.pace),
+      mood: pick(MOODS, s.look?.mood, DEFAULT_SETTINGS.look.mood),
+    },
+    critic: bool(s.critic, DEFAULT_SETTINGS.critic),
+    beatSync: bool(s.beatSync, DEFAULT_SETTINGS.beatSync),
+    aiImages: bool(s.aiImages, DEFAULT_SETTINGS.aiImages),
+    imageProvider: 'openai',
+    lookCardSeen: bool(s.lookCardSeen, DEFAULT_SETTINGS.lookCardSeen),
   };
 }
 
@@ -58,7 +80,7 @@ export async function getSettings(): Promise<Settings> {
   return mergeSettings(stored[STORAGE_KEY] as SettingsPatch | undefined);
 }
 
-/** Merges top-level fields; `defaultExport`, `media` and `models` merge one level deeper (`media.on` two). Returns the new settings. */
+/** Merges top-level fields; `defaultExport`, `media`, `models` and `look` merge one level deeper (`media.on` two). Returns the new settings. */
 export async function updateSettings(partial: SettingsPatch): Promise<Settings> {
   const current = await getSettings();
   const next: Settings = mergeSettings({
@@ -66,6 +88,7 @@ export async function updateSettings(partial: SettingsPatch): Promise<Settings> 
     ...partial,
     models: { ...current.models, ...partial.models },
     defaultExport: { ...current.defaultExport, ...partial.defaultExport },
+    look: { ...current.look, ...partial.look },
     media: { ...current.media, ...partial.media, on: { ...current.media.on, ...partial.media?.on } },
   });
   await browser.storage.local.set({ [STORAGE_KEY]: next });

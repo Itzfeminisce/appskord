@@ -1,0 +1,72 @@
+{
+  "id": "big-statement",
+  "name": "Big statement",
+  "line": "Lines stagger in; the highlight wipes on",
+  "slots": [
+    {
+      "id": "statement",
+      "name": "Statement",
+      "kind": "text",
+      "words": 10,
+      "scale": "headline",
+      "align": "left",
+      "highlight": true,
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.3,
+          "w": 0.86,
+          "h": 0.34
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.24,
+          "w": 0.88,
+          "h": 0.52
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.2,
+          "w": 0.9,
+          "h": 0.6
+        }
+      },
+      "motion": {
+        "in": "rise-in",
+        "stagger": "line"
+      }
+    },
+    {
+      "id": "highlight",
+      "name": "Highlight",
+      "kind": "text",
+      "words": 1,
+      "optional": true,
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.3,
+          "w": 0.86,
+          "h": 0.34
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.24,
+          "w": 0.88,
+          "h": 0.52
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.2,
+          "w": 0.9,
+          "h": 0.6
+        }
+      },
+      "motion": {
+        "in": "wipe-in"
+      }
+    }
+  ],
+  "defaultMs": 3000,
+  "fits": "One bold sentence, with one key word picked out in the accent colour."
+}

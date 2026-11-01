@@ -1,0 +1,103 @@
+{
+  "id": "stat-reveal",
+  "name": "Stat reveal",
+  "line": "Number counts up, then label and source",
+  "slots": [
+    {
+      "id": "number",
+      "name": "Number",
+      "kind": "text",
+      "words": 1,
+      "scale": "number",
+      "align": "left",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.28,
+          "w": 0.86,
+          "h": 0.22
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.16,
+          "w": 0.88,
+          "h": 0.36
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.22,
+          "w": 0.42,
+          "h": 0.56
+        }
+      },
+      "motion": {
+        "in": "grow-in"
+      }
+    },
+    {
+      "id": "label",
+      "name": "Label",
+      "kind": "text",
+      "words": 6,
+      "scale": "headline",
+      "align": "left",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.52,
+          "w": 0.86,
+          "h": 0.12
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.56,
+          "w": 0.88,
+          "h": 0.18
+        },
+        "16:9": {
+          "x": 0.52,
+          "y": 0.34,
+          "w": 0.43,
+          "h": 0.2
+        }
+      },
+      "motion": {
+        "in": "rise-in"
+      }
+    },
+    {
+      "id": "source",
+      "name": "Source",
+      "kind": "text",
+      "words": 6,
+      "scale": "caption",
+      "align": "left",
+      "optional": true,
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.66,
+          "w": 0.86,
+          "h": 0.05
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.78,
+          "w": 0.88,
+          "h": 0.07
+        },
+        "16:9": {
+          "x": 0.52,
+          "y": 0.58,
+          "w": 0.43,
+          "h": 0.08
+        }
+      },
+      "motion": {
+        "in": "fade-in"
+      }
+    }
+  ],
+  "defaultMs": 3000,
+  "fits": "One number that matters, what it measures, and where it comes from."
+}

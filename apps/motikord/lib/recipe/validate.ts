@@ -1,13 +1,21 @@
-import type { Aspect, Box, ClipType, Feel, LicenceId, Motion, PresetSlot, Recipe } from '../types';
+import type { Aspect, Background, Box, ClipType, Feel, LicenceId, Mood, Motion, Pace, PresetSlot, Recipe, SlotKind, TransitionKind, TypeScale } from '../types';
 import { getPreset } from '../render/presets';
 import { isLayoutId, LAYOUTS } from '../render/reflow';
+import { getSceneTemplate, isStyleId, SCENE_TEMPLATES, STYLE_PACKS } from '../templates/scenes';
 
 export const ASPECTS: readonly Aspect[] = ['9:16', '1:1', '16:9'];
 export const CLIP_TYPES: readonly ClipType[] = ['promo', 'quote', 'chart', 'explainer', 'logo', 'captions', 'social'];
 export const FEELS: readonly Feel[] = ['smooth', 'snappy', 'bouncy', 'steady'];
-export const LICENCES: readonly LicenceId[] = ['cc0', 'pdm', 'cc-by', 'cc-by-sa', 'cc-by-nc', 'pexels', 'pixabay', 'unsplash', 'unknown', 'page', 'own'];
+export const LICENCES: readonly LicenceId[] = ['cc0', 'pdm', 'cc-by', 'cc-by-sa', 'cc-by-nc', 'pexels', 'pixabay', 'unsplash', 'unknown', 'page', 'own', 'ai'];
 const ASSET_KINDS = ['image', 'video', 'audio', 'font', 'logo'] as const;
-const SOURCES = ['openverse', 'wikimedia', 'nasa', 'museums', 'ccmixter', 'pexels', 'pixabay', 'freesound', 'jamendo', 'unsplash', 'custom', 'bundled', 'page'] as const;
+const SOURCES = ['openverse', 'wikimedia', 'nasa', 'museums', 'ccmixter', 'pexels', 'pixabay', 'freesound', 'jamendo', 'unsplash', 'custom', 'bundled', 'page', 'ai'] as const;
+export const PACES: readonly Pace[] = ['calm', 'normal', 'fast'];
+export const MOODS: readonly Mood[] = ['upbeat', 'calm', 'warm', 'dramatic', 'none'];
+export const TRANSITIONS: readonly TransitionKind[] = ['cut', 'crossfade', 'slide', 'push', 'wipe', 'zoom', 'match'];
+const BG_KINDS = ['solid', 'gradient', 'blobs', 'blocks', 'grain'] as const;
+const SLOT_KINDS: readonly SlotKind[] = ['text', 'items', 'media', 'chart', 'logo'];
+const SCALES: readonly TypeScale[] = ['display', 'headline', 'body', 'caption', 'number'];
+const ALIGNS = ['left', 'center', 'right'] as const;
 const LAYER_TYPES = ['text', 'shape', 'image', 'video', 'chart'] as const;
 // v1 clips are 60 seconds at most (PLAN.md open questions).
 export const MAX_CLIP_MS = 60_000;
@@ -32,7 +40,7 @@ export function validateRecipe(value: unknown): string[] {
   if (!isObj(value)) return ['The recipe is not an object.'];
   const r = value;
 
-  if (r.version !== 1) bad('The recipe version must be 1.');
+  if (r.version !== 1 && r.version !== 2) bad('The recipe version must be 1 or 2.');
   if (!isText(r.id)) bad('The recipe has no id.');
   if (!isStr(r.name)) bad('The recipe name must be text.');
   if (!oneOf(CLIP_TYPES, r.type)) bad(`The clip type must be one of ${CLIP_TYPES.join(', ')}.`);
@@ -41,6 +49,11 @@ export function validateRecipe(value: unknown): string[] {
     if (r[key] !== undefined && !isBool(r[key])) bad(`${key} must be true or false.`);
   }
   if (r.prompt !== undefined && !isStr(r.prompt)) bad('The prompt must be text.');
+  if (r.style !== undefined && !isStyleId(r.style)) bad(`The style must be one of ${STYLE_PACKS.map((p) => p.id).join(', ')}.`);
+  if (r.pace !== undefined && !oneOf(PACES, r.pace)) bad(`The pace must be one of ${PACES.join(', ')}.`);
+  if (r.mood !== undefined && !oneOf(MOODS, r.mood)) bad(`The music mood must be one of ${MOODS.join(', ')}.`);
+  if (r.beatSync !== undefined && !isBool(r.beatSync)) bad('beatSync must be true or false.');
+  if (r.beats !== undefined && (!Array.isArray(r.beats) || !r.beats.every((b) => isNum(b) && b >= 0))) bad('Beats must be a list of times of 0 ms or more.');
 
   const assets = isObj(r.assets) ? r.assets : undefined;
   if (!assets) bad('The recipe has no assets list.');
@@ -68,6 +81,7 @@ export function validateRecipe(value: unknown): string[] {
       if (!isColour(s.background)) bad(`${at} background must be a hex colour or transparent.`);
       if (!isText(s.layout)) bad(`${at} has no layout.`);
       else if (!isLayoutId(s.layout)) bad(`${at} layout must be one of ${LAYOUTS.join(', ')}.`);
+      checkSceneV2(at, s, bad);
       if (!Array.isArray(s.layers)) return bad(`${at} has no layers list.`);
       s.layers.forEach((l: unknown, j) => {
         const name = isObj(l) && isText(l.name) ? `"${l.name}"` : String(j + 1);
@@ -119,6 +133,107 @@ function checkAsset(key: string, a: unknown, bad: (m: string) => void) {
   if (!oneOf(LICENCES, c.licence)) bad(`${at} licence must be one of ${LICENCES.join(', ')}.`);
   if (c.licenceUrl !== undefined && !isStr(c.licenceUrl)) bad(`${at} licence link must be text.`);
   if (c.sourceName !== undefined && !isStr(c.sourceName)) bad(`${at} credit source name must be text.`);
+}
+
+const isSlotValue = (v: unknown) =>
+  isStr(v)
+  || (isObj(v) && isText(v.assetId))
+  || (Array.isArray(v) && (v.every(isStr) || v.every((b) => isObj(b) && isStr(b.label) && isNum(b.value))));
+
+function checkSceneV2(at: string, s: Obj, bad: (m: string) => void) {
+  const t = s.template === undefined ? undefined : getSceneTemplate(String(s.template));
+  if (s.template !== undefined && !t) bad(`${at} template must be one of ${SCENE_TEMPLATES.map((x) => x.id).join(', ')}.`);
+  for (const key of ['slots', 'original'] as const) {
+    const v = s[key];
+    if (v === undefined) continue;
+    if (!isObj(v)) { bad(`${at} ${key} is not an object.`); continue; }
+    for (const [id, value] of Object.entries(v)) {
+      if (t && !t.slots.some((d) => d.id === id)) bad(`${at} has a slot "${id}" that ${t.name} does not have.`);
+      if (!isSlotValue(value)) bad(`${at} slot "${id}" must be text, a list, a file or chart values.`);
+    }
+  }
+  if (s.transition !== undefined) {
+    const tr = s.transition;
+    if (!isObj(tr)) bad(`${at} transition is not an object.`);
+    else {
+      if (!oneOf(TRANSITIONS, tr.kind)) bad(`${at} transition must be one of ${TRANSITIONS.join(', ')}.`);
+      if (!isNum(tr.ms) || tr.ms < 0) bad(`${at} transition must last 0 ms or more.`);
+    }
+  }
+  if (s.bg !== undefined) checkBackground(`${at} background`, s.bg, bad);
+}
+
+function checkBackground(where: string, b: unknown, bad: (m: string) => void) {
+  if (!isObj(b)) return bad(`${where} is not an object.`);
+  const bg = b as Partial<Background>;
+  if (!oneOf(BG_KINDS, bg.kind)) bad(`${where} kind must be one of ${BG_KINDS.join(', ')}.`);
+  if (!Array.isArray(bg.colours) || bg.colours.length === 0 || !bg.colours.every(isColour)) bad(`${where} needs one or more hex colours.`);
+  if (bg.angle !== undefined && !isNum(bg.angle)) bad(`${where} angle must be a number.`);
+  if (bg.grain !== undefined && (!isNum(bg.grain) || bg.grain < 0 || bg.grain > 1)) bad(`${where} grain must be between 0 and 1.`);
+  if (bg.drift !== undefined && !isBool(bg.drift)) bad(`${where} drift must be true or false.`);
+}
+
+/** Checks a style pack file (lib/templates/packs/<id>.json). An empty list means it is valid. */
+export function validatePack(value: unknown): string[] {
+  const problems: string[] = [];
+  const bad = (m: string) => problems.push(m);
+  if (!isObj(value)) return ['The style pack is not an object.'];
+  const p = value;
+  const at = `Style pack "${String(p.id)}"`;
+  if (!isText(p.id)) bad('The style pack has no id.');
+  if (!isText(p.name)) bad(`${at} has no name.`);
+  const fonts = isObj(p.fonts) ? p.fonts : {};
+  for (const k of ['display', 'text', 'number']) if (!isText(fonts[k])) bad(`${at} has no ${k} font.`);
+  const pal = isObj(p.palette) ? p.palette : {};
+  for (const k of ['bg', 'bg2', 'ink', 'muted', 'accent']) if (!isColour(pal[k])) bad(`${at} ${k} colour must be a hex colour.`);
+  if (pal.accent2 !== undefined && !isColour(pal.accent2)) bad(`${at} accent2 colour must be a hex colour.`);
+  checkBackground(`${at} background`, p.background, bad);
+  if (!oneOf(FEELS, p.feel)) bad(`${at} feel must be one of ${FEELS.join(', ')}.`);
+  if (!isNum(p.motionMs) || p.motionMs <= 0) bad(`${at} motion must last longer than 0 ms.`);
+  if (!Array.isArray(p.transitions) || p.transitions.length === 0 || !p.transitions.every((t) => oneOf(TRANSITIONS, t))) bad(`${at} transitions must be from ${TRANSITIONS.join(', ')}.`);
+  if (!Array.isArray(p.clipTypes) || !p.clipTypes.every((t) => oneOf(CLIP_TYPES, t))) bad(`${at} clip types must be from ${CLIP_TYPES.join(', ')}.`);
+  return problems;
+}
+
+/** Checks a scene template file (lib/templates/scenes/<id>.json). An empty list means it is valid. */
+export function validateSceneTemplate(value: unknown): string[] {
+  const problems: string[] = [];
+  const bad = (m: string) => problems.push(m);
+  if (!isObj(value)) return ['The scene template is not an object.'];
+  const t = value;
+  const at = `Template "${String(t.id)}"`;
+  if (!isText(t.id)) bad('The scene template has no id.');
+  for (const k of ['name', 'line', 'fits'] as const) if (!isText(t[k])) bad(`${at} has no ${k}.`);
+  if (!isNum(t.defaultMs) || t.defaultMs <= 0) bad(`${at} must last longer than 0 ms.`);
+  if (!Array.isArray(t.slots) || t.slots.length === 0) return [...problems, `${at} needs at least one slot.`];
+  const ids = new Set<string>();
+  t.slots.forEach((d: unknown, i) => {
+    if (!isObj(d)) return bad(`${at} slot ${i + 1} is not an object.`);
+    const where = `${at} slot "${String(d.id)}"`;
+    if (!isText(d.id)) bad(`${at} slot ${i + 1} has no id.`);
+    else if (ids.has(d.id)) bad(`${at} uses the slot id "${d.id}" twice.`);
+    else ids.add(d.id);
+    if (!isText(d.name)) bad(`${where} has no name.`);
+    if (!oneOf(SLOT_KINDS, d.kind)) bad(`${where} kind must be one of ${SLOT_KINDS.join(', ')}.`);
+    if (d.words !== undefined && (!Number.isInteger(d.words) || (d.words as number) < 1)) bad(`${where} word limit must be a whole number from 1.`);
+    if (d.items !== undefined) {
+      const it = d.items;
+      if (!Array.isArray(it) || it.length !== 2 || !it.every((n) => Number.isInteger(n) && n >= 1) || it[0] > it[1]) bad(`${where} items must be a minimum and a maximum.`);
+    }
+    if (d.scale !== undefined && !oneOf(SCALES, d.scale)) bad(`${where} type scale must be one of ${SCALES.join(', ')}.`);
+    if (d.align !== undefined && !oneOf(ALIGNS, d.align)) bad(`${where} align must be left, center or right.`);
+    for (const k of ['optional', 'highlight'] as const) if (d[k] !== undefined && !isBool(d[k])) bad(`${where} ${k} must be true or false.`);
+    if (!isObj(d.boxes)) bad(`${where} has no boxes.`);
+    else for (const a of ASPECTS) checkBox(`${where} at ${a}`, d.boxes[a], bad);
+    const m = isObj(d.motion) ? d.motion : undefined;
+    if (!m) bad(`${where} has no motion.`);
+    else {
+      if (!isText(m.in) || getPreset(m.in)?.slot !== 'in') bad(`${where} "Comes in" preset "${String(m.in)}" is not a known in preset.`);
+      if (m.during !== undefined && (!isText(m.during) || getPreset(m.during)?.slot !== 'during')) bad(`${where} "While on screen" preset "${String(m.during)}" is not a known during preset.`);
+      if (m.stagger !== undefined && !oneOf(['word', 'line'], m.stagger)) bad(`${where} stagger must be word or line.`);
+    }
+  });
+  return problems;
 }
 
 function checkBox(where: string, b: unknown, bad: (m: string) => void) {
@@ -173,6 +288,7 @@ function checkLayer(
   checkMotion(`${where} "While on screen"`, 'during', l.during, bad);
   checkMotion(`${where} "Goes out"`, 'out', l.out, bad);
   if (l.locked !== undefined && !isBool(l.locked)) bad(`${where} locked must be true or false.`);
+  if (l.slot !== undefined && !isText(l.slot)) bad(`${where} slot must be text.`);
 
   switch (l.type) {
     case 'text':
@@ -185,6 +301,10 @@ function checkLayer(
       if (!oneOf(['left', 'center', 'right'], l.align)) bad(`${where} align must be left, center or right.`);
       if (!isNum(l.lineHeight) || l.lineHeight <= 0) bad(`${where} line height must be more than 0.`);
       if (l.background !== undefined && !isColour(l.background)) bad(`${where} background must be a hex colour.`);
+      if (l.letterSpacing !== undefined && !isNum(l.letterSpacing)) bad(`${where} letter spacing must be a number.`);
+      if (l.highlight !== undefined && !(isObj(l.highlight) && Number.isInteger(l.highlight.word) && (l.highlight.word as number) >= 0 && isColour(l.highlight.colour))) bad(`${where} highlight needs a word number and a hex colour.`);
+      if (l.shadow !== undefined && !isBool(l.shadow)) bad(`${where} shadow must be true or false.`);
+      if (l.stagger !== undefined && !oneOf(['word', 'line'], l.stagger)) bad(`${where} stagger must be word or line.`);
       break;
     case 'shape':
       if (!oneOf(['rect', 'circle', 'line'], l.shape)) bad(`${where} shape must be rect, circle or line.`);
@@ -199,6 +319,10 @@ function checkLayer(
       else if (!fits) bad(`${where} points to a ${String(kind)} file, not a ${l.type}.`);
       if (!oneOf(['cover', 'contain'], l.fit)) bad(`${where} fit must be cover or contain.`);
       if (l.muted !== undefined && !isBool(l.muted)) bad(`${where} muted must be true or false.`);
+      if (l.radius !== undefined && (!isNum(l.radius) || l.radius < 0)) bad(`${where} corner radius must be 0 or more.`);
+      if (l.mask !== undefined && !oneOf(['rounded', 'circle', 'blob'], l.mask)) bad(`${where} mask must be rounded, circle or blob.`);
+      if (l.border !== undefined && !isColour(l.border)) bad(`${where} border must be a hex colour.`);
+      if (l.kenBurns !== undefined && !isBool(l.kenBurns)) bad(`${where} kenBurns must be true or false.`);
       break;
     }
     case 'chart':

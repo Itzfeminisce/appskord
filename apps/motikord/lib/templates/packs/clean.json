@@ -1,0 +1,34 @@
+{
+  "id": "clean",
+  "name": "Clean",
+  "fonts": {
+    "display": "Inter",
+    "text": "Inter",
+    "number": "Space Grotesk"
+  },
+  "palette": {
+    "bg": "#FFFFFF",
+    "bg2": "#F1F5F9",
+    "ink": "#0F172A",
+    "muted": "#64748B",
+    "accent": "#2563EB"
+  },
+  "background": {
+    "kind": "gradient",
+    "colours": [
+      "#FFFFFF",
+      "#F1F5F9"
+    ],
+    "angle": 180
+  },
+  "feel": "smooth",
+  "motionMs": 400,
+  "transitions": [
+    "crossfade",
+    "slide"
+  ],
+  "clipTypes": [
+    "explainer",
+    "captions"
+  ]
+}

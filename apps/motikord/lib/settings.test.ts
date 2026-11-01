@@ -5,7 +5,7 @@ import { clearKey, DEFAULT_SETTINGS, getKey, getSettings, mergeSettings, onSetti
 describe('settings', () => {
   beforeEach(() => fakeBrowser.reset());
 
-  it('has the v1 defaults', () => {
+  it('has the v1 and v2 defaults', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       ai: 'cloud',
       keySource: null,
@@ -18,7 +18,24 @@ describe('settings', () => {
       onboarded: false,
       voiceOn: true,
       voiceLang: '',
+      look: { style: 'auto', pace: 'normal', mood: 'upbeat' },
+      critic: true,
+      beatSync: false,
+      aiImages: false,
+      imageProvider: 'openai',
+      lookCardSeen: false,
     });
+  });
+
+  it('gives v1 settings the default look and keeps a valid one', () => {
+    expect(mergeSettings({ onboarded: true } as never)).toMatchObject({ look: DEFAULT_SETTINGS.look, critic: true, beatSync: false, aiImages: false });
+    expect(mergeSettings({ look: { style: 'bold', pace: 'fast' } } as never).look).toEqual({ style: 'bold', pace: 'fast', mood: 'upbeat' });
+    expect(mergeSettings({ look: { style: 'neon', pace: 'x', mood: 'none' }, critic: false } as never)).toMatchObject({ look: { style: 'auto', pace: 'normal', mood: 'none' }, critic: false });
+  });
+
+  it('merges the look one level deep', async () => {
+    await updateSettings({ look: { style: 'playful' } });
+    expect((await updateSettings({ look: { mood: 'calm' } })).look).toEqual({ style: 'playful', pace: 'normal', mood: 'calm' });
   });
 
   it('migrates settings from before voice prompts to mic on, Chrome language', () => {

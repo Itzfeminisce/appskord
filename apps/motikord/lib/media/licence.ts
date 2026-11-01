@@ -2,7 +2,7 @@ import type { Credit, LicenceId } from '../types';
 
 /** The short tag on a result ("CC BY"). */
 export const LICENCE_TAG: Record<LicenceId, string> = {
-  cc0: 'CC0', pdm: 'Public Domain', 'cc-by': 'CC BY', 'cc-by-sa': 'CC BY-SA', 'cc-by-nc': 'CC BY-NC', pexels: 'Pexels', pixabay: 'Pixabay', unsplash: 'Unsplash', unknown: 'Licence unknown', page: 'Web page', own: 'Your own',
+  cc0: 'CC0', pdm: 'Public Domain', 'cc-by': 'CC BY', 'cc-by-sa': 'CC BY-SA', 'cc-by-nc': 'CC BY-NC', pexels: 'Pexels', pixabay: 'Pixabay', unsplash: 'Unsplash', unknown: 'Licence unknown', page: 'Web page', own: 'Your own', ai: 'AI image',
 };
 
 /** Passes by default; the rest show only with Settings "Show all licences". */

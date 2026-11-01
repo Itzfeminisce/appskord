@@ -43,7 +43,7 @@ describe('validateRecipe', () => {
   });
 
   const cases: [string, (r: Recipe) => void, RegExp][] = [
-    ['wrong version', (r) => { (r as { version: number }).version = 2; }, /version must be 1/],
+    ['wrong version', (r) => { (r as { version: number }).version = 3; }, /version must be 1 or 2/],
     ['unknown clip type', (r) => { (r as { type: string }).type = 'meme'; }, /clip type must be one of/],
     ['unknown aspect', (r) => { (r as { aspect: string }).aspect = '4:3'; }, /size must be one of/],
     ['no scenes', (r) => { r.scenes = []; }, /at least one scene/],
@@ -70,6 +70,46 @@ describe('validateRecipe', () => {
   for (const [name, breakIt, problem] of cases) {
     it(`rejects ${name}`, () => {
       const r = goodRecipe();
+      breakIt(r);
+      const problems = validateRecipe(r);
+      expect(problems.some((p) => problem.test(p)), problems.join('\n')).toBe(true);
+    });
+  }
+});
+
+describe('validateRecipe v2 fields', () => {
+  function v2(): Recipe {
+    const r = goodRecipe();
+    r.version = 2;
+    Object.assign(r, { style: 'bold', pace: 'fast', mood: 'none', beatSync: true, beats: [0, 500, 1000] });
+    Object.assign(r.scenes[0]!, {
+      template: 'title-hook', slots: { kicker: 'New at Rise', headline: 'Fresh sourdough', background: { assetId: 'photo' } },
+      original: { headline: 'Fresh sourdough baked here every single morning' },
+      transition: { kind: 'push', ms: 250 }, bg: { kind: 'grain', colours: ['#0F2A4A'], grain: 0.1, drift: true },
+    });
+    Object.assign(r.scenes[0]!.layers[0]!, { letterSpacing: -0.03, highlight: { word: 1, colour: '#FACC15' }, shadow: true, stagger: 'word', slot: 'headline' });
+    Object.assign(r.scenes[0]!.layers[1]!, { radius: 12, mask: 'rounded', border: '#FFFFFF', kenBurns: true, slot: 'background' });
+    return r;
+  }
+
+  it('accepts a v2 recipe and an AI image credit', () => {
+    const r = v2();
+    r.assets.photo!.credit = { title: 'Loaf', author: 'OpenAI', source: 'ai', url: '', licence: 'ai' };
+    expect(validateRecipe(r)).toEqual([]);
+  });
+
+  const cases: [string, (r: Recipe) => void, RegExp][] = [
+    ['an unknown template', (r) => { (r.scenes[0] as { template: string }).template = 'meme'; }, /template must be one of title-hook/],
+    ['an unknown style', (r) => { (r as { style: string }).style = 'neon'; }, /style must be one of clean, bold/],
+    ['an unknown transition', (r) => { r.scenes[0]!.transition = { kind: 'spin' as never, ms: 300 }; }, /transition must be one of cut/],
+    ['a slot the template does not have', (r) => { r.scenes[0]!.slots!.price = '£4'; }, /slot "price" that Title hook does not have/],
+    ['an unknown pace', (r) => { (r as { pace: string }).pace = 'slow'; }, /pace must be one of/],
+    ['a bad background', (r) => { r.scenes[0]!.bg = { kind: 'gradient', colours: [] }; }, /needs one or more hex colours/],
+    ['a bad highlight', (r) => { Object.assign(r.scenes[0]!.layers[0]!, { highlight: { word: -1, colour: 'red' } }); }, /highlight needs a word number/],
+  ];
+  for (const [name, breakIt, problem] of cases) {
+    it(`rejects ${name}`, () => {
+      const r = v2();
       breakIt(r);
       const problems = validateRecipe(r);
       expect(problems.some((p) => problem.test(p)), problems.join('\n')).toBe(true);

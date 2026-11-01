@@ -1,0 +1,37 @@
+{
+  "id": "playful",
+  "name": "Playful",
+  "fonts": {
+    "display": "Fredoka",
+    "text": "Nunito",
+    "number": "Space Grotesk"
+  },
+  "palette": {
+    "bg": "#FFF7ED",
+    "bg2": "#FFEDD5",
+    "ink": "#1C1917",
+    "muted": "#78716C",
+    "accent": "#F97316",
+    "accent2": "#14B8A6"
+  },
+  "background": {
+    "kind": "blobs",
+    "colours": [
+      "#FFF7ED",
+      "#FDBA74",
+      "#5EEAD4",
+      "#CCFBF1"
+    ],
+    "drift": true
+  },
+  "feel": "bouncy",
+  "motionMs": 450,
+  "transitions": [
+    "slide",
+    "zoom",
+    "match"
+  ],
+  "clipTypes": [
+    "logo"
+  ]
+}

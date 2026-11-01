@@ -1,0 +1,101 @@
+{
+  "id": "end-card",
+  "name": "End card",
+  "line": "Call to action lands; handle and logo follow",
+  "slots": [
+    {
+      "id": "cta",
+      "name": "Call to action",
+      "kind": "text",
+      "words": 5,
+      "scale": "display",
+      "align": "left",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.32,
+          "w": 0.86,
+          "h": 0.2
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.24,
+          "w": 0.88,
+          "h": 0.32
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.26,
+          "w": 0.62,
+          "h": 0.32
+        }
+      },
+      "motion": {
+        "in": "rise-in",
+        "stagger": "word"
+      }
+    },
+    {
+      "id": "handle",
+      "name": "Link or handle",
+      "kind": "text",
+      "words": 4,
+      "scale": "body",
+      "align": "left",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.54,
+          "w": 0.86,
+          "h": 0.06
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.58,
+          "w": 0.88,
+          "h": 0.09
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.6,
+          "w": 0.62,
+          "h": 0.1
+        }
+      },
+      "motion": {
+        "in": "fade-in"
+      }
+    },
+    {
+      "id": "logo",
+      "name": "Logo",
+      "kind": "logo",
+      "optional": true,
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.7,
+          "w": 0.4,
+          "h": 0.1
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.76,
+          "w": 0.4,
+          "h": 0.14
+        },
+        "16:9": {
+          "x": 0.74,
+          "y": 0.3,
+          "w": 0.21,
+          "h": 0.4
+        }
+      },
+      "motion": {
+        "in": "fade-in"
+      }
+    }
+  ],
+  "defaultMs": 3000,
+  "fits": "What to do next, with a link or handle and your logo."
+}

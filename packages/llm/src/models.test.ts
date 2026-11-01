@@ -169,3 +169,22 @@ describe('recommendedFor', () => {
     err.mockRestore();
   });
 });
+
+import { canSeeImages } from './models';
+describe('canSeeImages', () => {
+  it('knows vision models', () => {
+    for (const m of [
+      'llama-4-scout',
+      'gpt-4o',
+      'gpt-4.1-mini',
+      'gpt-5',
+      'claude-sonnet-4',
+      'gemini-2.5',
+      'pixtral-12b',
+      'qwen2.5-vl-7b',
+      'x-vision',
+    ])
+      expect(canSeeImages('groq', m)).toBe(true);
+    for (const m of ['llama-3.3-70b', 'gpt-3.5-turbo']) expect(canSeeImages('groq', m)).toBe(false);
+  });
+});
