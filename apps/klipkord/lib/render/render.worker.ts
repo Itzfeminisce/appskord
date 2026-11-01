@@ -20,7 +20,9 @@ export type RenderResponse =
   | { type: 'ready'; backend: Renderer['backend'] }
   /** drawn: false when a newer plan replaced this one before it was drawn. */
   | { type: 'rendered'; id: number; drawn: boolean }
-  | { type: 'error'; id?: number; message: string };
+  | { type: 'error'; id?: number; message: string }
+  /** The answer to 'close': everything is let go, so the worker can be ended. */
+  | { type: 'closed' };
 
 const reply = (message: RenderResponse) => self.postMessage(message);
 const describe = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -117,6 +119,9 @@ self.addEventListener('message', (event: MessageEvent<RenderRequest>) => {
     case 'sources': addSources(request.sources); break;
     case 'render': void render(request); break;
     case 'resize': renderer?.resize(request.width, request.height); break;
-    case 'close': close(); break;
+    case 'close':
+      close();
+      reply({ type: 'closed' });
+      break;
   }
 });

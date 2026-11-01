@@ -1,0 +1,18 @@
+/* The dark editor tab (FRAMES.md "Look"). */
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: #0e0e11;
+  color: #f4f4f5;
+  font-family: 'Geist Variable', Geist, system-ui, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button:disabled { cursor: default; }
+button:focus-visible { outline: 2px solid #fb923c; outline-offset: 1px; }
+
+@keyframes klipkord-spin { to { transform: rotate(360deg); } }

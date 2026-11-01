@@ -5,6 +5,7 @@ import { freeBytes, isDiskLow } from '@/lib/storageMath';
 import { formatBytes, formatClock } from '@/lib/time';
 import type { NoteStyle, Recording } from '@/lib/types';
 import { videoStore } from '@/lib/videoStore';
+import { openEditor } from '../../editor/open';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { BackBar } from './Export';
@@ -81,17 +82,21 @@ export default function Library() {
             {g.items.map((r) => {
               const style = styleOf(r);
               return (
-                <button key={r.id} type="button" onClick={() => navigate('Review', { recordingId: r.id })}
-                  style={{ padding: 10, borderRadius: 14, background: '#FFFFFF', border: '1px solid #E8E8EB', color: '#111114', font: 'inherit', textAlign: 'left', display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer' }}>
-                  <Thumb blob={r.thumbnail} length={r.duration} />
-                  <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.3 }}>{r.title}</span>
-                    <span style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#6E7079' }}>
-                      {style && <span style={{ padding: '1px 6px', borderRadius: 999, background: CHIP_COLORS[style].bg, color: CHIP_COLORS[style].fg, fontWeight: 600 }}>{CHIP_LABEL[style]}</span>}
-                      {whenLabel(r.createdAt, now)}
+                <div key={r.id} style={{ padding: 10, borderRadius: 14, background: '#FFFFFF', border: '1px solid #E8E8EB', display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <button type="button" onClick={() => navigate('Review', { recordingId: r.id })}
+                    style={{ flexGrow: 1, minWidth: 0, padding: 0, border: 0, background: 'transparent', color: '#111114', font: 'inherit', textAlign: 'left', display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer' }}>
+                    <Thumb blob={r.thumbnail} length={r.duration} />
+                    <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.3 }}>{r.title}</span>
+                      <span style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#6E7079' }}>
+                        {style && <span style={{ padding: '1px 6px', borderRadius: 999, background: CHIP_COLORS[style].bg, color: CHIP_COLORS[style].fg, fontWeight: 600 }}>{CHIP_LABEL[style]}</span>}
+                        {whenLabel(r.createdAt, now)}{r.v3 ? '' : ' · camera baked in'}
+                      </span>
                     </span>
-                  </span>
-                </button>
+                  </button>
+                  <button type="button" onClick={() => void openEditor(r.id).catch((error) => console.error('Klipkord: could not open the editor', error))}
+                    style={{ height: 32, padding: '0 10px', borderRadius: 8, border: '1px solid #E8E8EB', background: '#FFFFFF', color: '#111114', font: 'inherit', fontSize: 13, fontWeight: 600, flexShrink: 0, cursor: 'pointer' }}>Edit</button>
+                </div>
               );
             })}
           </div>
