@@ -1,9 +1,13 @@
 import { MARGIN_SHARE } from '../bubble';
 import { captionAt, type Caption } from '../project/captions';
+import { cursorAt } from '../project/cursor';
 import { spanAt, toOut } from '../project/time';
 import type {
-  Box, Camera, Cut, EventsTrack, Feel, LayoutKind, Look, Project, RecEvent, RenderPlan, Shape, Source,
+  Box, Camera, Cut, EventsTrack, LayoutKind, Look, Project, RenderPlan, Shape, Source, Zoom,
 } from '../project/types';
+import { ease, rampMs } from './spring';
+
+export { cursorAt };
 
 // Boxes in a RenderPlan: `crop` is 0..1 of the screen picture; `dest`, radius and shadow are px in FRAME[shape].
 
@@ -11,12 +15,8 @@ import type {
 export const FRAME: Record<Shape, { w: number; h: number }> = {
   '16:9': { w: 1920, h: 1080 }, '9:16': { w: 1080, h: 1920 }, '1:1': { w: 1080, h: 1080 }, '4:5': { w: 1080, h: 1350 },
 };
-/** How long a zoom takes to go in and come out. */
-export const ZOOM_MS: Record<Feel, number> = { calm: 900, smooth: 600, snappy: 300 };
 /** A "Smooth" layout switch moves the boxes over this long. */
 export const SWITCH_MS = 400;
-/** A click ring fades over this long. */
-export const CLICK_MS = 500;
 /** Share of the frame the screen keeps beside the camera in "Side by side". */
 export const SIDE_SHARE = 0.68;
 /** In "Screen over camera", the screen takes at most this share of the frame height. */
@@ -26,11 +26,6 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerpBox = (a: Box, b: Box, t: number): Box => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), w: lerp(a.w, b.w, t), h: lerp(a.h, b.h, t) });
 const FULL: Box = { x: 0, y: 0, w: 1, h: 1 };
-
-/** Easing for zooms and smooth switches, 0..1 → 0..1. Linear until T10's lib/render/spring.ts replaces it. */
-export function ease(progress: number, _feel: Feel = 'smooth'): number {
-  return clamp01(progress);
-}
 
 /** The largest box of this aspect (w / h) inside `area`, centred. */
 export function fit(aspect: number, area: Box): Box {
@@ -84,48 +79,6 @@ export function arrange({ layout, shape, fit: vfit, look, camera, screenAspect, 
   return { screen: screenOnly(), camera: bubble(), follow };
 }
 
-// ---- Events ----
-
-type Pointer = Extract<RecEvent, { type: 'move' | 'click' }>;
-const isPointer = (e: RecEvent): e is Pointer => e.type === 'move' || e.type === 'click';
-
-/** Index of the last event at or before `t` (events sorted by t), or -1. */
-function lastAt(events: RecEvent[], t: number): number {
-  let lo = 0;
-  let hi = events.length - 1;
-  let found = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (events[mid]!.t <= t) { found = mid; lo = mid + 1; } else hi = mid - 1;
-  }
-  return found;
-}
-
-/** Cursor position (0..1 of the viewport) at a recording time, and the click ring (1 at the click, fading to 0). */
-export function cursorAt(events: RecEvent[], rec: number, smooth: boolean): { x: number; y: number; click: number } | null {
-  const last = lastAt(events, rec);
-  let i = last;
-  while (i >= 0 && !isPointer(events[i]!)) i--;
-  const prev = events[i];
-  if (!prev || !isPointer(prev)) return null;
-  let { x, y } = prev;
-  if (smooth) {
-    let n = i + 1;
-    while (n < events.length && !isPointer(events[n]!)) n++;
-    const next = events[n];
-    if (next && isPointer(next) && next.t > prev.t) {
-      const k = (rec - prev.t) / (next.t - prev.t);
-      x = lerp(prev.x, next.x, k);
-      y = lerp(prev.y, next.y, k);
-    }
-  }
-  let click = 0;
-  for (let j = last; j >= 0 && rec - events[j]!.t < CLICK_MS; j--) {
-    if (events[j]!.type === 'click') { click = 1 - (rec - events[j]!.t) / CLICK_MS; break; }
-  }
-  return { x, y, click };
-}
-
 // ---- Layout over time ----
 
 /** The layout at a recording time, with the one it is leaving while a smooth switch runs. */
@@ -155,19 +108,45 @@ function cropFor(cut: Cut, rec: number, dest: Box, screenAspect: number, follow:
     base = { x: clamp01(Math.min(1 - w, centre.x - w / 2)), y: clamp01(Math.min(1 - h, centre.y - h / 2)), w, h };
   }
   if (cut.tracks.zooms?.hidden) return base;
-  const zoom = [...cut.zooms].reverse().find((z) => rec >= z.at && rec < z.end);
+  const zoom = zoomAt(cut.zooms, rec);
   if (!zoom) return base;
-  const ms = ZOOM_MS[zoom.feel];
-  const e = Math.min(ease((rec - zoom.at) / ms, zoom.feel), ease((zoom.end - rec) / ms, zoom.feel));
-  const scale = 1 + (Math.max(1, zoom.depth) - 1) * e;
+  // A zoom that starts where another ends pans across from it at full depth instead of zooming out between.
+  const prev = cut.zooms.find((z) => z !== zoom && z.end === zoom.at && z.at < z.end);
+  const next = cut.zooms.some((z) => z !== zoom && z.at === zoom.end && z.at < z.end);
+  const ramp = rampMs(zoom.depth, zoom.feel);
+  const into = progress(rec - zoom.at, Math.min(ramp, zoom.rampIn ?? ramp));
+  const out = next ? 1 : progress(zoom.end - rec, Math.min(ramp, zoom.rampOut ?? ramp));
+  const at = (z: Zoom) => (z.focus === 'cursor' ? centre : z.focus);
+  let depth = Math.max(1, zoom.depth);
+  let focus = at(zoom);
+  let e = Math.min(into, out);
+  // Scale moves geometrically, so each step in looks the same size.
+  if (prev) {
+    depth = Math.max(1, prev.depth) ** (1 - into) * depth ** into;
+    const from = at(prev);
+    focus = { x: lerp(from.x, focus.x, into), y: lerp(from.y, focus.y, into) };
+    e = out;
+  }
+  const scale = depth ** e;
   if (scale === 1) return base;
-  const focus = zoom.focus === 'cursor' ? centre : zoom.focus;
   const w = base.w / scale;
   const h = base.h / scale;
   const x = Math.min(base.x + base.w - w, Math.max(base.x, focus.x - w / 2));
   const y = Math.min(base.y + base.h - h, Math.max(base.y, focus.y - h / 2));
   return { x, y, w, h };
 }
+
+/** The zoom on at `rec`; where zooms overlap, the last listed wins. */
+function zoomAt(zooms: Zoom[], rec: number): Zoom | undefined {
+  for (let i = zooms.length - 1; i >= 0; i--) {
+    const z = zooms[i]!;
+    if (rec >= z.at && rec < z.end) return z;
+  }
+  return undefined;
+}
+
+/** Spring progress `ms` into a ramp that lasts `ramp`; a ramp of no length is already done. */
+const progress = (ms: number, ramp: number) => (ramp > 0 ? ease(ms / ramp) : 1);
 
 const sourceTime = (s: Source, rec: number) => rec - s.offset;
 const covers = (s: Source, rec: number) => rec >= s.offset && rec < s.offset + s.duration;
@@ -206,6 +185,12 @@ export function renderPlan(project: Project, cut: Cut, out: number, events?: Eve
         y: screenBox.y + ((pointer.y - crop.y) / crop.h) * screenBox.h,
         size: cut.look.cursor.size, click: cut.look.cursor.clicks ? pointer.click : 0,
       };
+      if (plan.cursor.click > 0 && pointer.ring) {
+        plan.cursor.ring = {
+          x: screenBox.x + ((pointer.ring.x - crop.x) / crop.w) * screenBox.w,
+          y: screenBox.y + ((pointer.ring.y - crop.y) / crop.h) * screenBox.h,
+        };
+      }
     }
   }
 
