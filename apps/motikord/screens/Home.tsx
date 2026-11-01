@@ -19,6 +19,8 @@ import { insertWords, LEVEL_BARS } from '../lib/voice/listen';
 import { useVoice } from '../lib/voice/useVoice';
 import { MIC_PATHS, VoiceFooter, VoiceStateCard } from './StatesVoice';
 import { HomeListening, VOICE_MAKE_HINT } from './VoicePrompt';
+import { lookLine, lookOverride, useLookOverride } from './LookSheet';
+import { updateSettings } from '../lib/settings';
 
 const ASPECTS: Aspect[] = ['9:16', '1:1', '16:9'];
 const STRIP = ['template-bold-quote', 'template-growing-bars', 'template-pulse-sting'];
@@ -54,6 +56,7 @@ export default function Home({ preview }: { preview?: { settled: string; interim
   const pageUrl = useActiveTabUrl();
   const settings = useSettings();
   const online = useOnline();
+  const over = useLookOverride();
   const useTemplate = useUseTemplate();
   const [recent, setRecent] = useState<Clip[]>([]);
   const [disconnected, setDisconnected] = useState(false);
@@ -98,7 +101,22 @@ export default function Home({ preview }: { preview?: { settled: string; interim
     // Chrome only asks inside the click, so the request goes out before anything is awaited.
     const access = settings?.ai === 'local' ? Promise.resolve('granted' as const) : requestHost(HOSTS[settings?.provider ?? 'groq']);
     navigate('Making');
-    void access.then((a) => runner.start(draft.get(), { access: a }));
+    const saved = settings?.look;
+    const start = async () => {
+      const a = await access;
+      if (over && saved) {
+        // This clip only: the runner reads the look from settings, so lend it and put the default back once it has.
+        await updateSettings({ look: over });
+        const unsub = runner.subscribe(() => {
+          if (!runner.get().look) return;
+          unsub();
+          lookOverride.set(undefined);
+          updateSettings({ look: saved }).catch((error: unknown) => console.error('Motikord: could not save settings', error));
+        });
+      }
+      await runner.start(draft.get(), { access: a });
+    };
+    void start();
   };
 
   // Chrome grants a side-panel click no activeTab, so the page's site access is asked inside this click, before anything is awaited.
@@ -133,6 +151,20 @@ export default function Home({ preview }: { preview?: { settled: string; interim
         <div style={{ margin: '12px 16px 0' }}>
           <VoiceStateCard card={voice.ui.card} provider={voice.ui.provider ?? voice.provider}
             actions={{ onAllow: voice.allowMic, onTypeInstead: voice.dismiss, onOpenSettings: voice.openChromeSettings, onTryAgain: voice.tryAgain }} />
+        </div>
+      )}
+
+      {settings && !settings.lookCardSeen && (
+        <div style={{ margin: '12px 16px 0', padding: 14, borderRadius: 16, background: 'var(--tint)', border: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexGrow: 1 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent-hover)' }}>New</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Clips now look designed</span>
+            <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>Pick a style, pace and music mood, or let Motikord choose.</span>
+            <button type="button" style={{ ...link, alignSelf: 'flex-start', marginTop: 4 }} onClick={() => navigate('LookSheet')}>Choose the look</button>
+          </div>
+          <IconButton aria-label="Dismiss" onClick={() => { updateSettings({ lookCardSeen: true }).catch((error: unknown) => console.error('Motikord: could not save settings', error)); }} style={{ width: 32, height: 32 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </IconButton>
         </div>
       )}
 
@@ -184,6 +216,11 @@ export default function Home({ preview }: { preview?: { settled: string; interim
           <span style={{ fontSize: 13, flexGrow: 1 }}>Clip type</span>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{TYPE_NAMES[type]}</span>
           {!forced && d.prompt.trim() !== '' && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent-hover)', background: 'var(--tint-strong)', padding: '2px 8px', borderRadius: 999 }}>Detected</span>}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+        </button>
+        <button type="button" onClick={() => navigate('LookSheet')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', border: 0, borderBottom: '1px solid #EFEFF1', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+          <span style={{ fontSize: 13 }}>Look</span>
+          <span style={{ fontSize: 13, fontWeight: 600, flexGrow: 1, textAlign: 'right' }}>{lookLine(over ?? settings?.look ?? { style: 'auto', pace: 'normal', mood: 'upbeat' })}</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #EFEFF1' }}>
