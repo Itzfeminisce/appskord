@@ -1,4 +1,6 @@
-export type Track = 'video' | 'voice';
+/** v1/v2: 'video' (camera baked in) and 'voice'. v3 adds a file per source; its mic stays 'voice' for the transcript. */
+export type Track = 'video' | 'voice' | 'screen' | 'camera' | 'tab';
+export const TRACKS: readonly Track[] = ['video', 'voice', 'screen', 'camera', 'tab'];
 
 export interface StorageUsage { usage: number; quota: number }
 
@@ -9,9 +11,11 @@ export interface VideoStore {
   append(id: string, track: Track, chunk: Blob): Promise<void>;
   /** Commits and closes the recording's open segments. A later append starts a new segment. */
   close(id: string): Promise<void>;
-  /** The whole track as one Blob; empty when nothing was written. */
+  /** The whole track as one Blob; empty when nothing was written. A v3 recording has no 'video': its screen is read. */
   read(id: string, track: Track, type?: string): Promise<Blob>;
-  /** Bytes across both tracks; 0 when the recording has no files. */
+  /** Writes a whole small file, such as events.json, replacing it. */
+  put(id: string, name: string, data: Blob): Promise<void>;
+  /** Bytes across every track; 0 when the recording has no files. */
   size(id: string): Promise<number>;
   remove(id: string): Promise<void>;
   usage(): Promise<StorageUsage>;
@@ -94,7 +98,7 @@ export function createVideoStore({ root, estimate, now = Date.now }: VideoStoreD
     }
   }
 
-  const tracks = (id: string) => (['video', 'voice'] as const).map((track) => `${id}/${track}`);
+  const tracks = (id: string) => TRACKS.map((track) => `${id}/${track}`);
 
   return {
     async open(id) {
@@ -108,16 +112,28 @@ export function createVideoStore({ root, estimate, now = Date.now }: VideoStoreD
     },
     async read(id, track, type = '') {
       try {
-        const parts = await files(id, track);
+        let parts = await files(id, track);
+        // Until the editor plays v3 tracks, screens that play 'video' get the screen recording.
+        if (!parts.length && track === 'video') parts = await files(id, 'screen');
         return parts.length === 1 && !type ? parts[0]! : new Blob(parts, { type });
       } catch (error) {
         if (isNotFound(error)) return new Blob([], { type });
         throw error;
       }
     },
+    async put(id, name, data) {
+      const file = await (await dir(id, true)).getFileHandle(name, { create: true });
+      const writable = await file.createWritable();
+      await writable.write(data);
+      await writable.close();
+    },
     async size(id) {
       let total = 0;
-      for (const track of ['video', 'voice'] as const) total += (await this.read(id, track)).size;
+      try {
+        for (const track of TRACKS) total += (await files(id, track)).reduce((sum, f) => sum + f.size, 0);
+      } catch (error) {
+        if (!isNotFound(error)) throw error;
+      }
       return total;
     },
     async remove(id) {

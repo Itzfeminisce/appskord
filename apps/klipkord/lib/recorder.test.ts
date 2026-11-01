@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  badgeTitle, chooseMime, chooseVoiceMime, clockElapsed, clockPause, clockResume, clockStart, containerOf, createChunkWriter, shortClock,
+  badgeTitle, chooseMime, chooseVoiceMime, clockElapsed, clockPause, clockResume, clockStart, containerOf, createChunkWriter, partOffset, planTake,
+  shortClock, takeSources, type StartedPart,
 } from './recorder';
 
 describe('clock', () => {
@@ -75,5 +76,43 @@ describe('chunk writer', () => {
     await writer.flush();
     expect(written).toEqual(['one', 'two']);
     expect(errors).toHaveLength(1);
+  });
+});
+
+describe('planTake', () => {
+  it('keeps v2\'s one baked file and the voice when "Bake camera into the video" is on', () => {
+    expect(planTake({ bake: true, camera: true, mic: true, sound: true }).map((p) => [p.file, p.kind])).toEqual([['video', null], ['voice', null]]);
+    expect(planTake({ bake: true, camera: false, mic: false, sound: false }).map((p) => p.file)).toEqual(['video']);
+  });
+
+  it('gives each source its own file when it is off; the mic stays the voice file the transcript reads', () => {
+    expect(planTake({ bake: false, camera: true, mic: true, sound: true }).map((p) => [p.file, p.kind])).toEqual([
+      ['screen', 'screen'], ['camera', 'camera'], ['voice', 'mic'], ['tab', 'tab'],
+    ]);
+    expect(planTake({ bake: false, camera: false, mic: false, sound: false }).map((p) => p.file)).toEqual(['screen']);
+  });
+});
+
+describe('take offsets', () => {
+  const part = (file: StartedPart['file'], kind: StartedPart['kind'], startedAt: number, video = false): StartedPart =>
+    ({ file, kind, video, audio: !video, mime: video ? 'video/webm' : 'audio/webm', startedAt });
+
+  it('measures every file from the one start clock', () => {
+    expect(partOffset(1000, 1040)).toBe(40);
+    expect(partOffset(1000, 990)).toBe(0);
+    const sources = takeSources([
+      { ...part('screen', 'screen', 1000, true), width: 1920, height: 1080 },
+      part('camera', 'camera', 1120, true),
+      part('voice', 'mic', 1015),
+      part('tab', 'tab', 1000),
+    ], 1000, 60_000);
+    expect(sources.map((s) => [s.kind, s.file, s.offset, s.duration])).toEqual([
+      ['screen', 'screen', 0, 60_000], ['camera', 'camera', 120, 59_880], ['mic', 'voice', 15, 59_985], ['tab', 'tab', 0, 60_000],
+    ]);
+    expect(sources[0]).toMatchObject({ id: 'screen', video: true, audio: false, width: 1920, height: 1080 });
+  });
+
+  it('makes no sources for a baked take', () => {
+    expect(takeSources([part('video', null, 1000, true), part('voice', null, 1000)], 1000, 5000)).toEqual([]);
   });
 });
