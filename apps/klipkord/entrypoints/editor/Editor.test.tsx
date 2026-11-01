@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { IDBFactory } from 'fake-indexeddb';
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory } from '@appskord/platform/router';
@@ -44,7 +44,7 @@ function fakeSession(state: SessionState): EditorSession & { taken: boolean } {
   };
 }
 
-interface Setup { media?: Partial<LoadedMedia>; session?: SessionState; draws?: boolean }
+interface Setup { media?: Partial<LoadedMedia>; session?: SessionState; draws?: boolean; strict?: boolean }
 
 function fakeDeps({ media = {}, session = 'editing', draws = true }: Setup = {}) {
   const rendered: number[] = [];
@@ -54,14 +54,14 @@ function fakeDeps({ media = {}, session = 'editing', draws = true }: Setup = {})
       rendered.push(plan.out);
       if (draws) queueMicrotask(() => listeners.forEach((l) => l(true)));
     },
-    resize() {}, addSources() {}, close() {},
+    resize() {}, addSources() {}, close: vi.fn(),
     onDrawn(l) { listeners.add(l); return () => listeners.delete(l); },
   };
   const listeners = new Set<(drawn: boolean) => void>();
   const sessionObj = fakeSession(session);
   const deps: EditorDeps = {
     loadMedia: async () => ({ blobs: new Map(), missing: [], ...media }),
-    startPreview: () => client,
+    startPreview: vi.fn(() => client),
     audio: () => null,
     joinSession: () => sessionObj,
     openPanel: (s) => void panels.push(s),
@@ -69,7 +69,7 @@ function fakeDeps({ media = {}, session = 'editing', draws = true }: Setup = {})
     closeTab: vi.fn(),
     putFile: vi.fn(async () => {}),
   };
-  return { deps, rendered, panels, session: sessionObj };
+  return { deps, rendered, panels, session: sessionObj, client };
 }
 
 async function settle() {
@@ -95,7 +95,8 @@ async function mount(path: string, setup: Setup = {}, slots?: EditorSlots) {
   document.body.append(host);
   const root = createRoot(host);
   const history = createMemoryHistory({ initialEntries: [path] });
-  await act(async () => { root.render(<EditorApp deps={fake.deps} history={history} slots={slots} />); });
+  const app = <EditorApp deps={fake.deps} history={history} slots={slots} />;
+  await act(async () => { root.render(setup.strict ? <StrictMode>{app}</StrictMode> : app); });
   await settle();
   mounted.push(() => { act(() => root.unmount()); host.remove(); });
   return { host, ...fake };
@@ -216,6 +217,16 @@ describe('editor tab', () => {
     expect(text(view.host)).toContain('A file is missing: intro-music.mp3');
     await click(button(view.host, 'Remove it'));
     expect(text(view.host)).not.toContain('A file is missing');
+  });
+
+  it('StrictMode: the canvas goes to the worker once, and the preview closes once on unmount', async () => {
+    await putRecording(rec());
+    const view = await mount('/rec-1', { strict: true });
+    expect(view.deps.startPreview).toHaveBeenCalledTimes(1);
+    expect(view.client.close).not.toHaveBeenCalled();
+    mounted.pop()?.();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(view.client.close).toHaveBeenCalledTimes(1);
   });
 
   it('open-elsewhere: read-only until Edit here', async () => {

@@ -3,19 +3,19 @@ import { actionButton, C, Icon, type Tone } from '../ui';
 
 export interface Action { label: string; tone: Tone; onClick: () => void; icon?: ReactNode }
 
-/** The StatesOpen card: a title, one line or two, and its buttons. */
-export function StateCard({ state, title, body, actions = [], style, role }: {
-  state: string; title: string; body: ReactNode; actions?: Action[]; style?: CSSProperties; role?: 'alert' | 'status' | 'dialog';
+/** The StatesOpen card: a title, one line or two, and its buttons. Compact is the banner size, for the inspector. */
+export function StateCard({ state, title, body, actions = [], style, role, compact = false }: {
+  state: string; title: string; body: ReactNode; actions?: Action[]; style?: CSSProperties; role?: 'alert' | 'status' | 'dialog'; compact?: boolean;
 }) {
   return (
     <div data-state={state} role={role} aria-label={role === 'dialog' ? title : undefined} style={{
-      borderRadius: 12, background: C.panel, border: `1px solid ${C.line}`, padding: '14px 16px', display: 'flex',
-      flexDirection: 'column', gap: 8, boxSizing: 'border-box', color: C.text, ...style,
+      borderRadius: compact ? 10 : 12, background: compact ? C.raised : C.panel, border: `1px solid ${C.line}`, padding: compact ? '10px 12px' : '14px 16px', display: 'flex',
+      flexDirection: 'column', gap: compact ? 4 : 8, boxSizing: 'border-box', color: C.text, ...style,
     }}>
-      <span style={{ fontSize: 14, fontWeight: 600 }}>{title}</span>
-      <span style={{ fontSize: 12.5, color: C.secondary, lineHeight: 1.5 }}>{body}</span>
+      <span style={{ fontSize: compact ? 13 : 14, fontWeight: 600 }}>{title}</span>
+      <span style={{ fontSize: compact ? 12 : 12.5, color: C.secondary, lineHeight: compact ? 1.4 : 1.5 }}>{body}</span>
       {actions.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 4, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: compact ? 2 : 4, flexWrap: 'wrap' }}>
           {actions.map((a) => (
             <button key={a.label} type="button" onClick={a.onClick} style={actionButton(a.tone)}>
               {a.icon && <Icon size={14}>{a.icon}</Icon>}<span>{a.label}</span>

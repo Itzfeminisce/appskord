@@ -30,6 +30,9 @@ export interface PreviewProps {
   stageRef: RefObject<HTMLDivElement | null>;
 }
 
+/** A canvas goes to the worker only once, so its client outlives an effect re-run (StrictMode) and closes on unmount. */
+const clients = new WeakMap<HTMLCanvasElement, { client: PreviewClient; closing?: ReturnType<typeof setTimeout> }>();
+
 const fitBox = (aspect: number, w: number, h: number) => (w / h > aspect ? { w: Math.round(h * aspect), h: Math.round(h) } : { w: Math.round(w), h: Math.round(w / aspect) });
 
 /** The video at preview size, drawn by the render worker from the same plan export uses. */
@@ -39,7 +42,8 @@ export function Preview(p: PreviewProps) {
   const client = useRef<PreviewClient | null>(null);
   const [area, setArea] = useState({ w: 533, h: 300 });
   const frame = FRAME[p.cut.shape];
-  const box = fitBox(frame.w / frame.h, Math.max(1, area.w - 24), Math.max(1, area.h - 8));
+  // The stage's content box already leaves out its top padding; 12 px stays clear on each side.
+  const box = fitBox(frame.w / frame.h, Math.max(1, area.w - 24), Math.max(1, area.h));
   const firstFrame = useRef(p.onFirstFrame);
   firstFrame.current = p.onFirstFrame;
   const slow = useRef(p.onSlow);
@@ -60,9 +64,18 @@ export function Preview(p: PreviewProps) {
   // The canvas goes to the worker once, when the files are open.
   const ready = p.sources !== null;
   useEffect(() => {
-    if (!ready || !canvasRef.current || client.current) return;
-    const c = deps.startPreview(canvasRef.current, p.sources ?? []);
-    if (!c) return;
+    const canvas = canvasRef.current;
+    if (!ready || !canvas || client.current) return;
+    let entry = clients.get(canvas);
+    if (entry) clearTimeout(entry.closing);
+    else {
+      const made = deps.startPreview(canvas, p.sources ?? []);
+      if (!made) return;
+      entry = { client: made };
+      clients.set(canvas, entry);
+    }
+    const kept = entry;
+    const c = kept.client;
     client.current = c;
     let shown = false;
     let drawn: number[] = [];
@@ -83,8 +96,11 @@ export function Preview(p: PreviewProps) {
     });
     return () => {
       off();
-      c.close();
       client.current = null;
+      kept.closing = setTimeout(() => {
+        clients.delete(canvas);
+        c.close();
+      }, 0);
     };
   }, [ready, deps]); // eslint-disable-line react-hooks/exhaustive-deps
 

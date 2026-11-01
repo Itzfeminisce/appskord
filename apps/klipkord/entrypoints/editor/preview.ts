@@ -11,14 +11,19 @@ export interface PreviewClient {
   close(): void;
 }
 
+/** How long close() waits for the worker to let go of its decoders before ending it. */
+export const CLOSE_WAIT_MS = 500;
+
 /** Hands the canvas to the render worker (T4) and posts it a plan per frame. */
 export function workerPreview(worker: Worker, canvas: HTMLCanvasElement, sources: RenderSource[]): PreviewClient {
   const listeners = new Set<(drawn: boolean) => void>();
   let id = 0;
   const post = (message: RenderRequest, transfer: Transferable[] = []) => worker.postMessage(message, transfer);
+  let closed: (() => void) | null = null;
   worker.addEventListener('message', (event: MessageEvent<RenderResponse>) => {
     const reply = event.data;
-    if (reply.type === 'rendered') listeners.forEach((l) => l(reply.drawn));
+    if (reply.type === 'closed') closed?.();
+    else if (reply.type === 'rendered') listeners.forEach((l) => l(reply.drawn));
     else if (reply.type === 'error') {
       console.error('Klipkord: could not draw the preview', reply.message);
       listeners.forEach((l) => l(false));
@@ -35,9 +40,14 @@ export function workerPreview(worker: Worker, canvas: HTMLCanvasElement, sources
       return () => listeners.delete(listener);
     },
     close() {
-      post({ type: 'close' });
-      worker.terminate();
       listeners.clear();
+      const end = () => {
+        clearTimeout(timer);
+        worker.terminate();
+      };
+      const timer = setTimeout(end, CLOSE_WAIT_MS);
+      closed = end;
+      post({ type: 'close' });
     },
   };
 }

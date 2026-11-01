@@ -15,6 +15,7 @@ import { useDeps } from './deps';
 import { useAudio } from './hooks/useAudio';
 import { usePlayback } from './hooks/usePlayback';
 import { useProject } from './hooks/useProject';
+import { minutesAgo } from './format';
 import { renderSources, type LoadedMedia } from './media';
 import type { SessionState } from './session';
 import { MediaMissing, NotSaved, OldRecording, PreviewSlow } from './states/banners';
@@ -61,14 +62,21 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   const [session, setSession] = useState<SessionState>('checking');
   const sessionRef = useRef<ReturnType<typeof deps.joinSession> | null>(null);
   const api = useProject(id, session !== 'editing');
+  const reload = api.reload;
 
   useEffect(() => {
     const s = deps.joinSession(id, flushProjects);
     sessionRef.current = s;
     setSession(s.state);
-    const off = s.subscribe(setSession);
+    let last = s.state;
+    const off = s.subscribe((next) => {
+      // Another tab let go (closed, or "Edit here"): read what it saved before editing.
+      if (last === 'elsewhere' && next === 'editing') void reload();
+      last = next;
+      setSession(next);
+    });
     return () => { off(); s.close(); };
-  }, [id, deps]);
+  }, [id, deps, reload]);
 
   const [longOk, setLongOk] = useState(false);
   const started = useRef(performance.now());
@@ -198,6 +206,9 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   if (project?.sources.some((s) => s.kind === 'baked') && !dismissed.old) {
     banners.push(<OldRecording key="old" onDismiss={() => setDismissed((d) => ({ ...d, old: true }))} />);
   }
+  if (previewSlow) {
+    banners.push(<PreviewSlow key="slow" onLight={() => { setPreviewSlow(false); api.edit((p) => ({ ...p, options: { ...p.options, lightPreview: true } })); }} onDismiss={() => setPreviewSlow(false)} />);
+  }
 
   const opening = slowOpen && !firstFrame
     ? <OpeningSlow onWait={() => setSlowOpen(false)} onLibrary={library} />
@@ -218,7 +229,6 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
               <TranscriptOpening />
             )}
             <section aria-label="Preview" style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: C.ground }}>
-              {banners.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px 0' }}>{banners}</div>}
               {project && cut ? (
                 <Preview project={project} cut={cut} out={playback.out} playing={playback.playing} sources={sources} events={media?.events}
                   captions={captions} light={project.options.lightPreview} opening={opening} firstFrame={firstFrame}
@@ -228,27 +238,22 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
                   <div style={{ width: 533, height: 300, borderRadius: 6, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{opening}</div>
                 </div>
               )}
-              {previewSlow && (
-                <div style={{ padding: '0 12px' }}>
-                  <PreviewSlow onLight={() => { setPreviewSlow(false); api.edit((p) => ({ ...p, options: { ...p.options, lightPreview: true } })); }} onDismiss={() => setPreviewSlow(false)} />
-                </div>
-              )}
               <Transport out={playback.out} length={length || (recording?.duration ?? 0)} playing={playback.playing} canPlay={firstFrame} shape={cut?.shape ?? '16:9'}
                 onToggle={playback.toggle} onPrev={prev} onNext={next} onFullscreen={fullscreen} />
             </section>
           </div>
           {slotProps ? <TimelineSlot {...slotProps} body={slots.timeline} /> : <TimelineOpening />}
         </div>
-        <Inspector panels={ready ? inspector?.panels : undefined} selection={ready ? inspector?.selection : undefined} />
+        <Inspector panels={ready ? inspector?.panels : undefined} selection={ready ? inspector?.selection : undefined} notices={banners} />
       </div>
       <input ref={fileInput} type="file" hidden onChange={(e) => onPicked(e.target.files?.[0])} />
       {session === 'elsewhere' && (
         <OpenElsewhere onClose={deps.closeTab} onEditHere={() => {
-          void sessionRef.current?.take().then(() => api.reload());
+          void sessionRef.current?.take();
         }} />
       )}
       {session === 'editing' && api.recovered && (
-        <UnsavedRecovered changes={api.recovered.changes} minutes={Math.max(1, Math.round((Date.now() - api.recovered.at) / 60000))}
+        <UnsavedRecovered changes={api.recovered.changes} minutes={minutesAgo(api.recovered.at, Date.now())}
           onKeep={api.keepRecovered} onDiscard={api.discardRecovered} />
       )}
     </div>

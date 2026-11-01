@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRecording } from '@/lib/db';
-import { canRedo, canUndo, redo as redoStep, undo as undoStep } from '@/lib/project/history';
+import { canRedo, canUndo, commit, redo as redoStep, undo as undoStep } from '@/lib/project/history';
 import { fromRecording } from '@/lib/project/migrate';
 import { flushProjects, getProject, putProject } from '@/lib/project/store';
 import type { Project } from '@/lib/project/types';
@@ -129,7 +129,8 @@ export function useProject(id: string, readOnly: boolean, now: () => number = Da
       setRecovered(null);
       if (!kept) return;
       changes.current = kept.changes;
-      apply(() => kept.project, false);
+      // The copy has no undo history, so the kept edits come back as one step on top of this tab's.
+      apply((p) => commit(p, 'Kept unsaved edits', { ...kept.project, history: p.history }, now()), false);
     },
     discardRecovered() {
       setRecovered(null);
