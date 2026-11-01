@@ -19,7 +19,7 @@ import { insertWords, LEVEL_BARS } from '../lib/voice/listen';
 import { useVoice } from '../lib/voice/useVoice';
 import { MIC_PATHS, VoiceFooter, VoiceStateCard } from './StatesVoice';
 import { HomeListening, VOICE_MAKE_HINT } from './VoicePrompt';
-import { lookLine, lookOverride, useLookOverride } from './LookSheet';
+import { lookLine } from './LookSheet';
 import { updateSettings } from '../lib/settings';
 
 const ASPECTS: Aspect[] = ['9:16', '1:1', '16:9'];
@@ -56,7 +56,6 @@ export default function Home({ preview }: { preview?: { settled: string; interim
   const pageUrl = useActiveTabUrl();
   const settings = useSettings();
   const online = useOnline();
-  const over = useLookOverride();
   const useTemplate = useUseTemplate();
   const [recent, setRecent] = useState<Clip[]>([]);
   const [disconnected, setDisconnected] = useState(false);
@@ -101,19 +100,8 @@ export default function Home({ preview }: { preview?: { settled: string; interim
     // Chrome only asks inside the click, so the request goes out before anything is awaited.
     const access = settings?.ai === 'local' ? Promise.resolve('granted' as const) : requestHost(HOSTS[settings?.provider ?? 'groq']);
     navigate('Making');
-    const saved = settings?.look;
     const start = async () => {
       const a = await access;
-      if (over && saved) {
-        // This clip only: the runner reads the look from settings, so lend it and put the default back once it has.
-        await updateSettings({ look: over });
-        const unsub = runner.subscribe(() => {
-          if (!runner.get().look) return;
-          unsub();
-          lookOverride.set(undefined);
-          updateSettings({ look: saved }).catch((error: unknown) => console.error('Motikord: could not save settings', error));
-        });
-      }
       await runner.start(draft.get(), { access: a });
     };
     void start();
@@ -220,7 +208,7 @@ export default function Home({ preview }: { preview?: { settled: string; interim
         </button>
         <button type="button" onClick={() => navigate('LookSheet')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', border: 0, borderBottom: '1px solid #EFEFF1', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
           <span style={{ fontSize: 13 }}>Look</span>
-          <span style={{ fontSize: 13, fontWeight: 600, flexGrow: 1, textAlign: 'right' }}>{lookLine(over ?? settings?.look ?? { style: 'auto', pace: 'normal', mood: 'upbeat' })}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, flexGrow: 1, textAlign: 'right' }}>{lookLine(d.look ?? settings?.look ?? { style: 'auto', pace: 'normal', mood: 'upbeat' })}</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #EFEFF1' }}>

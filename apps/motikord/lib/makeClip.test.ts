@@ -199,6 +199,29 @@ describe('library', () => {
   });
 });
 
+describe('per-clip look', () => {
+  afterEach(async () => { await closeDB(); indexedDB.deleteDatabase('motikord'); });
+  const seen = async (d: Parameters<ReturnType<typeof createRunner>['start']>[0]) => {
+    let look: Settings['look'] | undefined;
+    const make: RunnerDeps['make'] = async (_i, h) => { look = h?.settings?.look; throw new AiError('cancelled', 'make'); };
+    const runner = createRunner(deps({ make }));
+    await runner.start(d);
+    return look;
+  };
+  it('uses draft.look for the make, else the saved look', async () => {
+    const own = { style: 'bold', pace: 'fast', mood: 'dramatic' } as const;
+    expect(await seen({ prompt: 'A promo', attached: [], type: 'promo', look: own })).toEqual(own);
+    expect(await seen({ prompt: 'A promo', attached: [], type: 'promo' })).toEqual(settings.look);
+  });
+  it('keeps draft.look on the draft store for Try again', () => {
+    const own = { style: 'clean', pace: 'calm', mood: 'warm' } as const;
+    draft.clear();
+    draft.set({ prompt: 'x', look: own });
+    expect(draft.get().look).toEqual(own);
+    draft.clear();
+  });
+});
+
 describe('runner review fixes', () => {
   afterEach(async () => { await closeDB(); indexedDB.deleteDatabase('motikord'); });
   const draftA = { prompt: 'A promo', attached: [] as Asset[], type: 'promo' as const };

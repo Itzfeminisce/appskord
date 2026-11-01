@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { lookLine, paceHint } from './LookSheet';
+import { applyLook, lookLine, paceHint } from './LookSheet';
+import { draft } from '../lib/makeClip';
 import { move, stepMs, totalSeconds, wordCount } from './StoryboardEdit';
 import { sceneList } from './Making';
 import { packOf, templateLine } from './Templates';
@@ -14,6 +15,15 @@ describe('v2 make screens', () => {
     expect(lookLine({ style: 'bold', pace: 'fast', mood: 'none' })).toBe('Bold style · Fast pace · No music');
     expect(paceHint('normal')).toBe('About 3 s a scene');
     expect(paceHint('calm')).toBe('About 4.5 s a scene');
+  });
+  it('switch off writes the look to the draft only; on clears it', () => {
+    draft.clear();
+    const own = { style: 'bold', pace: 'fast', mood: 'none' } as const;
+    applyLook(own, false);
+    expect(draft.get().look).toEqual(own);
+    applyLook(own, true);
+    expect(draft.get().look).toBeUndefined();
+    draft.clear();
   });
   it('edits beats', () => {
     expect(move([1, 2, 3], 0, 2)).toEqual([2, 3, 1]);

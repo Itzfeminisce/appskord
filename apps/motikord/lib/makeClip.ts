@@ -13,7 +13,7 @@ import { send } from './messages';
 import { getSettings, onSettingsChanged } from './settings';
 import { copyTemplate, type Template } from './templates';
 import { autoStyle } from './templates/scenes';
-import type { Aspect, Asset, BrandKit, Clip, ClipType, CriticNote, Issue, Mood, Pace, Provider, Recipe, Settings, StyleId, Storyboard } from './types';
+import type { Aspect, Asset, BrandKit, Clip, ClipType, CriticNote, Issue, LookStyle, Mood, Pace, Provider, Recipe, Settings, StyleId, Storyboard } from './types';
 
 /** What a failed make shows: an AI state card, or one of the two setup cards Making can show. */
 export type MakeState = AiStateId | 'penv-disconnected' | 'provider-access' | 'storyboard-failed';
@@ -134,7 +134,8 @@ export async function makeFromTemplate(template: Template, hooks: { save?: (clip
 
 // ---- What you typed and attached on Home, kept while you move between screens ----
 
-export interface MakeDraft { prompt: string; attached: Asset[]; type?: ClipType; aspect?: Aspect }
+/** `look`: this clip only (LookSheet with "Use for every new clip" off); absent means the saved default. */
+export interface MakeDraft { prompt: string; attached: Asset[]; type?: ClipType; aspect?: Aspect; look?: { style: LookStyle; pace: Pace; mood: Mood } }
 const EMPTY: MakeDraft = { prompt: '', attached: [] };
 
 function createStore<T>(initial: T) {
@@ -249,7 +250,8 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
     pauseWanted = false;
     release = undefined;
     try {
-      const settings = await deps.settings();
+      const saved = await deps.settings();
+      const settings = d.look ? { ...saved, look: d.look } : saved;
       const style = settings.look.style;
       if (live()) patch({ look: { style: style === 'auto' ? autoStyle(d.type ?? 'social') : style, pace: settings.look.pace, mood: settings.look.mood } });
       if (opts.access === 'denied' && settings.ai === 'cloud') throw new MakeFailure('provider-access');

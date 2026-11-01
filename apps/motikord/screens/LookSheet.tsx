@@ -1,7 +1,7 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 import { guessType } from '../lib/ai/detectType';
 import { getBrandKit } from '../lib/db';
-import { useDraft, useSettings } from '../lib/makeClip';
+import { draft, useDraft, useSettings } from '../lib/makeClip';
 import { updateSettings } from '../lib/settings';
 import { paceMs } from '../lib/templates/pick';
 import { autoStyle, getPack, STYLE_PACKS } from '../lib/templates/scenes';
@@ -17,22 +17,18 @@ export const MOOD_LABEL: Record<Mood, string> = { upbeat: 'Upbeat', calm: 'Calm'
 const PACES: Pace[] = ['calm', 'normal', 'fast'];
 const MOODS: Mood[] = ['upbeat', 'calm', 'warm', 'dramatic', 'none'];
 
-/** The look for this clip only, while "Use for every new clip" is off. */
-let override: Look | undefined;
-const listeners = new Set<() => void>();
-export const lookOverride = {
-  get: () => override,
-  set(next: Look | undefined) { override = next; listeners.forEach((l) => l()); },
-  subscribe(l: () => void) { listeners.add(l); return () => { listeners.delete(l); }; },
-};
-export const useLookOverride = () => useSyncExternalStore(lookOverride.subscribe, lookOverride.get);
-
 /** The Look row's value: "Auto style · Normal pace · Upbeat". */
 export const lookLine = (l: Look) => `${STYLE_LABEL[l.style]} style · ${PACE_LABEL[l.pace]} pace · ${MOOD_LABEL[l.mood]}`;
 /** "About 3 s a scene", changing with pace. */
 export const paceHint = (pace: Pace) => `About ${+(paceMs(pace).sceneMs / 1000).toFixed(2)} s a scene`;
 
 const save = (patch: Parameters<typeof updateSettings>[0]) => { updateSettings(patch).catch((error: unknown) => console.error('Motikord: could not save settings', error)); };
+
+/** On: the look becomes the saved default and the clip's own copy goes. Off: only the draft carries it. */
+export function applyLook(next: Look, always: boolean) {
+  if (always) { save({ look: next }); draft.set({ look: undefined }); }
+  else draft.set({ look: next });
+}
 
 const chipStyle = (on: boolean) => ({ height: 34, padding: '0 14px', borderRadius: 999, border: on ? 0 : '1px solid #E0E0E4', background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink)', font: `${on ? 500 : 400} 13px var(--font)`, cursor: 'pointer' }) as const;
 
@@ -59,7 +55,6 @@ export default function LookSheet() {
   const { back } = useRouter();
   const d = useDraft();
   const settings = useSettings();
-  const over = useLookOverride();
   const [always, setAlways] = useState(false);
   const [brand, setBrand] = useState(false);
   useEffect(() => {
@@ -68,17 +63,13 @@ export default function LookSheet() {
   // Opening the sheet answers the New card.
   useEffect(() => { save({ lookCardSeen: true }); }, []);
 
-  const look: Look = over ?? settings?.look ?? { style: 'auto', pace: 'normal', mood: 'upbeat' };
+  const look: Look = d.look ?? settings?.look ?? { style: 'auto', pace: 'normal', mood: 'upbeat' };
   const type: ClipType = d.type ?? settings?.defaultType ?? guessType(d.prompt);
   const pick = autoStyle(type);
-  const change = (patch: Partial<Look>) => {
-    const next = { ...look, ...patch };
-    if (always) save({ look: next });
-    lookOverride.set(always ? undefined : next);
-  };
+  const change = (patch: Partial<Look>) => applyLook({ ...look, ...patch }, always);
   const toggle = (on: boolean) => {
     setAlways(on);
-    if (on) { save({ look }); lookOverride.set(undefined); }
+    if (on) applyLook(look, true);
   };
   const styles: LookStyle[] = ['auto', ...STYLE_PACKS.map((p) => p.id)];
 
