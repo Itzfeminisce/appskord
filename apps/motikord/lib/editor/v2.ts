@@ -87,8 +87,8 @@ function wordsOf(scene: Scene, src: SceneTemplate): Words {
 }
 
 /**
- * The scene's words poured into another template's slots. `strict` returns undefined unless every word fits whole;
- * otherwise leftover text joins the last text slot and lists are trimmed, for expandScene to shorten.
+ * The scene's words poured into another template's slots. Leftover text joins the last text slot. `strict` returns
+ * undefined unless every word fits whole; otherwise lists are trimmed and long text is left for expandScene to shorten.
  */
 export function pourSlots(scene: Scene, to: TemplateId, strict: boolean): Record<string, SlotValue> | undefined {
   // A free-layer scene is read as its nearest template first, so its words still move.
@@ -130,10 +130,12 @@ export function pourSlots(scene: Scene, to: TemplateId, strict: boolean): Record
       out[d.id] = p;
     }
   }
-  if (strict && (texts.length || lists.length || pics.length || chart)) return undefined;
-  if (!strict && texts.length) {
+  if (strict && (lists.length || pics.length || chart)) return undefined;
+  // Leftover text joins the last filled text slot; strict still fits when the joined text is within its limit.
+  if (texts.length) {
     const last = [...textDefs].reverse().find((d) => typeof out[d.id] === 'string');
-    if (last) out[last.id] = [out[last.id] as string, ...texts].join(' ');
+    if (!last) return strict ? undefined : out;
+    out[last.id] = [out[last.id] as string, ...texts].reduce((a, b) => (/[.!?:;,–—]$/.test(a) || /^\p{Ll}/u.test(b) ? `${a} ${b}` : `${a}. ${b}`));
   }
   if (strict) for (const d of textDefs) if (slotCount(d, out[d.id]).over) return undefined;
   return out;

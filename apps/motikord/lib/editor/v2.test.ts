@@ -91,6 +91,15 @@ describe('swap template', () => {
     expect(next.original).toBeDefined();
   });
 
+  it('counts a template as a fit when the joined words stay within its limit, so swap-no-fit is not shown', () => {
+    const hook = scene('h', 'title-hook', { kicker: 'New release', headline: 'Meet the faster way to ship' });
+    expect(swapGroups(hook).fits).toContain('big-statement');
+    expect(noOtherFit(hook)).toBe(false);
+    expect(pourSlots(hook, 'big-statement', true)).toEqual({ statement: 'New release. Meet the faster way to ship' });
+    const stat = scene('s', 'stat-reveal', { number: '1,200', label: 'loaves a week', source: 'Since 2019' });
+    expect(swapGroups(stat).fits).toContain('big-statement');
+  });
+
   it('reports swap-no-fit when only the current template fits', () => {
     const lone = scene('x', 'quote', { quote: 'The best bread I have had in years, and I have had a lot of bread', name: 'Ada', role: 'Regular' });
     expect(noOtherFit(lone)).toBe(true);
