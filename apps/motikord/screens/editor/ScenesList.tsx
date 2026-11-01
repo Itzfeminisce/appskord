@@ -2,6 +2,7 @@ import { addScene, clockShort, restTime, roomForScene, sceneStart, sceneTitle } 
 import { clipDuration } from '../../lib/render/drawFrame';
 import { templateOf } from '../../lib/editor/v2';
 import { useEditor } from './Editor';
+import { SceneThumb } from './SceneThumb';
 import { Spinner } from './StatesV2';
 
 const heading = { fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)', padding: '0 6px' } as const;
@@ -30,7 +31,7 @@ export function ScenesList() {
             onClick={() => select(s.id, s.layers.find((l) => l.type === 'text' && l.role === 'title')?.id, restTime(r, i))}
             style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 6, borderRadius: 10, border: 0, textAlign: 'left', cursor: 'pointer', font: 'inherit', color: 'var(--ink)', background: on ? 'var(--tint)' : 'transparent', outline: on ? '1.5px solid var(--accent)' : 'none' }}
           >
-            <span style={{ width: r.aspect === '16:9' ? 38 : r.aspect === '1:1' ? 30 : 22, height: r.aspect === '16:9' ? 22 : r.aspect === '1:1' ? 30 : 38, flexShrink: 0, borderRadius: 4, background: s.background, border: '1px solid var(--line)' }} />
+            <SceneThumb recipe={r} aspect={r.aspect} timeMs={restTime(r, i)} w={r.aspect === '16:9' ? 40 : r.aspect === '1:1' ? 32 : 22} h={r.aspect === '16:9' ? 22 : r.aspect === '1:1' ? 32 : 38} />
             <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flexGrow: 1 }}>
               <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title ? `${i + 1} · ${title}` : `${i + 1}`}</span>
               <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)' }}>{`${clockShort(start)}–${clockShort(start + s.durationMs)}`}</span>

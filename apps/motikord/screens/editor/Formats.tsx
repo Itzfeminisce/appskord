@@ -5,6 +5,7 @@ import { safeBox } from '../../lib/render/reflow';
 import { getPack, SAFE_AREA } from '../../lib/templates/scenes';
 import { check } from '../../lib/checker';
 import { drawFrame } from '../../lib/render/drawFrame';
+import { useFontTick } from './fontTick';
 import type { Aspect, Box } from '../../lib/types';
 import Editor, { useEditor } from './Editor';
 
@@ -21,6 +22,7 @@ export const toCheckLabel = (n: number) => `${n} ${n === 1 ? 'thing' : 'things'}
 function SizePreview({ aspect, w, h, timeMs, safe }: { aspect: Aspect; w: number; h: number; timeMs?: number; safe?: Box }) {
   const { state, cache } = useEditor();
   const ref = useRef<HTMLCanvasElement>(null);
+  const fonts = useFontTick();
   const r = state.clip.recipe;
   // Setting width or height clears the canvas, so it only happens when the size changes.
   useEffect(() => {
@@ -34,7 +36,7 @@ function SizePreview({ aspect, w, h, timeMs, safe }: { aspect: Aspect; w: number
   useEffect(() => {
     const ctx = ref.current?.getContext('2d');
     if (ctx) drawFrame(ctx, r, aspect, timeMs ?? state.timeMs, cache);
-  }, [r, aspect, w, h, timeMs, state.timeMs, cache]);
+  }, [r, aspect, w, h, timeMs, state.timeMs, cache, fonts]);
   const canvas = <canvas ref={ref} aria-label={aspect} style={{ width: w, height: h, display: 'block', boxShadow: '0 6px 20px rgba(16,16,20,0.12)', background: 'var(--surface)' }} />;
   if (!safe) return canvas;
   return (

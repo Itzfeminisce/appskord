@@ -119,10 +119,16 @@ export function findLayer(r: Recipe, sceneId: string, layerId: string | undefine
 }
 
 /** The scene's name for lists: its title text, else its first text, else nothing. */
+/** A scene's first words: its title, skipping marks such as a quote glyph; a one-word title ("1,200") takes the next line's words. */
 export function sceneTitle(scene: Scene): string {
-  const texts = scene.layers.filter((l): l is TextLayer => l.type === 'text');
-  const t = texts.find((l) => l.role === 'title') ?? texts[0];
-  return t ? t.text.split('\n')[0]!.trim() : '';
+  const texts = scene.layers.filter((l): l is TextLayer => l.type === 'text' && /[\p{L}\p{N}]/u.test(l.text));
+  const ordered = [...texts.filter((l) => l.role === 'title'), ...texts.filter((l) => l.role !== 'title')];
+  const words: string[] = [];
+  for (const t of ordered) {
+    words.push(...t.text.split('\n')[0]!.trim().split(/\s+/).filter(Boolean));
+    if (words.length > 1) break;
+  }
+  return words.slice(0, 6).join(' ');
 }
 
 // ---- Times as the frames show them ("0:01.8", "0:05") ----

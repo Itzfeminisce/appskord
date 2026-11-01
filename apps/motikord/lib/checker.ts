@@ -250,6 +250,8 @@ function contrast({ recipe, scene, layer, si, li }: At, opts: CheckOptions, out:
     // Split across two backgrounds that no one colour reads on: lay the template out again, else give it a plate.
     const pick = [LIGHT, DARK].map((c) => ({ c, r: worst(parseHex(c)!, colours) })).sort((a, b) => b.r - a.r)[0]!;
     if (colours.length > 1 && pick.r < need) {
+      // One relayout fixes every layer of the scene, so the scene gets one issue for it.
+      if (out.some((i) => i.kind === 'contrast' && i.sceneId === scene.id && i.fix[0]?.path === `/scenes/${si}/bg`)) return;
       const again = scene.template ? reexpand(recipe, scene, opts) : undefined;
       const relaid = again?.bg && JSON.stringify(again.bg) !== JSON.stringify(scene.bg);
       push(relaid ? [{ op: 'replace', path: `/scenes/${si}/bg`, value: again!.bg }, ...ASPECTS.flatMap((a) => templateBoxes(recipe, scene, si, a, opts))] : [{ op: 'add', path: `${path}/background`, value: toHex(colours[0]!) }],
