@@ -38,6 +38,9 @@ importers:
       '@huggingface/transformers':
         specifier: ^3.7.0
         version: 3.8.1
+      '@sapphi-red/web-noise-suppressor':
+        specifier: ^0.4.1
+        version: 0.4.1
       gifenc:
         specifier: ^1.0.3
         version: 1.0.3
@@ -998,6 +1001,9 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
+
+  '@sapphi-red/web-noise-suppressor@0.4.1':
+    resolution: {integrity: sha512-hy2GnF079+zi4n9BZUf+GGIQ1IofApAk6rgGMyMQ3soHfz/GKu1pcCsmePyIHVvUuv1LrFudw9BmmBqoOKay5w==}
 
   '@tanstack/history@1.162.5':
     resolution: {integrity: sha512-w1+YvwmTkwt5n8yUqEH3IWZ9DsmorCZW/EQ3KYHnqEgIkOZpH54NvW6/Epq3Dzb8H0ifIeYX8PExvrNLIH5FIA==}
@@ -2707,6 +2713,8 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.0.1': {}
+
+  '@sapphi-red/web-noise-suppressor@0.4.1': {}
 
   '@tanstack/history@1.162.5': {}
 
