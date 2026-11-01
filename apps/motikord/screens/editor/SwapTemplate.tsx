@@ -50,7 +50,7 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
     const out = swapTemplate(r, si, picked, brand);
     setPreview(undefined);
     if (out && edit(out.edit)) {
-      const full = Object.values(r.scenes[si]!.slots ?? {}).filter((v) => typeof v === 'string').join(' · ');
+      const full = Object.values(scene.original ?? scene.slots ?? {}).filter((v) => typeof v === 'string').join(' · ');
       setNotice(out.shortened ? { kind: 'text-shortened', original: full } : undefined);
     }
     onClose();

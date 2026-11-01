@@ -1,11 +1,11 @@
 import { clipDuration } from '../../lib/render/drawFrame';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
 import { createAutosave, type Autosave, type SaveStatus } from '../../lib/editor/autosave';
-import { stepsBack } from '../../lib/editor/changes';
-import { canRedo, canUndo } from '../../lib/editor/history';
+import { splitSummary, stepsBack } from '../../lib/editor/changes';
+import { canRedo, canUndo, takeBack } from '../../lib/editor/history';
 import { mergeClip, sameVersion } from '../../lib/editor/merge';
 import { switchesSize, toSizeOnly } from '../../lib/editor/sizeOnly';
-import { devSampleRecipe, findLayer, initState, reducer, removeLayer, sceneIndex, type EditorState, type Edit } from '../../lib/editor/store';
+import { devSampleRecipe, findLayer, initState, reducer, removeLayer, sceneIndex, type Action, type EditorState, type Edit } from '../../lib/editor/store';
 import { getBrandKit, getClip, putClip, updateClip } from '../../lib/db';
 import { getMedia } from '../../lib/media';
 import { brandEdit, loadKit, registerBrandFonts } from '../../lib/brand';
@@ -84,20 +84,20 @@ export interface EditorApi {
   openPanel: (p: V2Panel) => void;
   /** The scene being remade (SceneRemaking), if any. */
   remaking?: string;
-  remake: (sceneId: string, request?: string) => void;
-  /** Remakes these scenes one after another, each as its own Change; it stops at the first that fails or is stopped. */
-  remakeEach: (jobs: { sceneId: string; request?: string }[]) => void;
+  remake: (sceneId: string, request?: string, done?: () => void) => void;
+  /** Remakes these scenes one after another, each as its own Change; it stops at the first that fails or is stopped. `done` runs once its scene is remade. */
+  remakeEach: (jobs: { sceneId: string; request?: string; done?: () => void }[]) => void;
   /** The clip's recipe right now, for work that finishes after a render (retries, AI replies). */
   current: () => Recipe;
 }
 
 export type EditorTab = 'scene' | 'layer' | 'changes';
 export type Notice =
-  | { kind: 'text-shortened'; original?: string }
-  | { kind: 'scene-remade'; sceneId: string }
+  | { kind: 'text-shortened'; original?: string; changeId?: string }
+  | { kind: 'scene-remade'; sceneId: string; changeId?: string }
   | { kind: 'scene-remake-failed'; sceneId: string; request?: string }
   | { kind: 'swap-no-fit'; sceneId: string }
-  | { kind: 'restyle-done'; style: string }
+  | { kind: 'restyle-done'; style: string; changeId?: string }
   | { kind: 'restyle-failed'; style: string; retry: () => void };
 export type V2Panel = { kind: 'swap'; sceneId: string } | { kind: 'look' } | { kind: 'transition'; sceneId: string };
 
@@ -243,6 +243,8 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   const playhead = useRef(state.timeMs);
   const stateRef = useRef(state);
   stateRef.current = state;
+  // Edits and undos also land on the ref at once, so a run of them in one handler each sees the one before.
+  const act = useCallback((a: Action) => { stateRef.current = reducer(stateRef.current, a); dispatch(a); }, []);
 
   const autosave = useRef<Autosave>(undefined);
   const lastSaved = useRef(state.clip);
@@ -265,8 +267,8 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
     if (m.clip === s.clip) return;
     // Nothing of ours is unsaved: the stored clip is already right, so there is nothing to write back.
     if (!m.dirty) lastSaved.current = m.clip;
-    dispatch({ type: 'merge', clip: m.clip });
-  }, []);
+    act({ type: 'merge', clip: m.clip });
+  }, [act]);
 
   useEffect(() => {
     // Made in the effect so StrictMode's trial unmount cannot leave a disposed saver behind.
@@ -354,21 +356,21 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
         console.error('Motikord: could not apply an edit', error);
         return false;
       }
-      dispatch({ type: 'edit', edit: e, by: o.by, at: Date.now(), id: newId(), select: o.select });
+      act({ type: 'edit', edit: e, by: o.by, at: Date.now(), id: newId(), select: o.select });
       // "This size only" names one size, so a size switch turns it off.
       if (switched) setSizeOnly(false);
       if (o.toast) toast(e.summary);
       return true;
     },
-    undo: () => { dispatch({ type: 'undo', at: Date.now() }); setToastText(undefined); },
-    redo: () => dispatch({ type: 'redo', at: Date.now() }),
-    select: (sceneId, layerId, timeMs) => dispatch({ type: 'select', sceneId, layerId, timeMs }),
-    setTime: (ms) => { playhead.current = ms; dispatch({ type: 'time', ms }); },
+    undo: () => { act({ type: 'undo', at: Date.now() }); setToastText(undefined); },
+    redo: () => act({ type: 'redo', at: Date.now() }),
+    select: (sceneId, layerId, timeMs) => act({ type: 'select', sceneId, layerId, timeMs }),
+    setTime: (ms) => { playhead.current = ms; act({ type: 'time', ms }); },
     play: (on) => {
       // Pressing play at the end starts again from 0:00.
       const cur = stateRef.current;
-      if (on && cur.timeMs >= clipDuration(cur.clip.recipe) - 1) { playhead.current = 0; dispatch({ type: 'time', ms: 0 }); }
-      dispatch({ type: 'play', playing: on });
+      if (on && cur.timeMs >= clipDuration(cur.clip.recipe) - 1) { playhead.current = 0; act({ type: 'time', ms: 0 }); }
+      act({ type: 'play', playing: on });
     },
     toast,
     go: (screen, params = {}) => {
@@ -385,14 +387,14 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
     },
     goBack: (changeId) => {
       const n = stepsBack(stateRef.current.clip.history, changeId) ?? 0;
-      for (let i = 0; i < n; i++) dispatch({ type: 'undo', at: Date.now() });
+      for (let i = 0; i < n; i++) act({ type: 'undo', at: Date.now() });
       if (n) setToastText(undefined);
     },
     sizeOnly, setSizeOnly, setPreview,
-    tab, setTab, notice, setNotice, overSlot, setOverSlot, remaking,
+    tab, setTab, notice, setNotice: (n) => setNotice(n && undoable(n) && !n.changeId ? { ...n, changeId: stateRef.current.clip.history.at(-1)?.id } : n), overSlot, setOverSlot, remaking,
     openPanel: (p) => setPanel(p),
     current: () => stateRef.current.clip.recipe,
-    remake: (sceneId, request) => apiRef.current.remakeEach([{ sceneId, request }]),
+    remake: (sceneId, request, done) => apiRef.current.remakeEach([{ sceneId, request, done }]),
     remakeEach: (jobs) => {
       if (remakeStop.current || !jobs.length) return;
       const { ai, provider } = aiMode.current;
@@ -402,7 +404,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
       remakeStop.current = ac;
       setNotice(undefined);
       void (async () => {
-        for (const { sceneId, request } of jobs) {
+        for (const { sceneId, request, done } of jobs) {
           if (ac.signal.aborted) break;
           setRemaking(sceneId);
           try {
@@ -414,8 +416,9 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
             if (ac.signal.aborted) break;
             // Hand edits made meanwhile stay: only this scene is replaced, in the clip as it is now.
             const ok = apiRef.current.edit(remakeEdit(stateRef.current.clip.recipe, sceneId, after), { by: ai === 'cloud' ? provider : 'builtin' });
-            setNotice(ok ? { kind: 'scene-remade', sceneId } : { kind: 'scene-remake-failed', sceneId, request });
+            setNotice(ok ? { kind: 'scene-remade', sceneId, changeId: stateRef.current.clip.history.at(-1)?.id } : { kind: 'scene-remake-failed', sceneId, request });
             if (!ok) break;
+            done?.();
           } catch (error) {
             const e = toAiError(error, 'make');
             if (e.code === 'cancelled' || ac.signal.aborted) break;
@@ -424,11 +427,10 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
             break;
           }
         }
-        if (remakeStop.current === ac) remakeStop.current = undefined;
-        setRemaking(undefined);
+        if (remakeStop.current === ac) { remakeStop.current = undefined; setRemaking(undefined); }
       })();
     },
-  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly, tab, notice, overSlot, remaking]);
+  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly, tab, notice, overSlot, remaking, act]);
   const stopRemake = () => { remakeStop.current?.abort(); remakeStop.current = undefined; setRemaking(undefined); };
   // The canvas alone sees the preview recipe; everything else keeps the clip.
   const canvasApi = useMemo<EditorApi>(() => (preview ? { ...api, state: { ...api.state, clip: { ...api.state.clip, recipe: preview } } } : api), [api, preview]);
@@ -515,7 +517,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
             )}
             {!remaking && notice?.kind === 'scene-remade' && (
               <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 360, zIndex: 7 }}>
-                <Remade n={sceneIndex(state.clip.recipe, notice.sceneId) + 1} onUndo={() => { api.undo(); setNotice(undefined); }} onKeep={() => setNotice(undefined)} />
+                <Remade n={sceneIndex(state.clip.recipe, notice.sceneId) + 1} onUndo={() => undoNotice(api, notice.changeId)} onKeep={() => setNotice(undefined)} />
               </div>
             )}
             {toastText && !remaking && notice?.kind !== 'scene-remade' && <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 320, zIndex: 6 }}><UndoToast text={toastText} onUndo={api.undo} /></div>}
@@ -545,11 +547,23 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   );
 }
 
+const undoable = (n: Notice): n is Extract<Notice, { changeId?: string }> => n.kind === 'text-shortened' || n.kind === 'scene-remade' || n.kind === 'restyle-done';
+
+/** A card's Undo takes back its own change: in place while it is the newest, otherwise as a new change, so later edits stay. */
+function undoNotice(api: EditorApi, changeId: string | undefined) {
+  const past = api.state.clip.history;
+  const c = changeId ? past.find((x) => x.id === changeId) : past.at(-1);
+  const back = c && takeBack(past, c.id, `${splitSummary(c.summary).title} undone`);
+  if (back === 'undo') api.undo();
+  else if (back) api.edit(back);
+  api.setNotice(undefined);
+}
+
 /** The StatesMakeV2 card for the newest v2 action (scene-remade shows as the SceneRemaking toast instead). */
 function NoticeCard({ notice, api }: { notice: Notice; api: EditorApi }) {
   const r = api.state.clip.recipe;
   const close = () => api.setNotice(undefined);
-  const undo = () => { api.undo(); close(); };
+  const undo = () => undoNotice(api, 'changeId' in notice ? notice.changeId : undefined);
   switch (notice.kind) {
     case 'text-shortened': return <TextShortened original={notice.original} onUndo={undo} />;
     case 'scene-remade': return null;

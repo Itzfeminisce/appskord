@@ -91,11 +91,14 @@ function wordsOf(scene: Scene, src: SceneTemplate): Words {
  * otherwise leftover text joins the last text slot and lists are trimmed, for expandScene to shorten.
  */
 export function pourSlots(scene: Scene, to: TemplateId, strict: boolean): Record<string, SlotValue> | undefined {
-  const src = templateOf(scene);
+  // A free-layer scene is read as its nearest template first, so its words still move.
+  const near = scene.template ? undefined : nearestTemplate(scene);
+  const from = near ? { ...scene, ...near } : scene;
+  const src = templateOf(from);
   const dst = getSceneTemplate(to);
   if (!src || !dst) return undefined;
-  const { texts, lists, pics } = wordsOf(scene, src);
-  let { chart } = wordsOf(scene, src);
+  const { texts, lists, pics } = wordsOf(from, src);
+  let { chart } = wordsOf(from, src);
   const textDefs = dst.slots.filter((d) => d.kind === 'text' && d.id !== 'highlight');
   // One text may split at its first break to fill a second slot.
   if (texts.length < textDefs.filter((d) => !d.optional).length && texts.length) {
@@ -223,16 +226,20 @@ const isNumber = (s: string) => /^[\s$€£+-]*[\d.,]+\s*[%kKmM+x×]?\s*$/.test(
 const isQuote = (s: string) => /^[“"‘']/.test(s.trim());
 
 /** The nearest template for a v1 free-layer scene, read from its text, chart and media layers. */
-export function nearestTemplate(scene: Scene): { template: TemplateId; slots: Record<string, SlotValue> } {
+export function nearestTemplate(scene: Scene): { template: TemplateId; slots: Record<string, SlotValue> } | undefined {
   const ts = texts(scene).map((l) => l.text.replace(/\s*\n\s*/g, ' ').trim());
-  const media = scene.layers.find(isMedia) as { assetId: string } | undefined;
+  const pics = scene.layers.filter(isMedia) as unknown as { assetId: string }[];
+  const media = pics[0];
   const chart = scene.layers.find((l) => l.type === 'chart');
+  // Shapes alone have nothing a template could hold, so the scene stays as free layers.
+  if (!ts.length && !media && !chart) return undefined;
   const [first = '', second, ...rest] = ts;
   if (chart && chart.type === 'chart' && chart.chart !== 'number') {
     return { template: 'chart', slots: { title: first, bars: chart.values.slice(0, 6), ...(second ? { note: second } : {}) } };
   }
   if (isNumber(first) && second) return { template: 'stat-reveal', slots: { number: first.trim(), label: second, ...(rest[0] ? { source: rest[0] } : {}) } };
   if (isQuote(first)) return { template: 'quote', slots: { quote: first.replace(/^[“"‘']|[”"’']$/g, ''), name: second ?? '' } };
+  if (pics.length >= 2 && second) return { template: 'before-after', slots: { beforeMedia: { assetId: pics[0]!.assetId }, afterMedia: { assetId: pics[1]!.assetId }, before: first, after: [second, ...rest].join(' ') } };
   if (media) return { template: 'hero', slots: { media: { assetId: media.assetId }, headline: first, ...(second ? { line: [second, ...rest].join(' ') } : {}) } };
   if (rest.length >= 2) return { template: 'list', slots: { title: first, items: [second!, ...rest].slice(0, 5) } };
   if (second) return { template: 'title-hook', slots: { headline: first, kicker: cutWords(second, 4) } };
@@ -242,7 +249,7 @@ export function nearestTemplate(scene: Scene): { template: TemplateId; slots: Re
 /** "Give it a new look": every free-layer scene mapped to its nearest template (words kept; restyle expands them). */
 export function toTemplates(r: Recipe): Recipe {
   if (!r.scenes.some((s) => !s.template)) return r;
-  return { ...r, scenes: r.scenes.map((s) => (s.template ? s : { ...s, ...nearestTemplate(s) })) };
+  return { ...r, scenes: r.scenes.map((s) => (s.template ? s : { ...s, ...(nearestTemplate(s) ?? {}) })) };
 }
 
 // ---- Transitions ----

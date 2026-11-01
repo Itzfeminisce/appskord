@@ -125,4 +125,20 @@ describe('playhead', () => {
     expect(e.summary).toBe('Layout Photo on top');
     expect(applyPatch(r, e.ops).doc.scenes[0]!.layout).toBe('top');
   });
+
+  it('a run of edits in one handler each lands on the recipe the one before left', () => {
+    // As the editor does: every action also moves the ref the next edit is checked against.
+    let ref = initState(clip());
+    const ops = [
+      [{ op: 'add', path: '/scenes/0/layers/0/boxes', value: {} }],
+      [{ op: 'add', path: '/scenes/0/layers/0/boxes/1:1', value: { x: 0, y: 0, w: 1, h: 0.2 } }],
+    ];
+    expect(() => applyPatch(ref.clip.recipe, ops[1] as never)).toThrow();
+    for (const o of ops) {
+      expect(() => applyPatch(ref.clip.recipe, o as never)).not.toThrow();
+      ref = edit(ref, { ops: o, summary: 'fix' });
+    }
+    expect(ref.clip.history).toHaveLength(2);
+    expect((ref.clip.recipe.scenes[0]!.layers[0] as { boxes?: object }).boxes).toEqual({ '1:1': { x: 0, y: 0, w: 1, h: 0.2 } });
+  });
 });

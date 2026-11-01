@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { criticModel, criticSkip, runCritic, type CriticRun, type FrameRenderer } from '../lib/ai/critic';
 import { splitSummary } from '../lib/editor/changes';
+import { reverted, takeBack } from '../lib/editor/history';
 import { autoFixEdits, layoutText, repeatRun } from '../lib/editor/checks';
 import { HOSTS, requestHost, type HostAccess } from '../lib/hostAccess';
 import { PROVIDERS } from '../lib/providers';
@@ -151,17 +152,27 @@ export function CheckerPanel() {
     return () => { window.removeEventListener('keydown', onKey); stop.current?.abort(); };
   }, [go]);
 
+  // A remade scene's critic notes are done with, here and in the run kept for this tab.
+  const clipId = state.clip.id;
+  const dropNotes = (si: number) => {
+    const run = critics.get(clipId);
+    if (!run) return;
+    const next = { ...run, notes: run.notes.filter((x) => x.sceneIndex !== si) };
+    critics.set(clipId, next);
+    setCritic(next);
+  };
   const fixOne = (card: Card, action: string) => edit({ ops: card.fix, summary: action }, { toast: true });
   // Critic notes still about a scene that exists; each is fixed by remaking its scene with the note as the request.
   const notes = (critic?.notes ?? []).filter((x) => r.scenes[x.sceneIndex]);
-  const fixed = state.clip.history.filter((c) => c.by === AUTO_BY);
+  const gone = reverted(state.clip.history);
+  const fixed = state.clip.history.filter((c) => c.by === AUTO_BY && !gone.has(c.id));
   const total = cards.length + notes.length;
   const fixAll = () => {
     if (cards.length) edit({ ops: mergeFixes(cards), summary: `Fixed ${noun(cards.length)}` }, { toast: true });
     // Each critic scene is remade in turn, as its own Change; notes on one scene go in one request.
     const asks = new Map<string, string[]>();
     for (const x of notes) asks.set(r.scenes[x.sceneIndex]!.id, [...(asks.get(r.scenes[x.sceneIndex]!.id) ?? []), x.fix]);
-    remakeEach([...asks].map(([sceneId, fixes]) => ({ sceneId, request: fixes.join(' ') })));
+    remakeEach([...asks].map(([sceneId, fixes]) => ({ sceneId, request: fixes.join(' '), done: () => dropNotes(sceneIndex(r, sceneId)) })));
     go('Editor');
   };
   const show = (sceneId: string, layerId: string, aspects: Aspect[]) => {
@@ -171,12 +182,12 @@ export function CheckerPanel() {
     go('Editor');
   };
   const undoFix = (id: string) => {
-    const h = state.clip.history;
-    const c = h.find((x) => x.id === id);
+    const c = state.clip.history.find((x) => x.id === id);
     if (!c) return;
     // The newest change is undone in place; an older fix is taken back as a new change, leaving later ones alone.
-    if (h[h.length - 1]?.id === id) undo();
-    else edit({ ops: c.inverse, summary: `${splitSummary(c.summary).title} undone` }, { toast: true });
+    const back = takeBack(state.clip.history, id, `${splitSummary(c.summary).title} undone`);
+    if (back === 'undo') undo();
+    else if (back) edit(back, { toast: true });
   };
 
   /** "Check again": the safe fixes as one Change each, then the visual critic when Settings has it on. */
@@ -278,7 +289,7 @@ export function CheckerPanel() {
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)' }}>{`Scene ${x.sceneIndex + 1} · ${r.aspect}`}</span>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{x.problem}</span>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" onClick={() => { remake(scene.id, x.fix); go('Editor'); }} style={solid}>{`Fix scene ${x.sceneIndex + 1}`}</button>
+                    <button type="button" onClick={() => { remake(scene.id, x.fix, () => dropNotes(x.sceneIndex)); go('Editor'); }} style={solid}>{`Fix scene ${x.sceneIndex + 1}`}</button>
                     <button type="button" onClick={() => show(scene.id, '', [r.aspect])} style={plain}>Show me</button>
                   </div>
                 </div>

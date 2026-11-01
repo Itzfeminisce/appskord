@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PatchOp } from '../types';
-import { canRedo, canUndo, MERGE_CAP_MS, MERGE_MS, record, redo, undo, type History } from './history';
+import { canRedo, canUndo, MERGE_CAP_MS, MERGE_MS, record, redo, reverted, takeBack, undo, type History } from './history';
 
 const doc = { name: 'Clip', scenes: [{ id: 'a', layers: [{ id: 'l1', text: 'Hi', sizePx: 80 }] }] };
 type Doc = typeof doc;
@@ -70,5 +70,29 @@ describe('history', () => {
     expect(() => record(doc, empty, [{ op: 'replace', path: '/nope', value: 1 }], meta(1))).toThrow();
     expect(undo(doc, empty).doc).toBe(doc);
     expect(redo(doc, empty).change).toBeUndefined();
+  });
+});
+
+describe('taking one change back', () => {
+  it('undoes the newest in place and takes an older one back as a new change, once', () => {
+    let d: Doc = doc;
+    let h = empty;
+    ({ doc: d, history: h } = record(d, h, size(90), meta(1)));
+    ({ doc: d, history: h } = record(d, h, [{ op: 'replace', path: '/name', value: 'Two' }], meta(5000)));
+    expect(takeBack(h.past, 'c5000', 'x')).toBe('undo');
+    const back = takeBack(h.past, 'c1', 'Size undone');
+    expect(back).toEqual({ ops: h.past[0]!.inverse, summary: 'Size undone', reverts: 'c1' });
+    if (!back || back === 'undo') throw new Error('expected an edit');
+    ({ doc: d, history: h } = record(d, h, back.ops, { ...meta(9000), reverts: back.reverts }));
+    expect(d.scenes[0]!.layers[0]!.sizePx).toBe(80);
+    expect(d.name).toBe('Two');
+    expect(h.past[2]!.reverts).toBe('c1');
+    expect(reverted(h.past)).toEqual(new Set(['c1']));
+    // A second Undo on the same fix does nothing.
+    expect(takeBack(h.past, 'c1', 'Size undone')).toBeUndefined();
+    expect(takeBack(h.past, 'gone', 'x')).toBeUndefined();
+    // Undoing the take-back brings the fix back.
+    ({ history: h } = undo(d, h));
+    expect(reverted(h.past).size).toBe(0);
   });
 });

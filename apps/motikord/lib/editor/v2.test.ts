@@ -139,12 +139,39 @@ describe('new look', () => {
       ],
     };
     expect(isV1Clip(v1)).toBe(true);
-    expect(nearestTemplate(v1.scenes[0]!).template).toBe('title-hook');
+    expect(nearestTemplate(v1.scenes[0]!)?.template).toBe('title-hook');
     const next = applyPatch(v1, newLook(v1, 'clean', 'normal').ops).doc;
     expect(next.version).toBe(2);
     expect(next.scenes.map((s) => s.template)).toEqual(['title-hook', 'stat-reveal']);
     expect(next.scenes[0]!.slots).toEqual({ headline: 'Fresh sourdough', kicker: 'Slow fermented' });
     expect(isV1Clip(next)).toBe(false);
+  });
+});
+
+describe('free-layer scenes', () => {
+  const t = (id: string, text: string) => ({
+    id, name: id, type: 'text' as const, role: 'title' as const, text, font: 'Geist', sizePx: 60, weight: 600, colour: '#000', align: 'left' as const,
+    lineHeight: 1.2, startMs: 0, endMs: 3000, opacity: 1, box: { x: 0, y: 0.2, w: 1, h: 0.1 },
+  });
+  const img = (id: string, assetId: string) => ({ id, name: id, type: 'image' as const, assetId, fit: 'cover' as const, startMs: 0, endMs: 3000, opacity: 1, box: { x: 0, y: 0, w: 1, h: 0.5 } });
+  const free = (layers: unknown[]): Scene => ({ id: 'f', durationMs: 3000, background: '#fff', layout: 'center', layers } as unknown as Scene);
+
+  it('pours a free-layer scene into another template, so Swap template works on v1 scenes', () => {
+    const scene = free([t('a', 'Fresh sourdough'), t('b', 'Slow fermented')]);
+    const slots = pourSlots(scene, 'big-statement', false);
+    expect(slots).toBeDefined();
+    expect(JSON.stringify(slots)).toContain('Fresh sourdough');
+    expect(swapGroups(scene).fits.length).toBeGreaterThan(0);
+  });
+
+  it('keeps a second image in a template with two media slots', () => {
+    const near = nearestTemplate(free([img('p', 'one'), img('q', 'two'), t('a', 'Before'), t('b', 'After')]));
+    expect(near?.template).toBe('before-after');
+    expect(near?.slots).toMatchObject({ beforeMedia: { assetId: 'one' }, afterMedia: { assetId: 'two' }, before: 'Before', after: 'After' });
+  });
+
+  it('leaves a scene of shapes alone as free layers', () => {
+    expect(nearestTemplate(free([{ id: 's', type: 'shape' }]))).toBeUndefined();
   });
 });
 

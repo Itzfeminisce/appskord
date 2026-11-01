@@ -111,6 +111,7 @@ export interface Recipe {
 
 export interface Change {                                    // "Changes" tab and undo history
   id: string; at: number; by: Author; summary: string; patch: PatchOp[]; inverse: PatchOp[];
+  reverts?: string;                                          // the older change this one takes back
 }
 export type PatchOp =                                        // RFC 6902 subset; AI edits are only ever these
   | { op: 'replace' | 'add'; path: string; value: unknown }
