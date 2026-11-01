@@ -32,6 +32,8 @@ export class MediaCache {
   private families = new Set<string>();
   private pending = new Map<string, Promise<void>>();
   private fits = new Map<string, Fit>();
+  private paints = new Map<string, unknown>();
+  private tiles = new Map<number, OffscreenCanvas | null>();
 
   constructor(private decoders?: Decoders) {}
 
@@ -100,9 +102,50 @@ export class MediaCache {
     return f;
   }
 
+  /** Memoises gradients, patterns and text layouts so a frame creates none it drew before. */
+  paint<T>(key: string, make: () => T): T {
+    if (this.paints.has(key)) return this.paints.get(key) as T;
+    if (this.paints.size > 500) this.paints.clear();
+    const p = make();
+    this.paints.set(key, p);
+    return p;
+  }
+
+  /** A seeded noise tile, made once; undefined where OffscreenCanvas does not exist. */
+  grainTile(seed: number, size: number): OffscreenCanvas | undefined {
+    if (!this.tiles.has(seed)) this.tiles.set(seed, makeGrain(seed, size));
+    return this.tiles.get(seed) ?? undefined;
+  }
+
   dispose() {
     for (const i of this.images.values()) i.close?.();
     for (const v of this.videos.values()) v.close?.();
-    this.images.clear(); this.videos.clear(); this.audios.clear(); this.fonts.clear(); this.families.clear(); this.fits.clear();
+    this.images.clear(); this.videos.clear(); this.audios.clear(); this.fonts.clear(); this.families.clear(); this.fits.clear(); this.paints.clear(); this.tiles.clear();
   }
+}
+
+function makeGrain(seed: number, size: number): OffscreenCanvas | null {
+  if (typeof OffscreenCanvas === 'undefined') return null;
+  const c = new OffscreenCanvas(size, size);
+  const g = c.getContext('2d');
+  if (!g) return null;
+  const img = g.createImageData(size, size);
+  let s = seed >>> 0;
+  // mulberry32, so the tile is the same on every machine.
+  const rand = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = rand();
+    // Light and dark specks in equal measure, so grain adds texture without greying the colour.
+    const light = v >= 0.5 ? 255 : 0;
+    img.data[i] = light; img.data[i + 1] = light; img.data[i + 2] = light;
+    img.data[i + 3] = Math.round(Math.abs(v - 0.5) * 2 * 255);
+  }
+  g.putImageData(img, 0, 0);
+  return c;
 }

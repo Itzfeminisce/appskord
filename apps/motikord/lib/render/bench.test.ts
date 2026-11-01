@@ -30,6 +30,19 @@ function benchScene(n: number): Scene {
 const asset = (id: string) => ({ id, kind: 'image' as const, name: id, mime: 'image/png', bytes: 1, width: 1920, height: 1080, opfsPath: id });
 const benchRecipe: Recipe = { version: 1, id: 'bench', name: 'Bench', type: 'promo', aspect: '16:9', scenes: [0, 1, 2].map(benchScene), assets: { bg: asset('bg'), photo: asset('photo') } };
 
+// v2 spec T2: 60 frames at 1080p over a grain background and a crossfade, with a staggered headline and Ken Burns photo.
+const v2Scene = (n: number, extra: Partial<Scene>): Scene => ({
+  id: `v${n}`, durationMs: 3000, background: '#0F2A4A', layout: 'center', ...extra,
+  layers: [
+    { id: `p${n}`, name: 'Photo', type: 'image', assetId: 'photo', fit: 'cover', mask: 'rounded', border: '#FFFFFF', kenBurns: true, startMs: 0, endMs: 3000, opacity: 1, box: box(0.55, 0.15, 0.38, 0.6), in: m('fade-in', 'steady', 500) },
+    { id: `h${n}`, name: 'Headline', type: 'text', role: 'title', text: 'Revenue grew forty percent this year', font: 'Geist', sizePx: 96, weight: 700, colour: '#FFFFFF', align: 'left', lineHeight: 1.1, letterSpacing: -0.02, shadow: true, stagger: 'word', highlight: { word: 2, colour: '#38BDF8' }, startMs: 0, endMs: 3000, opacity: 1, box: box(0.06, 0.2, 0.45, 0.4), in: m('rise-in', 'steady', 500) },
+  ],
+});
+const v2Recipe: Recipe = { version: 2, id: 'bench2', name: 'Bench v2', type: 'promo', aspect: '16:9', style: 'corporate', assets: benchRecipe.assets, scenes: [
+  v2Scene(0, { bg: { kind: 'blobs', colours: ['#FFF7ED', '#FDBA74', '#5EEAD4', '#CCFBF1'], drift: true, grain: 0.06 } }),
+  v2Scene(1, { bg: { kind: 'grain', colours: ['#17406B', '#0F2A4A', '#0B2038'], grain: 0.08 }, transition: { kind: 'crossfade', ms: 600 } }),
+] };
+
 async function bundle(): Promise<string> {
   const { rolldown } = await import('rolldown');
   const dir = __dirname;
@@ -82,6 +95,37 @@ describe.skipIf(!PLAYWRIGHT)('render bench', () => {
       console.log(`Motikord bench: 720p, 3 scenes x 10 layers: ${r.drawMs.toFixed(2)} ms a frame (p95 ${r.p95.toFixed(2)} ms), ${r.fps.toFixed(0)} fps`);
       expect(r.fps).toBeGreaterThanOrEqual(TARGET_FPS);
       expect(r.p95).toBeLessThan(1000 / TARGET_FPS);
+    } finally {
+      await browser.close();
+    }
+  }, 60_000);
+
+  it(`draws 60 v2 frames at 1080p with grain and a transition at ${TARGET_FPS} fps or better`, async () => {
+    const { chromium } = await import(/* @vite-ignore */ PLAYWRIGHT!);
+    const browser = await chromium.launch({ args: ['--headless=new'] });
+    try {
+      const page = await browser.newPage();
+      await page.addScriptTag({ content: await bundle() });
+      const r: { drawMs: number; p95: number } = await page.evaluate(async (recipe: Recipe) => {
+        const { drawFrame, MediaCache } = (globalThis as unknown as { R: typeof import('./drawFrame') & typeof import('./cache') }).R;
+        const c = new OffscreenCanvas(1920, 1080);
+        const g = c.getContext('2d')!;
+        g.fillStyle = '#884422';
+        g.fillRect(0, 0, 1920, 1080);
+        const cache = new MediaCache();
+        cache.setImage('bg', c.transferToImageBitmap());
+        g.fillRect(0, 0, 1920, 1080);
+        cache.setImage('photo', c.transferToImageBitmap());
+        const ctx = new OffscreenCanvas(1920, 1080).getContext('2d')!;
+        // Frames straddle the cut, so the 600 ms crossfade draws both scenes at once.
+        const one = (i: number) => { drawFrame(ctx, recipe, '16:9', 2600 + (i * 1000) / 30, cache); ctx.getImageData(0, 0, 1, 1); };
+        for (let i = 0; i < 10; i++) one(i);
+        const times: number[] = [];
+        for (let i = 0; i < 60; i++) { const t0 = performance.now(); one(i); times.push(performance.now() - t0); }
+        return { drawMs: times.reduce((a, b) => a + b, 0) / 60, p95: [...times].sort((a, b) => a - b)[57]! };
+      }, v2Recipe);
+      console.log(`Motikord bench v2: 1080p, grain + crossfade: ${r.drawMs.toFixed(2)} ms a frame (p95 ${r.p95.toFixed(2)} ms)`);
+      expect(1000 / r.drawMs).toBeGreaterThanOrEqual(TARGET_FPS);
     } finally {
       await browser.close();
     }
