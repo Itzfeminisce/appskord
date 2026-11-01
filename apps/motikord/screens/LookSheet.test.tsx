@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { applyLook, lookLine, paceHint } from './LookSheet';
 import { draft } from '../lib/makeClip';
-import { move, stepMs, totalSeconds, wordCount } from './StoryboardEdit';
+import { hasLine, move, stepMs, totalSeconds, wordCount } from './StoryboardEdit';
 import { sceneList } from './Making';
 import { packOf, templateLine } from './Templates';
 import { TEMPLATES } from '../lib/templates';
@@ -29,6 +29,8 @@ describe('v2 make screens', () => {
     expect(move([1, 2, 3], 0, 2)).toEqual([2, 3, 1]);
     expect(move([1, 2], 0, 5)).toEqual([1, 2]);
     expect(wordCount('  Fresh sourdough, baked here ')).toBe(4);
+    expect(hasLine([{ template: 'big-statement', line: '  ', ms: 3000 }])).toBe(false);
+    expect(hasLine([{ template: 'big-statement', line: '', ms: 3000 }, { template: 'end-card', line: 'Order', ms: 3000 }])).toBe(true);
     expect(stepMs(1000, -1)).toBe(1000);
     expect(stepMs(3000, 1)).toBe(3500);
     expect(totalSeconds([{ template: 'hero', line: '', ms: 3000 }, { template: 'hero', line: '', ms: 4000 }])).toBe(7);

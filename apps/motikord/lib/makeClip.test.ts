@@ -339,6 +339,39 @@ describe('runner: v2 Making', () => {
     expect(g.fetch).toHaveBeenCalledTimes(2);
   });
 
+  const sbOf = (n: number) => ({ name: 'B', hook: 'H', style: 'bold' as const, beats: Array.from({ length: n }, (_, i) => ({ template: 'big-statement' as const, line: `Line ${i}`, ms: 3000 })) });
+
+  it('pause() is refused once the last scene is being filled', async () => {
+    const last = createRunner(deps({ make: async (_i, h) => { h?.onStoryboard?.(sbOf(2)); h?.onFilling?.(1, 2); return new Promise<never>(() => undefined); } }));
+    void last.start({ prompt: 'x', attached: [], type: 'promo' });
+    await vi.waitFor(() => expect(last.get().filling).toBe(1));
+    expect(last.pause()).toBe(false);
+    expect(last.get().pausing).toBe(false);
+    await last.cancel();
+  });
+
+  it('a look changed while paused is read again when the plan resumes, once', async () => {
+    let seen: unknown[] = [];
+    const make: RunnerDeps['make'] = async (_i, h) => {
+      const sb = sbOf(2);
+      h?.onStoryboard?.(sb);
+      await h!.gate!(sb);
+      seen = [await h!.look!(), await h!.look!()];
+      return new Promise<never>(() => undefined);
+    };
+    const runner = createRunner(deps({ make }));
+    void runner.start({ prompt: 'x', attached: [], type: 'promo' });
+    expect(runner.pause()).toBe(true);
+    await vi.waitFor(() => expect(runner.get().paused).toBe(true));
+    draft.set({ look: { style: 'playful', pace: 'fast', mood: 'calm' } });
+    runner.resume(sbOf(2));
+    await vi.waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen).toEqual([{ style: 'playful', pace: 'fast', mood: 'calm' }, undefined]);
+    expect(runner.get().look).toMatchObject({ style: 'playful', pace: 'fast' });
+    draft.clear();
+    await runner.cancel();
+  });
+
   it('cancel while paused stops the run', async () => {
     const g = groq(two);
     const runner = createRunner(deps({ hooks: g.hooks }));

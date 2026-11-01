@@ -86,7 +86,7 @@ function kitFor(brand: BrandKit | undefined, assets: Asset[]): BrandKit | undefi
 export async function makeClip(input: MakeInput, hooks: MakeHooks = {}): Promise<MakeResult> {
   const {
     settings: given, brand, save = putClip, now = Date.now, onType, onRecipe,
-    onStep, onStoryboard, gate, onFilling, onFilled, onRetry, onFixes, onCritic, onCriticSkipped, frames = opfsFrames, ...ai
+    onStep, onStoryboard, gate, look: lookNow, onFilling, onFilled, onRetry, onFixes, onCritic, onCriticSkipped, frames = opfsFrames, ...ai
   } = hooks;
   const settings = given ?? (await getSettings());
   try {
@@ -103,7 +103,7 @@ export async function makeClip(input: MakeInput, hooks: MakeHooks = {}): Promise
     const wrote = await writeClip({
       prompt: input.prompt, type, aspect: input.aspect, assets: input.assets, id: input.id,
       style, pace: look.pace, mood: look.mood, brand: kit, critic: settings.critic, settings,
-    }, ai, { onStep, onStoryboard, gate, onFilling, onFilled, onRetry, onFixes, onCritic, onCriticSkipped, frames });
+    }, ai, { onStep, onStoryboard, gate, look: lookNow, onFilling, onFilled, onRetry, onFixes, onCritic, onCriticSkipped, frames });
     let recipe = pruneAssets(wrote.recipe);
     const song = input.assets.find((a) => a.kind === 'audio');
     if (song && !recipe.music) recipe = { ...recipe, music: { assetId: song.id, volume: 0.8, fadeInMs: 500, fadeOutMs: 1000 }, assets: { ...recipe.assets, [song.id]: song } };
@@ -185,6 +185,8 @@ export interface RunState {
   editorOpen: boolean;
   busyRetries: number;           // automatic provider-busy retries already made
 }
+/** True when the scene being filled is the last, where the pipeline has no pause point left. */
+export const lastScene = (filling: number | undefined, total: number) => filling !== undefined && total > 0 && filling >= total - 1;
 /** provider-busy is retried by itself this many times; after that only "Try now" remains. */
 export const MAX_BUSY_RETRIES = 1;
 const IDLE: RunState = { status: 'idle', steps: 0, filled: 0, total: 0, fixes: [], issuesLeft: [], pausing: false, paused: false, notices: [], editorOpen: false, busyRetries: 0 };
@@ -223,6 +225,7 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
   let opening = false;
   let pauseWanted = false;
   let release: ((next: Storyboard | 'replan') => void) | undefined;
+  let relook = false;   // set when a pause ended, so the look is read again once for the plan that follows
   const patch = (p: Partial<RunState>) => store.set({ ...store.get(), ...p });
 
   /** The pipeline's pause point: lets the plan through unless "Pause and check the plan" was asked. */
@@ -249,6 +252,7 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
     const live = () => mine === sequence;
     pauseWanted = false;
     release = undefined;
+    relook = false;
     try {
       const saved = await deps.settings();
       const settings = d.look ? { ...saved, look: d.look } : saved;
@@ -271,9 +275,17 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
             patch({ type, typeBy: by, steps: 1, ...(look && settings.look.style === 'auto' ? { look: { ...look, style: autoStyle(type) } } : {}) });
           },
           onRecipe: (recipe) => { if (live()) patch({ recipe, steps: 3 }); },
-          onStep: (step) => { if (live()) patch({ step, ...(step === 'plan' ? { storyboard: undefined, filled: 0, total: 0 } : {}), ...(step === 'check' ? { steps: 3 } : {}) }); },
-          onStoryboard: (storyboard) => { if (live()) patch({ storyboard, total: storyboard.beats.length, filled: 0, steps: Math.max(store.get().steps, 2) }); },
+          onStep: (step) => { if (live()) patch({ step, ...(step === 'plan' ? { storyboard: undefined, filled: 0, total: 0, filling: undefined } : {}), ...(step === 'check' ? { steps: 3 } : {}) }); },
+          onStoryboard: (storyboard) => { if (live()) patch({ storyboard, total: storyboard.beats.length, filled: 0, filling: undefined, steps: Math.max(store.get().steps, 2) }); },
           gate: gateFor(ctl.signal, live),
+          look: async () => {
+            if (!relook) return undefined;
+            relook = false;
+            const now = draft.get().look ?? (await deps.settings()).look;
+            const style = now.style === 'auto' ? autoStyle(store.get().type ?? d.type ?? 'social') : now.style;
+            if (live()) patch({ look: { style, pace: now.pace, mood: now.mood } });
+            return { style, pace: now.pace, mood: now.mood };
+          },
           onFilling: (index, total) => { if (live()) patch({ filling: index, total, retrying: undefined }); },
           onFilled: (filled, total) => { if (live()) patch({ filled, total, retrying: undefined }); },
           onRetry: (index) => { if (live()) patch({ retrying: index }); },
@@ -339,23 +351,26 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
   }
 
   /** "Pause and check the plan": the make stops once the plan is in, before the next scene. */
-  function pause(): void {
-    const { status, paused, step } = store.get();
-    // Past the fill there is no pause point left.
-    if (status !== 'running' || paused || step === 'check' || step === 'critic' || step === 'open') return;
+  function pause(): boolean {
+    const { status, paused, step, filling, total } = store.get();
+    // Past the fill, or on the last scene, there is no pause point left.
+    if (status !== 'running' || paused || step === 'check' || step === 'critic' || step === 'open' || lastScene(filling, total)) return false;
     pauseWanted = true;
     patch({ pausing: true });
+    return true;
   }
   /** "Make these scenes": goes on with the storyboard as edited; unchanged scenes already filled are kept. */
   function resume(storyboard: Storyboard): void {
     if (!release) return;
     pauseWanted = false;
+    relook = true;
     patch({ paused: false, pausing: false, storyboard });
     release(storyboard);
   }
   /** "Plan it again": plans afresh and stays paused on the new plan. */
   function replan(): void {
     if (!release) return;
+    relook = true;
     patch({ paused: false, pausing: true, storyboard: undefined });
     release('replan');
   }

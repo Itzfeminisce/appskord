@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { Spinner } from '../components/ui';
-import { MAX_BUSY_RETRIES, draft, runner, useRun, useSettings } from '../lib/makeClip';
+import { MAX_BUSY_RETRIES, draft, lastScene, runner, useRun, useSettings } from '../lib/makeClip';
 import type { ClipType, Provider } from '../lib/types';
 import { PROVIDERS } from '../lib/providers';
 import { send } from '../lib/messages';
@@ -184,7 +184,7 @@ export default function Making() {
 
       <div style={{ flexGrow: 1 }} />
       <div style={{ padding: '16px 16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {run.status === 'running' && !run.paused && <button type="button" onClick={() => { runner.pause(); navigate('StoryboardEdit'); }} disabled={run.pausing && !run.paused} className="btn btn-secondary btn-block">Pause and check the plan</button>}
+        {run.status === 'running' && !run.paused && <button type="button" onClick={() => { if (runner.pause()) navigate('StoryboardEdit'); }} disabled={(run.pausing && !run.paused) || lastScene(run.filling, run.total)} className="btn btn-secondary btn-block">Pause and check the plan</button>}
         <button type="button" onClick={openNow} disabled={run.status === 'idle' || run.status === 'failed'} className="btn btn-secondary btn-block">Open the editor now</button>
         <button type="button" onClick={cancel} style={{ border: 0, background: 'none', font: '500 13px var(--font)', color: 'var(--accent)', cursor: 'pointer' }}>Cancel</button>
         <MakeFooter by={by} frames={criticRan ? run.critic?.frames : undefined} />

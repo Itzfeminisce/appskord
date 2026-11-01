@@ -91,11 +91,12 @@ export default function Templates() {
   const use = useUseTemplate();
   const [filter, setFilter] = useState<ClipType | 'all'>('all');
   const [style, setStyle] = useState<StyleId | 'any'>('any');
+  const fits = (t: Template) => filter === 'all' || t.type === filter;
   const shown = TEMPLATES.filter((t) => (filter === 'all' || t.type === filter) && (style === 'any' || packOf(t) === style));
   const chip = (id: ClipType | 'all', label: string) => {
     const on = filter === id;
     return (
-      <button key={id} type="button" aria-pressed={on} onClick={() => setFilter(id)}
+      <button key={id} type="button" aria-pressed={on} onClick={() => { setFilter(id); if (style !== 'any' && !TEMPLATES.some((t) => (id === 'all' || t.type === id) && packOf(t) === style)) setStyle('any'); }}
         style={{ height: 30, padding: '0 12px', borderRadius: 999, border: on ? 0 : '1px solid #E0E0E4', background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink)', font: `${on ? 500 : 400} 12px var(--font)`, cursor: 'pointer' }}>
         {label}
       </button>
@@ -116,9 +117,10 @@ export default function Templates() {
         <span style={{ fontSize: 12, fontWeight: 600, marginRight: 4 }}>Style</span>
         {([['any', 'Any'], ...STYLE_PACKS.map((p) => [p.id, p.name])] as [StyleId | 'any', string][]).map(([id, name]) => {
           const on = style === id;
+          const empty = id !== 'any' && !TEMPLATES.some((t) => fits(t) && packOf(t) === id);
           return (
-            <button key={id} type="button" aria-pressed={on} onClick={() => setStyle(id)}
-              style={{ height: 30, padding: '0 12px', borderRadius: 999, border: on ? 0 : '1px solid #E0E0E4', background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink)', font: `${on ? 500 : 400} 12px var(--font)`, cursor: 'pointer' }}>{name}</button>
+            <button key={id} type="button" aria-pressed={on} aria-disabled={empty || undefined} disabled={empty} onClick={() => setStyle(id)}
+              style={{ height: 30, padding: '0 12px', borderRadius: 999, border: on ? 0 : '1px solid #E0E0E4', background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink)', font: `${on ? 500 : 400} 12px var(--font)`, cursor: empty ? 'default' : 'pointer', opacity: empty ? 0.4 : 1 }}>{name}</button>
           );
         })}
       </div>

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Spinner } from '../components/ui';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { LINE_WORDS } from '../lib/ai/storyboard';
-import { runner, useRun, useSettings } from '../lib/makeClip';
-import { getPack, getSceneTemplate, SCENE_TEMPLATES } from '../lib/templates/scenes';
+import { runner, useDraft, useRun, useSettings } from '../lib/makeClip';
+import { autoStyle, getPack, getSceneTemplate, SCENE_TEMPLATES } from '../lib/templates/scenes';
 import type { Beat, Storyboard } from '../lib/types';
 import { PROVIDERS } from '../lib/providers';
 import { MakeFooter } from './StatesCreate';
@@ -13,6 +13,8 @@ const MIN_MS = 1000;
 const MAX_MS = 10_000;
 
 export const wordCount = (line: string) => line.trim().split(/\s+/).filter(Boolean).length;
+/** Blank lines are dropped when the plan is cleaned, so at least one scene must have words. */
+export const hasLine = (beats: Beat[]) => beats.some((b) => b.line.trim() !== '');
 export const totalSeconds = (beats: Beat[]) => Math.round(beats.reduce((t, b) => t + b.ms, 0) / 1000);
 export function move<T>(list: T[], from: number, to: number): T[] {
   if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
@@ -30,6 +32,7 @@ export default function StoryboardEdit() {
   const { navigate, replace } = useRouter();
   const run = useRun();
   const settings = useSettings();
+  const d = useDraft();
   const by = run.by ?? (settings?.ai === 'local' ? 'builtin' : settings?.provider ?? 'groq');
   const [beats, setBeats] = useState<Beat[]>([]);
   const drag = useRef<number | undefined>(undefined);
@@ -41,7 +44,11 @@ export default function StoryboardEdit() {
   useEffect(() => { if (run.status === 'done' || run.status === 'failed') replace('Making'); }, [run.status, replace]);
 
   const edit = (i: number, patch: Partial<Beat>) => setBeats((all) => all.map((b, j) => (j === i ? { ...b, ...patch } : b)));
-  const style = plan ? getPack(plan.style)?.name ?? plan.style : '';
+  // The chip shows the look a change in LookSheet set, which the next plan or the scenes will use.
+  const chosen = d.look?.style ?? settings?.look.style;
+  const styleId = plan ? (chosen ? (chosen === 'auto' ? autoStyle(run.type ?? 'social') : chosen) : plan.style) : undefined;
+  const style = styleId ? getPack(styleId)?.name ?? styleId : '';
+  const canMake = hasLine(beats);
   const make = () => {
     if (!plan) return;
     const next: Storyboard = { ...plan, beats };
@@ -108,7 +115,7 @@ export default function StoryboardEdit() {
 
       <div style={{ flexGrow: 1 }} />
       <div style={{ padding: '16px 16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <button type="button" onClick={make} disabled={!plan || beats.length === 0} className="btn btn-primary btn-block">Make these scenes</button>
+        <button type="button" onClick={make} disabled={!plan || !canMake} className="btn btn-primary btn-block">Make these scenes</button>
         <button type="button" onClick={() => runner.replan()} disabled={!plan} className="btn btn-secondary btn-block">Plan it again</button>
         <button type="button" onClick={() => { void runner.cancel().then(() => replace('Home')); }} style={{ border: 0, background: 'none', font: '500 13px var(--font)', color: 'var(--accent)', cursor: 'pointer' }}>Cancel</button>
         <MakeFooter by={by} />

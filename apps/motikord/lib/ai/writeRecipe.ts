@@ -332,6 +332,7 @@ export interface PipelineEvents {
   onStep?(step: MakeStep): void;
   onStoryboard?(storyboard: Storyboard): void;
   gate?: Gate;
+  look?(): Promise<{ style: StyleId; pace: Pace; mood: Mood } | undefined>;   // read again after the pause point, so a look changed while paused applies
   onFilling?(index: number, total: number): void;   // the scene being filled now ("Scene 3 · List")
   onFilled?(done: number, total: number): void;
   onRetry?(index: number): void;                    // scene-retrying
@@ -471,24 +472,34 @@ const rethrowCancel = (e: unknown) => { if (e instanceof AiError && e.code === '
 /** The whole v2 make. Throws AiError, or StoryboardFailed when the plan made no sense twice. */
 export async function writeClip(input: ClipInput, opts: AiOptions = {}, ev: PipelineEvents = {}): Promise<ClipResult> {
   const id = input.id ?? newId();
-  const pack = packFor(input.style, input.type);
+  let pack = packFor(input.style, input.type);
+  let { pace, mood } = input;
   const media = input.assets.filter((a) => a.kind === 'image' || a.kind === 'video').length;
   const logo = !!input.brand?.logoAssetId || input.assets.some((a) => a.kind === 'logo');
-  const plan = () => planStoryboard({ prompt: input.prompt, type: input.type, aspect: input.aspect, style: pack.id, pace: input.pace, lengthMs: input.lengthMs, media, logo }, opts);
+  const plan = () => planStoryboard({ prompt: input.prompt, type: input.type, aspect: input.aspect, style: pack.id, pace, lengthMs: input.lengthMs, media, logo }, opts);
 
   ev.onStep?.('plan');
   let planned = await plan();
   let by = planned.by;
   let sb = planned.storyboard;
   ev.onStoryboard?.(sb);
+  const relook = async () => {
+    const next = await ev.look?.();
+    if (!next) return;
+    pack = packFor(next.style, input.type);
+    ({ pace, mood } = next);
+    if (sb.style !== pack.id) sb = { ...sb, style: pack.id };
+  };
   const replan = async () => { ev.onStep?.('plan'); planned = await plan(); by = planned.by; sb = planned.storyboard; ev.onStoryboard?.(sb); };
   // The pause point: an edited storyboard replaces the plan; true when it changed.
   const pass = async (): Promise<boolean> => {
     if (!ev.gate) return false;
+    const shown = sb;
     const g = await ev.gate(sb);
-    if (g === 'replan') { await replan(); return true; }
-    if (g === sb) return false;
-    sb = cleanStoryboard(g, { media, logo });
+    if (g === 'replan') { await relook(); await replan(); return true; }
+    await relook();
+    if (g === shown) return false;
+    sb = cleanStoryboard({ ...g, style: pack.id }, { media, logo });
     ev.onStoryboard?.(sb);
     return true;
   };
@@ -504,8 +515,8 @@ export async function writeClip(input: ClipInput, opts: AiOptions = {}, ev: Pipe
       const beat = sb.beats[i]!;
       const key = `${beat.template}|${beat.line}`;
       let w = done.get(key);
+      ev.onFilling?.(i, total);
       if (!w) {
-        ev.onFilling?.(i, total);
         const r = await fillScene({ prompt: input.prompt, type: input.type, style: pack.id, storyboard: sb, index: i }, opts, { onRetry: ev.onRetry });
         by = r.by;
         w = r.slots;
@@ -522,7 +533,7 @@ export async function writeClip(input: ClipInput, opts: AiOptions = {}, ev: Pipe
   const fitted = fitStoryboard(sb);
   if (fitted.cut) { sb = fitted.storyboard; notices.push('too-long'); }
   const assigned = assignMedia(sb.beats.map((b) => b.template), input.assets);
-  let recipe = buildRecipe(sb, words.map((w, i) => ({ ...w, ...assigned[i] })), input, id);
+  let recipe = buildRecipe(sb, words.map((w, i) => ({ ...w, ...assigned[i] })), { ...input, style: pack.id, pace, mood }, id);
 
   ev.onStep?.('check');
   const fixes: string[] = [];
