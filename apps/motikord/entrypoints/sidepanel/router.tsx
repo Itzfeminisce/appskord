@@ -28,10 +28,12 @@ import VoicePrompt from '../../screens/VoicePrompt';
 import YourMedia from '../../screens/YourMedia';
 
 /** Side panel screens, one per FRAMES.md frame, named as the frame (rows 1, 2, 4 and 6). */
+const ImageKey = () => <main data-frame="ImageKey" />; // placeholder until T10 builds the screen
+
 export const sidepanel = createRouter({
   Main, Setup, PenvConnect, PasteKey, PenvConnected,
   Home, VoicePrompt, ClipType, Templates, YourMedia, Making, MakingFailed, Grab,
-  BrandKit, Library, LibraryEmpty, Settings, SettingsModel, MediaSources, AddSource, Privacy, Recovered, StatesSetup, StatesCreate, StatesLibrary, StatesVoice, StatesSources,
+  BrandKit, Library, LibraryEmpty, Settings, SettingsModel, ImageKey, MediaSources, AddSource, Privacy, Recovered, StatesSetup, StatesCreate, StatesLibrary, StatesVoice, StatesSources,
 });
 export type SidepanelScreen = (typeof sidepanel.names)[number];
 export const { RouterProvider, useRouter, Outlet } = sidepanel;
