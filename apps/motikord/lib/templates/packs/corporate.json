@@ -1,6 +1,7 @@
 {
   "id": "corporate",
   "name": "Corporate",
+  "description": "Source Serif 4 headings and IBM Plex Sans body on navy with fine grain. Text moves steadily; scenes change with cross-fades and wipes.",
   "fonts": {
     "display": "Source Serif 4",
     "text": "IBM Plex Sans",

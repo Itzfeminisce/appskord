@@ -56,7 +56,7 @@ export interface Background {
   drift?: boolean;                                         // slow background motion
 }
 export interface StylePack {                               // lib/templates/packs/<id>.json
-  id: StyleId; name: string;
+  id: StyleId; name: string; description?: string;     // NewLook's line for the pack
   fonts: { display: string; text: string; number: string };
   palette: { bg: string; bg2: string; ink: string; muted: string; accent: string; accent2?: string };
   background: Background; feel: Feel; motionMs: number;

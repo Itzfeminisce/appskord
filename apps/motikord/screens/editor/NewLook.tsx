@@ -80,6 +80,7 @@ export function NewLookDialog({ onClose }: { onClose: () => void }) {
             <figcaption style={head}>{`After · ${name}`}</figcaption>
           </figure>
         </div>
+        {getPack(style)?.description && <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>{getPack(style)!.description}</p>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>Pace</span>
           <div role="radiogroup" aria-label="Pace" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: 'var(--stage)' }}>
