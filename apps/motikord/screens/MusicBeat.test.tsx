@@ -17,11 +17,19 @@ describe('BeatSync popover parts', () => {
     const el = document.createElement('div'); document.body.append(el);
     act(() => createRoot(el).render(<Music />));
     const t = el.textContent ?? '';
-    for (const w of ['Change', 'Mood', 'Upbeat', 'Calm', 'Warm', 'Dramatic', 'No music', 'Beat', 'Cut snapped to beat', 'Done']) expect(t).toContain(w);
+    for (const w of ['Sunny morning', 'Change', 'Mood', 'Upbeat', 'Calm', 'Warm', 'Dramatic', 'No music', 'Beat', 'Cut snapped to beat', '0:00 – 0:05', 'Done']) expect(t).toContain(w);
     expect(el.querySelector('[aria-label=Scenes]')?.children.length).toBe(2);
+    // One now-playing card: the track list and the search links wait behind "Change".
+    expect(el.querySelector('[aria-label="Music track"]')).toBeNull();
+    expect(t).not.toContain('Search free music');
     const btn = (n: string) => [...el.querySelectorAll('button')].find((b) => b.textContent === n)!;
     act(() => btn('Warm').click());
     expect(commit).toHaveBeenCalledWith(expect.objectContaining({ ops: [{ op: 'replace', path: '/mood', value: 'warm' }] }));
+    act(() => btn('Change').click());
+    expect(el.querySelector('[aria-label="Music track"]')).not.toBeNull();
+    expect(el.textContent).toContain('Search free music');
+    act(() => btn('Done').click());
+    expect(el.querySelector('[aria-label="Music track"]')).toBeNull();
     act(() => btn('Done').click()); expect(close).toHaveBeenCalled();
   });
 });
