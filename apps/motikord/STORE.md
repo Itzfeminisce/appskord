@@ -40,3 +40,9 @@ Make short animated clips from a prompt, a page or your own media.
 - Icons: `public/icon/` (16, 48, 128).
 - Screenshots 1280x800, at least one. Frames to capture: Home (prompt box), Making, the editor, Quality check, Free media search, Export, Library, Brand kit, Privacy (Where your data goes).
 - Small promo tile 440x280.
+
+## Release steps
+- Bump `version` in `apps/motikord/package.json`, merge to `main`, then tag from `main`: `git tag motikord@x.y.z && git push origin motikord@x.y.z`.
+- CI runs the tests, builds, checks the tag matches the manifest version, and makes a GitHub release with the zip.
+- Store upload is automatic once the Chrome Web Store secrets exist (`CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN`, `CWS_EXTENSION_ID_MOTIKORD`). Until then, download the zip from the release and upload it by hand.
+- Dry run: tag `motikord@x.y.z-test` makes a prerelease and never uploads.

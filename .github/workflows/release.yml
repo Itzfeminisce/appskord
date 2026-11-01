@@ -1,0 +1,129 @@
+name: Release
+
+# Tag `<app>@<version>` (for example `motikord@1.2.0`) ships that app alone.
+# Tag `<app>@<version>-test` is a dry run: GitHub prerelease, no store upload.
+# Manual run with an `app` input builds and zips only; the zip is a workflow artifact.
+on:
+  push:
+    tags: ['*@*']
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App folder under apps/. Dry run only, tests build zip and artifact
+        required: true
+        type: choice
+        options: [rekord, klipkord, motikord]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.app }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      EVENT: ${{ github.event_name }}
+      TAG: ${{ github.ref_name }}
+      INPUT_APP: ${{ inputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse tag
+        id: meta
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            app="$INPUT_APP"; tag_version=""; dry=true
+          else
+            app="${TAG%@*}"; tag_version="${TAG#*@}"; dry=false
+            case "$tag_version" in *-test) dry=true ;; esac
+            case "${tag_version%-test}" in
+              [0-9]*.[0-9]*.[0-9]*) ;;
+              *) echo "::error::Version in '$TAG' must look like 1.2.3 or 1.2.3-test."; exit 1 ;;
+            esac
+          fi
+          case "$app" in
+            *[!a-z0-9-]*|"") echo "::error::Bad app name in '$TAG'. Use <app>@<version>."; exit 1 ;;
+          esac
+          if [ ! -d "apps/$app" ]; then
+            echo "::error::apps/$app does not exist. Tag '$TAG' must be <app>@<version> for a folder under apps/."
+            exit 1
+          fi
+          {
+            echo "app=$app"
+            echo "tag_version=$tag_version"
+            echo "version=${tag_version%-test}"
+            echo "dry=$dry"
+          } >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test
+        run: pnpm -F "${{ steps.meta.outputs.app }}" test
+      - name: Zip
+        run: pnpm -F "${{ steps.meta.outputs.app }}" zip
+      - name: Check version and find zip
+        id: pack
+        env:
+          APP: ${{ steps.meta.outputs.app }}
+          WANT: ${{ steps.meta.outputs.version }}
+        run: |
+          built=$(node -p "require('./apps/$APP/.output/chrome-mv3/manifest.json').version")
+          if [ -n "$WANT" ] && [ "$built" != "$WANT" ]; then
+            echo "::error::Tag version '$WANT' does not match the built manifest version '$built'. Bump apps/$APP/package.json, merge to main, then tag again."
+            exit 1
+          fi
+          zip=$(ls apps/"$APP"/.output/*-chrome.zip | head -n 1)
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          echo "Built $zip (manifest $built)"
+      - name: Keep zip as workflow artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.app }}-zip
+          path: ${{ steps.pack.outputs.zip }}
+      - name: GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZIP: ${{ steps.pack.outputs.zip }}
+          DRY: ${{ steps.meta.outputs.dry }}
+        run: |
+          flags=""
+          if [ "$DRY" = "true" ]; then flags="--prerelease"; fi
+          gh release create "$TAG" "$ZIP" --verify-tag --title "$TAG" --generate-notes $flags
+      - name: Chrome Web Store upload
+        if: github.event_name == 'push' && steps.meta.outputs.dry == 'false'
+        env:
+          APP: ${{ steps.meta.outputs.app }}
+          ZIP: ${{ steps.pack.outputs.zip }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_ID_REKORD: ${{ secrets.CWS_EXTENSION_ID_REKORD }}
+          CWS_ID_KLIPKORD: ${{ secrets.CWS_EXTENSION_ID_KLIPKORD }}
+          CWS_ID_MOTIKORD: ${{ secrets.CWS_EXTENSION_ID_MOTIKORD }}
+        run: |
+          case "$APP" in
+            rekord) ext="$CWS_ID_REKORD" ;;
+            klipkord) ext="$CWS_ID_KLIPKORD" ;;
+            motikord) ext="$CWS_ID_MOTIKORD" ;;
+            *) ext="" ;;
+          esac
+          if [ -z "$CWS_CLIENT_ID" ] || [ -z "$CWS_CLIENT_SECRET" ] || [ -z "$CWS_REFRESH_TOKEN" ] || [ -z "$ext" ]; then
+            echo "Store secrets are not all set. Upload the zip by hand."
+            exit 0
+          fi
+          token=$(curl -fsS https://oauth2.googleapis.com/token \
+            -d client_id="$CWS_CLIENT_ID" -d client_secret="$CWS_CLIENT_SECRET" \
+            -d refresh_token="$CWS_REFRESH_TOKEN" -d grant_type=refresh_token | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).access_token")
+          echo "::add-mask::$token"
+          api="https://www.googleapis.com"
+          curl -fsS -X PUT -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
+            -T "$ZIP" "$api/upload/chromewebstore/v1.1/items/$ext" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log('Upload state:',r.uploadState);if(r.uploadState!=='SUCCESS'){process.exit(1)}"
+          curl -fsS -X POST -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" -H "Content-Length: 0" \
+            "$api/chromewebstore/v1.1/items/$ext/publish" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8'));const s=r.status||[];console.log('Publish status:',JSON.stringify(s));if(!s.every(x=>x==='OK'||x==='ITEM_PENDING_REVIEW')||!s.length){process.exit(1)}"

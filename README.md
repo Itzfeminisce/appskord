@@ -30,6 +30,12 @@ Run tests per app. A bare `vp test` at the root does not read each app's Vitest 
 `packages/config` holds the shared tsconfig, `defineAppConfig()` for each app's `wxt.config.ts`, the manifest checks each
 app calls from its `wxt.config.test.ts`, and the test setup. It ships as TypeScript source with no build step.
 
+## Releases
+
+Each app ships on its own. Bump the app's `package.json` version, merge to `main`, then push a tag `<app>@<version>`, for example `motikord@1.2.0`.
+CI tests and builds that app, checks the tag matches the manifest version, and makes a GitHub release with the zip. It uploads to the Chrome Web Store when the store secrets exist; otherwise upload the zip by hand.
+A tag ending in `-test` is a dry run: a prerelease, no store upload. The workflow can also be run by hand with an app name to get the zip as an artifact.
+
 ## Privacy
 
 Each app states what it stores and sends in its own `docs/privacy.md`:
