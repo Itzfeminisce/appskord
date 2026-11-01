@@ -186,7 +186,7 @@ describe('checker v2', () => {
     const r = v2([free([txt('head', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), logoLayer({ x: 0.12, y: 0.12, w: 0.2, h: 0.1 })])]);
     const hit = same(r, 'overlap');
     expect(hit.length).toBeGreaterThan(0);
-    expect(hit[0]!.note).toBe('Logo overlaps head in scene 1');
+    expect(hit[0]!.note).toBe('Scene 1 logo moved off the head');
     expect(same(apply(r, 'overlap'), 'overlap')).toEqual([]);
     expect(v2kinds(v2([free([txt('head', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), logoLayer({ x: 0.7, y: 0.6, w: 0.2, h: 0.1 })])]))).not.toContain('overlap');
   });

@@ -291,7 +291,7 @@ describe('runner: v2 Making', () => {
     const runner = createRunner(deps({ hooks: g.hooks }));
     await runner.start({ prompt: 'Bread', attached: [], type: 'promo' });
     expect(runner.get()).toMatchObject({
-      status: 'done', step: 'open', filled: 3, total: 3, criticSkipped: 'critic-not-available', criticModel: 'moonshotai/kimi-k2-instruct-0905',
+      status: 'done', step: 'open', filled: 3, total: 3, criticSkipped: 'critic-not-available', criticModel: 'openai/gpt-oss-120b',
       look: { style: 'bold', pace: 'normal', mood: 'upbeat' }, paused: false,
     });
     expect(runner.get().storyboard?.beats).toHaveLength(3);

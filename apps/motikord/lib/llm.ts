@@ -8,6 +8,7 @@ import {
   modelsUrl,
   notForText,
   PROVIDERS as API_PROVIDERS,
+  recommendedFor,
   recommendedModel as pickModel,
   type ChatMessage,
   type ErrorText,
@@ -108,6 +109,14 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
     json: opts.json, failCutOff: true, tooLarge: 'busy', maxTokens: opts.maxTokens, temperature: opts.temperature, signal: opts.signal, fetch: opts.fetch,
   });
   return { text: reply, by: provider };
+}
+
+/** The model a cloud chat sent with no model goes to: the session's cached recommendation, else the listed one, else FALLBACK_MODEL. */
+export async function chatModelFor(provider: Provider, opts: Pick<ChatOptions, 'key' | 'fetch' | 'signal'> = {}): Promise<string> {
+  const key = opts.key ?? (await getKey(provider).catch(() => undefined)) ?? '';
+  const fetchFn: FetchLike = opts.fetch ?? ((u, i) => fetch(u, i));
+  const picked = await recommendedFor({ app: 'Motikord', text, provider, key, fetch: fetchFn, signal: opts.signal, cache: modelCache, fresh: false, fallback: FALLBACK_MODEL[provider] });
+  return picked ?? FALLBACK_MODEL[provider];
 }
 
 /** The model Motikord recommends from a provider's chat model ids; FALLBACK_MODEL when none fits. */

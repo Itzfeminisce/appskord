@@ -102,10 +102,15 @@ function planText(reply: string): string {
   return (at < 0 ? '' : reply.slice(0, at)).trim().slice(0, 600);
 }
 
-/** A storyboard after edits: known templates, lines within 10 words, lengths at least a second. */
-export function cleanStoryboard(sb: Storyboard): Storyboard {
+/** A storyboard after edits: allowed templates only (others become the closest allowed one), lines within 10 words, lengths at least a second. */
+export function cleanStoryboard(sb: Storyboard, input: Pick<StoryboardInput, 'media' | 'logo'>): Storyboard {
+  const allowed = allowedTemplates(input);
   const beats = sb.beats
     .filter((b) => isTemplateId(b.template) && b.line.trim())
-    .map((b) => ({ template: b.template, line: cutWords(b.line.trim(), LINE_WORDS), ms: Math.max(1000, Math.round(b.ms) || 3000) }));
+    .map((b) => ({
+      template: allowed.includes(b.template) ? b.template : CLOSEST[b.template] ?? 'big-statement',
+      line: cutWords(b.line.trim(), LINE_WORDS),
+      ms: Math.max(1000, Math.round(b.ms) || 3000),
+    }));
   return { ...sb, beats };
 }

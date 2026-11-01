@@ -229,8 +229,9 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
     if (!pauseWanted || !live()) return Promise.resolve(sb);
     patch({ paused: true, pausing: false, storyboard: sb });
     return new Promise((resolve, reject) => {
-      release = (next) => { release = undefined; resolve(next); };
-      signal.addEventListener('abort', () => { release = undefined; reject(new AiError('cancelled', 'make')); }, { once: true });
+      const onAbort = () => { release = undefined; reject(new AiError('cancelled', 'make')); };
+      release = (next) => { release = undefined; signal.removeEventListener('abort', onAbort); resolve(next); };
+      signal.addEventListener('abort', onAbort, { once: true });
     });
   };
 
@@ -284,7 +285,7 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
       patch({
         status: 'done', steps: 4, step: 'open', clipId: result.clip.id, recipe: result.clip.recipe, notices: result.notices, by: result.by,
         storyboard: result.storyboard, fixes: result.fixes, issuesLeft: result.issues, critic: result.critic, criticSkipped: result.criticSkipped,
-        filling: undefined, retrying: undefined,
+        filling: undefined, retrying: undefined, pausing: false, paused: false,
       });
       if (store.get().editorOpen) await deps.notifySaved(result.clip.id);
       else { await deps.openEditor(result.clip.id); patch({ editorOpen: true }); }
@@ -337,7 +338,9 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
 
   /** "Pause and check the plan": the make stops once the plan is in, before the next scene. */
   function pause(): void {
-    if (store.get().status !== 'running' || store.get().paused) return;
+    const { status, paused, step } = store.get();
+    // Past the fill there is no pause point left.
+    if (status !== 'running' || paused || step === 'check' || step === 'critic' || step === 'open') return;
     pauseWanted = true;
     patch({ pausing: true });
   }

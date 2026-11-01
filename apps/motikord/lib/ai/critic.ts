@@ -1,6 +1,6 @@
 import { canSeeImages } from '@appskord/llm';
 import type { AiMode, CriticNote, Provider, Recipe, Settings } from '../types';
-import { chat, FALLBACK_MODEL, LLMError } from '../llm';
+import { chat, chatModelFor, FALLBACK_MODEL, LLMError } from '../llm';
 import { getSceneTemplate } from '../templates/scenes';
 import { toAiError } from './errors';
 import { criticSystem } from './prompts';
@@ -16,11 +16,14 @@ export type FrameRenderer = (recipe: Recipe, timesMs: number[]) => Promise<strin
 export interface CriticModel { ai: AiMode; provider: Provider; model: string }
 export interface CriticRun { notes: CriticNote[]; scenes: number[]; frames: number }
 
-/** The model the make talks to, which is the one the critic asks. */
-export function criticModel(settings: Pick<Settings, 'ai' | 'provider' | 'models'>, opts: Pick<AiOptions, 'ai' | 'provider' | 'model'> = {}): CriticModel {
+/** The model the make talks to, which is the one the critic asks: the picked one, else the one a chat with no model goes to. */
+export async function criticModel(settings: Pick<Settings, 'ai' | 'provider' | 'models'>, opts: Pick<AiOptions, 'ai' | 'provider' | 'model' | 'key' | 'fetch' | 'signal'> = {}): Promise<CriticModel> {
   const ai = opts.ai ?? settings.ai;
   const provider = opts.provider ?? settings.provider;
-  return { ai, provider, model: opts.model ?? settings.models[provider] ?? FALLBACK_MODEL[provider] };
+  const picked = (opts.model ?? settings.models[provider]) || undefined;
+  if (picked) return { ai, provider, model: picked };
+  if (ai === 'local') return { ai, provider, model: FALLBACK_MODEL[provider] };
+  return { ai, provider, model: await chatModelFor(provider, opts) };
 }
 
 /** Skipped when it is off, or when the model can't take images (Chrome's built-in AI never can). */
