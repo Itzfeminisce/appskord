@@ -30,6 +30,7 @@
   "dependencies": {
     "@appskord/llm": "workspace:*",
     "@appskord/penv": "workspace:*",
+    "@appskord/platform": "workspace:*",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
     "gifenc": "^1.0.3",

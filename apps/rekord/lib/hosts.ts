@@ -1,4 +1,5 @@
 /** Optional host permissions: which sites each feature talks to, and asking Chrome for them inside a click. */
+import { requestOrigins } from '@appskord/platform';
 import type { Settings } from './types';
 
 export const PENV_HOSTS = ['https://penv.cloud/*'];
@@ -39,9 +40,5 @@ export function hostsForSettings(s: Pick<Settings, 'transcription' | 'summary' |
 export async function requestHosts(origins: string[]): Promise<boolean> {
   const wanted = origins.filter((o) => OPTIONAL_HOSTS.includes(o));
   if (wanted.length === 0) return true;
-  try {
-    return await browser.permissions.request({ origins: wanted });
-  } catch {
-    return false;
-  }
+  return requestOrigins(wanted);
 }

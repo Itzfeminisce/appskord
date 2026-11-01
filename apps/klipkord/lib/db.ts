@@ -1,4 +1,4 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { createDB, folderHandle, type DBSchema } from '@appskord/platform';
 import { docsOf, type SearchDoc } from './search';
 import type { Recording, TranscriptModel } from './types';
 
@@ -13,28 +13,26 @@ interface KlipkordDB extends DBSchema {
 export interface SearchEntry { id: string; docs: SearchDoc[] }
 
 export const DB_VERSION = 3;
-const FOLDER_KEY = 'folder';
 
-let dbPromise: Promise<IDBPDatabase<KlipkordDB>> | null = null;
+const appDB = createDB<KlipkordDB>({
+  name: 'klipkord',
+  version: DB_VERSION,
+  // Each version only adds stores or fills new fields, so earlier data is kept.
+  async upgrade(db, oldVersion, _newVersion, tx) {
+    if (oldVersion < 1) {
+      db.createObjectStore('recordings', { keyPath: 'id' }).createIndex('status', 'status');
+      db.createObjectStore('handles');
+    }
+    if (oldVersion >= 1 && oldVersion < 2) {
+      for (let cursor = await tx.objectStore('recordings').openCursor(); cursor; cursor = await cursor.continue()) {
+        await cursor.update(withV2Fields(cursor.value));
+      }
+    }
+    if (oldVersion < 3) db.createObjectStore('searchIndex', { keyPath: 'id' });
+  },
+});
 
-export function getDB(): Promise<IDBPDatabase<KlipkordDB>> {
-  dbPromise ??= openDB<KlipkordDB>('klipkord', DB_VERSION, {
-    // Each version only adds stores or fills new fields, so earlier data is kept.
-    async upgrade(db, oldVersion, _newVersion, tx) {
-      if (oldVersion < 1) {
-        db.createObjectStore('recordings', { keyPath: 'id' }).createIndex('status', 'status');
-        db.createObjectStore('handles');
-      }
-      if (oldVersion >= 1 && oldVersion < 2) {
-        for (let cursor = await tx.objectStore('recordings').openCursor(); cursor; cursor = await cursor.continue()) {
-          await cursor.update(withV2Fields(cursor.value));
-        }
-      }
-      if (oldVersion < 3) db.createObjectStore('searchIndex', { keyPath: 'id' });
-    },
-  });
-  return dbPromise;
-}
+export const getDB = appDB.get;
 
 /**
  * Fills v2 fields on a v1 record. v1 kept no flag for the base pass, so a ready record with nothing pending
@@ -47,10 +45,7 @@ export function withV2Fields(r: Recording): Recording {
 }
 
 /** Test helper: close and forget the cached connection. */
-export async function closeDB(): Promise<void> {
-  if (dbPromise) (await dbPromise).close();
-  dbPromise = null;
-}
+export const closeDB = appDB.close;
 
 export async function putRecording(r: Recording): Promise<void> {
   const tx = (await getDB()).transaction(['recordings', 'searchIndex'], 'readwrite');
@@ -133,12 +128,7 @@ export async function markInterrupted(): Promise<number> {
   return cut.length;
 }
 
-export async function getFolderHandle(): Promise<FileSystemDirectoryHandle | undefined> {
-  return (await getDB()).get('handles', FOLDER_KEY);
-}
-export async function putFolderHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-  await (await getDB()).put('handles', handle, FOLDER_KEY);
-}
-export async function clearFolderHandle(): Promise<void> {
-  await (await getDB()).delete('handles', FOLDER_KEY);
-}
+const folder = folderHandle(getDB);
+export const getFolderHandle = folder.get;
+export const putFolderHandle = folder.put;
+export const clearFolderHandle = folder.clear;
