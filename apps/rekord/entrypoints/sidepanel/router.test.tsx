@@ -84,6 +84,25 @@ describe('side panel router on TanStack Router', () => {
     expect(shown(view.host)).toBe('googleConnect');
   });
 
+  it('a swallowed back() does not block the navigate queued after it', async () => {
+    const view = await mount(fake, 'start');
+    await step(() => view.router.navigate('settings'));
+    const original = view.history.back.bind(view.history);
+    view.history.back = () => {};
+    act(() => { view.router.back(); view.router.navigate('library'); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 450)); });
+    await settle();
+    view.history.back = original;
+    expect(view.router.route.screen).toBe('library');
+  });
+
+  it('a reload redirect to the first screen sets the back floor', async () => {
+    const view = await mount(fake, 'start', '/googleConnect');
+    expect(shown(view.host)).toBe('start');
+    expect(view.router.canGoBack).toBe(false);
+    expect(view.history.location.state).toMatchObject({ appskordFloor: expect.any(Number) });
+  });
+
   it('Back and Forward cannot leave Live, and Live stays mounted; its own replace and navigate still move on', async () => {
     // The browser's Back is a popstate, so this test runs on hash history like the extension.
     window.location.hash = '';

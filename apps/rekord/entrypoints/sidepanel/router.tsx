@@ -51,8 +51,8 @@ export interface SurfaceOptions {
 const validateSearch = searchParams({ meeting: 'string', at: 'number', message: 'string', section: 'string' });
 const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, at: p.atMs, message: p.message, section: p.section });
 // Redirects name screens built from data, which TanStack's typed `to` cannot check.
-const redirectTo = (route: Route) =>
-  redirect({ to: `/${route.screen}`, search: toSearch(route.params), replace: true } as unknown as Parameters<typeof redirect>[0]);
+const redirectTo = (route: Route, state?: object) =>
+  redirect({ to: `/${route.screen}`, search: toSearch(route.params), replace: true, state } as unknown as Parameters<typeof redirect>[0]);
 function toParams(search: Record<string, unknown>): RouteParams {
   const s = validateSearch(search);
   const params: RouteParams = {};
@@ -62,6 +62,9 @@ function toParams(search: Record<string, unknown>): RouteParams {
   if (s.section === 'transcription' || s.section === 'assistant') params.section = s.section;
   return params;
 }
+
+/** How long a queued back() waits for the router before the next step runs anyway. */
+const BACK_TIMEOUT_MS = 300;
 
 const Context = createContext<Router | null>(null);
 
@@ -99,8 +102,11 @@ export function createRouter(screens: Partial<Record<ScreenName, ComponentType>>
     const back = () =>
       run(() => {
         if (!canGoBack(router.state.location) || (hold as string[]).includes(screenOf(router))) return Promise.resolve();
+        // Resolves on navigation, or after a short wait when a blocker swallows the pop, so the queue never stalls.
         return new Promise<void>((resolve) => {
-          const stop = router.subscribe('onResolved', () => { stop(); resolve(); });
+          const done = () => { clearTimeout(timer); stop(); resolve(); };
+          const stop = router.subscribe('onResolved', done);
+          const timer = setTimeout(done, BACK_TIMEOUT_MS);
           router.history.back();
         });
       });
@@ -149,8 +155,9 @@ export function createRouter(screens: Partial<Record<ScreenName, ComponentType>>
     const root = createRootRoute({ component: Root });
     // True until the first screen has rendered: the load a reload starts.
     let loading = true;
+    // The initial screen becomes the back floor, so Back is off there after a reload redirect.
     const start = () => {
-      throw redirectTo(initial);
+      throw redirectTo(initial, clearBackState(router.state.location));
     };
     const routes: AnyRoute[] = [
       createRoute({ getParentRoute: () => root, path: '/', beforeLoad: start }),
@@ -164,7 +171,7 @@ export function createRouter(screens: Partial<Record<ScreenName, ComponentType>>
         }),
       ),
     ];
-    const router = createSurfaceRouter(root.addChildren(routes), history);
+    const router: AnyRouter = createSurfaceRouter(root.addChildren(routes), history);
     const stop = router.subscribe('onResolved', () => { loading = false; stop(); });
     return router;
   }
