@@ -5,7 +5,7 @@ import { applyPatch } from '../../lib/patch';
 import { activeLayers, clipDuration, drawFrame, fontFor, sceneAt } from '../../lib/render/drawFrame';
 import { boxFor, safeBox } from '../../lib/render/reflow';
 import type { Box, Layer, Recipe, Scene, TextLayer } from '../../lib/types';
-import { countLabel, layerSlotText, setSlot, slotCount, slotOfLayer, slotWith, type LayerSlot } from '../../lib/editor/v2';
+import { countLabel, layerSlotText, overflowAt, setSlot, slotCount, slotOfLayer, slotWith, type LayerSlot } from '../../lib/editor/v2';
 import { frameReady, useEditor } from './Editor';
 
 const RATIO = { '9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9 } as const;
@@ -224,23 +224,36 @@ function Selection({ box, W, H }: { box: Box; W: number; H: number }) {
 }
 
 /** In-place text editing: a textarea laid over the layer in its own font, size and colour. */
-function TextEditor({ found, box, W, H, onText, onDone, value }: { found: Found & { layer: TextLayer }; box: Box; W: number; H: number; onText: (t: string) => void; onDone: () => void; value?: string }) {
+function TextEditor({ found, box, W, H, onText, onDone, value, overflow }: { found: Found & { layer: TextLayer }; box: Box; W: number; H: number; onText: (t: string) => void; onDone: () => void; value?: string; overflow?: number }) {
   const l = found.layer;
   const unit = Math.min(W, H) / 1080;
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { const el = ref.current; if (el) { el.focus(); el.select(); } }, []);
+  const text = value ?? l.text;
+  const shared: CSSProperties = {
+    ...place(box, W, H), margin: 0, padding: l.background ? 16 * unit : 0, border: 0, overflow: 'hidden', font: fontFor(l, l.sizePx * unit),
+    lineHeight: l.lineHeight, textAlign: l.align, whiteSpace: 'pre-wrap', overflowWrap: 'break-word',
+  };
   return (
+    <>
     <textarea
       ref={ref} aria-label={l.name} value={value ?? l.text} spellCheck
       onChange={(e) => onText(e.target.value)}
       onBlur={onDone}
       onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onDone(); } }}
       style={{
-        ...place(box, W, H), margin: 0, padding: l.background ? 16 * unit : 0, border: 0, resize: 'none', overflow: 'hidden',
-        background: l.background ?? 'transparent', color: l.colour, font: fontFor(l, l.sizePx * unit), lineHeight: l.lineHeight,
-        textAlign: l.align, outline: '1.5px solid var(--accent)', outlineOffset: 3, borderRadius: l.background ? 12 * unit : 0,
+        ...shared, resize: 'none', background: l.background ?? 'transparent', color: l.colour,
+        outline: '1.5px solid var(--accent)', outlineOffset: 3, borderRadius: l.background ? 12 * unit : 0,
       }}
     />
+    {/* The words past the slot's limit, underlined in place: a clear copy of the text laid over the field. */}
+    {overflow !== undefined && (
+      <div aria-hidden="true" style={{ ...shared, color: 'transparent', pointerEvents: 'none' }}>
+        {text.slice(0, overflow)}
+        <span style={{ textDecoration: 'underline wavy var(--warning-ink)', textDecorationThickness: Math.max(1.5, 3 * unit), textUnderlineOffset: 4 * unit }}>{text.slice(overflow)}</span>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -249,9 +262,12 @@ function TextEditor({ found, box, W, H, onText, onDone, value }: { found: Found 
  * chip warns and the words are shortened on blur (text-shortened, with Undo). Type size never shrinks.
  */
 function SlotTextEditor({ found, slot, box, W, H, onDone }: { found: Found & { layer: TextLayer }; slot: LayerSlot; box: Box; W: number; H: number; onDone: () => void }) {
-  const { state, brand, edit, setNotice } = useEditor();
+  const { state, brand, edit, setNotice, setOverSlot } = useEditor();
   const [draft, setDraft] = useState(() => layerSlotText(found.scene, slot));
   const c = slotCount(slot.def, draft);
+  const id = found.layer.id;
+  useEffect(() => { setOverSlot(c.over ? id : undefined); }, [c.over, id, setOverSlot]);
+  useEffect(() => () => setOverSlot(undefined), [setOverSlot]);
   const put = (text: string, final: boolean) => {
     const r = state.clip.recipe;
     const scene = r.scenes[found.si];
@@ -268,7 +284,7 @@ function SlotTextEditor({ found, slot, box, W, H, onDone }: { found: Found & { l
         {c.over && c.limit !== undefined && <span role="status" style={{ ...tag, right: -6, top: -28, background: 'var(--warning-bg)', color: 'var(--warning-ink)', border: '1px solid var(--warning-line)' }}>{`${countLabel(c.n, c.limit)} · will be shortened`}</span>}
         <span style={{ ...tag, left: -6, bottom: -30, background: 'var(--ink)', color: '#fff', fontWeight: 500 }}>Type size stays fixed. Long text is shortened, never shrunk.</span>
       </span>
-      <TextEditor found={found} box={box} W={W} H={H} value={draft}
+      <TextEditor found={found} box={box} W={W} H={H} value={draft} overflow={c.over ? overflowAt(draft, c.limit) : undefined}
         onText={(t) => { setDraft(t); if (!slotCount(slot.def, t).over) put(t, false); }}
         onDone={() => { put(draft, true); onDone(); }} />
     </>

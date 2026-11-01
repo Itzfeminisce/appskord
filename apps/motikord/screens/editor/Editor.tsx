@@ -77,6 +77,9 @@ export interface EditorApi {
   /** The v2 state card shown over the stage (StatesMakeV2). */
   notice?: Notice;
   setNotice: (n: Notice | undefined) => void;
+  /** The slot layer being typed past its word limit on the stage, so its timeline bar reads "{slot} · too long". */
+  overSlot?: string;
+  setOverSlot: (layerId: string | undefined) => void;
   /** SwapTemplate, NewLook and TransitionPicker. */
   openPanel: (p: V2Panel) => void;
   /** The scene being remade (SceneRemaking), if any. */
@@ -221,6 +224,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   const [missing, setMissing] = useState(loaded.missing);
   const [tab, setTab] = useState<EditorTab>(open === 'changes' ? 'changes' : loaded.clip.recipe.scenes.some((s) => s.template) ? 'scene' : 'layer');
   const [notice, setNotice] = useState<Notice>();
+  const [overSlot, setOverSlot] = useState<string>();
   const [remaking, setRemaking] = useState<string>();
   const [keepV1, setKeepV1] = useState(false);
   const remakeStop = useRef<AbortController>(undefined);
@@ -383,7 +387,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
       if (n) setToastText(undefined);
     },
     sizeOnly, setSizeOnly, setPreview,
-    tab, setTab, notice, setNotice, remaking,
+    tab, setTab, notice, setNotice, overSlot, setOverSlot, remaking,
     openPanel: (p) => setPanel(p),
     current: () => stateRef.current.clip.recipe,
     remake: (sceneId, request) => {
@@ -416,7 +420,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
         }
       })();
     },
-  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly, tab, notice, remaking]);
+  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly, tab, notice, overSlot, remaking]);
   const stopRemake = () => { remakeStop.current?.abort(); remakeStop.current = undefined; setRemaking(undefined); };
   // The canvas alone sees the preview recipe; everything else keeps the clip.
   const canvasApi = useMemo<EditorApi>(() => (preview ? { ...api, state: { ...api.state, clip: { ...api.state.clip, recipe: preview } } } : api), [api, preview]);

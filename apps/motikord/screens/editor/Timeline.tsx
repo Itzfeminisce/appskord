@@ -4,7 +4,7 @@ import { getPreset } from '../../lib/render/presets';
 import { clockShort, restTime, sceneStart, sceneTitle } from '../../lib/editor/store';
 import { dragSpan, layerTiming, sceneLength, sceneTargets, sceneTiming, scrubTime, SCRUB_MS, ticks, tracks, type DragMode, type Span } from '../../lib/editor/timeline';
 import type { Credit, LicenceId, Recipe } from '../../lib/types';
-import { templateOf, transitionLabel, transitionOf, TRANSITION_NAMES } from '../../lib/editor/v2';
+import { slotCount, slotOfLayer, templateOf, transitionLabel, transitionOf, TRANSITION_NAMES } from '../../lib/editor/v2';
 import { useEditor } from './Editor';
 import { Spinner } from './StatesV2';
 
@@ -35,7 +35,7 @@ function musicLabel(r: Recipe): string {
 }
 
 export function Timeline() {
-  const { state, edit, select, setTime, play, playhead, go, openPanel, remaking } = useEditor();
+  const { state, edit, select, setTime, play, playhead, go, openPanel, remaking, overSlot } = useEditor();
   const r = state.clip.recipe;
   const lane = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLSpanElement>(null);
@@ -251,7 +251,9 @@ export function Timeline() {
                   const span = draft?.kind === 'layer' && draft.si === si && draft.li === li ? draft.span : { startMs: layer.startMs, endMs: Math.min(layer.endMs, sceneMs(si)) };
                   const on = layer.id === state.layerId && r.scenes[si]!.id === state.sceneId;
                   const media = layer.type === 'image' || layer.type === 'video';
-                  const text = on ? undefined : media ? [r.assets[layer.assetId]?.name ?? layer.name, presetLabel(layer.during?.preset)].filter(Boolean).join(' · ') : undefined;
+                  const ls = layer.type === 'text' ? slotOfLayer(r.scenes[si], layer.id) : undefined;
+                  const long = ls && (overSlot === layer.id || slotCount(ls.def, r.scenes[si]!.slots?.[ls.def.id]).over) ? `${ls.def.name} · too long` : undefined;
+                  const text = long ?? (on ? undefined : media ? [r.assets[layer.assetId]?.name ?? layer.name, presetLabel(layer.during?.preset)].filter(Boolean).join(' · ') : undefined);
                   const bg = on ? 'var(--accent)' : media ? 'var(--warning-line)' : mine ? 'var(--tint-strong)' : layer.type === 'text' ? 'var(--line)' : 'var(--line-strong)';
                   const style: CSSProperties = {
                     position: 'absolute', left: (starts[si]! + span.startMs) * k, width: Math.max(6, (span.endMs - span.startMs) * k), height: 24, borderRadius: 6,
@@ -263,7 +265,7 @@ export function Timeline() {
                       onPointerDown={(e) => (layer.locked ? selectLayer(si, li) : down(e, 'layer', si, li))}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectLayer(si, li); } }}>
                       <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: EDGE_PX, cursor: 'ew-resize' }} />
-                      {on ? <><span>{presetLabel(layer.in?.preset)}</span><span>{presetLabel(layer.out?.preset)}</span></> : text && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{text}</span>}
+                      {on && !long ? <><span>{presetLabel(layer.in?.preset)}</span><span>{presetLabel(layer.out?.preset)}</span></> : text && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{text}</span>}
                       <span aria-hidden="true" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: EDGE_PX, cursor: 'ew-resize' }} />
                     </span>
                   );

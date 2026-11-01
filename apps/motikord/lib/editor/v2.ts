@@ -26,6 +26,13 @@ export function slotCount(def: SlotDef, v: SlotValue | undefined): { n: number; 
   const n = typeof v === 'string' ? countWords(v) : Array.isArray(v) ? Math.max(0, ...(v as unknown[]).map((x) => countWords(typeof x === 'string' ? x : String((x as { label?: string }).label ?? '')))) : 0;
   return { n, limit: def.words, over: def.words !== undefined && n > def.words };
 }
+/** Where the words past the limit start in the text, for underlining them while typing; undefined within it. */
+export function overflowAt(text: string, limit: number | undefined): number | undefined {
+  if (limit === undefined) return undefined;
+  const re = /\S+/g;
+  for (let i = 0, m = re.exec(text); m; i++, m = re.exec(text)) if (i === limit) return m.index;
+  return undefined;
+}
 export const countLabel = (n: number, limit: number) => `${n} of ${limit} words`;
 
 const sceneNo = (si: number) => `Scene ${si + 1}`;

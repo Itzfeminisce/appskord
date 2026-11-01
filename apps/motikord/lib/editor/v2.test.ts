@@ -5,7 +5,7 @@ import { getPack } from '../templates/scenes';
 import type { Clip, Recipe, Scene, SlotValue, TemplateId } from '../types';
 import { initState, reducer, type EditorState, type Edit } from './store';
 import {
-  isV1Clip, nearestTemplate, newLook, noOtherFit, originalOf, pourSlots, remakeEdit, setSlot, setTransition, slotCount, swapGroups,
+  isV1Clip, nearestTemplate, newLook, noOtherFit, originalOf, overflowAt, pourSlots, remakeEdit, setSlot, setTransition, slotCount, swapGroups,
   swapTemplate, transitionGroups, transitionLabel,
 } from './v2';
 import { getSceneTemplate } from '../templates/scenes';
@@ -165,5 +165,14 @@ describe('transitions', () => {
     expect(next.scenes.map((s) => s.transition)).toEqual([undefined, { kind: 'zoom', ms: 1000 }, { kind: 'zoom', ms: 1000 }]);
     expect(transitionLabel({ kind: 'push', ms: 300 })).toBe('Push · 0.3 s');
     expect(transitionGroups(pack).pack).toEqual(pack.transitions);
+  });
+});
+
+describe('slot overflow', () => {
+  it('finds where the words past the limit start', () => {
+    expect(overflowAt('Fresh sourdough every single morning here now', 6)).toBe('Fresh sourdough every single morning here '.length);
+    expect(overflowAt('  Fresh  bread ', 1)).toBe('  Fresh  '.length);
+    expect(overflowAt('Fresh bread', 6)).toBeUndefined();
+    expect(overflowAt('Fresh bread', undefined)).toBeUndefined();
   });
 });
