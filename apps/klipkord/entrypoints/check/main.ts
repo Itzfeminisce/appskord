@@ -4,6 +4,7 @@ import { StoppedError, TimeoutError, cleanupStack, guard, pause, watchdog } from
 import { downloadSummary, frameStats, levelDb, mean, megabytes, realTimeFactor, round } from '@/lib/check/stats';
 import type { FileProgress } from '@/lib/check/stats';
 import { builtinAiNote, captureTarget, chromeMajor, smallSkipNote, soundStatus } from '@/lib/check/verdicts';
+import { mountV3 } from './v3';
 import { WhisperWorker } from './whisper-client';
 
 const HINTS: Record<TestId, string> = {
@@ -806,3 +807,8 @@ void machineInfo().then((machine) => {
   results = { ...results, machine };
   render();
 });
+
+const v3Section = document.createElement('section');
+v3Section.innerHTML = '<h2>v3 editor</h2><div id="v3-host"></div>';
+document.body.append(v3Section);
+mountV3($('v3-host'));
