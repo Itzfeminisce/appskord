@@ -8,6 +8,7 @@ import ImageKey from '../../screens/ImageKey';
 import Library from '../../screens/Library';
 import LibraryEmpty from '../../screens/LibraryEmpty';
 import Main from '../../screens/Main';
+import LookSheet from '../../screens/LookSheet';
 import Making from '../../screens/Making';
 import MediaSources from '../../screens/MediaSources';
 import MakingFailed from '../../screens/MakingFailed';
@@ -19,6 +20,7 @@ import Recovered from '../../screens/Recovered';
 import Settings from '../../screens/Settings';
 import SettingsModel from '../../screens/SettingsModel';
 import Setup from '../../screens/Setup';
+import StoryboardEdit from '../../screens/StoryboardEdit';
 import StatesCreate from '../../screens/StatesCreate';
 import StatesLibrary from '../../screens/StatesLibrary';
 import StatesSetup from '../../screens/StatesSetup';
@@ -32,7 +34,7 @@ import YourMedia from '../../screens/YourMedia';
 
 export const sidepanel = createRouter({
   Main, Setup, PenvConnect, PasteKey, PenvConnected,
-  Home, ImageKey, VoicePrompt, ClipType, Templates, YourMedia, Making, MakingFailed, Grab,
+  Home, ImageKey, VoicePrompt, ClipType, Templates, YourMedia, LookSheet, StoryboardEdit, Making, MakingFailed, Grab,
   BrandKit, Library, LibraryEmpty, Settings, SettingsModel, MediaSources, AddSource, Privacy, Recovered, StatesSetup, StatesCreate, StatesLibrary, StatesVoice, StatesSources,
 });
 export type SidepanelScreen = (typeof sidepanel.names)[number];

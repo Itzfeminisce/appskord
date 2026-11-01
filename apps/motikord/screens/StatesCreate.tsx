@@ -147,6 +147,54 @@ export function HomeFooter({ by }: { by: Provider | 'builtin' }) {
   return <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>{by !== 'builtin' ? `${label(by)} writes the clip from your words. Your media stays on this computer.` : 'Chrome’s built-in AI writes the clip from your words. Everything stays on this computer.'}</span>;
 }
 
+// ---- Making states v2 (StatesMakeV2, StatesLookV2) ----
+
+export function StoryboardFailed({ provider = 'groq', onTryAgain, onSimpler }: { provider?: Provider; onTryAgain?: () => void; onSimpler?: () => void }) {
+  return (
+    <Notice tone="error" role="alert" glyph="cross" title="Couldn't plan the story"
+      actions={[<button key="a" type="button" onClick={onTryAgain} style={actionStyle}>Try again</button>, <button key="b" type="button" onClick={onSimpler} style={secondary}>Make it simpler</button>]}>
+      {`${label(provider)}'s reply didn't make sense twice.`}
+    </Notice>
+  );
+}
+export function SceneRetrying({ n = 3 }: { n?: number }) {
+  return <Notice tone="warning" role="status" glyph="warn" title={`Scene ${n} came back garbled. Asking again…`}>{null}</Notice>;
+}
+export function CriticNotAvailable({ model = 'openai/gpt-oss-120b', onChangeModel }: { model?: string; onChangeModel?: () => void }) {
+  return (
+    <Notice glyph="info" role="status" title={model} actions={<button type="button" onClick={onChangeModel} style={secondary}>Change model</button>}>
+      can't see images, so the visual check was skipped. The layout check still ran.
+    </Notice>
+  );
+}
+export function CriticUnreachable({ provider = 'groq', onDismiss }: { provider?: Provider; onDismiss?: () => void }) {
+  return (
+    <Notice glyph="info" role="status" title={`Couldn't reach ${label(provider)} for the visual check. Your clip is ready without it.`}
+      actions={<button type="button" aria-label="Dismiss" onClick={onDismiss} style={{ ...secondary, width: 32, padding: 0 }}>×</button>}>{null}
+    </Notice>
+  );
+}
+export function CheckerLeftIssues({ n = 2, onOpen }: { n?: number; onOpen?: () => void }) {
+  return (
+    <Notice tone="warning" role="status" glyph="warn" title={n === 1 ? '1 thing still needs a look' : `${n} things still need a look`}
+      actions={<button type="button" onClick={onOpen} style={actionStyle}>Open quality check</button>}>{null}
+    </Notice>
+  );
+}
+export function MakingSlow({ provider = 'groq' }: { provider?: Provider }) {
+  return <Notice tone="warning" role="status" glyph="clock" title={`Still working. ${label(provider)} is slower than usual today.`}>{null}</Notice>;
+}
+export function CriticOff() {
+  return <Notice glyph="info" role="status" title="Visual critic is off. The layout check still runs.">{null}</Notice>;
+}
+/** The footer under v2 Making; after the critic looked at frames it says what else left. */
+export function MakeFooter({ by, frames }: { by: Provider | 'builtin'; frames?: number }) {
+  if (by === 'builtin') return <AiFooter by={by} />;
+  return <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>{frames
+    ? `Your words and ${frames} small preview frames went to ${label(by)}. Nothing else left this computer.`
+    : `Your words go to ${label(by)}. Your media stays on this computer.`}</span>;
+}
+
 const SHEET: [string, ReactNode][] = [
   ['prompt-empty · Make a clip', (
     <div style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -170,6 +218,13 @@ const SHEET: [string, ReactNode][] = [
   ['grab-picture-unreadable · Grab from the page', <GrabPictureUnreadable />],
   ['media-unsupported · Your media', <MediaUnsupported name="brochure.pdf" />],
   ['video-wont-play · Your media', <VideoWontPlay name="drone-shot.mov" />],
+  ['storyboard-failed · Making your clip', <StoryboardFailed />],
+  ['scene-retrying · Making your clip', <SceneRetrying />],
+  ['critic-not-available · Making your clip, Editor', <CriticNotAvailable />],
+  ['critic-unreachable · Making your clip, Editor', <CriticUnreachable />],
+  ['checker-left-issues · Editor', <CheckerLeftIssues />],
+  ['making-slow · Making your clip', <MakingSlow />],
+  ['critic-off · Settings, Look and quality', <CriticOff />],
   ['home-footer · Make a clip (one line per AI)', (
     <div style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, color: 'var(--muted)' }}>
       <span>Groq writes the clip from your words. Your media stays on this computer.</span>
