@@ -6,9 +6,9 @@ and a few small packages, and each app keeps its own id, version and store listi
 
 ## Apps
 
-| App      | What it does         | Folder                        |
-| -------- | -------------------- | ----------------------------- |
-| Rekord   | Meeting notes        | `apps/rekord` (added in M2)   |
+| App      | What it does         | Folder          |
+| -------- | -------------------- | --------------- |
+| Rekord   | Meeting notes        | `apps/rekord`   |
 | Klipkord | Screen recorder      | `apps/klipkord` |
 | Motikord | Short animated clips | `apps/motikord` |
 
