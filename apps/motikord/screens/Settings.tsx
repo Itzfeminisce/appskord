@@ -8,9 +8,8 @@ import { loadKeys } from '../lib/penv';
 import { sourcesSummary } from '../lib/media/sources/summary';
 import { getSettings, onSettingsChanged, updateSettings, type SettingsPatch } from '../lib/settings';
 import type { BrandKit, FileKind, LookStyle, Pace, Provider, Quality, Settings as SettingsData } from '../lib/types';
-import { CODE_URL } from './Privacy';
-
-const appVersion = () => { try { return browser.runtime.getManifest().version; } catch { return '2.0.0'; } };
+import { CODE_URL, appVersion } from './Privacy';
+import { ImageKeyPanel } from './ImageKey';
 import { BackButton, probeMachine } from './Setup';
 import { ModelBuiltIn, ModelField } from './SettingsModel';
 import { NoBuiltInAi } from './StatesSetup';
@@ -31,9 +30,9 @@ function Section({ title, children, first: top }: { title?: string; children: Re
 
 const rowStyle = { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: 0, borderTop: '1px solid #EFEFF1', color: 'inherit', textDecoration: 'none', font: 'inherit', background: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', boxSizing: 'border-box' } as const;
 const first = { borderTop: 0 } as const;
-const text = (title: string, hint?: ReactNode) => (
+const text = (title: string, hint?: ReactNode, bold?: boolean) => (
   <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flexGrow: 1 }}>
-    <span style={{ fontSize: 13 }}>{title}</span>
+    <span style={{ fontSize: 13, fontWeight: bold ? 600 : 400 }}>{title}</span>
     {hint && <span style={{ fontSize: 12, lineHeight: 1.4, color: 'var(--muted)' }}>{hint}</span>}
   </span>
 );
@@ -44,10 +43,10 @@ const btn2 = { height: 32, padding: '0 12px', border: '1px solid #E0E0E4', borde
 /** A toggle, accent when on. The real checkbox stays for keyboards and screen readers. */
 function Switch({ label, hint, checked, onChange, top, on }: { label: string; hint: ReactNode; checked: boolean; onChange: (v: boolean) => void; top?: boolean; on?: boolean }) {
   return (
-    <label style={{ ...rowStyle, ...(top ? first : null) }}>
-      {text(label, hint)}
+    <label style={{ ...rowStyle, alignItems: 'flex-start', ...(top ? first : null) }}>
+      {text(label, hint, true)}
       <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ position: 'absolute', opacity: 0, width: 1, height: 1, margin: 0 }} />
-      {on && <b style={{ fontSize: 12, fontWeight: checked ? 600 : 500, color: checked ? 'var(--accent)' : 'var(--muted)', minWidth: 22, textAlign: 'right' }}>{checked ? 'On' : 'Off'}</b>}
+      {on && <b style={{ fontSize: 12, fontWeight: checked ? 600 : 500, color: checked ? 'var(--accent)' : 'var(--muted)', minWidth: 22, textAlign: 'right', lineHeight: '20px' }}>{checked ? 'On' : 'Off'}</b>}
       <span aria-hidden="true" style={{ position: 'relative', width: 34, height: 20, borderRadius: 999, background: checked ? 'var(--accent)' : '#DCDCE0', flexShrink: 0, transition: 'background 150ms' }}>
         <span style={{ position: 'absolute', top: 2, left: checked ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(16,16,20,0.2)', transition: 'left 150ms' }} />
       </span>
@@ -55,9 +54,9 @@ function Switch({ label, hint, checked, onChange, top, on }: { label: string; hi
   );
 }
 
-function Status({ ready, children }: { ready: boolean; children: string }) {
+function Status({ ready, children, size = 11 }: { ready: boolean; children: string; size?: number }) {
   const c = ready ? 'var(--success-ink)' : 'var(--faint)';
-  return <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, color: c }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: ready ? 'var(--success-ink)' : '#C8C8CE' }} />{children}</span>;
+  return <span style={{ fontSize: size, display: 'flex', alignItems: 'center', gap: 5, color: c }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: ready ? 'var(--success-ink)' : '#C8C8CE' }} />{children}</span>;
 }
 
 /** The visual critic's line: whether the chosen model can see images. Built-in AI never can. */
@@ -72,18 +71,18 @@ const STYLES: [LookStyle, string][] = [['auto', 'Auto'], ['clean', 'Clean'], ['b
 const PACE_LABELS: [Pace, string][] = [['calm', 'Calm'], ['normal', 'Normal'], ['fast', 'Fast']];
 
 /** Row 11 SettingsLook: defaults for new clips and the switches for the critic, beat sync and AI images. */
-export function LookSection({ s, set, onImageKey, onModel }: { s: SettingsData; set: (patch: SettingsPatch) => void; onImageKey: () => void; onModel?: () => void }) {
+export function LookSection({ s, set, onPrivacy, onModel }: { s: SettingsData; set: (patch: SettingsPatch) => void; onPrivacy: () => void; onModel?: () => void }) {
   const status = criticStatus(s);
   return (
     <Section title="Look and quality">
       <label style={{ ...rowStyle, ...first }}>
-        {text('Default style', 'Used for new clips. You can change it per clip under Look.')}
+        {text('Default style', 'Used for new clips. You can change it per clip under Look.', true)}
         <select aria-label="Default style" value={s.look.style} onChange={(e) => set({ look: { style: e.target.value as LookStyle } })} style={selectStyle}>
           {STYLES.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
       </label>
       <div style={rowStyle}>
-        {text('Default pace')}
+        {text('Default pace', undefined, true)}
         <div role="radiogroup" aria-label="Default pace" style={{ display: 'flex', padding: 2, borderRadius: 9, background: '#F1F1F3', gap: 2 }}>
           {PACE_LABELS.map(([id, name]) => (
             <button key={id} type="button" role="radio" aria-checked={s.look.pace === id} onClick={() => set({ look: { pace: id } })}
@@ -92,9 +91,14 @@ export function LookSection({ s, set, onImageKey, onModel }: { s: SettingsData; 
         </div>
       </div>
       <Switch label="Visual critic" checked={s.critic} onChange={(v) => set({ critic: v })} on
-        hint={<>{`Sends 2 to 4 small frames of the clip to ${PROVIDERS[s.provider].label} to spot what looks wrong. Only with models that can see images. The frames show your text and any media in the clip.`}<span style={{ display: 'block', marginTop: 4 }}><Status ready={status.ready}>{status.text}</Status>{!status.ready && onModel && <> <a href="#model" onClick={(e) => { e.preventDefault(); onModel(); }} style={{ color: 'var(--accent)', fontWeight: 500 }}>Change model</a></>}</span></>} />
+        hint={<>{`Sends 2 to 4 small frames of the clip to ${PROVIDERS[s.provider].label} to spot what looks wrong. Only with models that can see images. The frames show your text and any media in the clip.`}<span style={{ display: 'block', marginTop: 10 }}><Status ready={status.ready} size={12}>{status.text}</Status>{!status.ready && onModel && <a href="#model" onClick={(e) => { e.preventDefault(); onModel(); }} style={{ color: 'var(--accent)', fontWeight: 500, textDecoration: 'none', display: 'inline-block', marginTop: 4 }}>Change model</a>}</span></>} />
       <Switch label="Beat sync" checked={s.beatSync} onChange={(v) => set({ beatSync: v })} on hint="Cuts and motion land on the music's beats. The beats are found on this computer; the music never leaves it." />
-      <Switch label="AI images" checked={s.aiImages} onChange={(v) => { set({ aiImages: v }); if (v) onImageKey(); }} on hint="Makes a picture for an empty image slot when no photo fits. Only the slot's few-word description goes to the image provider." />
+      <Switch label="AI images" checked={s.aiImages} onChange={(v) => set({ aiImages: v })} on hint="Makes a picture for an empty image slot when no photo fits. Only the slot's few-word description goes to the image provider." />
+      {s.aiImages && <ImageKeyPanel embedded />}
+      <a href="#privacy" onClick={(e) => { e.preventDefault(); onPrivacy(); }} style={rowStyle}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z" /></svg>
+        {text('Where your data goes')}{chevron}
+      </a>
     </Section>
   );
 }
@@ -173,7 +177,7 @@ export default function Settings() {
       </div>
       {builtInAi === false && <div style={{ margin: '10px 16px 0' }}><NoBuiltInAi provider={provider} onUseGroq={() => set({ ai: 'cloud' })} /></div>}
 
-      <LookSection s={s} set={set} onImageKey={() => navigate('ImageKey')} onModel={() => navigate('SettingsModel')} />
+      <LookSection s={s} set={set} onPrivacy={() => navigate('Privacy')} onModel={() => navigate('SettingsModel')} />
 
       <Section title="Keys">
         <a href="#keys" onClick={(e) => { e.preventDefault(); navigate('PenvConnected'); }} style={{ ...rowStyle, ...first }}>
@@ -228,12 +232,6 @@ export default function Settings() {
         <a href="#media-sources" onClick={(e) => { e.preventDefault(); navigate('MediaSources'); }} style={{ ...rowStyle, ...first }}>
           {text('Media sources', sources.line)}
           <span style={{ fontSize: 12, color: 'var(--muted)', flexShrink: 0 }}>{`${sources.on} on`}</span>
-        </a>
-      </Section>
-
-      <Section>
-        <a href="#privacy" onClick={(e) => { e.preventDefault(); navigate('Privacy'); }} style={{ ...rowStyle, ...first }}>
-          {text('Where your data goes')}{chevron}
         </a>
       </Section>
 
