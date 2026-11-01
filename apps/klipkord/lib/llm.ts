@@ -62,7 +62,8 @@ export async function chat(
     openaiCompatible: true,
     key: keys[p.keyName],
     model: repicked[p.id] ?? p.model,
-    modelGone: 'repick',
+    // Only Groq retires the default under it; any other gone model is reported.
+    modelGone: p.id === 'groq' ? 'repick' : 'report',
     onRepick: (model) => { repicked[p.id] = model; },
     json: opts.json,
     maxTokens: opts.maxTokens,

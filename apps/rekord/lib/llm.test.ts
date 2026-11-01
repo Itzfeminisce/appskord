@@ -8,6 +8,8 @@ import type { Segment } from './types';
 const reply = (content: unknown, status = 200) =>
   new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status });
 const msgs = [{ role: 'user' as const, content: 'hi' }];
+const cut = (content: string) =>
+  new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'length' }] }));
 
 beforeEach(async () => {
   fakeBrowser.reset();
@@ -15,6 +17,10 @@ beforeEach(async () => {
 });
 
 describe('chat', () => {
+  it('returns a JSON reply the token limit cut off, for the caller to read', async () => {
+    expect(await chat(msgs, { json: true }, async () => cut('{"a":'))).toBe('{"a":');
+  });
+
   it('posts an OpenAI-style request to the summary provider', async () => {
     const f = vi.fn(async () => reply('hello'));
     expect(await chat(msgs, { json: true, maxTokens: 300 }, f)).toBe('hello');
@@ -63,6 +69,7 @@ describe('chat', () => {
     expect(await message(async () => reply('x', 401))).toBe('The AI service did not accept your key. Check Connect AI in Settings.');
     expect(await message(async () => reply('x', 429))).toBe('The AI service is busy right now. Try again in a minute.');
     expect(await message(async () => reply('x', 400))).toBe('The AI service returned an error (400). Try again.');
+    expect(await message(async () => reply('x', 413))).toBe('The AI service returned an error (413). Try again.');
     expect(await message(async () => reply(42))).toBe('The AI service sent an unexpected reply. Try again.');
     expect(await message(async () => { throw new TypeError('x'); })).toBe('Rekord could not reach the AI service. Check your connection and try again.');
     await saveKeys({});

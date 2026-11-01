@@ -144,9 +144,10 @@ describe('OpenAI-compatible providers', () => {
   it('re-picks once from the list when there is no pick and the guess is gone', async () => {
     await updateSettings({ provider: 'openai' });
     const gone = json({ error: { message: 'The model `gpt-9` does not exist', code: 'model_not_found' } }, 404);
-    const { fetch, chats } = fake({ [OPENAI_MODELS]: [{ id: 'gpt-4.1' }] }, gone, openaiOk('ok'));
+    const { fetch, chats } = fake({ [OPENAI_MODELS]: [{ id: 'gpt-4.1' }, { id: 'gpt-4o' }] }, gone, openaiOk('ok'));
     expect((await chat(m, { ai: 'cloud', key: 'sk-test', fetch })).text).toBe('ok');
-    expect(chats()[1]!.body!.model).toBe('gpt-4.1');
+    // The re-pick never hands back the model that just failed.
+    expect(chats().map((c) => c.body!.model)).toEqual(['gpt-4.1', 'gpt-4o']);
   });
 
   it('says not-for-text for a model that is not a chat model', async () => {

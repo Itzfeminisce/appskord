@@ -27,6 +27,10 @@ export interface CloudChat extends Endpoint, PickOptions {
   onRepick?: (model: string) => void | Promise<void>;
   cache?: ModelCache;
   json?: boolean; // ask for a JSON object reply
+  /** A JSON reply cut off by the token limit throws cut-off; otherwise the cut text is returned for the app to read. */
+  failCutOff?: boolean;
+  /** A 413 that halving the token budget did not fix: 'busy', or 'status' (the HTTP error, the default). */
+  tooLarge?: 'busy' | 'status';
   maxTokens?: number;
   temperature?: number; // default 0.2
   signal?: AbortSignal;
@@ -182,7 +186,7 @@ export async function chatCloud(messages: ChatMessage[], c: CloudChat): Promise<
         if (policy === 'report') throw fail(text, { reason: 'model-not-found', ...at });
         if (!repicked) {
           repicked = true;
-          const next = await recommendedFor({ ...listing, fresh: true });
+          const next = await recommendedFor({ ...listing, fresh: true, exclude: r.model });
           if (next) {
             if (next !== r.model) await Promise.resolve(c.onRepick?.(next)).catch(() => undefined);
             r.model = next;
@@ -211,6 +215,7 @@ export async function chatCloud(messages: ChatMessage[], c: CloudChat): Promise<
           shrunk = true;
           continue;
         }
+        if (err.status === 413 && c.tooLarge !== 'busy') throw fail(text, { reason: 'status', ...at });
         throw fail(text, { reason: 'busy', ...at }, retryAfter(res));
       }
       if (err.status === 429) throw fail(text, { reason: 'busy', ...at }, retryAfter(res));
@@ -226,7 +231,7 @@ export async function chatCloud(messages: ChatMessage[], c: CloudChat): Promise<
     }
     if (typeof reply.text !== 'string') throw fail(text, { reason: 'unexpected-reply', label, model: r.model });
     // A JSON reply cut off by the token limit cannot parse; say so instead of returning half an object.
-    if (c.json && reply.cut) {
+    if (c.json && c.failCutOff && reply.cut) {
       console.error(`${c.app}: could not reach ${label}`, res.status, 'length');
       throw fail(text, { reason: 'cut-off', label, model: r.model });
     }

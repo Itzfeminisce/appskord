@@ -123,7 +123,7 @@ describe('chatCloud errors', () => {
       'unexpected-reply:Groq',
       undefined,
     ]);
-    expect(await fails(async () => reply('{"a":', 200, 'length'), { json: true })).toEqual([
+    expect(await fails(async () => reply('{"a":', 200, 'length'), { json: true, failCutOff: true })).toEqual([
       'bad-reply',
       'cut-off:Groq',
       undefined,
@@ -141,6 +141,20 @@ describe('chatCloud errors', () => {
     expect(await fails(async () => apiError(400, { message: 'whisper-large-v3 is not a chat model' }))).toEqual([
       'not-for-text',
       'not-for-text:Groq:400',
+      undefined,
+    ]);
+  });
+  it('returns a cut-off JSON reply for the app to read unless it opts in', async () => {
+    const cut = vi.fn(async () => reply('{"a":', 200, 'length'));
+    expect(await chatCloud(msgs, base({ fetch: cut, json: true }))).toBe('{"a":');
+  });
+  it('reports a 413 as the HTTP error unless the app calls it busy', async () => {
+    const big = async () => apiError(413, { message: 'Request too large' });
+    expect(await fails(big)).toEqual(['server', 'status:Groq:413', undefined]);
+    expect(await fails(big, { tooLarge: 'busy' })).toEqual(['rate-limited', 'busy:Groq:413', undefined]);
+    expect(await fails(async () => apiError(429, { type: 'tokens' }))).toEqual([
+      'rate-limited',
+      'busy:Groq:429',
       undefined,
     ]);
   });
@@ -185,6 +199,15 @@ describe('chatCloud retries', () => {
       message: 'no-model:Groq:404',
     });
     expect(loop).toHaveBeenCalledTimes(3);
+  });
+  it('never re-picks the model that just failed', async () => {
+    const f = byModel({ m: gone, other: () => reply('healed') }, ['m', 'other']);
+    expect(await chatCloud(msgs, base({ fetch: f, modelGone: 'repick', preference: ['m', 'other'] }))).toBe('healed');
+    const only = byModel({ m: gone }, ['m']);
+    await expect(chatCloud(msgs, base({ fetch: only, modelGone: 'repick', fallback: 'm' }))).rejects.toMatchObject({
+      message: 'no-model:Groq:404',
+    });
+    expect(only).toHaveBeenCalledTimes(2);
   });
   it('keeps a plain 404 an error without listing models', async () => {
     const f = vi.fn(async () => reply('x', 404));

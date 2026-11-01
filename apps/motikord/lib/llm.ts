@@ -105,7 +105,7 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
   const key = opts.key ?? (await getKey(provider));
   const reply = await chatCloud(messages, {
     app: 'Motikord', text, provider, key, model, cache: modelCache, fallback: FALLBACK_MODEL[provider],
-    json: opts.json, maxTokens: opts.maxTokens, temperature: opts.temperature, signal: opts.signal, fetch: opts.fetch,
+    json: opts.json, failCutOff: true, tooLarge: 'busy', maxTokens: opts.maxTokens, temperature: opts.temperature, signal: opts.signal, fetch: opts.fetch,
   });
   return { text: reply, by: provider };
 }

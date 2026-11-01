@@ -142,9 +142,9 @@ export interface ModelCache {
 
 /** The recommended model, cached when a cache is given. A failed list is not cached and gives `fallback`. */
 export async function recommendedFor(
-  opts: ListOptions & { cache?: ModelCache; fresh: boolean; app: string },
+  opts: ListOptions & { cache?: ModelCache; fresh: boolean; app: string; exclude?: string },
 ): Promise<string | undefined> {
-  const { cache, provider } = opts;
+  const { cache, provider, exclude } = opts;
   if (opts.fresh) await cache?.remove(provider).catch(() => undefined);
   else {
     const cached = await cache?.get(provider).catch(() => undefined);
@@ -152,14 +152,23 @@ export async function recommendedFor(
   }
   let id: string | undefined;
   try {
-    id = (await listModels(opts)).recommended;
+    const { models, recommended } = await listModels(opts);
+    // `exclude` is the model that just failed: never hand it back.
+    id = exclude
+      ? recommendedModel(
+          provider,
+          models.filter((m) => m !== exclude),
+          opts,
+        )
+      : recommended;
   } catch (e) {
     if (e instanceof LLMError && e.code === 'cancelled') throw e;
     if (e instanceof LLMError && e.code !== 'offline' && e.code !== 'no-list') {
       console.error(`${opts.app}: could not list ${PROVIDERS[provider].label} models`, e.message);
     }
-    return opts.fallback;
+    return opts.fallback === exclude ? undefined : opts.fallback;
   }
+  if (id === exclude) id = undefined;
   if (id) await cache?.set(provider, id).catch(() => undefined);
   return id;
 }
