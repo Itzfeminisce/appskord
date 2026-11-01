@@ -17,6 +17,16 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
   const si = sceneIndex(r, sceneId);
   const scene = r.scenes[si];
   const groups = useMemo(() => (scene ? swapGroups(scene) : { fits: [], others: [] }), [scene]);
+  // One preview recipe per template, made once per clip change rather than on every pointer move.
+  const previews = useMemo(() => {
+    const out = new Map<TemplateId, ReturnType<typeof withScene>>();
+    if (!scene) return out;
+    for (const id of [...groups.fits, ...groups.others]) {
+      const sw = id === scene.template ? { scene } : swappedScene(r, si, id, brand);
+      if (sw) out.set(id, withScene(r, si, sw.scene));
+    }
+    return out;
+  }, [r, si, scene, groups, brand]);
   const [picked, setPicked] = useState<TemplateId | undefined>(undefined);
   const [pointed, setPointed] = useState<TemplateId>();
   const shown = pointed ?? picked;
@@ -24,9 +34,8 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
   // Previews draw on the stage only; nothing is recorded until "Use".
   useEffect(() => {
     if (!scene || !shown || shown === scene.template) { setPreview(undefined); return; }
-    const out = swappedScene(r, si, shown, brand);
-    setPreview(out ? withScene(r, si, out.scene) : undefined, getSceneTemplate(shown)?.name);
-  }, [shown, r, si, scene, brand, setPreview]);
+    setPreview(previews.get(shown), getSceneTemplate(shown)?.name);
+  }, [shown, scene, previews, setPreview]);
   useEffect(() => () => setPreview(undefined), [setPreview]);
   useEffect(() => { if (si >= 0) setTime(restTime(r, si)); }, [si]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -50,13 +59,13 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
     const t = getSceneTemplate(id)!;
     const current = id === scene.template;
     const on = id === picked;
-    const out = current ? { scene } : swappedScene(r, si, id, brand);
+    const preview = previews.get(id);
     const size = thumbSize(r.aspect, 54);
     return (
       <button key={id} type="button" aria-pressed={on} onClick={() => setPicked(current ? undefined : id)}
         onPointerEnter={() => setPointed(id)} onPointerLeave={() => setPointed(undefined)} onFocus={() => setPointed(id)} onBlur={() => setPointed(undefined)}
         style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 8, borderRadius: 10, textAlign: 'left', font: 'inherit', color: 'var(--ink)', cursor: 'pointer', opacity: muted ? 0.6 : 1, background: on ? 'var(--tint)' : 'var(--surface)', border: `1px solid ${on ? 'var(--accent)' : 'var(--line)'}` }}>
-        {out && <SceneThumb recipe={withScene(r, si, out.scene)} aspect={r.aspect} timeMs={restTime(r, si)} w={size.w} h={size.h} />}
+        {preview && <SceneThumb recipe={preview} aspect={r.aspect} timeMs={restTime(r, si)} w={size.w} h={size.h} />}
         <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flexGrow: 1 }}>
           <span style={{ fontSize: 13, fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center' }}>
             {t.name}
