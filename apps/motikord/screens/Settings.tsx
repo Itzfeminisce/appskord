@@ -63,14 +63,14 @@ export function criticStatus(s: SettingsData): { ready: boolean; text: string } 
   const label = PROVIDERS[s.provider].label;
   const model = s.models[s.provider] ?? SUGGESTED_MODELS[s.provider].models[0]!;
   const ready = s.ai === 'cloud' && canSeeImages(s.provider, model);
-  return { ready, text: ready ? `${label}'s model can see images · Ready` : `${label}'s model can't see images` };
+  return { ready, text: ready ? `${label}'s model can see images · Ready` : `${label}'s model can't see images. The layout check still runs.` };
 }
 
 const STYLES: [LookStyle, string][] = [['auto', 'Auto'], ['clean', 'Clean'], ['bold', 'Bold'], ['playful', 'Playful'], ['corporate', 'Corporate']];
 const PACE_LABELS: [Pace, string][] = [['calm', 'Calm'], ['normal', 'Normal'], ['fast', 'Fast']];
 
 /** Row 11 SettingsLook: defaults for new clips and the switches for the critic, beat sync and AI images. */
-export function LookSection({ s, set, onImageKey }: { s: SettingsData; set: (patch: SettingsPatch) => void; onImageKey: () => void }) {
+export function LookSection({ s, set, onImageKey, onModel }: { s: SettingsData; set: (patch: SettingsPatch) => void; onImageKey: () => void; onModel?: () => void }) {
   const status = criticStatus(s);
   return (
     <Section title="Look and quality">
@@ -90,7 +90,7 @@ export function LookSection({ s, set, onImageKey }: { s: SettingsData; set: (pat
         </div>
       </div>
       <Switch label="Visual critic" checked={s.critic} onChange={(v) => set({ critic: v })} on
-        hint={<>{`Sends 2 to 4 small frames of the clip to ${PROVIDERS[s.provider].label} to spot what looks wrong. Only with models that can see images. The frames show your text and any media in the clip.`}<span style={{ display: 'block', marginTop: 4 }}><Status ready={status.ready}>{status.text}</Status></span></>} />
+        hint={<>{`Sends 2 to 4 small frames of the clip to ${PROVIDERS[s.provider].label} to spot what looks wrong. Only with models that can see images. The frames show your text and any media in the clip.`}<span style={{ display: 'block', marginTop: 4 }}><Status ready={status.ready}>{status.text}</Status>{!status.ready && onModel && <> <a href="#model" onClick={(e) => { e.preventDefault(); onModel(); }} style={{ color: 'var(--accent)', fontWeight: 500 }}>Change model</a></>}</span></>} />
       <Switch label="Beat sync" checked={s.beatSync} onChange={(v) => set({ beatSync: v })} on hint="Cuts and motion land on the music's beats. The beats are found on this computer; the music never leaves it." />
       <Switch label="AI images" checked={s.aiImages} onChange={(v) => { set({ aiImages: v }); if (v) onImageKey(); }} on hint="Makes a picture for an empty image slot when no photo fits. Only the slot's few-word description goes to the image provider." />
     </Section>
@@ -171,7 +171,7 @@ export default function Settings() {
       </div>
       {builtInAi === false && <div style={{ margin: '10px 16px 0' }}><NoBuiltInAi provider={provider} onUseGroq={() => set({ ai: 'cloud' })} /></div>}
 
-      <LookSection s={s} set={set} onImageKey={() => navigate('ImageKey')} />
+      <LookSection s={s} set={set} onImageKey={() => navigate('ImageKey')} onModel={() => navigate('SettingsModel')} />
 
       <Section title="Keys">
         <a href="#keys" onClick={(e) => { e.preventDefault(); navigate('PenvConnected'); }} style={{ ...rowStyle, ...first }}>

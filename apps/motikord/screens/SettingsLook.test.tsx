@@ -44,6 +44,7 @@ describe('Look and quality', () => {
   });
   it('says whether the model can see images', () => {
     expect(criticStatus(base)).toEqual({ ready: true, text: "OpenAI's model can see images · Ready" });
+    expect(criticStatus({ ...base, models: { openai: 'whisper-1' } }).text).toBe("OpenAI's model can't see images. The layout check still runs.");
     expect(criticStatus({ ...base, models: { openai: 'whisper-1' } }).ready).toBe(false);
     expect(criticStatus({ ...base, ai: 'local' }).ready).toBe(false);
   });
