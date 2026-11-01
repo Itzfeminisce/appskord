@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { startEvents, stopEvents } from './events';
 import { send, type Message, type MessageOf } from './messages';
 import { IDLE, type RecorderState } from './recorder';
 import type { RecordedSource } from './sourceChip';
@@ -86,6 +87,9 @@ export async function prepareRecorder(msg: Omit<MessageOf<'recorder/prepare'>, '
         : { kind: 'screen', label: reply.label };
       await (source ? browser.storage.session.set({ [SOURCE_KEY]: source }) : browser.storage.session.remove(SOURCE_KEY)).catch(() => undefined);
     }
+    if (reply.ok && reply.separate && msg.mode === 'tab' && previous?.id !== undefined && previous.id !== recorder.id) {
+      await recordEvents(previous.id);
+    }
     return reply;
   } finally {
     if (previous?.id !== undefined && previous.id !== recorder.id) {
@@ -95,8 +99,18 @@ export async function prepareRecorder(msg: Omit<MessageOf<'recorder/prepare'>, '
   }
 }
 
-/** `label` is the picked video track's label, which names a window. */
-export interface RecorderReply { ok: boolean; error?: string; cancelled?: boolean; label?: string }
+/** Events track on a tab recording Klipkord may see; without access the take simply has no events. */
+async function recordEvents(tabId: number): Promise<void> {
+  try {
+    await stopEvents();
+    if (await startEvents(tabId)) await command({ type: 'recorder/events-on' });
+  } catch (error) {
+    console.error('Klipkord: could not start the events track', error);
+  }
+}
+
+/** `label` is the picked video track's label, which names a window. `separate`: each source gets its own file (v3). */
+export interface RecorderReply { ok: boolean; error?: string; cancelled?: boolean; label?: string; separate?: boolean }
 
 /** Sends a command to the recorder tab and waits for its answer. */
 export async function command(msg: Message): Promise<RecorderReply> {

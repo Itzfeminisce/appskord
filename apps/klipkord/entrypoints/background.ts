@@ -4,6 +4,7 @@ import { RECORDER_PATH, closeRecorder, getRecorderState, hasRecorder, requestSta
 import { MARKER_LABEL, addMarker, markerTime, undoMarker } from '@/lib/markers';
 import { formatClock } from '@/lib/time';
 import { endDraw, toggleDrawShortcut } from '@/lib/draw';
+import { eventsTab, injectEvents, stopEvents } from '@/lib/events';
 import type { MarkerKind } from '@/lib/types';
 import { loadTranscriptConfig } from '@/lib/transcribe/groq';
 import { IDLE, badgeTitle, clockElapsed, shortClock, type RecorderState } from '@/lib/recorder';
@@ -87,11 +88,20 @@ export default defineBackground(() => {
         return false;
       });
     }
+    if (msg.type === 'events/batch') {
+      // Only the recorded tab's batches reach the recorder.
+      const from = sender.tab?.id;
+      void eventsTab().then((tabId) => {
+        if (from !== undefined && from === tabId) return send({ type: 'recorder/events', batch: msg.batch });
+      }).catch((error) => console.error('Klipkord: could not pass on the events', error));
+      return undefined;
+    }
     if (msg.type === 'recorder/state') {
       current = msg.state;
       void setRecorderState(msg.state).catch((error) => console.error('Klipkord: could not save recorder state', error));
       showState(msg.state);
       void endDraw(msg.state).catch((error) => console.error('Klipkord: could not remove the drawing', error));
+      if (!eventsLive(msg.state)) void stopEvents().catch((error) => console.error('Klipkord: could not stop the events', error));
       void closeRecorderWhenIdle();
     } else if (msg.type === 'transcript/idle') {
       void closeRecorderWhenIdle();
@@ -109,6 +119,21 @@ export default defineBackground(() => {
     if ((await send<boolean>({ type: 'offscreen/busy' })) !== false) return;
     await closeRecorder().catch(() => undefined);
   }
+
+  const eventsLive = (state: RecorderState) => state.status === 'armed' || state.status === 'recording' || state.status === 'paused';
+
+  // A new page in the recorded tab: note it, then put the script back where Klipkord may still see the page.
+  browser.tabs.onUpdated.addListener((tabId, change) => {
+    if (!eventsLive(current) || (change.status !== 'loading' && change.status !== 'complete')) return;
+    void eventsTab().then(async (target) => {
+      if (target !== tabId) return;
+      if (change.status === 'loading') {
+        await send({ type: 'recorder/events', batch: { viewport: { w: 0, h: 0 }, events: [{ t: Date.now(), type: 'page' }] } });
+      } else {
+        await injectEvents(tabId);
+      }
+    }).catch((error) => console.error('Klipkord: could not follow the recorded page', error));
+  });
 
   // The person closed the recorder tab: whatever was live is cut off (Recovered offers it).
   browser.tabs.onRemoved.addListener((tabId) => {

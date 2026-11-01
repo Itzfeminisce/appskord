@@ -1,6 +1,7 @@
 import { on, send as sendMessage, type MessageSender } from '@appskord/platform';
 import type { CaptureMode, MarkerKind, Quality, Settings } from './types';
 import type { BubbleStatus } from './bubble';
+import type { EventsBatch } from './events';
 import type { RecorderState } from './recorder';
 import type { TranscriptStatus } from './transcribe/queue';
 
@@ -33,7 +34,11 @@ export type Message =
   | { type: 'transcript/get' }                          // → offscreen: the current TranscriptStatus
   | { type: 'offscreen/busy' }                         // → offscreen: true while a stream, a take, a command or a transcript is live
   | { type: 'transcript/use-groq' }                     // "Use Groq for this one"
-  | { type: 'transcript/idle' };                        // offscreen → background: nothing left to transcribe or record
+  | { type: 'transcript/idle' }                         // offscreen → background: nothing left to transcribe or record
+  // Events track (v3): the recorded tab's script → background, which passes the recorded tab's batches on.
+  | { type: 'events/batch'; batch: EventsBatch }
+  | { type: 'recorder/events'; batch: EventsBatch }
+  | { type: 'recorder/events-on' };                    // side panel → recorder tab: the script is in; hide the cursor
 
 export type MessageType = Message['type'];
 export type MessageOf<T extends MessageType> = Extract<Message, { type: T }>;
