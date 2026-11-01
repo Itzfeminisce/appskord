@@ -2,28 +2,35 @@
   "name": "@appskord/platform",
   "version": "0.0.0",
   "private": true,
-  "description": "IndexedDB helper, typed runtime messages, optional host access inside a click and Google sign-in with launchWebAuthFlow. TypeScript source, no build step.",
+  "description": "IndexedDB helper, typed runtime messages, optional host access inside a click and Google sign-in with launchWebAuthFlow, and the shared TanStack Router setup. TypeScript source, no build step.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./router": "./src/router/index.ts"
   },
   "scripts": {
     "test": "vitest run",
     "compile": "tsc --noEmit"
   },
   "dependencies": {
+    "@tanstack/react-router": "1.170.45",
     "idb": "^8.0.4"
   },
   "devDependencies": {
     "@appskord/config": "workspace:*",
     "@types/chrome": "^0.1.0",
     "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
     "fake-indexeddb": "^6.2.7",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5",
     "wxt": "^0.21.5"
   },
   "peerDependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "wxt": "^0.21.5"
   }
 }

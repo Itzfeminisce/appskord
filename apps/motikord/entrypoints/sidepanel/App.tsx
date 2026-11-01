@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { DevSwitcher } from '../../components/ui';
 import { findInterrupted } from '../../lib/exportJob';
 import { onMessage, PANEL_GOTO } from '../../lib/messages';
-import { screenFromUrl } from '../../lib/router';
 import { getSettings } from '../../lib/settings';
 import { takeSidePanelGoal } from '../../lib/sidepanelGo';
 import { Outlet, RouterProvider, sidepanel, useRouter, type SidepanelScreen } from './router';
@@ -48,9 +47,8 @@ function GoOnRequest() {
 }
 
 export default function App() {
-  const [first, setFirst] = useState<SidepanelScreen | null>(() => screenFromUrl(sidepanel.names) ?? null);
+  const [first, setFirst] = useState<SidepanelScreen | null>(null);
   useEffect(() => {
-    if (first) return;
     // An export cut off by Chrome closing is offered again before anything else.
     const interrupted = findInterrupted(Date.now()).catch((error: unknown) => {
       console.error('Motikord: could not read the interrupted export', error);
@@ -62,8 +60,9 @@ export default function App() {
         console.error('Motikord: could not read settings', error);
         setFirst('Main');
       });
-  }, [first]);
+  }, []);
   if (!first) return null;
+  // `first` is used only when the hash names no screen; a reload keeps the screen in the hash.
   return (
     <RouterProvider initial={{ screen: first, params: {} }}>
       <Outlet />

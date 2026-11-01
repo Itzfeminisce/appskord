@@ -181,7 +181,7 @@ export function PromptBox() {
   );
 }
 
-/** Route screen (dev `?screen=EditorPrompt`): the editor with the Changes tab open. */
+/** Route screen (dev `#/dev/EditorPrompt`): the editor with the Changes tab open. */
 export default function EditorPrompt() {
   return <Editor open="changes" />;
 }

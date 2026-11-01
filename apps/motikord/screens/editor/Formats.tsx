@@ -75,7 +75,7 @@ export function FormatsPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Route screen (dev `?screen=Formats`): the editor with All sizes open. */
+/** Route screen (dev `#/dev/Formats`): the editor with All sizes open. */
 export default function Formats() {
   return <Editor open="formats" />;
 }

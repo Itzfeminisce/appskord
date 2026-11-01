@@ -183,7 +183,7 @@ function seg(on: boolean) {
   } as const;
 }
 
-/** Route screen (dev `?screen=Presets`): the editor with the popover open on the selected layer. */
+/** Route screen (dev `#/dev/Presets`): the editor with the popover open on the selected layer. */
 export default function Presets() {
   return <Editor open="presets" />;
 }
