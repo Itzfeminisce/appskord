@@ -3,6 +3,7 @@ import { canRedo, canUndo } from '../../lib/editor/history';
 import { rename, setAspect } from '../../lib/editor/store';
 import { ASPECTS } from '../../lib/recipe/validate';
 import { goInSidePanel, useWindowId } from '../../lib/sidepanelGo';
+import { getPack } from '../../lib/templates/scenes';
 import { useEditor } from './Editor';
 import { useIssues } from '../Checker';
 import { SaveStatusLine } from './StatesEditor';
@@ -14,7 +15,7 @@ const linkStyle = {
 const iconStyle = (on: boolean) => ({ width: 36, height: 36, color: on ? 'var(--ink)' : 'var(--line-strong)' });
 
 export function TopBar() {
-  const { state, brand, save, edit, undo, redo, go } = useEditor();
+  const { state, brand, save, edit, undo, redo, go, openPanel } = useEditor();
   const r = state.clip.recipe;
   const h = { past: state.clip.history, future: state.future };
   const [name, setName] = useState(r.name);
@@ -67,6 +68,9 @@ export function TopBar() {
         })}
       </div>
       <button type="button" style={linkStyle} onClick={() => go('Formats')}>All sizes</button>
+      <button type="button" style={linkStyle} onClick={() => openPanel({ kind: 'look' })} aria-label={r.style ? `Look · ${getPack(r.style)?.name ?? r.style}` : 'Look'}>
+        Look{r.style && <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{getPack(r.style)?.name ?? r.style}</span>}
+      </button>
       <button type="button" style={linkStyle} onClick={() => go('BrandKit')}>
         {dot && <span style={{ width: 12, height: 12, borderRadius: '50%', background: dot }} />}Brand
       </button>

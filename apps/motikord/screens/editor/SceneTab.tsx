@@ -1,0 +1,180 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { clockShort, restTime, sceneIndex, sceneStart } from '../../lib/editor/store';
+import { sceneTiming } from '../../lib/editor/timeline';
+import {
+  countLabel, defaultMs, packOf, setSlot, setTransition, slotCount, slotText, templateOf, transitionGroups, transitionOf,
+  TRANSITION_NAMES,
+} from '../../lib/editor/v2';
+import type { Scene, SlotDef, SlotValue, TransitionKind } from '../../lib/types';
+import { useEditor } from './Editor';
+import { PanelTabs } from './PanelTabs';
+import { SceneThumb, thumbSize } from './SceneThumb';
+import { Spinner } from './StatesV2';
+
+// EditorScene, Scene tab: template card, one field per slot with its word counter, Comes in from, Length, remake.
+// SlotEditing: a slot over its limit shows the amber counter and note, and is shortened on blur.
+
+const label = { fontSize: 12, color: 'var(--muted)' } as const;
+const field = { minHeight: 34, border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', font: '13px/1.35 var(--font)', color: 'var(--ink)', background: 'var(--surface)', width: '100%', boxSizing: 'border-box', resize: 'vertical' } as const;
+const quiet = { height: 30, padding: '0 10px', border: '1px solid var(--line-strong)', borderRadius: 7, background: 'var(--surface)', color: 'var(--ink)', font: '500 12px/1 var(--font)', cursor: 'pointer', flexShrink: 0 } as const;
+
+export const TOO_LONG = 'Too long for this slot. Motikord shortens it when you click away, and you can undo it.';
+
+export function SceneTab() {
+  const { state } = useEditor();
+  const r = state.clip.recipe;
+  const si = sceneIndex(r, state.sceneId);
+  const scene = r.scenes[si];
+  return (
+    <>
+      <PanelTabs on="scene" />
+      {scene && <SceneFields si={si} scene={scene} />}
+    </>
+  );
+}
+
+function SceneFields({ si, scene }: { si: number; scene: Scene }) {
+  const { state, openPanel, remaking, remake } = useEditor();
+  const r = state.clip.recipe;
+  const t = templateOf(scene);
+  const start = sceneStart(r, si);
+  const [ask, setAsk] = useState('');
+  const busy = remaking === scene.id;
+  const thumb = thumbSize(r.aspect, 64);
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{`Scene ${si + 1}`}</span>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)', flexShrink: 0 }}>{`${clockShort(start)}–${clockShort(start + scene.durationMs)}`}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={label}>Template</span>
+        <div style={{ padding: 10, borderRadius: 10, border: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <SceneThumb recipe={r} aspect={r.aspect} timeMs={restTime(r, si)} w={thumb.w} h={thumb.h} />
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flexGrow: 1 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{t?.name ?? 'Free layers'}</span>
+            {t && <span style={{ fontSize: 12, lineHeight: 1.35, color: 'var(--muted)' }}>{t.line}</span>}
+          </span>
+        </div>
+        <button type="button" onClick={() => openPanel({ kind: 'swap', sceneId: scene.id })} style={{ ...quiet, alignSelf: 'flex-start' }}>Swap template</button>
+      </div>
+      {t?.slots.filter((d) => d.kind === 'text' || d.kind === 'items').map((d) => <SlotField key={d.id} si={si} scene={scene} def={d} />)}
+      {si > 0 && <ComesIn si={si} />}
+      <Labelled name="Length"><LengthInput si={si} /></Labelled>
+      <Labelled name="Tell it what to change (optional)">
+        <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="e.g. make the number bigger and warmer" style={{ ...field, height: 34, padding: '0 10px' }} />
+      </Labelled>
+      <button type="button" className="btn btn-primary btn-block" disabled={!!remaking || !t} onClick={() => { remake(scene.id, ask); setAsk(''); }} style={{ gap: 8 }}>
+        {busy && <Spinner colour="#fff" />}{busy ? `Remaking scene ${si + 1}…` : 'Remake this scene'}
+      </button>
+      <span style={{ fontSize: 12, color: 'var(--faint)', textAlign: 'center' }}>Keeps the other scenes as they are.</span>
+    </>
+  );
+}
+
+function Labelled({ name, children }: { name: string; children: ReactNode }) {
+  return <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={label}>{name}</span>{children}</label>;
+}
+
+const isItems = (d: SlotDef) => d.kind === 'items';
+const fromField = (d: SlotDef, text: string): SlotValue => (isItems(d) ? text.split('\n').map((s) => s.trim()).filter(Boolean) : text);
+
+/** One slot: its text (items one per line) and "2 of 6 words"; over the limit it turns amber and waits for blur. */
+function SlotField({ si, scene, def }: { si: number; scene: Scene; def: SlotDef }) {
+  const { state, brand, edit, setNotice, openPanel } = useEditor();
+  const stored = slotText(scene.slots?.[def.id]);
+  const [draft, setDraft] = useState<string>();
+  const text = draft ?? stored;
+  const value = fromField(def, text);
+  const c = slotCount(def, value);
+  const counts = def.scale === 'number';
+
+  const commit = (v: string) => {
+    setDraft(undefined);
+    if (JSON.stringify(fromField(def, v)) === JSON.stringify(scene.slots?.[def.id] ?? '')) return;
+    const out = setSlot(state.clip.recipe, si, def.id, fromField(def, v), brand);
+    if (!out || !edit(out.edit)) return;
+    if (out.shortened) setNotice({ kind: 'text-shortened', original: slotText(fromField(def, v)) });
+  };
+  // The field keeps what was typed while focused; within the limit the stage follows live, merged into one Change.
+  const change = (v: string) => {
+    setDraft(v);
+    if (slotCount(def, fromField(def, v)).over) return;
+    const out = setSlot(state.clip.recipe, si, def.id, fromField(def, v), brand);
+    if (out) edit(out.edit);
+  };
+
+  const Input = isItems(def) ? 'textarea' : 'input';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <label htmlFor={`slot-${def.id}`} style={label}>{def.name}</label>
+        <span data-over={c.over || undefined} style={{ fontFamily: 'var(--mono)', fontSize: 11, color: c.over ? 'var(--warning-ink)' : 'var(--faint)', fontWeight: c.over ? 600 : 400 }}>
+          {counts ? 'counts up' : c.limit !== undefined ? countLabel(c.n, c.limit) : ''}
+        </span>
+      </span>
+      <Input
+        id={`slot-${def.id}`} value={text} rows={isItems(def) ? Math.max(3, text.split('\n').length) : undefined}
+        onChange={(e) => change(e.target.value)} onBlur={(e) => commit(e.target.value)}
+        style={isItems(def) ? field : { ...field, height: 34, padding: '0 10px' }}
+        aria-invalid={c.over || undefined}
+      />
+      {c.over && (
+        <div style={{ padding: 10, borderRadius: 9, background: 'var(--warning-bg)', border: '1px solid var(--warning-line)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--warning-ink)' }}>{TOO_LONG}</span>
+          <span style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => commit(text)} style={quiet}>Shorten now</button>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => openPanel({ kind: 'swap', sceneId: scene.id })} style={quiet}>Swap template</button>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "Comes in from": the pack's set first, then the others; "More" opens the TransitionPicker. */
+function ComesIn({ si }: { si: number }) {
+  const { state, edit, openPanel } = useEditor();
+  const r = state.clip.recipe;
+  const cur = transitionOf(r, si);
+  const g = transitionGroups(packOf(r));
+  const set = (kind: TransitionKind) => edit(setTransition(r, si, { kind, ms: defaultMs(r, si) }));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label htmlFor="comes-in" style={label}>Comes in from</label>
+      <span style={{ display: 'flex', gap: 6 }}>
+        <select id="comes-in" value={cur.kind} onChange={(e) => set(e.target.value as TransitionKind)} style={{ ...field, height: 34, padding: '0 6px', flexGrow: 1 }}>
+          {g.pack.map((k) => <option key={k} value={k}>{TRANSITION_NAMES[k]}</option>)}
+          <optgroup label="Other transitions">{g.other.map((k) => <option key={k} value={k}>{TRANSITION_NAMES[k]}</option>)}</optgroup>
+        </select>
+        <button type="button" aria-label={`Transition into scene ${si + 1}: ${TRANSITION_NAMES[cur.kind]}`} onClick={() => openPanel({ kind: 'transition', sceneId: r.scenes[si]!.id })} style={{ ...quiet, height: 34, width: 34, padding: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l9 9-9 9-9-9z" /></svg>
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** "Length" in seconds. */
+function LengthInput({ si }: { si: number }) {
+  const { state, edit } = useEditor();
+  const r = state.clip.recipe;
+  const ms = r.scenes[si]!.durationMs;
+  const [text, setText] = useState<string>();
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => setText(undefined), [ms]);
+  const commit = (v: string) => {
+    setText(undefined);
+    const s = Number(v.replace(',', '.'));
+    if (Number.isFinite(s) && s > 0) edit(sceneTiming(r, si, Math.round(s * 1000)));
+  };
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <input ref={ref} aria-label="Length in seconds" inputMode="decimal" value={text ?? (ms / 1000).toFixed(1)}
+        onChange={(e) => setText(e.target.value)} onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+        style={{ ...field, height: 34, padding: '0 10px', width: 80, fontFamily: 'var(--mono)' }} />
+      <span style={label}>s</span>
+    </span>
+  );
+}
