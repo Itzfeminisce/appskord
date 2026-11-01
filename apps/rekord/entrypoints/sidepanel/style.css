@@ -53,8 +53,6 @@ a:hover { color: var(--accent-hover); }
 .topbar-right { display: flex; align-items: center; gap: 8px; }
 
 
-
-
 /* Tag (marker kinds) */
 .tag { align-self: flex-start; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .tag-decision { background: #ebeafd; color: #3730a3; }
@@ -65,9 +63,6 @@ a:hover { color: var(--accent-hover); }
 .tag-on-dark.tag-action { background: #1f3a2b; color: #9be3b7; }
 .tag-on-dark.tag-question { background: #3d3020; color: #f5cf8a; }
 .tag-on-dark.tag-bookmark { background: #2a2a33; color: #c9c9d3; }
-
-
-/* Empty state */
 
 /* Permissions (T4) */
 .perm-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 0; }

@@ -32,7 +32,7 @@ export function Button({
       </button>
     );
   return (
-    <button type={type} className={cls} aria-busy="true" aria-disabled="true" {...rest} onClick={undefined}>
+    <button type={type} className={cls} aria-busy="true" aria-disabled="true" {...rest} onClick={(e) => e.preventDefault()}>
       <Spinner size={14} label={busyLabel} />
       {children}
     </button>

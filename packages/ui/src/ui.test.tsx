@@ -27,7 +27,7 @@ describe('Button', () => {
   it('busy shows a labelled spinner, keeps the label and ignores clicks', () => {
     const onClick = vi.fn();
     const el = Button({ busy: true, busyLabel: 'Saving', onClick, children: 'Save' });
-    expect(el.props.onClick).toBeUndefined();
+    expect(el.props.onClick).not.toBe(onClick);
     expect(el.props['aria-busy']).toBe('true');
     const html = renderToStaticMarkup(
       <Button busy busyLabel="Saving">
@@ -49,6 +49,17 @@ describe('component styles', () => {
     expect(css).toContain('.btn-secondary:hover:not(:disabled)');
     expect(css).toContain('.btn-ghost:hover:not(:disabled)');
     expect(css).toContain('button:not(:disabled):hover');
+  });
+  it('busy click prevents default so a submit button never submits', () => {
+    const onClick = vi.fn();
+    const el = Button({ busy: true, type: 'submit', onClick, children: 'Save' });
+    const preventDefault = vi.fn();
+    el.props.onClick({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+  it('busy buttons do not brighten on hover', () => {
+    expect(css).toContain('.btn.is-busy:hover{filter:none;}');
   });
   it('press shrinks enabled buttons, but not a busy one', () => {
     expect(css).toContain('button:not(:disabled):active,a[href]:active{transform:scale(0.97);}');

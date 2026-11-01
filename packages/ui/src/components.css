@@ -39,6 +39,9 @@ a[href]:active {
 .btn.is-busy {
   cursor: progress;
 }
+.btn.is-busy:hover {
+  filter: none;
+}
 .btn.is-busy:active {
   transform: none;
 }
