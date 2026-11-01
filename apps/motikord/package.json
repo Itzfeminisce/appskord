@@ -2,7 +2,7 @@
   "name": "motikord",
   "description": "Short animated clips, made on your computer",
   "private": true,
-  "version": "0.0.1",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -12,7 +12,8 @@
     "test": "vitest run",
     "postinstall": "wxt prepare",
     "icons": "node scripts/make-icons.mjs",
-    "score": "node scripts/score-prompts.mjs"
+    "score": "node scripts/score-prompts.mjs",
+    "quality-sheet": "node scripts/quality-sheet.mjs"
   },
   "devDependencies": {
     "@appskord/config": "workspace:*",

@@ -9,6 +9,8 @@ import { sourcesSummary } from '../lib/media/sources/summary';
 import { getSettings, onSettingsChanged, updateSettings, type SettingsPatch } from '../lib/settings';
 import type { BrandKit, FileKind, LookStyle, Pace, Provider, Quality, Settings as SettingsData } from '../lib/types';
 import { CODE_URL } from './Privacy';
+
+const appVersion = () => { try { return browser.runtime.getManifest().version; } catch { return '2.0.0'; } };
 import { BackButton, probeMachine } from './Setup';
 import { ModelBuiltIn, ModelField } from './SettingsModel';
 import { NoBuiltInAi } from './StatesSetup';
@@ -237,7 +239,7 @@ export default function Settings() {
 
       <div style={{ flexGrow: 1 }} />
       <div style={{ padding: '12px 24px 18px', marginTop: 20, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--faint)' }}>
-        <span>Motikord 2.0.0</span>
+        <span>Motikord {appVersion()}</span>
         <a href={CODE_URL} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', fontWeight: 500 }}>Open source on GitHub</a>
       </div>
     </main>
