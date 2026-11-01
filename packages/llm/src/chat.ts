@@ -9,7 +9,34 @@ import { apiOf, authHeaders, chatUrl, PROVIDERS, type Endpoint, type ProviderId 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /** JPEG data URLs sent with the message (cloud providers only). */
+  images?: string[];
 }
+
+export const IMAGE_TOKENS = 1000;
+
+/** Rough token count: 4 characters a token, plus 1,000 for each image. */
+export const estimateTokens = (messages: ChatMessage[]): number =>
+  messages.reduce((n, m) => n + Math.ceil(m.content.length / 4) + (m.images?.length ?? 0) * IMAGE_TOKENS, 0);
+
+const dataUrl = (url: string) => url.match(/^data:([^;,]+);base64,(.*)$/s);
+function anthropicContent(m: ChatMessage): unknown {
+  if (!m.images?.length) return m.content;
+  const imgs = m.images.map((url) => {
+    const d = dataUrl(url);
+    return d
+      ? { type: 'image', source: { type: 'base64', media_type: d[1], data: d[2] } }
+      : { type: 'image', source: { type: 'url', url } };
+  });
+  return [...imgs, { type: 'text', text: m.content }];
+}
+const openaiMessage = (m: ChatMessage): unknown =>
+  m.images?.length
+    ? {
+        role: m.role,
+        content: [{ type: 'text', text: m.content }, ...m.images.map((url) => ({ type: 'image_url', image_url: { url } }))],
+      }
+    : m;
 
 export interface CloudChat extends Endpoint, PickOptions {
   /** Log prefix: `<App>: could not reach <provider>`. */
@@ -96,7 +123,7 @@ function requestBody(c: CloudChat, messages: ChatMessage[], r: Req): Record<stri
       max_tokens: r.maxTokens ?? ANTHROPIC_MAX_TOKENS,
       ...temperature,
       ...(system ? { system } : {}),
-      messages: messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content })),
+      messages: messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: anthropicContent(m) })),
     };
   }
   const think = reasoning(c.provider, r.model);
@@ -111,7 +138,7 @@ function requestBody(c: CloudChat, messages: ChatMessage[], r: Req): Record<stri
     ...(think && !r.dropped.has('reasoning_effort') ? { reasoning_effort: 'low' } : {}),
     ...tokens,
     ...(r.json && !r.dropped.has('response_format') ? { response_format: { type: 'json_object' } } : {}),
-    messages,
+    messages: messages.map(openaiMessage),
   };
 }
 

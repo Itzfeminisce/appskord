@@ -1,5 +1,7 @@
 export {
   chatCloud,
+  estimateTokens,
+  IMAGE_TOKENS,
   chatLocal,
   extractJson,
   type ChatMessage,
@@ -26,6 +28,7 @@ export {
   type VerifyDeps,
 } from './keys';
 export {
+  canSeeImages,
   chatModels,
   GROQ_MODEL_PREFERENCE,
   listModels,
