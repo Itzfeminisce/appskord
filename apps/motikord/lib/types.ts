@@ -54,6 +54,7 @@ export interface Background {
   kind: 'solid' | 'gradient' | 'blobs' | 'blocks' | 'grain';
   colours: string[]; angle?: number; grain?: number;       // grain 0..1; any kind may add grain
   drift?: boolean;                                         // slow background motion
+  shapes?: Partial<Record<Aspect, [number, number][]>>;    // blocks: the slab per size, placed off the text (lib/templates/blocks)
 }
 export interface StylePack {                               // lib/templates/packs/<id>.json
   id: StyleId; name: string; description?: string;     // NewLook's line for the pack

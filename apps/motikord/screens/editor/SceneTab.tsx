@@ -40,7 +40,7 @@ function SceneFields({ si, scene }: { si: number; scene: Scene }) {
   const start = sceneStart(r, si);
   const [ask, setAsk] = useState('');
   const busy = remaking === scene.id;
-  const thumb = thumbSize(r.aspect, 64);
+  const thumb = thumbSize(r.aspect, r.aspect === '16:9' ? 48 : 64);
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
@@ -49,25 +49,31 @@ function SceneFields({ si, scene }: { si: number; scene: Scene }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={label}>Template</span>
-        <div style={{ padding: 10, borderRadius: 10, border: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ padding: 10, borderRadius: 12, border: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           <SceneThumb recipe={r} aspect={r.aspect} timeMs={restTime(r, si)} w={thumb.w} h={thumb.h} />
           <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flexGrow: 1 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{t?.name ?? 'Free layers'}</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{t?.name ?? 'Free layers'}</span>
             {t && <span style={{ fontSize: 12, lineHeight: 1.35, color: 'var(--muted)' }}>{t.line}</span>}
+            <button type="button" onClick={() => openPanel({ kind: 'swap', sceneId: scene.id })} style={{ ...quiet, alignSelf: 'flex-start', marginTop: 4, height: 28, borderRadius: 8, borderColor: '#E0E0E4', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" /></svg>
+              Swap template
+            </button>
           </span>
         </div>
-        <button type="button" onClick={() => openPanel({ kind: 'swap', sceneId: scene.id })} style={{ ...quiet, alignSelf: 'flex-start' }}>Swap template</button>
       </div>
       {t?.slots.filter((d) => d.kind === 'text' || d.kind === 'items').map((d) => <SlotField key={d.id} si={si} scene={scene} def={d} />)}
-      {si > 0 && <ComesIn si={si} />}
-      <Labelled name="Length"><LengthInput si={si} /></Labelled>
+      <div style={{ display: 'grid', gridTemplateColumns: si > 0 ? 'minmax(0, 1.4fr) minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: 8 }}>
+        {si > 0 && <ComesIn si={si} />}
+        <Labelled name="Length"><LengthInput si={si} /></Labelled>
+      </div>
       <Labelled name="Tell it what to change (optional)">
         <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="e.g. make the number bigger and warmer" style={{ ...field, height: 34, padding: '0 10px' }} />
       </Labelled>
-      <button type="button" className="btn btn-primary btn-block" disabled={!!remaking || !t} onClick={() => { remake(scene.id, ask); setAsk(''); }} style={{ gap: 8 }}>
-        {busy && <Spinner colour="#fff" />}{busy ? `Remaking scene ${si + 1}…` : 'Remake this scene'}
+      <button type="button" className="btn btn-primary btn-block" disabled={!!remaking || !t} onClick={() => { remake(scene.id, ask); setAsk(''); }} style={{ gap: 8, height: 48, flexShrink: 0, borderRadius: 12, fontSize: 14, fontWeight: 600 }}>
+        {busy ? <Spinner colour="#fff" /> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>}
+        {busy ? `Remaking scene ${si + 1}…` : 'Remake this scene'}
       </button>
-      <span style={{ fontSize: 12, color: 'var(--faint)', textAlign: 'center' }}>Keeps the other scenes as they are.</span>
+      <span style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', marginTop: -4 }}>Keeps the other scenes as they are.</span>
     </>
   );
 }
@@ -134,7 +140,7 @@ function SlotField({ si, scene, def }: { si: number; scene: Scene; def: SlotDef 
 
 /** "Comes in from": the pack's set first, then the others; "More" opens the TransitionPicker. */
 function ComesIn({ si }: { si: number }) {
-  const { state, edit, openPanel } = useEditor();
+  const { state, edit } = useEditor();
   const r = state.clip.recipe;
   const cur = transitionOf(r, si);
   const g = transitionGroups(packOf(r));
@@ -142,15 +148,10 @@ function ComesIn({ si }: { si: number }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <label htmlFor="comes-in" style={label}>Comes in from</label>
-      <span style={{ display: 'flex', gap: 6 }}>
-        <select id="comes-in" value={cur.kind} onChange={(e) => set(e.target.value as TransitionKind)} style={{ ...field, height: 34, padding: '0 6px', flexGrow: 1 }}>
-          {g.pack.map((k) => <option key={k} value={k}>{TRANSITION_NAMES[k]}</option>)}
-          <optgroup label="Other transitions">{g.other.map((k) => <option key={k} value={k}>{TRANSITION_NAMES[k]}</option>)}</optgroup>
-        </select>
-        <button type="button" aria-label={`Transition into scene ${si + 1}: ${TRANSITION_NAMES[cur.kind]}`} onClick={() => openPanel({ kind: 'transition', sceneId: r.scenes[si]!.id })} style={{ ...quiet, height: 34, width: 34, padding: 0 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l9 9-9 9-9-9z" /></svg>
-        </button>
-      </span>
+      <select id="comes-in" value={cur.kind} onChange={(e) => set(e.target.value as TransitionKind)} style={{ ...field, height: 34, padding: '0 8px' }}>
+        {g.pack.map((k) => <option key={k} value={k}>{TRANSITION_NAMES[k]}</option>)}
+        <optgroup label="Other transitions">{g.other.map((k) => <option key={k} value={k}>{TRANSITION_NAMES[k]}</option>)}</optgroup>
+      </select>
     </div>
   );
 }
@@ -169,12 +170,12 @@ function LengthInput({ si }: { si: number }) {
     if (Number.isFinite(s) && s > 0) edit(sceneTiming(r, si, Math.round(s * 1000)));
   };
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <span style={{ height: 34, boxSizing: 'border-box', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 6 }}>
       <input ref={ref} aria-label="Length in seconds" inputMode="decimal" value={text ?? (ms / 1000).toFixed(1)}
         onChange={(e) => setText(e.target.value)} onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-        style={{ ...field, height: 34, padding: '0 10px', width: 80, fontFamily: 'var(--mono)' }} />
-      <span style={label}>s</span>
+        style={{ flexGrow: 1, minWidth: 0, border: 0, outline: 'none', padding: 0, font: '13px/1 var(--mono)', color: 'var(--ink)', background: 'transparent' }} />
+      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--muted)' }}>s</span>
     </span>
   );
 }

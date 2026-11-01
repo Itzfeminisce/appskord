@@ -113,7 +113,10 @@ export function Canvas() {
     // A paused preview waits on a video seek; draw again once the frame is there.
     const redraw = () => { live.current.dirty = true; };
     frameReady.addEventListener('frame', redraw);
-    return () => { cancelAnimationFrame(raf); frameReady.removeEventListener('frame', redraw); };
+    // Text drawn before its face loaded used fallback metrics; draw again once it is in.
+    const fonts = globalThis.document?.fonts;
+    fonts?.addEventListener('loadingdone', redraw);
+    return () => { cancelAnimationFrame(raf); frameReady.removeEventListener('frame', redraw); fonts?.removeEventListener('loadingdone', redraw); };
   }, [cache, playhead]);
 
   const { W, H } = size;

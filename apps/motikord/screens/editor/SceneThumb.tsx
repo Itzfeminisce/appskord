@@ -2,11 +2,13 @@ import { useEffect, useRef } from 'react';
 import { drawFrame } from '../../lib/render/drawFrame';
 import type { Aspect, Recipe } from '../../lib/types';
 import { useEditor } from './Editor';
+import { useFontTick } from './fontTick';
 
 /** One still frame of a recipe (template cards, Changes thumbnails, All sizes); it redraws only when its inputs change. */
 export function SceneThumb({ recipe, aspect, timeMs, w, h, label }: { recipe: Recipe; aspect: Aspect; timeMs: number; w: number; h: number; label?: string }) {
   const { cache } = useEditor();
   const ref = useRef<HTMLCanvasElement>(null);
+  const fonts = useFontTick();
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
@@ -18,7 +20,7 @@ export function SceneThumb({ recipe, aspect, timeMs, w, h, label }: { recipe: Re
     const ctx = ref.current?.getContext('2d');
     if (!ctx) return;
     try { drawFrame(ctx, recipe, aspect, timeMs, cache); } catch (error) { console.error('Motikord: could not draw a thumbnail', error); }
-  }, [recipe, aspect, timeMs, w, h, cache]);
+  }, [recipe, aspect, timeMs, w, h, cache, fonts]);
   return <canvas ref={ref} aria-label={label} aria-hidden={label ? undefined : true} style={{ width: w, height: h, display: 'block', borderRadius: 6, background: 'var(--stage)', flexShrink: 0 }} />;
 }
 

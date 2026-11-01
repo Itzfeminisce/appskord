@@ -132,6 +132,7 @@ const announceFrame = () => frameReady.dispatchEvent(new Event('frame'));
 /** Decoders for the page: files come from OPFS; a video element serves preview frames. */
 function pageCache(): MediaCache {
   return new MediaCache({
+    fonts: document.fonts,
     read: (a: Asset) => getMedia(a.opfsPath),
     video: async (_a, blob) => {
       const v = document.createElement('video');

@@ -3,7 +3,9 @@ import type {
   SlotValue, StyleId, StylePack, TextLayer, TypeScale,
 } from '../types';
 import { getPreset } from '../render/presets';
-import { getSceneTemplate, isBackgroundBox } from './scenes';
+import { getSceneTemplate, isBackgroundBox, SAFE_AREA } from './scenes';
+import { planBlocks, squeezeBox, type BlockPlan, type Squeeze } from './blocks';
+import { fitText } from '../render/textFit';
 
 const ASPECTS: readonly Aspect[] = ['9:16', '1:1', '16:9'];
 type Boxes = Record<Aspect, { x: number; y: number; w: number; h: number }>;
@@ -11,7 +13,7 @@ type Boxes = Record<Aspect, { x: number; y: number; w: number; h: number }>;
 // Type scale in px at a 1080 short side (SceneTemplates, Clean at 9:16), and each pack's weight and tracking (em).
 const SCALE_PX: Record<TypeScale, number> = { display: 140, headline: 88, body: 54, caption: 40, number: 380 };
 // Slots whose copy at the full word limit does not fit at their scale's size on every shape: the size they are drawn at.
-const SLOT_PX: Record<string, number> = { 'stat-reveal.number': 320, 'quote.quote': 62, 'list.items': 45, 'hero.headline': 100, 'hero.line': 46, 'end-card.cta': 100 };
+const SLOT_PX: Record<string, number> = { 'title-hook.kicker': 46, 'stat-reveal.number': 320, 'quote.quote': 62, 'list.items': 45, 'hero.headline': 100, 'hero.line': 46, 'end-card.cta': 100 };
 const LINE_HEIGHT: Record<TypeScale, number> = { display: 1, headline: 1.08, body: 1.3, caption: 1.3, number: 0.9 };
 type Face = Record<TypeScale, { weight: number; tracking: number }>;
 const FACE: Record<StyleId, Face> = {
@@ -55,11 +57,12 @@ const mix = (a: string, b: string, t: number): string => {
   return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) * (1 - t) + ch(b, i) * t).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
 };
 /** The accent as text colour: pulled toward the ink until it reads (4.5:1) on the background; unchanged when it already does. */
-function accentOnText(accent: string, ink: string, bg: string): string {
+function accentOnText(accent: string, ink: string, bg: string | string[]): string {
   if (lum(accent) === undefined || lum(ink) === undefined) return accent;
+  const bgs = Array.isArray(bg) ? bg : [bg];
   for (let t = 0; t <= 1.0001; t += 0.05) {
     const c = t === 0 ? accent : mix(accent, ink, t);
-    if (ratio(c, bg) >= 4.5) return c;
+    if (bgs.every((b) => ratio(c, b) >= 4.5)) return c;
   }
   return ink;
 }
@@ -76,9 +79,11 @@ function lookFor(pack: StylePack, brand?: BrandKit): Look {
   if (p.accent2) swap.set(p.accent2.toUpperCase(), accent2);
   if (role('background')) swap.set(p.bg2.toUpperCase(), bg);
   const colours = pack.background.colours.map((c) => swap.get(c.toUpperCase()) ?? c);
+  // Small text reads on every colour the field shows: a gradient's both ends, the blobs; a block's slab is kept off text.
+  const field = pack.background.kind === 'blocks' || pack.background.kind === 'solid' ? [bg] : [bg, ...colours];
   return {
-    pack, face: FACE[pack.id] ?? FACE.clean, ink, accent, accentText: accentOnText(accent, ink, bg), bg,
-    muted: role('text') || role('background') ? ink : p.muted,
+    pack, face: FACE[pack.id] ?? FACE.clean, ink, accent, accentText: accentOnText(accent, ink, field), bg,
+    muted: role('text') || role('background') ? ink : accentOnText(p.muted, ink, field),
     fonts: { display: brand?.headingFont ?? pack.fonts.display, text: brand?.bodyFont ?? pack.fonts.text, number: pack.fonts.number },
     headingWeight: brand?.headingFont ? 700 : undefined,
     background: { ...pack.background, colours },
@@ -210,9 +215,13 @@ function media(c: Ctx, def: SlotDef, assetId: string, order: number): MediaLayer
  * The brand kit, when given, replaces the pack's colours, fonts and logo. A scene without a known template is returned as it is.
  */
 export function expandScene(scene: Scene, pack: StylePack, brand?: BrandKit): Scene {
-  const t = scene.template ? getSceneTemplate(scene.template) : undefined;
-  if (!t) return scene;
+  const tpl = scene.template ? getSceneTemplate(scene.template) : undefined;
+  if (!tpl) return scene;
   const look = lookFor(pack, brand);
+  const fullMedia = tpl.slots.some((d) => d.kind === 'media' && isBackgroundBox(d.boxes['9:16']) && isAsset((scene.slots ?? {})[d.id]));
+  const blocks = look.background.kind === 'blocks' ? blockPlans(tpl, fullMedia) : undefined;
+  const t = blocks ? squeezed(tpl, blocks) : tpl;
+  if (blocks) look.background = { ...look.background, shapes: Object.fromEntries(ASPECTS.map((a) => [a, blocks[a]?.shape ?? []])) };
   const { slots, original } = fitSlots(t, scene.slots ?? {}, scene.original);
   const filledMedia = t.slots.some((d) => d.kind === 'media' && isBackgroundBox(d.boxes['9:16']) && isAsset(slots[d.id]));
   const c: Ctx = {
@@ -255,6 +264,42 @@ export function expandScene(scene: Scene, pack: StylePack, brand?: BrandKit): Sc
   if (Object.keys(original).length) next.original = original;
   else delete next.original;
   return next;
+}
+
+/** Each size's slab for a blocks background; none under a full-frame picture, which covers it. */
+function blockPlans(t: SceneTemplate, fullMedia: boolean): Partial<Record<Aspect, BlockPlan>> {
+  if (fullMedia) return {};
+  const field = t.slots.filter((d) => !(d.kind === 'media' && isBackgroundBox(d.boxes['9:16'])));
+  // The quote mark sits outside the quote's box (above it, or left of it at 16:9), so its room counts too.
+  const room = (d: SlotDef, a: Aspect) => {
+    const b = d.boxes[a];
+    if (!(t.id === 'quote' && d.id === 'quote')) return b;
+    return a === '16:9' ? { ...b, x: b.x - 0.17 / RATIO[a] - 0.02, w: b.w + 0.17 / RATIO[a] + 0.02 } : { ...b, y: b.y - 0.17 * (a === '9:16' ? RATIO[a] : 1) - 0.01, h: b.h + 0.17 * (a === '9:16' ? RATIO[a] : 1) + 0.01 };
+  };
+  return Object.fromEntries(ASPECTS.map((a) => [a, planBlocks(field.map((d) => room(d, a)), a, SAFE_AREA[a], (q) => wordsFit(t, a, q))]));
+}
+const PX: Record<Aspect, { w: number; h: number }> = { '9:16': { w: 1080, h: 1920 }, '1:1': { w: 1080, h: 1080 }, '16:9': { w: 1920, h: 1080 } };
+/** Whether every text slot, full of average words, still fits at its size once squeezed (the checker's rough glyph width). */
+function wordsFit(t: SceneTemplate, a: Aspect, q: Squeeze): boolean {
+  return t.slots.every((d) => {
+    if (d.kind !== 'text' && d.kind !== 'items') return true;
+    const n = d.kind === 'items' ? d.items?.[1] ?? 1 : 1;
+    const b = squeezeBox(d.boxes[a], q);
+    const cell = n > 1 && wide(b, a) ? { w: (b.w / n) * 0.9, h: b.h * 0.6 } : { w: b.w * (n > 1 ? 0.8 : 1), h: (b.h / n) * (n > 1 ? 0.85 : 1) };
+    const scale = d.scale ?? 'body';
+    const size = SLOT_PX[`${t.id}.${d.id}`] ?? SCALE_PX[scale];
+    const text = scale === 'number' ? '1,200' : Array.from({ length: d.words ?? 3 }, () => 'people').join(' ');
+    const fit = fitText({ text, width: cell.w * PX[a].w, height: cell.h * PX[a].h, maxSize: size, lineHeight: LINE_HEIGHT[scale], measure: (s, px) => s.length * px * 0.56 });
+    return fit.fits && fit.sizePx >= Math.floor(size);
+  });
+}
+/** The template with its field slots moved off the slab where the plan squeezes them. */
+function squeezed(t: SceneTemplate, plans: Partial<Record<Aspect, BlockPlan>>): SceneTemplate {
+  return {
+    ...t, slots: t.slots.map((d) => (d.kind === 'media' && isBackgroundBox(d.boxes['9:16']) ? d : {
+      ...d, boxes: mapBoxes(d.boxes, (b, a) => squeezeBox(b, plans[a]?.squeeze)),
+    })),
+  };
 }
 
 const isAsset = (v: SlotValue | undefined): v is { assetId: string } =>
