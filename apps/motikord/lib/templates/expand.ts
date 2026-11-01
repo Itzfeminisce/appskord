@@ -10,6 +10,8 @@ type Boxes = Record<Aspect, { x: number; y: number; w: number; h: number }>;
 
 // Type scale in px at a 1080 short side (SceneTemplates, Clean at 9:16), and each pack's weight and tracking (em).
 const SCALE_PX: Record<TypeScale, number> = { display: 140, headline: 88, body: 54, caption: 40, number: 380 };
+// Slots whose copy at the full word limit does not fit at their scale's size on every shape: the size they are drawn at.
+const SLOT_PX: Record<string, number> = { 'stat-reveal.number': 320, 'quote.quote': 62, 'list.items': 45, 'hero.headline': 100, 'hero.line': 46, 'end-card.cta': 100 };
 const LINE_HEIGHT: Record<TypeScale, number> = { display: 1, headline: 1.08, body: 1.3, caption: 1.3, number: 0.9 };
 type Face = Record<TypeScale, { weight: number; tracking: number }>;
 const FACE: Record<StyleId, Face> = {
@@ -133,7 +135,7 @@ function text(c: Ctx, def: SlotDef, value: string, order: number, boxes: Boxes, 
   const colour = opts.colour ?? (c.overMedia ? '#FFFFFF' : def.kind === 'text' && scale === 'caption' ? (def.id === 'kicker' ? c.look.accentText : c.look.muted) : c.look.ink);
   return {
     ...base(c, def, order, opts.item ?? 0, opts.suffix), ...withBoxes(boxes), type: 'text', role: ROLE[scale], text: value,
-    font, sizePx: opts.sizePx ?? SCALE_PX[scale], weight: HEADING.includes(scale) ? c.look.headingWeight ?? face.weight : face.weight,
+    font, sizePx: opts.sizePx ?? SLOT_PX[`${c.t.id}.${def.id}`] ?? SCALE_PX[scale], weight: HEADING.includes(scale) ? c.look.headingWeight ?? face.weight : face.weight,
     colour, align: def.align ?? 'left', lineHeight: LINE_HEIGHT[scale], letterSpacing: face.tracking,
     ...(opts.stagger !== false && def.motion.stagger ? { stagger: def.motion.stagger } : {}),
     ...(c.overMedia ? { shadow: true } : {}),
