@@ -12,7 +12,8 @@ export const PENV_APP_TOKEN_URL = `${PENV_BASE_URL}/auth/app/token`;
 export const PENV_APP_URL = `${PENV_BASE_URL}/auth/app`;
 export const PENV_REVOKE_URL = `${PENV_BASE_URL}/auth/revoke`;
 /** Optional keys Motikord asks for on top of the ones the chosen setup needs. */
-export const PENV_APP_OPTIONAL_KEYS = ['PEXELS_API_KEY'];
+export const PENV_APP_OPTIONAL_KEYS = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'PEXELS_API_KEY',
+  'PIXABAY_API_KEY', 'FREESOUND_API_KEY', 'JAMENDO_CLIENT_ID', 'UNSPLASH_ACCESS_KEY'];
 
 export const GRANT_KEY = 'penvGrant';
 export const DISCONNECTED_KEY = 'penvAppDisconnected';
@@ -399,16 +400,17 @@ export async function disconnectPenvApp(fetchImpl: typeof fetch = fetch, opts: {
 
 /**
  * After a restart the keys are gone but the grant may remain: loads them again from Penv Cloud.
- * Call it when the side panel opens. Resolves to true when a Groq key is in memory afterwards.
+ * Call it when the side panel opens. Resolves to true when the chosen provider's key (default GROQ_API_KEY) is in memory afterwards.
  */
 export async function restoreKeys(
   conn: PenvAppConnection | undefined,
   fetchImpl: typeof fetch = fetch,
+  keyName = 'GROQ_API_KEY',
 ): Promise<boolean> {
   if (!conn) return false;
-  if ((await loadKeys()).GROQ_API_KEY) return true;
+  if ((await loadKeys())[keyName]) return true;
   try {
-    return (await loadPenvAppKeys(conn, fetchImpl))?.includes('GROQ_API_KEY') ?? false;
+    return (await loadPenvAppKeys(conn, fetchImpl))?.includes(keyName) ?? false;
   } catch (error) {
     if (!(error instanceof PenvAppError)) console.error('Motikord: could not load keys from Penv Cloud', error);
     return false;

@@ -4,9 +4,12 @@ import { applyPrompt, rebase } from '../../lib/editor/applyPrompt';
 import { HOSTS, requestHost, type HostAccess } from '../../lib/hostAccess';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
 import { openSidePanelOn } from '../../lib/sidepanelGo';
-import type { AiMode } from '../../lib/types';
+import type { AiMode, Provider } from '../../lib/types';
+import { insertWords } from '../../lib/voice/listen';
+import { useVoice } from '../../lib/voice/useVoice';
+import { EditorListening, MIC_PATHS, VoiceStateCard } from '../StatesVoice';
 import Editor, { useEditor } from './Editor';
-import { ChangeTooLong, GroqAccess, GroqBusy, GroqBusyRetried, GroqDown, KeyNeeded, Offline, PromptFailed, PromptWorking } from './StatesPrompt';
+import { ChangeTooLong, KeyNeeded, ProviderAccess, ProviderBusy, ProviderBusyRetried, ProviderDown, Offline, PromptFailed, PromptWorking } from './StatesPrompt';
 
 // Editor frame, centre: "Tell Motikord what to change" with its chips. EditorPrompt frame: the "Done." toast with Undo.
 
@@ -23,20 +26,36 @@ export function PromptBox() {
   const [ui, setUi] = useState<Ui>({ kind: 'idle' });
   const last = useRef('');
   const ai = useRef<AiMode>('cloud');
+  const [provider, setProvider] = useState<Provider>('groq');
   const windowId = useRef<number>(undefined);
   const stop = useRef<AbortController>(undefined);
   // Set from the click until the run ends, so a second send while Chrome asks for access starts nothing.
   const busy = useRef(false);
-  // groq-busy retries by itself once per prompt; a send by the user starts the count again.
+  // provider-busy retries by itself once per prompt; a send by the user starts the count again.
   const retried = useRef(false);
   const recipe = useRef(state.clip.recipe);
   recipe.current = state.clip.recipe;
+  const input = useRef<HTMLInputElement>(null);
+  // Heard words land at the cursor and wait for send; voice never sends by itself.
+  const cursor = useRef(0);
+  const voice = useVoice((words) => {
+    setText((now) => {
+      const at = insertWords(now, cursor.current, words);
+      requestAnimationFrame(() => { const el = input.current; if (el) { el.focus(); el.setSelectionRange(at.cursor, at.cursor); } });
+      return at.text;
+    });
+  });
+  const speak = () => {
+    cursor.current = input.current?.selectionStart ?? text.length;
+    setUi({ kind: 'idle' });
+    voice.start();
+  };
 
   useEffect(() => {
-    void getSettings().then((s) => { ai.current = s.ai; }).catch(() => undefined);
+    void getSettings().then((s) => { ai.current = s.ai; setProvider(s.provider); }).catch(() => undefined);
     // Known before any click, so "Open Settings" can open the side panel inside the click.
     void browser.windows.getCurrent().then((w) => { windowId.current = w.id; }).catch(() => undefined);
-    const off = onSettingsChanged((s) => { ai.current = s.ai; });
+    const off = onSettingsChanged((s) => { ai.current = s.ai; setProvider(s.provider); });
     const online = () => setUi((u) => (u.kind === 'offline' ? { kind: 'idle' } : u));
     window.addEventListener('online', online);
     return () => { off(); window.removeEventListener('online', online); stop.current?.abort(); };
@@ -64,8 +83,8 @@ export function PromptBox() {
       switch (e.state) {
         case undefined: setUi({ kind: 'idle' }); break;
         case 'change-too-long': setUi({ kind: 'too-long', totalMs: e.detail.totalMs ?? 0 }); break;
-        case 'groq-busy': setUi(retried.current ? { kind: 'busy-retried' } : { kind: 'busy', left: Math.max(1, Math.ceil((e.detail.retryAfterMs ?? BUSY_S * 1000) / 1000)) }); break;
-        case 'groq-down': setUi({ kind: 'down' }); break;
+        case 'provider-busy': setUi(retried.current ? { kind: 'busy-retried' } : { kind: 'busy', left: Math.max(1, Math.ceil((e.detail.retryAfterMs ?? BUSY_S * 1000) / 1000)) }); break;
+        case 'provider-down': setUi({ kind: 'down' }); break;
         // Penv Cloud keeps its own key, so a missing one there is still sent to Settings.
         case 'key-needed': setUi({ kind: (await getSettings().catch(() => undefined))?.keySource === 'penv-app' ? 'down' : 'key' }); break;
         case 'offline': setUi({ kind: 'offline' }); break;
@@ -83,12 +102,12 @@ export function PromptBox() {
     if (!prompt || busy.current) return;
     busy.current = true;
     retried.current = false;
-    const access: Promise<HostAccess> = ai.current === 'cloud' ? requestHost(HOSTS.groq) : Promise.resolve('granted');
+    const access: Promise<HostAccess> = ai.current === 'cloud' ? requestHost(HOSTS[provider]) : Promise.resolve('granted');
     last.current = prompt;
     void run(prompt, access);
   };
 
-  // groq-busy counts down and tries again by itself, once; Groq was reachable, so no new host prompt is needed.
+  // provider-busy counts down and tries again by itself, once; the provider was reachable, so no new host prompt is needed.
   useEffect(() => {
     if (ui.kind !== 'busy') return;
     const id = setTimeout(() => {
@@ -111,15 +130,19 @@ export function PromptBox() {
   };
 
   const card = (() => {
+    if (voice.ui.kind === 'card') {
+      return <VoiceStateCard card={voice.ui.card} provider={voice.ui.provider ?? voice.provider}
+        actions={{ onAllow: voice.allowMic, onTypeInstead: voice.dismiss, onOpenSettings: voice.openChromeSettings, onTryAgain: voice.tryAgain }} />;
+    }
     switch (ui.kind) {
       case 'failed': return <PromptFailed onRetry={() => send(last.current)} />;
       case 'too-long': return <ChangeTooLong totalMs={ui.totalMs} />;
-      case 'busy': return <GroqBusy seconds={ui.left} onTryNow={() => send(last.current)} />;
-      case 'busy-retried': return <GroqBusyRetried onTryNow={() => send(last.current)} />;
-      case 'down': return <GroqDown onOpenSettings={openSettings} />;
+      case 'busy': return <ProviderBusy provider={provider} seconds={ui.left} onTryNow={() => send(last.current)} />;
+      case 'busy-retried': return <ProviderBusyRetried provider={provider} onTryNow={() => send(last.current)} />;
+      case 'down': return <ProviderDown provider={provider} onOpenSettings={openSettings} />;
       case 'key': return <KeyNeeded onPasteKey={pasteKey} />;
       case 'offline': return <Offline />;
-      case 'access': return <GroqAccess onAllow={() => send(last.current)} />;
+      case 'access': return <ProviderAccess provider={provider} onAllow={() => send(last.current)} />;
       default: return null;
     }
   })();
@@ -129,25 +152,31 @@ export function PromptBox() {
       {card && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(100% + 8px)', zIndex: 7 }}>{card}</div>}
       {ui.kind === 'working'
         ? <PromptWorking onStop={() => stop.current?.abort()} />
-        : (
+        : voice.ui.kind === 'listening'
+          ? <EditorListening settled={voice.ui.kind === 'listening' ? voice.ui.settled : ''} interim={voice.ui.kind === 'listening' ? voice.ui.interim : ''} onDone={voice.done} />
+          : (
           <form onSubmit={(e) => { e.preventDefault(); send(text); }}
             style={{ height: 46, boxSizing: 'border-box', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line-strong)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 6px 0 14px', boxShadow: '0 2px 8px rgba(16,16,20,0.06)' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
-            <input aria-label="Tell Motikord what to change" placeholder="Tell Motikord what to change" value={text}
+            <input ref={input} aria-label="Tell Motikord what to change" placeholder="Tell Motikord what to change" value={text}
               onChange={(e) => { setText(e.target.value); if (ui.kind !== 'idle' && ui.kind !== 'offline') setUi({ kind: 'idle' }); }}
               style={{ flexGrow: 1, minWidth: 0, border: 0, outline: 'none', font: '14px/1 var(--font)', color: 'var(--ink)', background: 'transparent' }} />
+            {voice.enabled && <button type="button" aria-label="Speak" title="Speak your change" onClick={speak}
+              style={{ width: 34, height: 34, border: 0, borderRadius: 10, background: 'transparent', color: 'var(--muted)', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{MIC_PATHS}</svg>
+            </button>}
             <button type="submit" aria-label="Send" disabled={!text.trim()}
               style={{ width: 34, height: 34, border: 0, borderRadius: 10, background: 'var(--accent)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', opacity: text.trim() ? 1 : 0.6 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" /></svg>
             </button>
           </form>
         )}
-      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+      {voice.ui.kind !== 'listening' && <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
         {CHIPS.map((c) => (
           <button key={c} type="button" disabled={ui.kind === 'working'} onClick={() => { setText(c); send(c); }}
             style={{ height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--surface)', border: '1px solid var(--line-strong)', color: 'var(--ink)', font: '12px/1 var(--font)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>{c}</button>
         ))}
-      </div>
+      </div>}
     </div>
   );
 }

@@ -5,9 +5,9 @@ import { isLayoutId, LAYOUTS } from '../render/reflow';
 export const ASPECTS: readonly Aspect[] = ['9:16', '1:1', '16:9'];
 export const CLIP_TYPES: readonly ClipType[] = ['promo', 'quote', 'chart', 'explainer', 'logo', 'captions', 'social'];
 export const FEELS: readonly Feel[] = ['smooth', 'snappy', 'bouncy', 'steady'];
-export const LICENCES: readonly LicenceId[] = ['cc0', 'pdm', 'cc-by', 'cc-by-sa', 'cc-by-nc', 'pexels', 'page', 'own'];
+export const LICENCES: readonly LicenceId[] = ['cc0', 'pdm', 'cc-by', 'cc-by-sa', 'cc-by-nc', 'pexels', 'pixabay', 'unsplash', 'unknown', 'page', 'own'];
 const ASSET_KINDS = ['image', 'video', 'audio', 'font', 'logo'] as const;
-const SOURCES = ['openverse', 'pexels', 'bundled', 'page'] as const;
+const SOURCES = ['openverse', 'wikimedia', 'nasa', 'museums', 'ccmixter', 'pexels', 'pixabay', 'freesound', 'jamendo', 'unsplash', 'custom', 'bundled', 'page'] as const;
 const LAYER_TYPES = ['text', 'shape', 'image', 'video', 'chart'] as const;
 // v1 clips are 60 seconds at most (PLAN.md open questions).
 export const MAX_CLIP_MS = 60_000;
@@ -118,6 +118,7 @@ function checkAsset(key: string, a: unknown, bad: (m: string) => void) {
   if (!isStr(c.url)) bad(`${at} credit link must be text.`);
   if (!oneOf(LICENCES, c.licence)) bad(`${at} licence must be one of ${LICENCES.join(', ')}.`);
   if (c.licenceUrl !== undefined && !isStr(c.licenceUrl)) bad(`${at} licence link must be text.`);
+  if (c.sourceName !== undefined && !isStr(c.sourceName)) bad(`${at} credit source name must be text.`);
 }
 
 function checkBox(where: string, b: unknown, bad: (m: string) => void) {

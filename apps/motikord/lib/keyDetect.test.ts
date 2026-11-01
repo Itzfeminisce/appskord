@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkKey, createKeyWatcher, detectKey, serviceLabel, verifyKey } from './keyDetect';
+import { checkKey, createKeyWatcher, detectKey, looksComplete, serviceLabel, verifyKey } from './keyDetect';
 
 describe('detectKey', () => {
   it('recognises Groq and Pexels keys', () => {
@@ -14,8 +14,23 @@ describe('detectKey', () => {
   });
   it('does not recognise anything else', () => {
     expect(detectKey('')).toBeNull();
-    expect(detectKey('sk-test')).toBeNull();
     expect(detectKey('not-a-key')).toBeNull();
+    expect(detectKey('pk-test')).toBeNull();
+  });
+  it('tells the four providers apart, longest prefix first', () => {
+    expect(detectKey('gsk_test')).toBe('GROQ_API_KEY');
+    expect(detectKey('sk-test')).toBe('OPENAI_API_KEY');
+    expect(detectKey('sk-proj-test')).toBe('OPENAI_API_KEY');
+    expect(detectKey('sk-ant-test')).toBe('ANTHROPIC_API_KEY');
+    expect(detectKey(' sk-or-test ')).toBe('OPENROUTER_API_KEY');
+    expect(serviceLabel('ANTHROPIC_API_KEY')).toBe('Anthropic');
+    expect(serviceLabel('OPENROUTER_API_KEY')).toBe('OpenRouter');
+  });
+  it('waits for a whole key of each shape', () => {
+    expect(looksComplete('OPENAI_API_KEY', 'sk-test')).toBe(false);
+    expect(looksComplete('OPENAI_API_KEY', `sk-test${'0'.repeat(24)}`)).toBe(true);
+    expect(looksComplete('ANTHROPIC_API_KEY', `sk-ant-test${'0'.repeat(24)}`)).toBe(true);
+    expect(looksComplete('OPENROUTER_API_KEY', `sk-or-test${'0'.repeat(24)}`)).toBe(true);
   });
   it('labels services', () => {
     expect(serviceLabel('GROQ_API_KEY')).toBe('Groq');
@@ -31,6 +46,17 @@ describe('checkKey', () => {
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).not.toContain('gsk_test');
     expect(init.headers).toEqual({ Authorization: 'Bearer gsk_test' });
+  });
+  it('checks each provider key against that provider', async () => {
+    const f = vi.fn(async () => new Response('{}', { status: 200 }));
+    await checkKey('OPENAI_API_KEY', 'sk-test', f as unknown as typeof fetch);
+    await checkKey('ANTHROPIC_API_KEY', 'sk-ant-test', f as unknown as typeof fetch);
+    await checkKey('OPENROUTER_API_KEY', 'sk-or-test', f as unknown as typeof fetch);
+    const calls = f.mock.calls as unknown as [string, RequestInit][];
+    expect(calls.map((c) => c[0])).toEqual(['https://api.openai.com/v1/models', 'https://api.anthropic.com/v1/models?limit=1000', 'https://openrouter.ai/api/v1/key']);
+    expect(calls[0]![1].headers).toEqual({ Authorization: 'Bearer sk-test' });
+    expect(calls[1]![1].headers).toMatchObject({ 'x-api-key': 'sk-ant-test', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' });
+    expect(await checkKey('ANTHROPIC_API_KEY', 'sk-ant-test', (async () => new Response('{}', { status: 401 })) as unknown as typeof fetch)).toBe('rejected');
   });
   it('is rejected on 401', async () => {
     expect(await checkKey('GROQ_API_KEY', 'gsk_test', reply(401))).toBe('rejected');

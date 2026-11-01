@@ -38,6 +38,14 @@ describe('searchOpenverse', () => {
     await expect(searchOpenverse(vi.fn(async () => { throw new TypeError('x'); }), 'q', 'image', false)).rejects.toMatchObject({ reason: 'offline' });
     await expect(searchOpenverse(vi.fn(async () => new Response('', { status: 500 })), 'q', 'image', false)).rejects.toBeInstanceOf(MediaSearchError);
   });
+  it('asks for at most 20 results a page, as anonymous Openverse allows', () => {
+    for (const kind of ['image', 'audio'] as const) expect(Number(new URL(openverseUrl('q', kind, false, 2)).searchParams.get('page_size'))).toBeLessThanOrEqual(20);
+  });
+  it('maps 401 and 429 to failed with the status, not offline', async () => {
+    for (const status of [401, 429]) {
+      await expect(searchOpenverse(vi.fn(async () => new Response('', { status })), 'q', 'image', false)).rejects.toMatchObject({ reason: 'failed', status });
+    }
+  });
   it('fetches the next page, up to 3, while filtering leaves fewer than 8', async () => {
     const pages = [[item('a', 'by'), item('b', 'by-nc')], [item('c', 'cc0'), item('d', 'by-sa')], [item('e', 'by')], [item('f', 'by')]];
     const f = vi.fn(async (url: string) => {

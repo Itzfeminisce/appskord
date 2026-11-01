@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateRecipe } from '../recipe/validate';
 import { applyPatch } from '../patch';
 import { devSampleRecipe } from './store';
-import { dragSpan, layerTiming, MIN_LAYER_MS, sceneTargets, sceneTiming, snap, ticks, tracks } from './timeline';
+import { dragSpan, layerTiming, MIN_LAYER_MS, sceneTargets, sceneTiming, scrubTime, snap, ticks, tracks } from './timeline';
 
 const r = devSampleRecipe('t');
 
@@ -58,5 +58,19 @@ describe('timeline maths', () => {
     expect(tracks(r).map((t) => t.name)).toEqual(['Subtitle', 'Title', 'Rule', 'Card', 'Dot']);
     expect(tracks(r).find((t) => t.name === 'Title')!.bars).toHaveLength(3);
     expect(ticks(15000)).toEqual([0, 5000, 10000, 15000]);
+  });
+});
+
+describe('playhead scrub', () => {
+  it('snaps to the 100 ms grid', () => {
+    expect(scrubTime(123, 0.1, 15000)).toBe(1200);
+    expect(scrubTime(149, 0.1, 15000)).toBe(1500);
+  });
+  it('stays inside the clip', () => {
+    expect(scrubTime(-40, 0.1, 15000)).toBe(0);
+    expect(scrubTime(99999, 0.1, 15000)).toBe(15000);
+  });
+  it('is 0 before the lane has a width', () => {
+    expect(scrubTime(50, 0, 15000)).toBe(0);
   });
 });

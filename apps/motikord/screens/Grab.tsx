@@ -28,7 +28,7 @@ async function inject(): Promise<{ tabId?: number; blocked?: boolean }> {
     return { tabId: tab.id };
   } catch (error) {
     console.warn('Motikord: could not start picking on this page', error);
-    return {};
+    return { blocked: true };
   }
 }
 
@@ -137,7 +137,7 @@ export default function Grab() {
     const info = page.current;
     const withBytes = shown.map((p) => (data[p.id] ? { ...p, dataUrl: data[p.id] } : p));
     // Chrome only asks inside the click, so the request goes out before anything is awaited.
-    const access = settings?.ai === 'local' ? Promise.resolve('granted' as const) : requestHost(HOSTS.groq);
+    const access = settings?.ai === 'local' ? Promise.resolve('granted' as const) : requestHost(HOSTS[settings?.provider ?? 'groq']);
     const stored = picksToAssets(withBytes, info, { id: newId, put: putMedia });
     void Promise.all([access, stored]).then(([a, { assets }]) => {
       const d = draft.get();

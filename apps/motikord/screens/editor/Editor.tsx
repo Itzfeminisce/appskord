@@ -1,3 +1,4 @@
+import { clipDuration } from '../../lib/render/drawFrame';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
 import { createAutosave, type Autosave, type SaveStatus } from '../../lib/editor/autosave';
 import { stepsBack } from '../../lib/editor/changes';
@@ -310,7 +311,12 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
     redo: () => dispatch({ type: 'redo', at: Date.now() }),
     select: (sceneId, layerId, timeMs) => dispatch({ type: 'select', sceneId, layerId, timeMs }),
     setTime: (ms) => { playhead.current = ms; dispatch({ type: 'time', ms }); },
-    play: (on) => dispatch({ type: 'play', playing: on }),
+    play: (on) => {
+      // Pressing play at the end starts again from 0:00.
+      const cur = stateRef.current;
+      if (on && cur.timeMs >= clipDuration(cur.clip.recipe) - 1) { playhead.current = 0; dispatch({ type: 'time', ms: 0 }); }
+      dispatch({ type: 'play', playing: on });
+    },
     toast,
     go: (screen, params = {}) => {
       if (screen === 'EditorPrompt') { setTab('changes'); return; }
@@ -350,6 +356,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
       // A focused button keeps its own Space and Enter.
       const control = e.target instanceof HTMLElement && e.target.closest('button, a, [role="radio"], [role="button"]');
       if (e.key === ' ' && !control) { e.preventDefault(); if (!e.repeat) api.play(!s.playing); }
+      if (e.key === 'Home' && !e.repeat) { e.preventDefault(); api.play(false); api.setTime(0); }
       if (e.key === 'Escape' && s.layerId) api.select(s.sceneId);
       const f = (e.key === 'Delete' || e.key === 'Backspace') && !e.repeat && findLayer(s.clip.recipe, s.sceneId, s.layerId);
       if (f && !f.layer.locked) { e.preventDefault(); api.edit(removeLayer(f), { toast: true }); }
@@ -398,7 +405,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
               {missing && <MediaMissing file={missing.file} scene={missing.scene} onReplace={() => { setMissing(undefined); api.go('YourMedia', { sceneId: state.clip.recipe.scenes[missing.scene - 1]?.id }); }} />}
             </div>
             {router.route.screen === 'Checker' && <CheckerPanel />}
-            {firstRun && <div style={{ position: 'absolute', left: 20, bottom: 96, width: 300, zIndex: 6 }}><FirstRun onDone={dismissFirstRun} /></div>}
+            {firstRun && <div style={{ position: 'absolute', top: 12, left: 12, width: 260, zIndex: 6 }}><FirstRun onDone={dismissFirstRun} /></div>}
             {toastText && <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 320, zIndex: 6 }}><UndoToast text={toastText} onUndo={api.undo} /></div>}
           </main>
           <aside style={{ width: 300, flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', alignContent: 'start', padding: '14px 16px', gap: 12, overflowY: 'auto' }}>

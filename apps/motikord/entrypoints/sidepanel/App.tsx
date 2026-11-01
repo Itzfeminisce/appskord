@@ -28,7 +28,7 @@ function Goto() {
   return null;
 }
 
-/** The editor tab's "Open Settings" (groq-down): show the screen it asked for. */
+/** The editor tab's "Open Settings" (provider-down): show the screen it asked for. */
 function GoOnRequest() {
   const { route, navigate } = useRouter();
   const at = useRef(route.screen);

@@ -6,6 +6,9 @@ export type HostAccess = 'granted' | 'denied';
 export const HOSTS = {
   penv: ['https://penv.cloud/*'],
   groq: ['https://api.groq.com/*'],
+  openai: ['https://api.openai.com/*'],
+  anthropic: ['https://api.anthropic.com/*'],
+  openrouter: ['https://openrouter.ai/*'],
   openverse: ['https://api.openverse.org/*'],
   pexels: ['https://api.pexels.com/*', 'https://images.pexels.com/*', 'https://videos.pexels.com/*'],
 } as const;

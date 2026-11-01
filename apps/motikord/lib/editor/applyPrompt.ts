@@ -3,16 +3,16 @@ import { AiError, toAiError } from '../ai/errors';
 import type { AiOptions } from '../ai/writeRecipe';
 import { applyPatch } from '../patch';
 import { validateRecipe } from '../recipe/validate';
-import type { Recipe } from '../types';
+import type { Provider, Recipe } from '../types';
 import { describe, promptSummary } from './changes';
 import type { Edit } from './store';
 
 // A prompt edit: ask the AI, check the result, and hand back one Change. A failure throws and the recipe stays as it was.
 
-/** Longer than this and the request is given up as Groq not responding. */
+/** Longer than this and the request is given up as the provider not responding. */
 export const PROMPT_TIMEOUT_MS = 45_000;
 
-export interface PromptEdit { edit: Edit; by: 'groq' | 'builtin'; detail: string; recipe: Recipe }
+export interface PromptEdit { edit: Edit; by: Provider | 'builtin'; detail: string; recipe: Recipe }
 export interface PromptOptions extends AiOptions {
   timeoutMs?: number;
   /** editRecipe, replaced in tests. */

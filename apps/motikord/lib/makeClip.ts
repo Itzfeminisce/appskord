@@ -7,10 +7,10 @@ import type { HostAccess } from './hostAccess';
 import { send } from './messages';
 import { getSettings, onSettingsChanged } from './settings';
 import { copyTemplate, type Template } from './templates';
-import type { Aspect, Asset, BrandKit, Clip, ClipType, Recipe, Settings } from './types';
+import type { Aspect, Asset, BrandKit, Clip, ClipType, Provider, Recipe, Settings } from './types';
 
 /** What a failed make shows: an AI state card, or one of the two setup cards Making can show. */
-export type MakeState = AiStateId | 'penv-disconnected' | 'groq-access';
+export type MakeState = AiStateId | 'penv-disconnected' | 'provider-access';
 
 /** A make that did not finish. `state` is undefined when you cancelled. */
 export class MakeFailure extends Error {
@@ -26,10 +26,10 @@ export interface MakeHooks extends AiOptions {
   brand?: BrandKit;
   save?: (clip: Clip) => Promise<void>;
   now?: () => number;
-  onType?: (type: ClipType, by: 'groq' | 'builtin' | 'settings' | 'guess' | 'you') => void;
+  onType?: (type: ClipType, by: Provider | 'builtin' | 'settings' | 'guess' | 'you') => void;
   onRecipe?: (recipe: Recipe) => void;
 }
-export interface MakeResult { clip: Clip; type: ClipType; notices: AiStateId[]; by: 'groq' | 'builtin' }
+export interface MakeResult { clip: Clip; type: ClipType; notices: AiStateId[]; by: Provider | 'builtin' }
 
 /** The failure a thrown error stands for. No key means Penv Cloud was disconnected when that is where the key came from. */
 export function failureFor(error: unknown, settings: Pick<Settings, 'keySource'>): MakeFailure {
@@ -132,14 +132,14 @@ export const promptFor = (d: MakeDraft) => d.prompt.trim() || `A clip made from 
 export interface RunState {
   status: 'idle' | 'running' | 'done' | 'failed';
   steps: number;                 // finished steps of: clip type, writing, motion and layout, checking
-  type?: ClipType; typeBy?: 'groq' | 'builtin' | 'settings' | 'guess' | 'you';
+  type?: ClipType; typeBy?: Provider | 'builtin' | 'settings' | 'guess' | 'you';
   recipe?: Recipe; clipId?: string;
   failure?: MakeState; retryAfterMs?: number;
-  notices: AiStateId[]; by?: 'groq' | 'builtin';
+  notices: AiStateId[]; by?: Provider | 'builtin';
   editorOpen: boolean;
-  busyRetries: number;           // automatic groq-busy retries already made
+  busyRetries: number;           // automatic provider-busy retries already made
 }
-/** Groq-busy is retried by itself this many times; after that only "Try now" remains. */
+/** provider-busy is retried by itself this many times; after that only "Try now" remains. */
 export const MAX_BUSY_RETRIES = 1;
 const IDLE: RunState = { status: 'idle', steps: 0, notices: [], editorOpen: false, busyRetries: 0 };
 
@@ -190,7 +190,7 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
     const live = () => mine === sequence;
     try {
       const settings = await deps.settings();
-      if (opts.access === 'denied' && settings.ai === 'cloud') throw new MakeFailure('groq-access');
+      if (opts.access === 'denied' && settings.ai === 'cloud') throw new MakeFailure('provider-access');
       const result = await deps.make(
         { prompt: promptFor(d), aspect: d.aspect ?? settings.defaultAspect, type: d.type, assets: d.attached, id: reserved },
         {

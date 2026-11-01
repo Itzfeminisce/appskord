@@ -62,4 +62,13 @@ describe('credits', () => {
     r.scenes[0]!.layers.splice(0, 1);
     expect(needsCreditsFile(r)).toBe(false);
   });
+
+  it('credits a source with no licence like a page grab, and needs credits.txt for it', () => {
+    const own: Asset = { id: 'u', kind: 'image', name: 'Bread', mime: 'image/jpeg', bytes: 1, opfsPath: 'media/u.jpg', credit: { title: 'Rye', author: 'Unknown', source: 'custom', sourceName: 'Bakery photo library', url: 'https://photos.mybakery.com/rye/', licence: 'unknown' } };
+    const nasa: Asset = { ...own, id: 'n', credit: { title: 'Moon', author: 'JSC', source: 'nasa', sourceName: 'NASA Image Library', url: 'https://images.nasa.gov/details/n', licence: 'unknown' } };
+    const r: Recipe = { ...recipe(), music: undefined, assets: { u: own, n: nasa }, scenes: [{ id: 's', durationMs: 5000, background: '#fff', layout: 'x', layers: [layer('l1', 'u', 'image'), layer('l2', 'n', 'image')] }] };
+    expect(creditsText(r)).toBe('Sourdough promo · made with Motikord\n\n“Rye” · From Bakery photo library\nhttps://photos.mybakery.com/rye/\n\n“Moon” · From NASA Image Library\nhttps://images.nasa.gov/details/n');
+    expect(needsCreditsFile(r)).toBe(true);
+    expect(creditsList(r).credited.map((c) => c.source)).toEqual(['Bakery photo library', 'NASA Image Library']);
+  });
 });

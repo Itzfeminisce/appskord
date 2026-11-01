@@ -26,8 +26,8 @@ function Thumb({ asset }: { asset: Asset }) {
 
 export function Item({ row }: { row: CreditRow }) {
   const { asset, credit, source, licence, need } = row;
-  const page = credit.licence === 'page';
-  const line = credit.source === 'bundled' ? `Comes with Motikord · ${licence}` : page ? `From ${credit.author}` : `${credit.author} · ${source} · ${licence}`;
+  const page = credit.licence === 'page' || credit.licence === 'unknown';
+  const line = credit.source === 'bundled' ? `Comes with Motikord · ${licence}` : page ? `From ${credit.licence === 'page' ? credit.author : source}` : `${credit.author} · ${source} · ${licence}`;
   return (
     <li style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 12px', borderTop: '1px solid var(--line)' }}>
       <Thumb asset={asset} />

@@ -1,17 +1,30 @@
 /** Recognises a pasted key by its prefix and checks it with the service. Never logs or returns the value itself. */
+import { authHeaders, PROVIDER_API } from './llm';
+import { PROVIDERS, providerForKey } from './providers';
 
-export type EnvKeyName = 'GROQ_API_KEY' | 'PEXELS_API_KEY';
+export type ProviderKeyName = 'GROQ_API_KEY' | 'OPENAI_API_KEY' | 'ANTHROPIC_API_KEY' | 'OPENROUTER_API_KEY';
+export type EnvKeyName = ProviderKeyName | 'PEXELS_API_KEY';
 
 /** Pexels keys have no prefix: 56 letters and digits. */
 const PEXELS_SHAPE = /^[A-Za-z0-9]{40,64}$/;
 
 export type KeyField = 'main' | 'pexels';
 
+// Longest prefix first: sk-ant- and sk-or- keys also start with OpenAI's sk-.
+const PREFIXES: [string, ProviderKeyName][] = [['gsk_', 'GROQ_API_KEY'], ['sk-ant-', 'ANTHROPIC_API_KEY'], ['sk-or-', 'OPENROUTER_API_KEY'], ['sk-', 'OPENAI_API_KEY']];
+const SHAPES: Record<ProviderKeyName, RegExp> = {
+  GROQ_API_KEY: /^gsk_[A-Za-z0-9]{20,}$/,
+  ANTHROPIC_API_KEY: /^sk-ant-[A-Za-z0-9_-]{20,}$/,
+  OPENROUTER_API_KEY: /^sk-or-[A-Za-z0-9_-]{20,}$/,
+  OPENAI_API_KEY: /^sk-[A-Za-z0-9_-]{20,}$/,
+};
+
 /** The key name for a pasted value, or null. The bare Pexels shape counts only inside the Pexels field, never the main one. */
 export function detectKey(value: string, field: KeyField = 'main'): EnvKeyName | null {
   const v = value.trim();
   if (!v) return null;
-  if (v.startsWith('gsk_')) return 'GROQ_API_KEY';
+  const hit = PREFIXES.find(([prefix]) => v.startsWith(prefix));
+  if (hit) return hit[1];
   if (v.startsWith('pexels_') || (field === 'pexels' && PEXELS_SHAPE.test(v))) return 'PEXELS_API_KEY';
   return null;
 }
@@ -19,7 +32,7 @@ export function detectKey(value: string, field: KeyField = 'main'): EnvKeyName |
 /** True when the value has the whole shape of its key, so a pause may check it. */
 export function looksComplete(name: EnvKeyName, value: string): boolean {
   const v = value.trim();
-  return name === 'GROQ_API_KEY' ? /^gsk_[A-Za-z0-9]{20,}$/.test(v) : PEXELS_SHAPE.test(v) || /^pexels_[A-Za-z0-9]{20,}$/.test(v);
+  return name === 'PEXELS_API_KEY' ? PEXELS_SHAPE.test(v) || /^pexels_[A-Za-z0-9]{20,}$/.test(v) : SHAPES[name].test(v);
 }
 
 export const IDLE_MS = 600;
@@ -43,19 +56,18 @@ export function createKeyWatcher(run: (name: EnvKeyName, key: string) => void, f
   };
 }
 
-const LABELS: Record<EnvKeyName, string> = { GROQ_API_KEY: 'Groq', PEXELS_API_KEY: 'Pexels' };
-
 /** The service's display name for a key name ("Groq"); unknown names come back unchanged. */
 export function serviceLabel(name: string): string {
-  return LABELS[name as EnvKeyName] ?? name;
+  if (name === 'PEXELS_API_KEY') return 'Pexels';
+  const p = providerForKey(name);
+  return p ? PROVIDERS[p].label : name;
 }
 
 export type KeyCheck = 'ready' | 'rejected' | 'unreachable';
 
 /** Asks the service whether it accepts the key. 'rejected' only on 401/403; any other failure is 'unreachable'. */
 export async function checkKey(name: EnvKeyName, value: string, fetchImpl: typeof fetch = fetch): Promise<KeyCheck> {
-  const url = name === 'GROQ_API_KEY' ? 'https://api.groq.com/openai/v1/models' : 'https://api.pexels.com/v1/search?query=nature&per_page=1';
-  const headers = name === 'GROQ_API_KEY' ? { Authorization: `Bearer ${value.trim()}` } : { Authorization: value.trim() };
+  const { url, headers } = checkRequest(name, value.trim());
   try {
     const res = await fetchImpl(url, { headers, credentials: 'omit' });
     if (res.ok) return 'ready';
@@ -63,6 +75,13 @@ export async function checkKey(name: EnvKeyName, value: string, fetchImpl: typeo
   } catch {
     return 'unreachable';
   }
+}
+
+/** OpenRouter lists models for anyone, so its key is checked on /key; the others on their model list. */
+function checkRequest(name: EnvKeyName, key: string): { url: string; headers: Record<string, string> } {
+  const p = providerForKey(name);
+  if (!p) return { url: 'https://api.pexels.com/v1/search?query=nature&per_page=1', headers: { Authorization: key } };
+  return { url: p === 'openrouter' ? 'https://openrouter.ai/api/v1/key' : PROVIDER_API[p].modelsUrl, headers: authHeaders(p, key) };
 }
 
 export type Verdict = 'ready' | 'rejected' | 'unreachable' | 'denied';

@@ -1,20 +1,26 @@
 import type { Issue, Layer, Motion, PatchOp, PresetSlot, Recipe, Scene } from '../types';
-import { chat, type ChatMessage, type ChatOptions } from '../llm';
+import { chat, LLMError, type ChatMessage, type ChatOptions } from '../llm';
 import { MAX_CLIP_MS, validateRecipe } from '../recipe/validate';
 import { check } from '../checker';
 import { applyPatch } from '../patch';
 import { getPreset } from '../render/presets';
 import { AiError, toAiError, type AiStateId } from './errors';
-import { recipeSystem, retryMessage, type RecipePromptInput } from './prompts';
+import { critiqueMessage, planSystem, recipeRequest, recipeSystem, retryMessage, SCENE_RANGE, SHORTER, type ClipPlan, type PlanScene, type RecipePromptInput } from './prompts';
 
 export type AiOptions = Omit<ChatOptions, 'json' | 'maxTokens'>;
+
+export const RECIPE_TOKENS = 4000;
+export const PLAN_TOKENS = 900;
+// Groq's free tier: each call's prompt plus max_tokens stays under this.
+export const CALL_BUDGET = 8000;
+export const estimateTokens = (messages: ChatMessage[]) => Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 3);
 
 export interface WriteInput extends RecipePromptInput {
   prompt: string;
   id?: string;               // new clip id; random when absent
 }
 export interface WriteResult {
-  recipe: Recipe; by: 'groq' | 'builtin';
+  recipe: Recipe; by: import('../types').Provider | 'builtin';
   notices: AiStateId[];      // 'too-long' when the idea ran past 60 s and was cut to fit
   checkerClean: boolean;     // the reply passed the checker before any fixes
   issues: Issue[];           // what the checker could not fix
@@ -109,9 +115,14 @@ const totalMs = (scenes: Scene[]) => scenes.reduce((t, s) => t + (s.durationMs |
 
 /** Shrinks every time in proportion so the clip ends at 60 s. */
 export function fitToMax(recipe: Recipe): Recipe {
+  return totalMs(recipe.scenes) <= MAX_CLIP_MS ? recipe : scaleTo(recipe, MAX_CLIP_MS);
+}
+
+/** Stretches or shrinks every time in proportion so the clip lasts `targetMs`. */
+export function scaleTo(recipe: Recipe, targetMs: number): Recipe {
   const total = totalMs(recipe.scenes);
-  if (total <= MAX_CLIP_MS) return recipe;
-  const k = MAX_CLIP_MS / total;
+  if (total <= 0) return recipe;
+  const k = targetMs / total;
   const t = (ms: number) => Math.floor(ms * k);
   const motion = (m?: Motion) => (m ? { ...m, durationMs: Math.max(1, t(m.durationMs)) } : m);
   const scenes = recipe.scenes.map((s) => {
@@ -163,37 +174,138 @@ export function draftToRecipe(draft: unknown, input: WriteInput, id: string): un
   return recipe;
 }
 
-/** Turns a prompt into a valid, checked Recipe. One call, one retry with the problems, then an AiError. */
-export async function writeRecipe(input: WriteInput, opts: AiOptions = {}): Promise<WriteResult> {
-  const id = input.id ?? newId();
-  const messages: ChatMessage[] = [
-    { role: 'system', content: recipeSystem(input) },
-    { role: 'user', content: input.prompt },
-  ];
-  let problems: string[] = [];
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let reply;
-    try {
-      reply = await chat(messages, { ...opts, json: true, maxTokens: 4000 });
-    } catch (e) {
-      throw toAiError(e, 'make');
-    }
-    const parsed = parseJsonReply(reply.text);
-    let candidate = draftToRecipe(parsed, input, id);
-    const notices: AiStateId[] = [];
-    if (isObj(candidate) && Array.isArray(candidate.scenes) && candidate.scenes.every((sc) => isObj(sc) && Array.isArray(sc.layers) && sc.layers.every(isObj))) {
-      const r = candidate as unknown as Recipe;
-      if (totalMs(r.scenes) > MAX_CLIP_MS) { candidate = fitToMax(r); notices.push('too-long'); }
-    }
-    problems = parsed === undefined ? ['The reply was not JSON.'] : validateRecipe(candidate);
-    if (problems.length === 0) {
-      const recipe = candidate as Recipe;
-      const checkerClean = check(recipe).length === 0;
-      const fixed = applyCheckerFixes(recipe);
-      return { recipe: fixed.recipe, by: reply.by, notices, checkerClean, issues: fixed.issues };
-    }
-    messages.push({ role: 'assistant', content: reply.text }, { role: 'user', content: retryMessage(problems) });
-  }
-  throw new AiError('invalid-reply', 'make', { problems });
+const clean = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : undefined);
+
+/** Keeps the plan fields step 2 needs; undefined when the reply holds no usable scenes. */
+export function readPlan(raw: unknown): ClipPlan | undefined {
+  if (!isObj(raw) || !Array.isArray(raw.scenes)) return undefined;
+  const scenes: PlanScene[] = raw.scenes.filter(isObj).slice(0, 8).flatMap((sc) => {
+    const headline = clean(sc.headline, 80);
+    if (!headline) return [];
+    const out: PlanScene = { headline };
+    if (typeof sc.ms === 'number' && sc.ms > 0) out.ms = Math.round(sc.ms);
+    for (const k of ['support', 'visual', 'layout', 'bg', 'accent', 'motion'] as const) { const v = clean(sc[k], 120); if (v) out[k] = v; }
+    return [out];
+  });
+  if (scenes.length === 0) return undefined;
+  const plan: ClipPlan = { scenes };
+  const name = clean(raw.name, 40); if (name) plan.name = name;
+  const hook = clean(raw.hook, 120); if (hook) plan.hook = hook;
+  return plan;
 }
 
+/** Step 1. A plan the model could not write is skipped; a failed call is the same failure the recipe call would hit. */
+export async function planClip(input: WriteInput, opts: AiOptions = {}): Promise<ClipPlan | undefined> {
+  try {
+    const reply = await chat([{ role: 'system', content: planSystem(input) }, { role: 'user', content: input.prompt }], { ...opts, json: true, maxTokens: PLAN_TOKENS, temperature: 0.7 });
+    return readPlan(parseJsonReply(reply.text));
+  } catch (e) {
+    if (e instanceof LLMError && e.code === 'bad-reply') return undefined;
+    throw toAiError(e, 'make');
+  }
+}
+
+const words = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+
+/** What a motion designer would send back: too few scenes for the type, or a title pasted from the prompt. */
+export function designNotes(recipe: Recipe, prompt: string): string[] {
+  const notes: string[] = [];
+  const [lo, hi] = SCENE_RANGE[recipe.type];
+  if (lo >= 4 && recipe.scenes.length <= 2) notes.push(`Use ${lo} to ${hi} scenes, one idea each: a hook, the beats that build, and a closing call to action.`);
+  if (recipe.type !== 'quote' && recipe.type !== 'captions') {
+    const p = ` ${words(prompt).join(' ')} `;
+    for (const sc of recipe.scenes) for (const l of sc.layers) {
+      if (l.type !== 'text' || l.role !== 'title') continue;
+      const w = words(l.text);
+      if (w.length >= 5 && p.includes(` ${w.join(' ')} `)) notes.push(`The title "${l.text}" copies the prompt. Write a fresh 3 to 7 word headline.`);
+    }
+  }
+  return notes;
+}
+
+/** Gives every text layer that has none an "in" and an "out", so nothing just appears or vanishes. */
+export function addMissingMotion(recipe: Recipe): Recipe {
+  const scenes = recipe.scenes.map((s) => ({
+    ...s,
+    layers: s.layers.map((l) => {
+      if (l.type !== 'text' || l.endMs - l.startMs < 1500 || (l.in && l.out)) return l;
+      const inId = l.role === 'title' ? 'rise-in' : 'fade-in';
+      return { ...l, in: l.in ?? { preset: inId, feel: 'smooth' as const, durationMs: getPreset(inId)!.defaultMs }, out: l.out ?? { preset: 'fade-out', feel: 'smooth' as const, durationMs: getPreset('fade-out')!.defaultMs } };
+    }),
+  }));
+  return { ...recipe, scenes };
+}
+
+type Attempt = { ok: true; recipe: Recipe; by: WriteResult['by']; notices: AiStateId[]; text: string } | { ok: false; problems: string[] };
+
+/** One call and its checks. Returns the problems instead of throwing when the reply is unusable. */
+async function draftOnce(messages: ChatMessage[], input: WriteInput, id: string, opts: AiOptions, firstTry: boolean): Promise<Attempt & { parsed?: unknown; text?: string }> {
+  let reply;
+  try {
+    reply = await chat(messages, { ...opts, json: true, maxTokens: RECIPE_TOKENS });
+  } catch (e) {
+    if (e instanceof LLMError && e.code === 'bad-reply' && firstTry) return { ok: false, problems: ['The reply was not JSON.'] };
+    throw toAiError(e, 'make');
+  }
+  const parsed = parseJsonReply(reply.text);
+  let candidate = draftToRecipe(parsed, input, id);
+  const notices: AiStateId[] = [];
+  if (isObj(candidate) && Array.isArray(candidate.scenes) && candidate.scenes.every((sc) => isObj(sc) && Array.isArray(sc.layers) && sc.layers.every(isObj))) {
+    const r = candidate as unknown as Recipe;
+    if (totalMs(r.scenes) > MAX_CLIP_MS) { candidate = fitToMax(r); notices.push('too-long'); }
+  }
+  const problems = parsed === undefined ? ['The reply was not JSON.'] : validateRecipe(candidate);
+  if (problems.length) return { ok: false, problems, parsed, text: reply.text };
+  return { ok: true, recipe: candidate as Recipe, by: reply.by, notices, text: reply.text };
+}
+
+/** Adds the model's last reply to a retry only when the call still fits the free-tier budget. */
+const withReply = (base: ChatMessage[], text: string | undefined, follow: string): ChatMessage[] => {
+  const full: ChatMessage[] = text ? [...base, { role: 'assistant', content: text }, { role: 'user', content: follow }] : [];
+  return full.length && estimateTokens(full) + RECIPE_TOKENS <= CALL_BUDGET ? full : [...base, { role: 'user', content: follow }];
+};
+
+function finish(a: Extract<Attempt, { ok: true }>, input: WriteInput): WriteResult {
+  let recipe = addMissingMotion(a.recipe);
+  const total = totalMs(recipe.scenes);
+  // Asked for a length and the reply is well off it: stretch or shrink in proportion.
+  if (input.lengthMs && Math.abs(total - input.lengthMs) > input.lengthMs * 0.2) {
+    const scaled = scaleTo(recipe, Math.min(MAX_CLIP_MS, input.lengthMs));
+    if (validateRecipe(scaled).length === 0) recipe = scaled;
+  }
+  const checkerClean = check(recipe).length === 0;
+  const fixed = applyCheckerFixes(recipe);
+  return { recipe: fixed.recipe, by: a.by, notices: a.notices, checkerClean, issues: fixed.issues };
+}
+
+/** Turns a prompt into a valid, checked Recipe: a creative plan, the recipe, one retry for problems and one for a flat design. */
+export async function writeRecipe(input: WriteInput, opts: AiOptions = {}): Promise<WriteResult> {
+  const id = input.id ?? newId();
+  const plan = await planClip(input, opts);
+  const base: ChatMessage[] = [
+    { role: 'system', content: recipeSystem(input) },
+    { role: 'user', content: recipeRequest(input.prompt, plan) },
+  ];
+  let messages = base;
+  let first: Extract<Attempt, { ok: true }> | undefined;
+  let problems: string[] = [];
+  for (let attempt = 0; attempt < 2 && !first; attempt++) {
+    const a = await draftOnce(messages, input, id, opts, attempt === 0);
+    if (a.ok) { first = a; break; }
+    problems = a.problems;
+    // A reply that was not JSON is no use to fix; ask again instead of sending it back.
+    messages = a.parsed === undefined ? [...base, { role: 'user', content: SHORTER }] : withReply(base, a.text, retryMessage(problems));
+  }
+  if (!first) throw new AiError('invalid-reply', 'make', { problems });
+
+  const notes = designNotes(first.recipe, input.prompt);
+  if (notes.length === 0) return finish(first, input);
+  try {
+    const again = await draftOnce(withReply(base, first.text, critiqueMessage(notes)), input, id, opts, false);
+    if (again.ok && designNotes(again.recipe, input.prompt).length < notes.length) return finish(again, input);
+  } catch (e) {
+    if (e instanceof AiError && e.code === 'cancelled') throw e;
+    // The first recipe is valid; a failed second try still makes the clip.
+  }
+  return finish(first, input);
+}

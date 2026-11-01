@@ -46,7 +46,7 @@ describe('penvApp', () => {
     expect(PENV_APP_CLIENT_ID).toBe('motikord');
     expect(url.searchParams.get('client_id')).toBe('motikord');
     expect(url.searchParams.get('redirect_uri')).toBe(REDIRECT);
-    expect(url.searchParams.get('keys')).toBe('GROQ_API_KEY,PEXELS_API_KEY');
+    expect(url.searchParams.get('keys')).toBe('GROQ_API_KEY,OPENAI_API_KEY,ANTHROPIC_API_KEY,OPENROUTER_API_KEY,PEXELS_API_KEY,PIXABAY_API_KEY,FREESOUND_API_KEY,JAMENDO_CLIENT_ID,UNSPLASH_ACCESS_KEY');
   });
 
   it('approval flow: exchanges the code, then loads the shared keys', async () => {

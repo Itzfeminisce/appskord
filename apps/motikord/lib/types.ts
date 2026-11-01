@@ -1,16 +1,22 @@
 // CONTRACT.md as code (apps/motikord/v1/CONTRACT.md). Later tasks import these and never redefine them.
 export type Aspect = '9:16' | '1:1' | '16:9';
 export type ClipType = 'promo' | 'quote' | 'chart' | 'explainer' | 'logo' | 'captions' | 'social';
-export type AiMode = 'cloud' | 'local';                     // "Faster with Groq" / "On this computer"
+export type AiMode = 'cloud' | 'local';                     // "Faster in the cloud" / "On this computer"
+export type Provider = 'groq' | 'openai' | 'anthropic' | 'openrouter';   // who runs the cloud AI
 export type Feel = 'smooth' | 'snappy' | 'bouncy' | 'steady';
 export type PresetSlot = 'in' | 'during' | 'out';           // "Comes in" / "While on screen" / "Goes out"
 export type FileKind = 'mp4' | 'webm' | 'gif' | 'webm-alpha';
 export type Quality = '720p' | '1080p';
-export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pexels' | 'page' | 'own';
-export type Author = 'groq' | 'builtin' | 'hand' | 'template';
+export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pexels' | 'pixabay' | 'unsplash' | 'unknown' | 'page' | 'own';
+// unknown: the source gives no licence ("Check you may use it"); credited like a page grab.
+export type MediaSourceId = 'openverse' | 'wikimedia' | 'nasa' | 'museums' | 'ccmixter' | 'pexels' | 'pixabay' | 'freesound' | 'jamendo' | 'unsplash';
+export type KeyPlacement = 'bearer' | 'authorization' | 'key' | 'api_key' | 'client_id' | 'header';
+export type CustomFormat = 'openverse' | 'wordpress' | 'mediawiki' | 'pexels' | 'pixabay' | 'generic';
+export type Author = Provider | 'builtin' | 'hand' | 'template';
 
 export interface Credit {                                    // every asset someone else made
-  title: string; author: string; source: 'openverse' | 'pexels' | 'bundled' | 'page';
+  title: string; author: string; source: MediaSourceId | 'custom' | 'bundled' | 'page';
+  sourceName?: string;                                       // a custom source's name, for "From {source}"
   url: string; licence: LicenceId; licenceUrl?: string;
 }
 export interface Asset {
@@ -73,13 +79,28 @@ export interface Issue {                                     // quality checker
 
 export interface Settings {
   ai: AiMode; keySource: 'penv-app' | 'paste' | null;
+  provider: Provider;                                        // used when ai is 'cloud'
+  models: Partial<Record<Provider, string>>;                 // the model the person picked; absent = recommended
   penvApp?: { connectionId: string; org: string; project: string; env: string; keys: string[] };
   defaultType?: ClipType;                                   // "Always use this type": skips detection
   defaultAspect: Aspect; defaultExport: { kind: FileKind; quality: Quality };
+  voiceOn: boolean;                                          // "Speak your prompt": off hides the mic buttons
+  voiceLang: string;                                         // BCP-47 for voice prompts; '' = Chrome's language
   smoothPreview: boolean;                                    // "Keep the preview smooth": drops preview resolution
-  libraries: { openverse: boolean; pexels: boolean; allLicences: boolean };
+  media: MediaSettings;                                      // "Media sources"; replaces the old libraries field
   folderName?: string;                                       // handle itself kept in IndexedDB
   onboarded: boolean;
+}
+
+export interface CustomSource {                              // "Your own sources"; its key lives in session storage only
+  id: string; name: string; url: string;                     // url holds {query}
+  kinds: ('image' | 'video' | 'audio')[]; format: CustomFormat; on: boolean;
+  keyAs?: KeyPlacement; keyHeader?: string;                  // set when the source takes a key
+}
+export interface MediaSettings {
+  on: Partial<Record<MediaSourceId, boolean>>;               // absent = the source's default
+  custom: CustomSource[];
+  allLicences: boolean;                                      // off = "Only free to use in videos"
 }
 
 export interface ExportJob {                                 // kept until done, for Recovered

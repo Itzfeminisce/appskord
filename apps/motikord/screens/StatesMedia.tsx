@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { searchingLine } from '../lib/media/sources/search';
 import { actionStyle } from './StatesSetup';
 
 // StatesMedia frame: every state of Free media. Each card's label in the frame is `<state-id> · <screen it appears on>`.
@@ -22,10 +23,10 @@ function Row({ tone = 'plain', glyph, title, children, actions, role }: { tone?:
 
 const btn = (text: string, onClick?: () => void, style: CSSProperties = actionStyle) => <button key={text} type="button" onClick={onClick} style={style}>{text}</button>;
 
-export function MediaSearching() {
+export function MediaSearching({ names = ['Openverse', 'Pexels'] }: { names?: string[] }) {
   return (
     <div role="status" style={{ padding: 12, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <span style={{ fontSize: 12, color: 'var(--muted)' }}>Searching Openverse and Pexels…</span>
+      <span style={{ fontSize: 12, color: 'var(--muted)' }}>{searchingLine(names)}</span>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
         {[0, 1, 2].map((i) => <span key={i} style={{ height: 64, borderRadius: 8, background: 'var(--stage)' }} />)}
       </div>
@@ -48,6 +49,15 @@ export function MediaOffline({ onUseMedia }: { onUseMedia?: () => void }) {
     <Row role="status" glyph={<svg {...icon} stroke="var(--muted)"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0M12 19v.01M3 3l18 18" /></svg>}
       title="Search needs the internet" actions={btn('Use your media', onUseMedia, ghostAction)}>
       Your own media, media you added before and the bundled music still work.
+    </Row>
+  );
+}
+
+export function SearchFailed({ library = 'Openverse', onRetry }: { library?: 'Openverse' | 'Pexels'; onRetry?: () => void }) {
+  return (
+    <Row role="status" glyph={<svg {...icon} stroke="var(--muted)"><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16.5v.01" /></svg>}
+      title={`${library} didn't answer`} actions={btn('Try again', onRetry)}>
+      Results from the other library still show. Try again in a minute.
     </Row>
   );
 }
@@ -95,6 +105,8 @@ export default function StatesMedia() {
       <MediaSearching />
       <MediaNoResults query="sourdough croissant bagel" />
       <MediaOffline />
+      <SearchFailed />
+      <SearchFailed library="Pexels" />
       <PexelsNeedsKey />
       <LibraryDenied />
       <MediaDownloadFailed />

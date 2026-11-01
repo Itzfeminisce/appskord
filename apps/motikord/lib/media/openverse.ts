@@ -1,4 +1,4 @@
-import type { LicenceId } from '../types';
+import type { LicenceId, MediaSourceId } from '../types';
 import { isFreeToUse, openverseLicence, openverseLicenceName } from './licence';
 
 export type MediaKind = 'image' | 'video' | 'audio';
@@ -6,7 +6,9 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 /** One search hit, the same shape for every library. */
 export interface MediaResult {
-  id: string; source: 'openverse' | 'pexels'; kind: MediaKind;
+  id: string; source: MediaSourceId | 'custom'; kind: MediaKind;
+  /** Shown as "From"; a custom source's own name. */ sourceName?: string;
+  /** Unsplash's download-tracking link, pinged once when the photo is used. */ trackUrl?: string;
   title: string; author: string; licence: LicenceId;
   /** "CC BY 4.0" */ licenceLabel: string; licenceUrl?: string;
   /** The page it lives on, for "See it on Openverse" and the credit link. */ pageUrl: string;
@@ -16,11 +18,11 @@ export interface MediaResult {
 
 /** offline: no connection. key: the library refused the key. failed: anything else. */
 export class MediaSearchError extends Error {
-  constructor(readonly reason: 'offline' | 'key' | 'failed', message: string) { super(message); this.name = 'MediaSearchError'; }
+  constructor(readonly reason: 'offline' | 'key' | 'failed', message: string, readonly status?: number) { super(message); this.name = 'MediaSearchError'; }
 }
 
 const API = 'https://api.openverse.org/v1';
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 20; // anonymous Openverse requests answer 401 above 20
 
 interface OvItem {
   id: string; title?: string | null; creator?: string | null; url?: string | null; foreign_landing_url?: string | null;
@@ -67,7 +69,7 @@ export async function searchOpenverse(fetchFn: FetchLike, q: string, kind: 'imag
     }
     if (!res.ok) {
       if (out.length) break;
-      throw new MediaSearchError('failed', `Openverse answered ${res.status}.`);
+      throw new MediaSearchError('failed', res.status === 429 ? 'Openverse is throttling requests.' : `Openverse answered ${res.status}.`, res.status);
     }
     const body = (await res.json()) as { results?: OvItem[]; page_count?: number };
     const seen = new Set(out.map((r) => r.id));

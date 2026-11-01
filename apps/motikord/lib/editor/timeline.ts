@@ -119,3 +119,12 @@ export function ticks(totalMs: number, stepMs = 5000): number[] {
   for (let t = 0; t <= totalMs; t += stepMs) out.push(t);
   return out;
 }
+
+/** Playhead time for a pointer x inside the lane (px from its left edge): on the grid, inside the clip. */
+export function scrubTime(x: number, pxPerMs: number, totalMs: number): number {
+  if (!(pxPerMs > 0)) return 0;
+  return Math.max(0, Math.min(snap(x / pxPerMs), toGrid(totalMs)));
+}
+
+/** Scrub updates the canvas at most this often. */
+export const SCRUB_MS = 1000 / 30;

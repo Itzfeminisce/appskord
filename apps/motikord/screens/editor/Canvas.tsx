@@ -94,7 +94,7 @@ export function Canvas() {
           frames = 1;
           slow = 0;
         }
-        if (t >= total) { base = undefined; ended = true; L.api.play(false); L.api.setTime(total); }
+        if (t >= total) { base = undefined; ended = true; L.api.play(false); L.api.setTime(0); }
       } else {
         ended = false;
         if (base) { base = undefined; L.api.setTime(playhead.current); }

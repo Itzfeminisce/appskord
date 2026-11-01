@@ -27,10 +27,13 @@ export default defineConfig({
     icons: ICONS,
     // activeTab + scripting run the page picker (T6) only in the tab you grab from.
     permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting', 'identity'],
-    // Asked for only when first used: Penv Cloud, Groq, the media libraries and the hosts their files come from.
+    // Asked for only when first used: Penv Cloud, the AI providers, the media libraries and the hosts their files come from.
     optional_host_permissions: [
       'https://penv.cloud/*',
       'https://api.groq.com/*',
+      'https://api.openai.com/*',
+      'https://api.anthropic.com/*',
+      'https://openrouter.ai/*',
       'https://api.openverse.org/*',
       'https://api.pexels.com/*',
       'https://images.pexels.com/*',
@@ -49,6 +52,18 @@ export default defineConfig({
       'https://*.archive.org/*',
       'https://lh3.googleusercontent.com/*',
       'https://player.vimeo.com/*',
+      // Media sources: the built-in search APIs and the hosts their files come from.
+      'https://commons.wikimedia.org/*',
+      'https://images-api.nasa.gov/*',
+      'https://images-assets.nasa.gov/*',
+      'https://collectionapi.metmuseum.org/*',
+      'https://api.artic.edu/*',
+      'https://www.artic.edu/*',
+      'https://pixabay.com/*',
+      'https://cdn.pixabay.com/*',
+      'https://freesound.org/*',
+      'https://api.unsplash.com/*',
+      'https://images.unsplash.com/*',
       // The side panel gets no activeTab, so Grab asks for the page you are on (one site at a time, never all sites at once).
       'https://*/*',
       'http://*/*',

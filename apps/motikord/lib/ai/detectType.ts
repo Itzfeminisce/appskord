@@ -1,4 +1,4 @@
-import type { ClipType, Settings } from '../types';
+import type { ClipType, Provider, Settings } from '../types';
 import { chat } from '../llm';
 import { getSettings } from '../settings';
 import { CLIP_TYPES } from '../recipe/validate';
@@ -24,7 +24,7 @@ export function guessType(prompt: string): ClipType {
 export async function detectType(
   prompt: string,
   opts: AiOptions & { settings?: Pick<Settings, 'defaultType'> } = {},
-): Promise<{ type: ClipType; by: 'groq' | 'builtin' | 'settings' | 'guess' }> {
+): Promise<{ type: ClipType; by: Provider | 'builtin' | 'settings' | 'guess' }> {
   const settings = opts.settings ?? (await getSettings());
   if (settings.defaultType) return { type: settings.defaultType, by: 'settings' };
   const { settings: _ignored, ...chatOpts } = opts;

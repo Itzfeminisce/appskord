@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { clipDuration } from '../../lib/render/drawFrame';
 import { getPreset } from '../../lib/render/presets';
 import { clockShort, restTime, sceneStart, sceneTitle } from '../../lib/editor/store';
-import { dragSpan, layerTiming, sceneLength, sceneTargets, sceneTiming, ticks, tracks, type DragMode, type Span } from '../../lib/editor/timeline';
+import { dragSpan, layerTiming, sceneLength, sceneTargets, sceneTiming, scrubTime, SCRUB_MS, ticks, tracks, type DragMode, type Span } from '../../lib/editor/timeline';
 import type { Credit, LicenceId, Recipe } from '../../lib/types';
 import { useEditor } from './Editor';
 
@@ -33,7 +33,7 @@ function musicLabel(r: Recipe): string {
 }
 
 export function Timeline() {
-  const { state, edit, select, setTime, playhead, go } = useEditor();
+  const { state, edit, select, setTime, play, playhead, go } = useEditor();
   const r = state.clip.recipe;
   const lane = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLSpanElement>(null);
@@ -157,11 +157,42 @@ export function Timeline() {
     select(scene.id, l.id, showAt(si, l));
   };
 
-  const seek = (e: ReactPointerEvent<HTMLElement>) => {
-    if (e.target !== e.currentTarget || k <= 0) return;
-    const x = e.clientX - e.currentTarget.getBoundingClientRect().left;
-    setTime(Math.max(0, Math.min(x / k, total)));
+  // Scrubbing: the playhead handle and the ruler. The canvas follows at 30 fps, and only when the snapped time changes.
+  const scrub = useRef<{ lastMs: number; sent: number; pending?: number; timer?: ReturnType<typeof setTimeout> }>(undefined);
+  const scrubTo = (e: ReactPointerEvent<HTMLElement>) => {
+    const s = scrub.current;
+    const el = lane.current;
+    if (!s || !el) return;
+    const ms = scrubTime(e.clientX - el.getBoundingClientRect().left, k, total);
+    playhead.current = ms;
+    if (head.current) head.current.style.transform = `translateX(${Math.round(ms * k)}px)`;
+    if (ms === s.lastMs) return;
+    s.lastMs = ms;
+    const wait = s.sent + SCRUB_MS - performance.now();
+    if (wait <= 0) { s.sent = performance.now(); setTime(ms); } else {
+      s.pending = ms;
+      s.timer ??= setTimeout(() => { s.timer = undefined; s.sent = performance.now(); if (s.pending !== undefined) setTime(s.pending); s.pending = undefined; }, wait);
+    }
   };
+  const scrubStart = (e: ReactPointerEvent<HTMLElement>) => {
+    if (e.button !== 0 || k <= 0) return;
+    if (e.currentTarget !== head.current && e.target !== e.currentTarget) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    if (state.playing) play(false);
+    scrub.current = { lastMs: -1, sent: 0 };
+    scrubTo(e);
+  };
+  const scrubMove = (e: ReactPointerEvent<HTMLElement>) => { if (scrub.current) scrubTo(e); };
+  const scrubEnd = (e: ReactPointerEvent<HTMLElement>) => {
+    const s = scrub.current;
+    if (!s) return;
+    if (s.timer) clearTimeout(s.timer);
+    if (s.pending !== undefined) setTime(s.pending);
+    scrub.current = undefined;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+  const scrubHandlers = { onPointerDown: scrubStart, onPointerMove: scrubMove, onPointerUp: scrubEnd, onPointerCancel: scrubEnd };
 
   const handlers = { onPointerMove: move, onPointerUp: up, onPointerCancel: cancel };
   const music = musicLabel(r);
@@ -171,12 +202,12 @@ export function Timeline() {
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', padding: '8px 12px 10px', gap: 6, position: 'relative', userSelect: 'none' }}>
       <div style={{ flexShrink: 0, overflow: 'hidden', scrollbarGutter: 'stable', display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', paddingLeft: LABEL_W + 8, fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--faint)', height: 12 }}>
-        <div style={{ position: 'relative', flex: 1 }} onPointerDown={seek}>
+        <div style={{ position: 'relative', flex: 1, cursor: 'pointer' }} {...scrubHandlers}>
           {ticks(total).map((t) => <span key={t} style={{ position: 'absolute', left: t * k, pointerEvents: 'none' }}>{clockShort(t)}</span>)}
         </div>
       </div>
       <Row label="Scenes">
-        <div ref={lane} style={{ position: 'relative', flex: 1, height: 30 }} onPointerDown={seek}>
+        <div ref={lane} style={{ position: 'relative', flex: 1, height: 30 }} {...scrubHandlers}>
           {r.scenes.map((s, si) => {
             const on = s.id === state.sceneId;
             return (
@@ -197,7 +228,7 @@ export function Timeline() {
           const mine = t.bars.some((b) => b.layer.id === state.layerId && r.scenes[b.si]!.id === state.sceneId);
           return (
             <Row key={t.name} label={t.name} strong={mine}>
-              <div style={{ position: 'relative', flex: 1, height: 24 }} onPointerDown={seek}>
+              <div style={{ position: 'relative', flex: 1, height: 24 }} {...scrubHandlers}>
                 {t.bars.map(({ si, li, layer }) => {
                   const span = draft?.kind === 'layer' && draft.si === si && draft.li === li ? draft.span : { startMs: layer.startMs, endMs: Math.min(layer.endMs, sceneMs(si)) };
                   const on = layer.id === state.layerId && r.scenes[si]!.id === state.sceneId;
@@ -230,7 +261,10 @@ export function Timeline() {
           </button>
         </Row>
       </div>
-      <span ref={head} aria-hidden="true" style={{ position: 'absolute', left: 12 + LABEL_W + 8 - 1, top: 8, bottom: 8, width: 2, background: 'var(--ink)', pointerEvents: 'none', willChange: 'transform' }} />
+      <span ref={head} role="slider" aria-label="Playhead" aria-valuemin={0} aria-valuemax={total} aria-valuenow={state.timeMs} {...scrubHandlers}
+        style={{ position: 'absolute', left: 12 + LABEL_W + 8 - 7, top: 8, bottom: 8, width: 14, cursor: 'ew-resize', touchAction: 'none', willChange: 'transform', display: 'flex', justifyContent: 'center' }}>
+        <span style={{ width: 2, height: '100%', background: 'var(--ink)', pointerEvents: 'none' }} />
+      </span>
     </div>
   );
 }

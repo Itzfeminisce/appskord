@@ -7,12 +7,16 @@ import { HOSTS, requestHost } from '../lib/hostAccess';
 import { deleteMedia } from '../lib/media';
 import { clock, chooseMusicEdit } from '../lib/music';
 import { LICENCE_TAG, needsCredit } from '../lib/media/licence';
-import { MediaSearchError, searchOpenverse, type MediaKind, type MediaResult } from '../lib/media/openverse';
-import { searchPexels } from '../lib/media/pexels';
+import type { MediaKind, MediaResult } from '../lib/media/openverse';
+import { BUILTINS, builtin, isOn, trackUse } from '../lib/media/sources/builtins';
+import { runOrigins, searchAll, sourceRuns, type SearchOutcome, type SourceRun } from '../lib/media/sources/search';
+import { setSourceStatus, type SourceStatus } from '../lib/media/sources/status';
 import { PANEL_GOTO, send } from '../lib/messages';
-import { getKey, getSettings, onSettingsChanged } from '../lib/settings';
+import { getKey, getSettings, onSettingsChanged, type KeyName } from '../lib/settings';
+import { openSidePanelOn } from '../lib/sidepanelGo';
 import type { Recipe, Settings } from '../lib/types';
 import { AllLicencesOn, LibraryDenied, MediaDownloadFailed, MediaNoResults, MediaOffline, MediaSearching, PexelsNeedsKey } from './StatesMedia';
+import { CustomLicenceUnknown, SourceAccess, SourceBusy, SourceDown, SourceKeyRejected, SourceNeedsKey } from './StatesSources';
 
 type Tab = MediaKind;
 const TABS: [Tab, string][] = [['image', 'Photos'], ['video', 'Videos'], ['audio', 'Music']];
@@ -88,23 +92,31 @@ export function usePreview() {
 
 const originPattern = (url: string) => { try { return `${new URL(url).origin}/*`; } catch { return ''; } };
 
-/** Free media: Openverse needs no key; Pexels uses the session key. Chrome's host prompt opens inside the search click. */
+/** "From" and "See it on": a custom source's name, else the built-in source's. */
+export const sourceLabel = (r: Pick<MediaResult, 'source' | 'sourceName'>): string =>
+  r.sourceName ?? BUILTINS.find((b) => b.id === r.source)?.name ?? 'Openverse';
+const hostOf = (origins: string[]) => { try { return new URL((origins[0] ?? '').replace('*.', '')).hostname; } catch { return ''; } };
+type Problems = Pick<SearchOutcome, 'down' | 'busy' | 'rejected'> & { access: SourceRun[] };
+const NO_PROBLEMS: Problems = { down: [], busy: [], rejected: [], access: [] };
+
+/** Free media: every source that is on, searched in parallel. Chrome's host prompt opens inside the search click. */
 export default function MediaSearch() {
   const { navigate, route } = useRouter();
   const { recipe, sceneId, commit, close } = useStoredClip();
   const settings = useSettings();
   const [tab, setTab] = useState<Tab>(() => { const t = nextTab ?? 'image'; nextTab = undefined; return t; });
   const [q, setQ] = useState('');
-  const [source, setSource] = useState<'all' | 'openverse' | 'pexels'>('all');
+  const [source, setSource] = useState<string>('all');
   const [freeOnly, setFreeOnly] = useState(true);
-  const [key, setKey] = useState<string>();
-  const [status, setStatus] = useState<'idle' | 'searching' | 'done' | 'offline' | 'denied'>('idle');
+  const [keys, setKeys] = useState<Record<string, string | undefined>>({});
+  const [status, setStatus] = useState<'idle' | 'searching' | 'done' | 'offline'>('idle');
   const [results, setResults] = useState<MediaResult[]>([]);
   const [searched, setSearched] = useState('');
-  const [needsKey, setNeedsKey] = useState(false);
+  const [problems, setProblems] = useState<Problems>(NO_PROBLEMS);
   const [picked, setPicked] = useState<string>();
   const [adding, setAdding] = useState(false);
   const [failed, setFailed] = useState<MediaResult>();
+  const lastRun = useRef<{ query: string; lic: boolean } | undefined>(undefined);
   const asked = useRef(false);
   // Every search and tab switch bumps the counter; a run that is no longer the latest sets nothing.
   const latest = useRef(0);
@@ -112,12 +124,17 @@ export default function MediaSearch() {
   const audio = usePreview();
 
   useEffect(() => () => { latest.current++; inflight.current?.abort(); }, []);
-  useEffect(() => { void getKey('pexels').then(setKey).catch(() => undefined); }, []);
-  useEffect(() => { if (settings && !asked.current) { asked.current = true; setFreeOnly(!settings.libraries.allLicences); } }, [settings]);
-
-  // First visit without access goes through AccessPrompt once; later visits show library-denied from the search click.
+  useEffect(() => { if (settings && !asked.current) { asked.current = true; setFreeOnly(!settings.media.allLicences); } }, [settings]);
+  // Keys are read whenever settings change, so a key added in the side panel joins the next search.
   useEffect(() => {
-    if (!settings || !settings.libraries.openverse || tab === 'video') return;
+    if (!settings) return;
+    const names: KeyName[] = [...BUILTINS.flatMap((b) => (b.key ? [b.key.name] : [])), ...settings.media.custom.map((c) => `custom:${c.id}` as const)];
+    void Promise.all(names.map((n) => getKey(n).then((k) => [n, k] as const))).then((pairs) => setKeys(Object.fromEntries(pairs))).catch(() => undefined);
+  }, [settings]);
+
+  // First visit without access goes through AccessPrompt once; later visits ask from the search click.
+  useEffect(() => {
+    if (!settings || !isOn(settings.media.on, builtin('openverse')) || tab === 'video') return;
     let live = true;
     void browser.permissions.contains({ origins: [...HOSTS.openverse] }).then((has) => {
       if (live && !has && !sessionStorage.getItem('motikordAccessAsked')) {
@@ -130,13 +147,12 @@ export default function MediaSearch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!settings]);
 
-  const ovOn = !!settings?.libraries.openverse;
-  const pxOn = !!settings?.libraries.pexels && tab !== 'audio';
-  const wantOv = ovOn && source !== 'pexels' && tab !== 'video';
-  const wantPx = pxOn && source !== 'openverse';
+  const runs = settings ? sourceRuns(settings.media, keys).filter((r) => r.kinds.includes(tab)) : [];
+  const wanted = source === 'all' ? runs : runs.filter((r) => r.id === source);
+  const needKey = wanted.filter((r) => r.needsKey);
   const allLicences = !freeOnly;
 
-  async function run(access: Promise<'granted' | 'denied'>, query: string, withKey: string | undefined, lic: boolean) {
+  async function run(access: Promise<'granted' | 'denied'>, asking: SourceRun[], query: string, lic: boolean) {
     const id = ++latest.current;
     inflight.current?.abort();
     const ctl = new AbortController();
@@ -144,40 +160,44 @@ export default function MediaSearch() {
     const doFetch = (u: string, i?: RequestInit) => fetch(u, { ...i, signal: ctl.signal });
     setStatus('searching');
     setPicked(undefined);
-    setNeedsKey(wantPx && !withKey);
+    setProblems(NO_PROBLEMS);
+    lastRun.current = { query, lic };
     const granted = await access;
+    // Chrome grants all or nothing; when it says no, search the sources already allowed and ask for the rest.
+    const allowed = granted === 'granted' ? asking : (await Promise.all(asking.map(async (r) => ((await browser.permissions.contains({ origins: r.origins }).catch(() => false)) ? r : undefined)))).filter((r): r is SourceRun => !!r);
     if (id !== latest.current) return;
-    if (granted === 'denied') { setStatus('denied'); return; }
-    const jobs: Promise<MediaResult[]>[] = [];
-    if (wantOv) jobs.push(searchOpenverse(doFetch, query, tab === 'audio' ? 'audio' : 'image', lic));
-    if (wantPx && withKey) jobs.push(searchPexels(doFetch, withKey, query, tab === 'video' ? 'video' : 'image'));
-    const settled = await Promise.allSettled(jobs);
+    const access2 = asking.filter((r) => !allowed.includes(r) && !r.needsKey);
+    const out = await searchAll(allowed, doFetch, query, tab, lic);
     if (id !== latest.current) return;
-    const lists = settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
-    const errors = settled.flatMap((s) => (s.status === 'rejected' ? [s.reason as unknown] : []));
-    for (const e of errors) if (!(e instanceof MediaSearchError)) console.error('Motikord: could not search free media', e);
-    if (errors.some((e) => e instanceof MediaSearchError && e.reason === 'key')) setNeedsKey(true);
-    const merged: MediaResult[] = [];
-    for (let i = 0; lists.some((l) => i < l.length); i++) for (const l of lists) if (l[i]) merged.push(l[i]!);
-    setResults(merged);
+    const mark = (list: typeof out.down, state: SourceStatus['state']) => Object.fromEntries(list.map((p) => [p.id, { state, ...(p.status ? { status: p.status } : {}) }]));
+    void setSourceStatus(allowed.filter((r) => !r.needsKey).map((r) => r.id), { ...mark(out.down, 'down'), ...mark(out.busy, 'busy'), ...mark(out.rejected, 'rejected') });
+    setProblems({ down: out.offline ? [] : out.down, busy: out.busy, rejected: out.rejected, access: access2 });
+    setResults(out.results);
     setSearched(query);
-    setStatus(merged.length === 0 && errors.length > 0 && !errors.every((e) => e instanceof MediaSearchError && e.reason === 'key') ? 'offline' : 'done');
+    setStatus(out.offline && out.results.length === 0 ? 'offline' : 'done');
+  }
+
+  function start(asking: SourceRun[], query: string, lic: boolean) {
+    const origins = runOrigins(asking, tab);
+    // Called before any await so Chrome still sees the click.
+    const access = origins.length ? requestHost(origins) : Promise.resolve('granted' as const);
+    void run(access, asking, query, lic);
   }
 
   function submit(e: FormEvent) {
     e.preventDefault();
     const query = q.trim();
-    if (!query) return;
-    const withKey = key;
-    const origins = [...(wantOv ? HOSTS.openverse : []), ...(wantPx && withKey ? HOSTS.pexels : [])];
-    // Called before any await so Chrome still sees the click.
-    const access = origins.length ? requestHost(origins) : Promise.resolve('granted' as const);
-    void run(access, query, withKey, allLicences);
+    if (query) start(wanted, query, allLicences);
+  }
+
+  function retry() {
+    const last = lastRun.current;
+    if (last) start(wanted, last.query, last.lic);
   }
 
   function changeFree(on: boolean) {
     setFreeOnly(on);
-    if (searched) void run(Promise.resolve('granted'), searched, key, !on);
+    if (searched) start(wanted, searched, !on);
   }
 
   function add(r: MediaResult) {
@@ -193,6 +213,7 @@ export default function MediaSearch() {
       try {
         const asset = await downloadResult(r, { fetch: (u, i) => fetch(u, i) });
         path = asset.opfsPath;
+        void trackUse((u, i) => fetch(u, i), r, keys.unsplash);
         const scene = recipe.scenes.find((s) => s.id === sceneId) ?? recipe.scenes[0];
         const edit = r.kind === 'audio' ? chooseMusicEdit(recipe, asset) : scene && addMediaEdit(recipe, scene.id, asset, crypto.randomUUID());
         if (!(await commit(edit))) throw new Error('The edit did not apply');
@@ -211,23 +232,31 @@ export default function MediaSearch() {
   // sidePanel.open must run inside the click, so the window id is read ahead of it.
   const windowId = useRef<number | undefined>(undefined);
   useEffect(() => { void browser.windows.getCurrent().then((w) => { windowId.current = w.id; }).catch(() => undefined); }, []);
-  function addKey() {
+  function addKey(id: string) {
     if (windowId.current === undefined) return;
+    if (id !== 'pexels') { openSidePanelOn(windowId.current, 'MediaSources'); return; }
     const opened = browser.sidePanel.open({ windowId: windowId.current });
     // A panel that was closed has not loaded yet, so it also finds a note in session storage when it starts.
     void browser.storage.session.set({ [PANEL_GOTO]: 'PasteKey' }).catch(() => undefined);
     void opened.then(() => send({ type: 'panel/show-paste-key' })).catch((error: unknown) => console.error('Motikord: could not open the side panel', error));
   }
 
+  function allow(r: SourceRun) {
+    const access = requestHost(r.origins);
+    const last = lastRun.current;
+    if (last) void run(access, wanted, last.query, last.lic);
+  }
+
   const selected = results.find((r) => r.id === picked && r.kind === tab);
   const shown = results.filter((r) => r.kind === tab);
-  const sources: [typeof source, string][] = [['all', 'All sources'], ...(ovOn && tab !== 'video' ? [['openverse', 'Openverse'] as [typeof source, string]] : []), ...(pxOn ? [['pexels', 'Pexels'] as [typeof source, string]] : [])];
+  const sources: [string, string][] = [['all', 'All sources'], ...runs.map((r) => [r.id, r.name] as [string, string])];
+  const anyProblem = problems.down.length + problems.busy.length + problems.rejected.length + problems.access.length > 0;
 
   const switchTab = (t: Tab) => {
     latest.current++;
     inflight.current?.abort();
-    setTab(t); setResults([]); setStatus('idle'); setPicked(undefined); setFailed(undefined); setNeedsKey(false);
-    if ((t === 'video' && source === 'openverse') || (t === 'audio' && source === 'pexels')) setSource('all');
+    setTab(t); setResults([]); setStatus('idle'); setPicked(undefined); setFailed(undefined); setProblems(NO_PROBLEMS);
+    if (settings && source !== 'all' && !sourceRuns(settings.media, keys).some((r) => r.id === source && r.kinds.includes(t))) setSource('all');
   };
 
   return (
@@ -260,11 +289,14 @@ export default function MediaSearch() {
       <div style={{ flexGrow: 1, display: 'flex', gap: 16, padding: '14px 20px 0', minHeight: 0 }}>
         <div style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
           {!freeOnly && <AllLicencesOn />}
-          {needsKey && source !== 'openverse' && (source === 'pexels' || status !== 'idle') && <PexelsNeedsKey onAddKey={addKey} />}
-          {status === 'searching' && <MediaSearching />}
-          {status === 'denied' && <LibraryDenied onAllow={() => navigate('AccessPrompt', route.params)} />}
+          {needKey.filter((r) => source !== 'all' || status !== 'idle').map((r) => (r.id === 'pexels' ? <PexelsNeedsKey key={r.id} onAddKey={() => addKey(r.id)} /> : <SourceNeedsKey key={r.id} source={r.name} onAddKey={() => addKey(r.id)} />))}
+          {status === 'searching' && <MediaSearching names={wanted.filter((r) => !r.needsKey).map((r) => r.name)} />}
           {status === 'offline' && <MediaOffline onUseMedia={() => navigate('YourMedia', route.params)} />}
-          {status === 'done' && shown.length === 0 && !(needsKey && source === 'pexels') && <MediaNoResults query={searched} onClear={() => { setQ(''); setResults([]); setStatus('idle'); }} />}
+          {status === 'done' && problems.access.map((r) => (r.id === 'openverse' ? <LibraryDenied key={r.id} onAllow={() => allow(r)} /> : <SourceAccess key={r.id} host={hostOf(r.origins)} onAllow={() => allow(r)} />))}
+          {status === 'done' && problems.down.map((p) => <SourceDown key={p.id} source={p.name} status={p.status} onRetry={retry} />)}
+          {status === 'done' && problems.busy.map((p) => <SourceBusy key={p.id} source={p.name} />)}
+          {status === 'done' && problems.rejected.map((p) => <SourceKeyRejected key={p.id} source={p.name} getUrl={BUILTINS.find((b) => b.id === p.id)?.key?.getUrl} onPaste={() => addKey(p.id)} />)}
+          {status === 'done' && shown.length === 0 && !anyProblem && !(needKey.length > 0 && source !== 'all') && <MediaNoResults query={searched} onClear={() => { setQ(''); setResults([]); setStatus('idle'); }} />}
           {failed && <MediaDownloadFailed what={failed.kind === 'image' ? 'photo' : failed.kind === 'video' ? 'video' : 'track'} onRetry={() => add(failed)} />}
           {status === 'done' && tab === 'audio' && shown.length > 0 && (
             <div style={{ borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }}>
@@ -275,7 +307,7 @@ export default function MediaSearch() {
                   </button>
                   <span style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
-                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>{`${r.author} · Openverse${r.durationMs ? ` · ${clock(r.durationMs)}` : ''}`}</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>{`${r.author} · ${sourceLabel(r)}${r.durationMs ? ` · ${clock(r.durationMs)}` : ''}`}</span>
                   </span>
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 10, padding: '1px 6px', borderRadius: 5, background: 'var(--stage)' }}>{LICENCE_TAG[r.licence]}</span>
                   <Button variant="secondary" disabled={!recipe} busy={adding} onClick={() => add(r)} style={{ height: 28, padding: '0 10px', fontSize: 12 }}>Use</Button>
@@ -288,7 +320,7 @@ export default function MediaSearch() {
               {shown.map((r) => (
                 <button key={`${r.source}-${r.id}`} type="button" aria-pressed={picked === r.id} aria-label={r.title} onClick={() => setPicked(r.id)}
                   style={{ position: 'relative', border: 0, borderRadius: 10, padding: 0, cursor: 'pointer', background: `var(--stage) url("${r.thumbnail}") center / cover`, outline: picked === r.id ? '3px solid var(--accent)' : 'none', outlineOffset: -3 }}>
-                  <span style={{ ...tag, position: 'absolute', left: 6, bottom: 6 }}>{r.source === 'pexels' ? 'Pexels' : LICENCE_TAG[r.licence]}</span>
+                  <span style={{ ...tag, position: 'absolute', left: 6, bottom: 6 }}>{LICENCE_TAG[r.licence]}</span>
                 </button>
               ))}
             </div>
@@ -300,13 +332,14 @@ export default function MediaSearch() {
             <span style={{ fontSize: 14, fontWeight: 600 }}>{selected.title}</span>
             <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '64px 1fr', gap: '6px 8px', fontSize: 12 }}>
               <dt style={{ color: 'var(--muted)' }}>By</dt><dd style={{ margin: 0 }}>{selected.author}</dd>
-              <dt style={{ color: 'var(--muted)' }}>From</dt><dd style={{ margin: 0 }}>{selected.source === 'pexels' ? 'Pexels' : 'Openverse'}</dd>
+              <dt style={{ color: 'var(--muted)' }}>From</dt><dd style={{ margin: 0 }}>{sourceLabel(selected)}</dd>
               <dt style={{ color: 'var(--muted)' }}>Licence</dt><dd style={{ margin: 0 }}>{selected.licenceLabel}</dd>
               {selected.width && selected.height && <><dt style={{ color: 'var(--muted)' }}>Size</dt><dd style={{ margin: 0, fontFamily: 'var(--mono)' }}>{`${selected.width} × ${selected.height}`}</dd></>}
             </dl>
-            {needsCredit(selected.licence) && <span style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--warning-bg)', fontSize: 12, lineHeight: 1.45, color: 'var(--warning-ink)' }}>Needs a credit. Motikord adds it to credits.txt for you.</span>}
-            {selected.source === 'pexels' && <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>No credit needed. Motikord still adds one to credits.txt.</span>}
-            <a href={selected.pageUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 500, textDecoration: 'none' }}>{`See it on ${selected.source === 'pexels' ? 'Pexels' : 'Openverse'}`}</a>
+            {selected.licence === 'unknown' && <CustomLicenceUnknown source={sourceLabel(selected)} />}
+            {needsCredit(selected.licence) && selected.licence !== 'unknown' && <span style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--warning-bg)', fontSize: 12, lineHeight: 1.45, color: 'var(--warning-ink)' }}>Needs a credit. Motikord adds it to credits.txt for you.</span>}
+            {(selected.licence === 'pexels' || selected.licence === 'pixabay') && <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>No credit needed. Motikord still adds one to credits.txt.</span>}
+            <a href={selected.pageUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 500, textDecoration: 'none' }}>{`See it on ${sourceLabel(selected)}`}</a>
             <div style={{ flexGrow: 1 }} />
             <Button block disabled={!recipe} busy={adding} onClick={() => add(selected)}>Add to clip</Button>
           </aside>
@@ -315,7 +348,7 @@ export default function MediaSearch() {
 
       <div style={{ padding: '12px 20px 14px', marginTop: 12, borderTop: '1px solid var(--line)', display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: 'var(--faint)' }}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
-        Only your search words go to Openverse and Pexels. Files you add are downloaded once and kept on this computer.
+        Only your search words go to each source. Files you add are downloaded once and kept here.
       </div>
     </DialogShell>
   );

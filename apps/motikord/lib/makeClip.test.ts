@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchLike } from './llm';
 import { closeDB, deleteClip, getClip, listClips, putClip } from './db';
 import { canMake, createRunner, draft, failureFor, makeClip, makeFromTemplate, promptFor, type RunnerDeps } from './makeClip';
@@ -9,6 +10,9 @@ import { TEMPLATES } from './templates';
 import { validateRecipe } from './recipe/validate';
 import type { Asset, Clip, Settings } from './types';
 
+// The model is chosen once per session; a cached id keeps these tests to their own requests.
+beforeEach(() => fakeBrowser.storage.session.set({ groqModel: 'openai/gpt-oss-120b' }));
+
 const KEY = 'gsk_test';
 const settings: Settings = { ...DEFAULT_SETTINGS, keySource: 'paste', onboarded: true };
 const ok = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
@@ -17,14 +21,23 @@ const scene = (ms = 4000) => ({
   layers: [{ id: 't1', name: 'Title', type: 'text', role: 'title', text: 'Fresh sourdough', font: 'Geist', sizePx: 96, weight: 700, colour: '#FFFFFF', align: 'center', lineHeight: 1.1, startMs: 0, endMs: ms, box: { x: 0.1, y: 0.4, w: 0.8, h: 0.2 }, opacity: 1 }],
 });
 const recipeJson = (ms = 4000) => JSON.stringify({ name: 'Sourdough', scenes: [scene(ms)] });
+// The creative plan and the design critique are lib/ai's own steps (tested in lib/ai); here they answer outside the count.
+const PLAN = JSON.stringify({ name: 'Sourdough', scenes: [{ headline: 'Fresh sourdough' }] });
+const own = (init?: RequestInit) => {
+  const messages = (JSON.parse(String(init?.body ?? '{}')).messages ?? []) as { content: string }[];
+  if (messages[0]?.content.startsWith('You plan')) return ok(PLAN);
+  if (messages.at(-1)?.content.includes('cut into frames')) return ok('{}');
+  return undefined;
+};
 /** A fake Groq: first the type, then the recipe (or whatever `replies` holds). */
 const groq = (...replies: (string | Response | Error)[]) => {
-  const fetch: FetchLike = vi.fn(async () => {
+  const counted: FetchLike = vi.fn(async () => {
     const next = replies.shift();
     if (next instanceof Error) throw next;
     return typeof next === 'string' ? ok(next) : (next ?? ok('{}'));
   });
-  return { fetch, hooks: { ai: 'cloud' as const, key: KEY, fetch, settings } };
+  const fetch: FetchLike = async (u, init) => own(init) ?? counted(u, init);
+  return { fetch: counted, hooks: { ai: 'cloud' as const, key: KEY, fetch, settings } };
 };
 const photo: Asset = { id: 'p1', kind: 'image', name: 'loaf.jpg', mime: 'image/jpeg', bytes: 5, opfsPath: 'media/p1.jpg' };
 const extra: Asset = { id: 'p2', kind: 'image', name: 'other.jpg', mime: 'image/jpeg', bytes: 5, opfsPath: 'media/p2.jpg' };
@@ -78,9 +91,9 @@ describe('makeClip', () => {
   };
   it('maps each failure to its state card', async () => {
     expect(await fails([new TypeError('Failed to fetch')])).toMatchObject({ state: 'offline' });
-    expect(await fails([new Response('{}', { status: 429, headers: { 'retry-after': '20' } })])).toMatchObject({ state: 'groq-busy', retryAfterMs: 20_000 });
-    expect(await fails([new Response('{}', { status: 503 })])).toMatchObject({ state: 'groq-down' });
-    expect(await fails([new Response('{}', { status: 401 })])).toMatchObject({ state: 'groq-down' });
+    expect(await fails([new Response('{}', { status: 429, headers: { 'retry-after': '20' } })])).toMatchObject({ state: 'provider-busy', retryAfterMs: 20_000 });
+    expect(await fails([new Response('{}', { status: 503 })])).toMatchObject({ state: 'provider-down' });
+    expect(await fails([new Response('{}', { status: 401 })])).toMatchObject({ state: 'provider-down' });
     expect(await fails(['not json', 'still not json'])).toMatchObject({ state: 'making-failed' });
   });
 
@@ -171,11 +184,11 @@ describe('library', () => {
     expect(await getClip('id-1')).toBeUndefined();
   });
 
-  it('shows groq-access without any AI call when host access is denied', async () => {
+  it('shows provider-access without any AI call when host access is denied', async () => {
     const g = groq();
     const runner = createRunner(deps({ hooks: g.hooks }));
     await runner.start({ prompt: 'A promo', attached: [] }, { access: 'denied' });
-    expect(runner.get()).toMatchObject({ status: 'failed', failure: 'groq-access' });
+    expect(runner.get()).toMatchObject({ status: 'failed', failure: 'provider-access' });
     expect(g.fetch).not.toHaveBeenCalled();
   });
 
@@ -183,7 +196,7 @@ describe('library', () => {
     const g = groq(new Response('{}', { status: 429 }));
     const runner = createRunner(deps({ hooks: g.hooks }));
     await runner.start({ prompt: 'A promo', attached: [], type: 'promo' });
-    expect(runner.get()).toMatchObject({ status: 'failed', failure: 'groq-busy' });
+    expect(runner.get()).toMatchObject({ status: 'failed', failure: 'provider-busy' });
     expect(await listClips()).toEqual([]);
   });
 });
@@ -235,7 +248,7 @@ describe('runner review fixes', () => {
     await runner.start(draftA);
     expect(runner.get().busyRetries).toBe(0);
     await runner.start(draftA, { auto: true });
-    expect(runner.get()).toMatchObject({ failure: 'groq-busy', busyRetries: 1 });
+    expect(runner.get()).toMatchObject({ failure: 'provider-busy', busyRetries: 1 });
     await runner.start(draftA);
     expect(runner.get().busyRetries).toBe(0);
   });

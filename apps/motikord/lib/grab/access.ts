@@ -1,4 +1,4 @@
-// Grab needs the site access of the page you are on. A side-panel click grants no activeTab, so the origin is asked for inside the click.
+// Grab needs the site access of the page you are on. A side-panel click grants no activeTab, so the access is asked for inside the click.
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import { grabBlocked } from './pick';
 
@@ -8,12 +8,22 @@ export function originPattern(url: string | undefined): string | undefined {
   try { return `${new URL(url).origin}/*`; } catch { return undefined; }
 }
 
-/** Asks for the page's origin. Call it first in the click handler, with nothing awaited before it, so Chrome still sees the gesture. */
-export async function requestPageAccess(url: string | undefined): Promise<'granted' | 'denied' | 'blocked'> {
+/** The hosts every site is asked for at once, used when the page's URL is unknown (a tab with no host access reports none). */
+export const ALL_SITES = ['https://*/*', 'http://*/*'];
+
+/** What to ask Chrome for: the page's own origin when its URL is known, every site when it is not, nothing when Chrome refuses the page. */
+export function accessRequest(url: string | undefined): string[] | undefined {
+  if (!url) return ALL_SITES;
   const origin = originPattern(url);
-  if (!origin) return 'blocked';
+  return origin ? [origin] : undefined;
+}
+
+/** Asks for the access Grab can use. Call it first in the click handler, with nothing awaited before it, so Chrome still sees the gesture. */
+export async function requestPageAccess(url: string | undefined): Promise<'granted' | 'denied' | 'blocked'> {
+  const origins = accessRequest(url);
+  if (!origins) return 'blocked';
   try {
-    return (await chrome.permissions.request({ origins: [origin] })) ? 'granted' : 'denied';
+    return (await chrome.permissions.request({ origins })) ? 'granted' : 'denied';
   } catch (error) {
     console.error('Motikord: could not ask for access to this page', error);
     return 'denied';

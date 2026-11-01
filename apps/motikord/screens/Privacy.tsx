@@ -5,7 +5,8 @@ import { BackButton, Page } from './Setup';
 export const PRIVACY_ROWS: [string, string][] = [
   ['Clips, brand kit and library', 'Stay on this computer. They leave only inside a file you export.'],
   ['Your own media and fonts', 'Stay on this computer. Never sent to the AI or any library.'],
-  ['Prompts and the clip’s text', 'Sent to Groq when you make or change a clip. Not sent when Chrome’s built-in AI writes your clips.'],
+  ['Prompts and the clip’s text', 'Sent to your AI provider (Groq, OpenAI, Anthropic or OpenRouter) when you make or change a clip. Not sent when Chrome’s built-in AI writes your clips.'],
+  ['Your voice', 'Heard only while the mic is lit. Turned into text on this computer when Chrome can; otherwise sent to Groq or OpenAI only to become text. No recording is kept.'],
   ['Things you grab from a page', 'Their text goes to the AI only as part of a prompt you send.'],
   ['Media and music searches', 'Your search words go to the library you search. Files you add are downloaded once and kept here.'],
   ['Keys', 'Kept only until Chrome closes. Loaded from Penv Cloud or pasted by you. Never shown again.'],

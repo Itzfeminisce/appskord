@@ -71,7 +71,7 @@ export async function downloadResult(r: MediaResult, deps: DownloadDeps): Promis
   return {
     id, kind: r.kind, name: r.title, mime, bytes: blob.size, opfsPath,
     width: r.width, height: r.height, durationMs: r.durationMs,
-    credit: { title: r.title, author: r.author, source: r.source, url: r.pageUrl, licence: r.licence, licenceUrl: r.licenceUrl },
+    credit: { title: r.title, author: r.author, source: r.source, ...(r.sourceName ? { sourceName: r.sourceName } : {}), url: r.pageUrl, licence: r.licence, licenceUrl: r.licenceUrl },
   };
 }
 

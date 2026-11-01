@@ -1,5 +1,6 @@
 import type { Edit } from './editor/store';
 import { creditLicenceName, needsCredit } from './media/licence';
+import { BUILTINS } from './media/sources/builtins';
 import type { Asset, Credit, Recipe } from './types';
 
 export type CreditNeed = 'needed' | 'optional';
@@ -17,8 +18,9 @@ function usedIds(r: Recipe): string[] {
 }
 
 function sourceName(c: Credit): string {
-  if (c.source === 'openverse') return 'Openverse';
-  if (c.source === 'pexels') return 'Pexels';
+  if (c.sourceName) return c.sourceName;
+  const b = BUILTINS.find((x) => x.id === c.source);
+  if (b) return b.name;
   if (c.source === 'bundled') return 'Motikord';
   try { return new URL(c.url).hostname.replace(/^www\./, ''); } catch { return 'A web page'; }
 }
@@ -48,8 +50,8 @@ export function creditsText(r: Recipe): string {
   const blocks = creditsList(r).credited.map(({ credit, source, licence }) =>
     credit.source === 'bundled'
       ? `“${credit.title}” · ${source} · ${licence}`
-      : credit.licence === 'page'
-        ? `“${credit.title}” · From ${credit.author}\n${credit.url}`
+      : credit.licence === 'page' || credit.licence === 'unknown'
+        ? `“${credit.title}” · From ${credit.licence === 'page' ? credit.author : source}\n${credit.url}`
         : [`“${credit.title}”${knownAuthor(credit) ? ` by ${knownAuthor(credit)}` : ''}`, `${source} · ${licence}`, credit.url, CC_LICENCES.includes(credit.licence) ? credit.licenceUrl : undefined].filter(Boolean).join('\n'));
   return [`${r.name} · made with Motikord`, ...blocks].join('\n\n');
 }
@@ -60,7 +62,8 @@ export function endCardLines(r: Recipe): string[] {
     const word = KIND_WORD[asset.kind];
     if (credit.source === 'bundled') return `${word}: ${credit.title}, ${licence}`;
     const by = knownAuthor(credit);
-    if (credit.source === 'pexels') return `${word}: ${by ? `${by}, ` : ''}${source}`;
+    if (credit.source === 'pexels' || credit.source === 'pixabay') return `${word}: ${by ? `${by}, ` : ''}${source}`;
+    if (credit.licence === 'unknown') return `${word}: “${credit.title}”, ${source}`;
     return `${word}: “${credit.title}”${by ? ` by ${by}` : ''}, ${licence}`;
   });
 }

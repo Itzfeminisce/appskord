@@ -41,7 +41,7 @@ export async function searchPexels(fetchFn: FetchLike, key: string, q: string, k
     throw new MediaSearchError('offline', 'Could not reach Pexels.');
   }
   if (res.status === 401 || res.status === 403) throw new MediaSearchError('key', 'Pexels did not accept the key.');
-  if (!res.ok) throw new MediaSearchError('failed', `Pexels answered ${res.status}.`);
+  if (!res.ok) throw new MediaSearchError('failed', `Pexels answered ${res.status}.`, res.status);
   const body = (await res.json()) as { photos?: PxPhoto[]; videos?: PxVideo[] };
   return kind === 'image' ? (body.photos ?? []).map(mapPexelsPhoto) : (body.videos ?? []).flatMap((v) => mapPexelsVideo(v) ?? []);
 }

@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchLike } from '../llm';
 import type { Asset, Recipe } from '../types';
 import { validateRecipe } from '../recipe/validate';
@@ -8,21 +9,39 @@ import { applyPatch } from '../patch';
 import { detectType, guessType } from './detectType';
 import { compactRecipe, editRecipe } from './editRecipe';
 import { AiError } from './errors';
-import { editSystem, recipeSystem } from './prompts';
-import { fitToMax, normaliseColour, parseJsonReply, writeRecipe, type WriteInput } from './writeRecipe';
+import { check } from '../checker';
+import { CLIP_TYPES } from '../recipe/validate';
+import { EXAMPLE_DRAFTS } from './examples';
+import { editSystem, planSystem, recipeSystem } from './prompts';
+import { addMissingMotion, CALL_BUDGET, designNotes, draftToRecipe, estimateTokens, fitToMax, normaliseColour, parseJsonReply, writeRecipe, type WriteInput } from './writeRecipe';
+
+// The model is chosen once per session; a cached id keeps these tests to their own requests.
+beforeEach(() => fakeBrowser.storage.session.set({ groqModel: 'openai/gpt-oss-120b' }));
 
 const KEY = 'gsk_test';
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
-/** A fake Groq that answers with each content in turn and records the request bodies. */
+type Body = { messages: { role: string; content: string }[]; max_tokens: number };
+const isPlan = (b: Body) => b.messages[0]!.content.startsWith('You plan');
+const PLAN = JSON.stringify({ name: 'Spring run', hook: 'Lighter feet', scenes: [
+  { ms: 3000, headline: 'Run lighter this spring', support: '', visual: 'pink circle', layout: 'center', bg: '#111114', accent: '#F472B6', motion: 'pop-in bouncy, pulse, fade-out' },
+  { ms: 3000, headline: 'Thirty percent off', support: 'This weekend only', visual: 'card', layout: 'top', bg: '#F472B6', accent: '#111114', motion: 'slide-in, slide-out' },
+] });
+/** A fake Groq: plan requests get `plan`; recipe requests get each content in turn. Records recipe bodies and plan bodies. */
 function groq(...contents: string[]) {
-  const bodies: { messages: { role: string; content: string }[] }[] = [];
+  return groqWith(PLAN, ...contents);
+}
+function groqWith(plan: string, ...contents: string[]) {
+  const bodies: Body[] = [];
+  const plans: Body[] = [];
   const fetch: FetchLike = vi.fn(async (_u: string, init?: RequestInit) => {
-    bodies.push(JSON.parse(String(init?.body)));
+    const body = JSON.parse(String(init?.body)) as Body;
+    if (isPlan(body)) { plans.push(body); return reply(plan); }
+    bodies.push(body);
     const next = contents.shift();
     if (next === undefined) throw new Error('no more replies');
     return reply(next);
   });
-  return { fetch, bodies, opts: { ai: 'cloud' as const, key: KEY, fetch } };
+  return { fetch, bodies, plans, opts: { ai: 'cloud' as const, key: KEY, fetch } };
 }
 
 const photo: Asset = { id: 'own-1', kind: 'image', name: 'Shoes', mime: 'image/jpeg', bytes: 10, width: 800, height: 600, opfsPath: 'media/own-1.jpg' };
@@ -31,8 +50,14 @@ const title = (extra: Record<string, unknown> = {}) => ({
   align: 'center', lineHeight: 1.1, startMs: 0, endMs: 4000, box: { x: 0.1, y: 0.4, w: 0.8, h: 0.2 }, opacity: 1,
   in: { preset: 'rise-in', feel: 'smooth', durationMs: 600 }, ...extra,
 });
+// Three more short scenes after the one under test, so a promo draft is not sent back as too thin.
+const more = ['Run lighter', 'Thirty percent off', 'Shop this weekend'].map((t, i) => ({
+  id: `s${i + 2}`, durationMs: 3000, background: '#111114', layout: 'top', layers: [title({ id: `f${i + 2}`, text: t, endMs: 3000 })],
+}));
 const draft = (scene: Record<string, unknown> = {}, layers: unknown[] = [title()]) =>
-  JSON.stringify({ name: 'Spring sale', scenes: [{ id: 's1', durationMs: 4000, background: '#111114', layout: 'center', layers, ...scene }] });
+  JSON.stringify({ name: 'Spring sale', scenes: [{ id: 's1', durationMs: 4000, background: '#111114', layout: 'center', layers, ...scene }, ...more] });
+const oneScene = (layers: unknown[] = [title()]) =>
+  JSON.stringify({ name: 'Spring sale', scenes: [{ id: 's1', durationMs: 4000, background: '#111114', layout: 'center', layers }] });
 const input: WriteInput = { prompt: 'A spring shoe sale', type: 'promo', aspect: '9:16', assets: [photo], id: 'clip-1' };
 
 describe('prompts', () => {
@@ -42,6 +67,36 @@ describe('prompts', () => {
     for (const l of LAYOUTS) expect(text).toContain(l);
     expect(recipeSystem(input)).toContain('"own-1"');
     expect(recipeSystem({ ...input, assets: [] })).toContain('use no image or video layers');
+  });
+
+  it('keep every call within the free-tier budget for every type, with brand and media', () => {
+    const brand = { colours: ['#BE185D', '#111114', '#FFFFFF'], headingFont: 'Inter', bodyFont: 'Inter' };
+    for (const type of CLIP_TYPES) {
+      const i = { ...input, type, brand, prompt: 'x'.repeat(400) };
+      const plan = [{ role: 'system' as const, content: planSystem(i) }, { role: 'user' as const, content: i.prompt }];
+      const recipe = [{ role: 'system' as const, content: recipeSystem(i) }, { role: 'user' as const, content: `Idea: ${i.prompt}\nDesign plan: ${PLAN.repeat(2)}` }];
+      expect(estimateTokens(plan) + 900).toBeLessThanOrEqual(CALL_BUDGET);
+      expect(estimateTokens(recipe) + 4000).toBeLessThanOrEqual(CALL_BUDGET);
+    }
+  });
+
+  it('ask for a fresh plan, not the prompt split up', () => {
+    const text = planSystem(input);
+    expect(text).toContain('Never copy the idea');
+    expect(text).toContain('4 to 7 scenes');
+    expect(planSystem({ ...input, type: 'quote' })).toContain('1 to 3 scenes');
+    expect(recipeSystem(input)).toContain('Example reply');
+  });
+
+  it('ship examples that are valid, clean and well designed', () => {
+    for (const [name, ex] of Object.entries(EXAMPLE_DRAFTS)) {
+      const type = name === 'SHORT' ? 'quote' : 'promo';
+      const r = draftToRecipe(ex, { ...input, type, assets: [] }, 'ex') as Recipe;
+      expect(validateRecipe(r)).toEqual([]);
+      expect(check(r).map((i) => i.id)).toEqual([]);
+      expect(designNotes(r, input.prompt)).toEqual([]);
+      for (const s of r.scenes) for (const l of s.layers) if (l.type === 'text') expect(l.in && l.out).toBeTruthy();
+    }
   });
 });
 
@@ -84,6 +139,59 @@ describe('writeRecipe', () => {
     expect(g.bodies).toHaveLength(1);
   });
 
+  it('plans first, then writes the recipe from the plan', async () => {
+    const g = groq(draft());
+    await writeRecipe(input, g.opts);
+    expect(g.plans).toHaveLength(1);
+    expect(g.plans[0]!.max_tokens).toBe(900);
+    expect(g.plans[0]!.messages[1]!.content).toBe('A spring shoe sale');
+    const user = g.bodies[0]!.messages[1]!.content;
+    expect(user).toContain('Idea: A spring shoe sale');
+    expect(user).toContain('Run lighter this spring');
+  });
+
+  it('writes the recipe without a plan when the plan is not usable', async () => {
+    const g = groqWith('no plan here', draft());
+    const out = await writeRecipe(input, g.opts);
+    expect(validateRecipe(out.recipe)).toEqual([]);
+    expect(g.bodies[0]!.messages[1]!.content).toBe('Idea: A spring shoe sale');
+  });
+
+  it('sends a flat reply back once with a critique, and keeps the better one', async () => {
+    const prompt = 'A big spring shoe sale today';
+    const flat = oneScene([title({ text: prompt, sizePx: 72, box: { x: 0.1, y: 0.4, w: 0.8, h: 0.24 } })]);
+    const g = groq(flat, draft());
+    const out = await writeRecipe({ ...input, prompt }, g.opts);
+    expect(g.bodies).toHaveLength(2);
+    const critique = g.bodies[1]!.messages.at(-1)!.content;
+    expect(critique).toContain('Use 4 to 7 scenes');
+    expect(critique).toContain('copies the prompt');
+    expect(out.recipe.scenes).toHaveLength(4);
+  });
+
+  it('flags a title pasted from the prompt, but not a quote', () => {
+    const r = { type: 'social', scenes: [{ layers: [{ type: 'text', role: 'title', text: 'We are hiring a product designer' }] }] } as unknown as Recipe;
+    expect(designNotes(r, "We're hiring: we are hiring a product designer, remote").join(' ')).toContain('copies the prompt');
+    expect(designNotes({ ...r, type: 'quote' }, 'We are hiring a product designer')).toEqual([]);
+  });
+
+  it('keeps the first valid recipe when the critique try fails', async () => {
+    const g = groq(oneScene());
+    const out = await writeRecipe(input, g.opts);
+    expect(g.bodies).toHaveLength(2);
+    expect(out.recipe.scenes).toHaveLength(1);
+    expect(validateRecipe(out.recipe)).toEqual([]);
+  });
+
+  it('adds in and out motion to text that has none, and fits the asked length', async () => {
+    const g = groq(draft());
+    const out = await writeRecipe({ ...input, lengthMs: 20000 }, g.opts);
+    expect(out.recipe.scenes.reduce((t, s) => t + s.durationMs, 0)).toBeGreaterThan(19000);
+    for (const s of out.recipe.scenes) for (const l of s.layers) expect(l.in && l.out).toBeTruthy();
+    const bare = addMissingMotion(JSON.parse(JSON.stringify(out.recipe)));
+    expect(bare.scenes[0]!.layers[0]!.out).toBeDefined();
+  });
+
   it('normalises colours, preset names and missing defaults', async () => {
     const l = { id: 't1', type: 'text', role: 'title', text: 'Hi', box: { x: 0.1, y: 0.4, w: 0.8, h: 0.2 }, colour: 'white', in: { preset: 'fade' } };
     const g = groq(draft({ background: 'rgb(17, 17, 20)', layout: 'Center' }, [l]));
@@ -114,6 +222,25 @@ describe('writeRecipe', () => {
     expect(err).toMatchObject({ code: 'invalid-reply', state: 'making-failed' });
     expect(err.detail.problems.join(' ')).toContain('not in the assets list');
     expect(g.bodies).toHaveLength(2);
+  });
+
+  it('asks again, shorter, when Groq cannot write JSON even without JSON mode, then succeeds', async () => {
+    const jv = () => new Response(JSON.stringify({ error: { message: 'x', type: 'invalid_request_error', code: 'json_validate_failed' } }), { status: 400 });
+    const responses = [jv(), jv(), reply(draft())];
+    const bodies: Body[] = [];
+    const fetch: FetchLike = vi.fn(async (_u: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as Body;
+      if (isPlan(body)) return reply(PLAN);
+      bodies.push(body); return responses.shift()!;
+    });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await writeRecipe(input, { ai: 'cloud', key: KEY, fetch });
+    spy.mockRestore();
+    expect(validateRecipe(result.recipe)).toEqual([]);
+    expect(bodies[2]!.messages.at(-1)!.content).toMatch(/fewer scenes/);
+    // Prompt plus output budget stays within one free-tier call.
+    expect(bodies[0]!.max_tokens).toBeLessThanOrEqual(4000);
+    expect(estimateTokens(bodies[0]!.messages as never) + bodies[0]!.max_tokens).toBeLessThanOrEqual(CALL_BUDGET);
   });
 
   it('fitToMax keeps every layer at least 1 ms and every scene at least 1 ms', () => {
@@ -150,12 +277,12 @@ describe('writeRecipe', () => {
     const fetch = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
     await expect(writeRecipe(input, { ai: 'cloud', key: KEY, fetch })).rejects.toMatchObject({ state: 'offline' });
     expect(fetch).toHaveBeenCalledTimes(1);
-    await expect(writeRecipe(input, { ai: 'cloud', key: KEY, fetch: async () => new Response('', { status: 500 }) })).rejects.toMatchObject({ state: 'groq-down' });
+    await expect(writeRecipe(input, { ai: 'cloud', key: KEY, fetch: async () => new Response('', { status: 500 }) })).rejects.toMatchObject({ state: 'provider-down' });
   });
 });
 
 async function made(): Promise<Recipe> {
-  return (await writeRecipe(input, groq(draft()).opts)).recipe;
+  return (await writeRecipe({ ...input, type: 'quote' }, groq(oneScene()).opts)).recipe;
 }
 
 describe('editRecipe', () => {
@@ -197,8 +324,8 @@ describe('editRecipe', () => {
     expect(g.bodies).toHaveLength(1);
   });
 
-  it('maps a busy Groq to groq-busy', async () => {
+  it('maps a busy Groq to provider-busy', async () => {
     const recipe = await made();
-    await expect(editRecipe(recipe, 'x', { ai: 'cloud', key: KEY, fetch: async () => new Response('', { status: 429 }) })).rejects.toMatchObject({ state: 'groq-busy' });
+    await expect(editRecipe(recipe, 'x', { ai: 'cloud', key: KEY, fetch: async () => new Response('', { status: 429 }) })).rejects.toMatchObject({ state: 'provider-busy' });
   });
 });

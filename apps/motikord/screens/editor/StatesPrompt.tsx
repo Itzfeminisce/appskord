@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
+import { PROVIDERS } from '../../lib/providers';
+import type { Provider } from '../../lib/types';
 import { clockShort } from '../../lib/editor/store';
 
-// The prompt box's states: prompt-working, prompt-failed, change-too-long (StatesEditor), groq-busy, groq-down, key-needed, offline (StatesCreate), groq-access (StatesSetup).
+const label = (p: Provider) => PROVIDERS[p].label;
+// The prompt box's states: prompt-working, prompt-failed, change-too-long (StatesEditor), provider-busy, provider-down, key-needed, offline (StatesCreate), provider-access (StatesSetup).
 
 const svg = (size: number, stroke: string, body: ReactNode, w = 2) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>{body}</svg>
@@ -56,27 +59,27 @@ export function ChangeTooLong({ totalMs }: { totalMs: number }) {
   );
 }
 
-export function GroqBusy({ seconds, onTryNow }: { seconds: number; onTryNow?: () => void }) {
+export function ProviderBusy({ provider = 'groq', seconds, onTryNow }: { provider?: Provider; seconds: number; onTryNow?: () => void }) {
   return (
-    <Card tone="warning" icon={svg(20, 'var(--warning-ink)', <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>)} title="Groq is busy right now"
+    <Card tone="warning" icon={svg(20, 'var(--warning-ink)', <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>)} title={`${label(provider)} is busy right now`}
       action={<button type="button" onClick={onTryNow} style={outline}>Try now</button>}>
-      {`You’ve reached Groq’s free limit for the moment. Motikord will try again in ${seconds} seconds.`}
+      {`You’ve reached ${label(provider)}’s limit for the moment. Motikord will try again in ${seconds} seconds.`}
     </Card>
   );
 }
 
-export function GroqBusyRetried({ onTryNow }: { onTryNow?: () => void }) {
+export function ProviderBusyRetried({ provider = 'groq', onTryNow }: { provider?: Provider; onTryNow?: () => void }) {
   return (
-    <Card tone="warning" icon={svg(20, 'var(--warning-ink)', <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>)} title="Groq is still busy"
+    <Card tone="warning" icon={svg(20, 'var(--warning-ink)', <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>)} title={`${label(provider)} is still busy`}
       action={<button type="button" onClick={onTryNow} style={outline}>Try now</button>}>
-      Motikord tried again and Groq is still at its free limit. Try now, or come back in a few minutes.
+      {`Motikord tried again and ${label(provider)} is still at its limit. Try now, or come back in a few minutes.`}
     </Card>
   );
 }
 
-export function GroqDown({ onOpenSettings }: { onOpenSettings?: () => void }) {
+export function ProviderDown({ provider = 'groq', onOpenSettings }: { provider?: Provider; onOpenSettings?: () => void }) {
   return (
-    <Card tone="warning" icon={svg(20, 'var(--warning-ink)', <><path d="M12 3.5l9.5 16.5h-19z" /><path d="M12 10v4.5M12 17.5v.01" /></>)} title="Groq isn’t responding"
+    <Card tone="warning" icon={svg(20, 'var(--warning-ink)', <><path d="M12 3.5l9.5 16.5h-19z" /><path d="M12 10v4.5M12 17.5v.01" /></>)} title={`${label(provider)} isn’t responding`}
       action={<button type="button" onClick={onOpenSettings} style={dark}>Open Settings</button>}>
       Your clips are safe, and you can still edit by hand and export. Or let Chrome’s built-in AI write clips for now.
     </Card>
@@ -100,11 +103,11 @@ export function Offline() {
   );
 }
 
-export function GroqAccess({ onAllow }: { onAllow?: () => void }) {
+export function ProviderAccess({ provider = 'groq', onAllow }: { provider?: Provider; onAllow?: () => void }) {
   return (
-    <Card tone="plain" icon={svg(20, 'var(--accent)', <><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>)} title="Allow Motikord to reach Groq"
+    <Card tone="plain" icon={svg(20, 'var(--accent)', <><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>)} title={`Allow Motikord to reach ${label(provider)}`}
       action={<button type="button" onClick={onAllow} style={dark}>Allow</button>}>
-      Chrome asks once. Only your prompt and the clip’s text are sent to api.groq.com.
+      {`Chrome asks once. Only your prompt and the clip’s text are sent to ${PROVIDERS[provider].host}.`}
     </Card>
   );
 }
@@ -114,9 +117,9 @@ export const PROMPT_STATES: [string, ReactNode][] = [
   ['prompt-working · Editor prompt box', <PromptWorking />],
   ['prompt-failed · Editor', <PromptFailed />],
   ['change-too-long · Editor', <ChangeTooLong totalMs={72_000} />],
-  ['groq-busy · Making your clip, Editor', <GroqBusy seconds={20} />],
-  ['groq-busy-retried · Making your clip, Editor', <GroqBusyRetried />],
-  ['groq-down · Make a clip, Editor', <GroqDown />],
+  ['provider-busy · Making your clip, Editor', <ProviderBusy seconds={20} />],
+  ['provider-busy-retried · Making your clip, Editor', <ProviderBusyRetried />],
+  ['provider-down · Make a clip, Editor', <ProviderDown />],
   ['key-needed · Editor prompt', <KeyNeeded />],
   ['offline · Make a clip, Editor (banner)', <Offline />],
 ];

@@ -5,7 +5,8 @@ import { CODECS } from '../lib/check/plan';
 import { Button } from '../components/ui';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { getSettings, updateSettings } from '../lib/settings';
-import type { AiMode } from '../lib/types';
+import { DEFAULT_PROVIDER, PROVIDER_IDS, PROVIDERS } from '../lib/providers';
+import type { AiMode, Provider } from '../lib/types';
 import { NoBuiltInAi, NoFastExport, SlowComputer } from './StatesSetup';
 
 /** Shared by the first-run screens: the page frame, the back arrow and the pinned footer. */
@@ -137,15 +138,47 @@ function Choice({ checked, disabled, onPick, name, children }: { checked: boolea
   );
 }
 
+const tag = { fontWeight: 600, color: 'var(--accent-hover)', background: 'var(--tint-strong)', borderRadius: 999 } as const;
+
+/** "Faster in the cloud" with its provider choice; picking a provider picks the cloud. */
+function CloudChoice({ checked, provider, onCloud, onPick }: { checked: boolean; provider: Provider; onCloud: () => void; onPick: (p: Provider) => void }) {
+  return (
+    <div onClick={onCloud}
+      style={{ padding: 16, borderRadius: 16, background: 'var(--surface)', border: checked ? '2px solid var(--accent)' : '1px solid var(--line)', margin: checked ? 0 : 1, display: 'flex', flexDirection: 'column', gap: 12, cursor: 'pointer' }}>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 15, fontWeight: 600 }}>Faster in the cloud</span>
+          <span style={{ ...tag, fontSize: 11, padding: '2px 8px' }}>Recommended</span>
+        </span>
+        <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>A clip in a few seconds, and the best results. Pick who runs it. Your key comes from Penv Cloud or you paste it.</span>
+      </span>
+      <div role="radiogroup" aria-label="AI provider" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        {PROVIDER_IDS.map((p) => {
+          const on = checked && p === provider;
+          return (
+            <label key={p} style={{ height: 44, borderRadius: 10, border: on ? '2px solid var(--accent)' : '1px solid var(--line-strong)', margin: on ? 0 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <input type="radio" name="provider" checked={on} onChange={() => onPick(p)} style={{ accentColor: 'var(--accent)', margin: 0 }} />
+              {PROVIDERS[p].label}
+              {p === DEFAULT_PROVIDER && <span style={{ ...tag, fontSize: 10, padding: '1px 6px' }}>Default</span>}
+            </label>
+          );
+        })}
+      </div>
+      <span style={{ fontSize: 12, color: 'var(--faint)' }}>Groq has a free tier. You can pick a model in Settings later.</span>
+    </div>
+  );
+}
+
 export default function Setup() {
   const { back, navigate, replace } = useRouter();
   const [ai, setAi] = useState<AiMode>('cloud');
+  const [provider, setProvider] = useState<Provider>(DEFAULT_PROVIDER);
   const [machine, setMachine] = useState<Machine | null>(null);
   const alive = useRef(true);
 
   useEffect(() => {
     alive.current = true;
-    getSettings().then((s) => alive.current && setAi(s.ai)).catch((error: unknown) => console.error('Motikord: could not read settings', error));
+    getSettings().then((s) => { if (alive.current) { setAi(s.ai); setProvider(s.provider); } }).catch((error: unknown) => console.error('Motikord: could not read settings', error));
     probeMachine().then((m) => alive.current && setMachine(m)).catch((error: unknown) => console.error('Motikord: could not check this computer', error));
     return () => { alive.current = false; };
   }, []);
@@ -157,7 +190,7 @@ export default function Setup() {
   async function next(mode: AiMode) {
     try {
       if (mode === 'cloud') {
-        await updateSettings({ ai: 'cloud' });
+        await updateSettings({ ai: 'cloud', provider });
         navigate('PenvConnect');
       } else {
         await updateSettings({ ai: 'local', onboarded: true });
@@ -173,13 +206,7 @@ export default function Setup() {
       <StepHead step={1} onBack={back} />
       <Title title="Choose who writes your clips">Motikord’s AI turns your words into a clip plan. Only your prompt and the clip’s text are sent. Your media never is.</Title>
       <div role="radiogroup" aria-label="Who writes your clips" style={{ margin: '18px 24px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Choice name="ai" checked={picked === 'cloud'} onPick={() => setAi('cloud')}>
-          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 15, fontWeight: 600 }}>Faster with Groq</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent-hover)', background: 'var(--tint-strong)', padding: '2px 8px', borderRadius: 999 }}>Recommended</span>
-          </span>
-          <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>A clip in a few seconds, and the best results. Free to start. Your key comes from Penv Cloud or you paste it.</span>
-        </Choice>
+        <CloudChoice checked={picked === 'cloud'} provider={provider} onCloud={() => setAi('cloud')} onPick={(p) => { setAi('cloud'); setProvider(p); }} />
         <Choice name="ai" checked={picked === 'local'} disabled={noLocalAi} onPick={() => setAi('local')}>
           <span style={{ fontSize: 15, fontWeight: 600 }}>On this computer</span>
           <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>Uses Chrome’s built-in AI. Nothing is sent, no key needed. Slower, and clips are simpler.</span>
@@ -187,7 +214,7 @@ export default function Setup() {
       </div>
       <div style={{ margin: '14px 24px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <MachineCard machine={machine} />
-        {notes.cards.includes('no-built-in-ai') && <NoBuiltInAi onUseGroq={() => void next('cloud')} />}
+        {notes.cards.includes('no-built-in-ai') && <NoBuiltInAi provider={provider} onUseGroq={() => void next('cloud')} />}
         {notes.cards.includes('slow-computer') && <SlowComputer />}
         {notes.cards.includes('no-fast-export') && <NoFastExport />}
       </div>

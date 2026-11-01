@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchLike } from '../llm';
 import { applyPatch } from '../patch';
 import { applyPrompt, rebase } from './applyPrompt';
 import { devSampleRecipe } from './store';
+
+// The model is chosen once per session; a cached id keeps these tests to their own requests.
+beforeEach(() => fakeBrowser.storage.session.set({ groqModel: 'openai/gpt-oss-120b' }));
 
 const KEY = 'gsk_test';
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
@@ -42,7 +46,7 @@ describe('applyPrompt', () => {
         init?.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')));
       }));
       const p = applyPrompt(r, 'Slower', { ai: 'cloud', key: KEY, fetch, timeoutMs: 1000 });
-      const check = expect(p).rejects.toMatchObject({ state: 'groq-down' });
+      const check = expect(p).rejects.toMatchObject({ state: 'provider-down' });
       await vi.advanceTimersByTimeAsync(1001);
       await check;
     } finally {

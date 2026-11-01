@@ -9,12 +9,35 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       ai: 'cloud',
       keySource: null,
+      provider: 'groq',
+      models: {},
       defaultAspect: '9:16',
       defaultExport: { kind: 'mp4', quality: '1080p' },
       smoothPreview: true,
-      libraries: { openverse: true, pexels: true, allLicences: false },
+      media: { on: {}, custom: [], allLicences: false },
       onboarded: false,
+      voiceOn: true,
+      voiceLang: '',
     });
+  });
+
+  it('migrates settings from before voice prompts to mic on, Chrome language', () => {
+    expect(mergeSettings({ onboarded: true } as never)).toMatchObject({ voiceOn: true, voiceLang: '' });
+    expect(mergeSettings({ voiceOn: false, voiceLang: 'fr-FR' })).toMatchObject({ voiceOn: false, voiceLang: 'fr-FR' });
+    expect(mergeSettings({ voiceOn: 'no', voiceLang: '<x>' } as never)).toMatchObject({ voiceOn: true, voiceLang: '' });
+  });
+
+  it('gives settings from before providers Groq and no model pick', () => {
+    const s = mergeSettings({ ai: 'cloud', keySource: 'paste', onboarded: true } as never);
+    expect(s).toMatchObject({ provider: 'groq', models: {}, keySource: 'paste', onboarded: true });
+    expect(mergeSettings({ provider: 'mistral', models: { openai: 'gpt-4.1', x: 'y', groq: '' } } as never)).toMatchObject({ provider: 'groq', models: { openai: 'gpt-4.1' } });
+  });
+
+  it('keeps one model per provider', async () => {
+    await updateSettings({ provider: 'anthropic', models: { anthropic: 'claude-x' } });
+    const s = await updateSettings({ models: { openai: 'gpt-4.1' } });
+    expect(s.provider).toBe('anthropic');
+    expect(s.models).toEqual({ anthropic: 'claude-x', openai: 'gpt-4.1' });
   });
 
   it('returns defaults when nothing is stored', async () => {
@@ -22,10 +45,26 @@ describe('settings', () => {
   });
 
   it('fills missing nested fields from the defaults', () => {
-    const s = mergeSettings({ ai: 'local', libraries: { pexels: false } });
+    const s = mergeSettings({ ai: 'local', media: { allLicences: true } });
     expect(s.ai).toBe('local');
-    expect(s.libraries).toEqual({ openverse: true, pexels: false, allLicences: false });
+    expect(s.media).toEqual({ on: {}, custom: [], allLicences: true });
     expect(s.defaultExport).toEqual(DEFAULT_SETTINGS.defaultExport);
+  });
+
+  it('moves the old libraries into Media sources', () => {
+    const s = mergeSettings({ libraries: { openverse: false, pexels: true, allLicences: true } });
+    expect(s.media).toEqual({ on: { openverse: false, pexels: true }, custom: [], allLicences: true });
+    expect('libraries' in s).toBe(false);
+    // Once media is saved, it wins over anything old.
+    expect(mergeSettings({ libraries: { openverse: false }, media: { on: { openverse: true } } }).media.on.openverse).toBe(true);
+  });
+
+  it('merges media.on per source and keeps custom sources', async () => {
+    const src = { id: 'c1', name: 'Bakery', url: 'https://photos.example.com/wp-json/wp/v2/media?search={query}', kinds: ['image' as const], format: 'wordpress' as const, on: true };
+    await updateSettings({ media: { on: { museums: true }, custom: [src] } });
+    const s = await updateSettings({ media: { on: { ccmixter: true } } });
+    expect(s.media.on).toEqual({ museums: true, ccmixter: true });
+    expect(s.media.custom).toEqual([src]);
   });
 
   it('updates one level deep and tells listeners', async () => {

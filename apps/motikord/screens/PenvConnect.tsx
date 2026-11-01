@@ -4,7 +4,9 @@ import { useRouter } from '../entrypoints/sidepanel/router';
 import { HOSTS, requestHost } from '../lib/hostAccess';
 import { loadKeys } from '../lib/keys';
 import { connectKeyNames, connectPenvApp, loadPenvAppKeys } from '../lib/penvApp';
-import { updateSettings } from '../lib/settings';
+import { getSettings, updateSettings } from '../lib/settings';
+import { PROVIDERS } from '../lib/providers';
+import type { Provider } from '../lib/types';
 import { Footer, hintStyle, Page, StepHead, Title } from './Setup';
 import { PenvNotConnected } from './StatesSetup';
 
@@ -12,7 +14,7 @@ import { PenvNotConnected } from './StatesSetup';
 export async function connectPenvCloud(): Promise<boolean> {
   try {
     if ((await requestHost(HOSTS.penv)) === 'denied') return false;
-    const conn = await connectPenvApp({ keys: connectKeyNames(['GROQ_API_KEY']) });
+    const conn = await connectPenvApp({ keys: connectKeyNames([PROVIDERS[(await getSettings()).provider].keyName]) });
     await updateSettings({ keySource: 'penv-app', penvApp: conn });
     await loadPenvAppKeys(conn);
     return true;
@@ -46,9 +48,14 @@ export default function PenvConnect() {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [hasKey, setHasKey] = useState(false);
+  const [provider, setProvider] = useState<Provider>('groq');
 
   useEffect(() => {
-    loadKeys().then((k) => setHasKey(!!k.GROQ_API_KEY)).catch((error: unknown) => console.error('Motikord: could not read keys', error));
+    (async () => {
+      const p = (await getSettings()).provider;
+      setProvider(p);
+      setHasKey(!!(await loadKeys())[PROVIDERS[p].keyName]);
+    })().catch((error: unknown) => console.error('Motikord: could not read keys', error));
   }, []);
 
   async function connect() {
@@ -72,7 +79,7 @@ export default function PenvConnect() {
   return (
     <Page frame="PenvConnect">
       <StepHead step={2} onBack={back} />
-      <Title title="Add your Groq key">Motikord keeps keys only until Chrome closes, and never shows them again.</Title>
+      <Title title={`Add your ${PROVIDERS[provider].label} key`}>Motikord keeps keys only until Chrome closes, and never shows them again.</Title>
       <div style={{ margin: '18px 24px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <SourceToggle value="penv" onPick={() => navigate('PasteKey')} />
         <div style={{ padding: 14, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>

@@ -1,15 +1,16 @@
 import { getPreset } from '../render/presets';
 import { clipDuration } from '../render/drawFrame';
+import { PROVIDERS } from '../providers';
 import type { Author, Change, PresetSlot, Recipe } from '../types';
 
 // The Changes tab: every Change newest first, who made it, and how far "Go back here" undoes.
 
 export const newestFirst = (past: readonly Change[]): Change[] => [...past].reverse();
 
-/** "Groq", "built-in AI" or "by hand", as the Changes tab shows the author. */
+/** "Groq" (or the other provider), "built-in AI" or "by hand", as the Changes tab shows the author. */
 export function byLabel(by: Author): string | undefined {
   switch (by) {
-    case 'groq': return 'Groq';
+    case 'groq': case 'openai': case 'anthropic': case 'openrouter': return PROVIDERS[by].label;
     case 'builtin': return 'built-in AI';
     case 'hand': return 'by hand';
     case 'template': return undefined;

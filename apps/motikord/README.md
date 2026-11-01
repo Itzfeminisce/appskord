@@ -25,11 +25,11 @@ To update a zip build, unzip it over the same folder and press Reload on the ext
 
 ## First run
 
-Setup asks who writes your clips: on this computer (Chrome's built-in AI, where available) or Groq, which is faster. For Groq, press "Connect Penv Cloud", or choose "Paste a key". A Pexels key is optional and adds Pexels photos and videos to media search.
+Setup asks who writes your clips: on this computer (Chrome's built-in AI, where available) or faster in the cloud, with Groq (the default, with a free tier), OpenAI, Anthropic or OpenRouter. For a cloud provider, press "Connect Penv Cloud", or choose "Paste a key" and paste that provider's key. A Pexels key is optional and adds Pexels photos and videos to media search.
 
 ## AI options
 
-- Groq, with a key from Penv Cloud or one you paste.
+- Groq, OpenAI, Anthropic or OpenRouter, with a key from Penv Cloud (`GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) or one you paste. Settings lists the provider's current models; pick one, or keep the recommended model.
 - Chrome's built-in AI, when your computer has it. Nothing is sent anywhere.
 
 ## Privacy
@@ -41,12 +41,31 @@ There is no account, no analytics and no telemetry.
 | --- | --- | --- |
 | Clips, recipes, brand kit, library | Your computer (IndexedDB and OPFS) | Nothing. Leaves only inside a file you export. |
 | Your own media and fonts | Your computer | Nothing. Never sent to AI or any library. |
-| Prompts and recipe text | Your computer | Sent to the AI you chose (Groq by default) when you prompt. Not sent if Chrome's built-in AI is used. |
-| Page grabs | Your computer | The text of a grab goes to the AI only as part of a prompt you send. The page is read only after you press "Grab from this page" and allow that site. |
-| Media and music searches | Your computer | Your search words go to the library you search (Openverse or Pexels). Picked files are downloaded once from their source and kept here. |
-| Keys | `chrome.storage.session`, cleared when Chrome closes | Fetched from Penv Cloud after "Connect Penv Cloud", or pasted. Never printed, logged or committed. |
+| Prompts and recipe text | Your computer | Sent only to the one AI provider you chose (Groq by default; or OpenAI, Anthropic or OpenRouter) when you prompt: your prompt and the clip's text, never your media. Not sent if Chrome's built-in AI is used. |
+| Your voice | Nowhere. No recording is kept | Heard only while the mic is lit, after you press Speak. Turned into text on this computer by Chrome's on-device speech recognition when Chrome can (never Chrome's cloud speech service); otherwise sent to Groq or OpenAI, with your key, only to become text, and only when that is the provider you chose. The text goes into the prompt box and is sent only when you press Make clip or send. |
+| Page grabs | Your computer | The text of a grab goes to the AI only as part of a prompt you send. The page is read only after you press "Grab from this page" and allow access. |
+| Media and music searches | Your computer | Your search words go to every media source that is on (Media sources in Settings: Openverse, Wikimedia Commons and NASA by default; Museums, ccMixter, Pexels, Pixabay, Freesound, Jamendo, Unsplash or your own links if you turn them on). Picked files are downloaded once from their source and kept here. |
+| Keys | `chrome.storage.session`, cleared when Chrome closes | Groq, OpenAI, Anthropic, OpenRouter, Pexels, Pixabay, Freesound, Jamendo and Unsplash keys, and keys for your own media sources, fetched from Penv Cloud after "Connect Penv Cloud", or pasted. Each key goes only to its own service. Never printed, logged or committed. |
 
 The full policy, with every permission and host, is in [docs/privacy.md](docs/privacy.md).
+
+## Media sources
+
+Free media searches every source that is on, all at once. If one does not answer, the others still show. Turn sources on and off in Settings, Media sources.
+
+- Ready now, no key: Openverse, Wikimedia Commons and NASA Image Library (on); Museums (CC0: The Met and the Art Institute of Chicago, public domain only) and ccMixter (off).
+- Free with a key, from Penv Cloud or pasted: Pexels (`PEXELS_API_KEY`), Pixabay (`PIXABAY_API_KEY`), Freesound (`FREESOUND_API_KEY`), Jamendo (`JAMENDO_CLIENT_ID`) and Unsplash (`UNSPLASH_ACCESS_KEY`).
+- Your own sources: paste a search link with `{query}` where the words go (Motikord adds `?q=` if you leave it out), and a key if it needs one, sent as `Authorization: Bearer`, `Authorization`, `?key=`, `?api_key=`, `?client_id=` or another header. Motikord runs a test search before adding it.
+
+Links that work, tried in this order:
+1. Openverse API (`/v1/images/` or `/v1/audio/`).
+2. WordPress media (`/wp-json/wp/v2/media`).
+3. MediaWiki or Wikimedia API with `prop=imageinfo` and `iiprop=url|mime|extmetadata`.
+4. Pexels-style replies (`photos` with `src`, or `videos` with `video_files`).
+5. Pixabay-style replies (`hits` with `largeImageURL`, or `videos`).
+6. Any JSON with a list of items that hold an image, video or audio address, with a title, author and licence if present.
+
+When a source gives no licence, each item says "Check you may use it" and credits.txt lists it as From the source, with its link. Unsplash photos send Unsplash's download ping when used and are credited to the photographer; Pixabay files are downloaded, never hotlinked.
 
 ## Development
 

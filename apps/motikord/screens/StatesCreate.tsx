@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
-import type { AiMode } from '../lib/types';
-import { actionStyle, GroqAccess, PenvDisconnected } from './StatesSetup';
+import { PROVIDERS } from '../lib/providers';
+import type { Provider } from '../lib/types';
+import { actionStyle, PenvDisconnected, ProviderAccess } from './StatesSetup';
+
+const label = (p: Provider) => PROVIDERS[p].label;
 
 type Tone = 'plain' | 'warning' | 'error';
 type Glyph = 'cross' | 'clock' | 'warn' | 'wifi-off' | 'info';
@@ -48,23 +51,23 @@ export function MakingFailed({ onTryAgain, onTemplates }: { onTryAgain?: () => v
     </Notice>
   );
 }
-export function GroqBusy({ seconds = 20, onTryNow }: { seconds?: number; onTryNow?: () => void }) {
+export function ProviderBusy({ provider = 'groq', seconds = 20, onTryNow }: { provider?: Provider; seconds?: number; onTryNow?: () => void }) {
   return (
-    <Notice tone="warning" role="status" glyph="clock" title="Groq is busy right now" actions={<button type="button" onClick={onTryNow} style={actionStyle}>Try now</button>}>
-      {`You’ve reached Groq’s free limit for the moment. Motikord will try again in ${seconds} seconds.`}
+    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is busy right now`} actions={<button type="button" onClick={onTryNow} style={actionStyle}>Try now</button>}>
+      {`You’ve reached ${label(provider)}’s limit for the moment. Motikord will try again in ${seconds} seconds.`}
     </Notice>
   );
 }
-export function GroqBusyRetried({ onTryNow }: { onTryNow?: () => void }) {
+export function ProviderBusyRetried({ provider = 'groq', onTryNow }: { provider?: Provider; onTryNow?: () => void }) {
   return (
-    <Notice tone="warning" role="status" glyph="clock" title="Groq is still busy" actions={<button type="button" onClick={onTryNow} style={actionStyle}>Try now</button>}>
-      Motikord tried again and Groq is still at its free limit. Try now, or come back in a few minutes.
+    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is still busy`} actions={<button type="button" onClick={onTryNow} style={actionStyle}>Try now</button>}>
+      {`Motikord tried again and ${label(provider)} is still at its limit. Try now, or come back in a few minutes.`}
     </Notice>
   );
 }
-export function GroqDown({ onOpenSettings }: { onOpenSettings?: () => void }) {
+export function ProviderDown({ provider = 'groq', onOpenSettings }: { provider?: Provider; onOpenSettings?: () => void }) {
   return (
-    <Notice tone="warning" role="alert" glyph="warn" title="Groq isn’t responding" actions={<button type="button" onClick={onOpenSettings} style={actionStyle}>Open Settings</button>}>
+    <Notice tone="warning" role="alert" glyph="warn" title={`${label(provider)} isn’t responding`} actions={<button type="button" onClick={onOpenSettings} style={actionStyle}>Open Settings</button>}>
       Your clips are safe, and you can still edit by hand and export. Or let Chrome’s built-in AI write clips for now.
     </Notice>
   );
@@ -112,6 +115,13 @@ export function GrabNotAllowed() {
     </Notice>
   );
 }
+export function GrabAccessNotGiven({ onTryAgain }: { onTryAgain?: () => void }) {
+  return (
+    <Notice role="status" glyph="info" title="Page access not given" actions={<button type="button" onClick={onTryAgain} style={actionStyle}>Try again</button>}>
+      Motikord needs permission to read the page to grab from it. Nothing is read until you pick.
+    </Notice>
+  );
+}
 export function GrabPictureUnreadable({ onPickAnother }: { onPickAnother?: () => void }) {
   return (
     <Notice tone="warning" role="status" glyph="warn" title="Couldn’t read that picture" actions={<button type="button" onClick={onPickAnother} style={actionStyle}>Pick another</button>}>
@@ -129,9 +139,12 @@ export function GrabNothingPicked() {
 }
 
 /** The one line under Making that says where the prompt went. */
-export function AiFooter({ ai }: { ai: AiMode | 'groq' | 'builtin' }) {
-  const groq = ai === 'cloud' || ai === 'groq';
-  return <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>{groq ? 'Only your prompt went to Groq. Your media stayed here.' : 'Written on this computer by Chrome’s built-in AI. Nothing was sent.'}</span>;
+export function AiFooter({ by }: { by: Provider | 'builtin' }) {
+  return <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>{by !== 'builtin' ? `Only your prompt went to ${label(by)}. Your media stayed here.` : 'Written on this computer by Chrome’s built-in AI. Nothing was sent.'}</span>;
+}
+/** The one line under Make a clip that says who writes the clip. */
+export function HomeFooter({ by }: { by: Provider | 'builtin' }) {
+  return <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>{by !== 'builtin' ? `${label(by)} writes the clip from your words. Your media stays on this computer.` : 'Chrome’s built-in AI writes the clip from your words. Everything stays on this computer.'}</span>;
 }
 
 const SHEET: [string, ReactNode][] = [
@@ -143,19 +156,26 @@ const SHEET: [string, ReactNode][] = [
     </div>
   )],
   ['making-failed · Making your clip', <MakingFailed />],
-  ['groq-busy · Making your clip, Editor', <GroqBusy />],
-  ['groq-busy-retried · Making your clip, Editor', <GroqBusyRetried />],
-  ['groq-down · Make a clip, Editor', <GroqDown />],
+  ['provider-busy · Making your clip, Editor', <ProviderBusy />],
+  ['provider-busy-retried · Making your clip, Editor', <ProviderBusyRetried />],
+  ['provider-down · Make a clip, Editor', <ProviderDown />],
   ['key-needed · Making your clip', <KeyNeeded />],
   ['penv-disconnected · Make a clip (banner)', <PenvDisconnected />],
   ['offline · Make a clip, Editor (banner)', <Offline />],
   ['too-long · Making your clip', <TooLong />],
-  ['groq-access · first “Make clip” (Chrome asks once)', <GroqAccess />],
+  ['provider-access · first “Make clip” (Chrome asks once)', <ProviderAccess />],
   ['grab-not-allowed · Grab from the page', <GrabNotAllowed />],
+  ['grab-access-not-given · Grab from the page', <GrabAccessNotGiven />],
   ['grab-nothing-picked · Grab from the page', <GrabNothingPicked />],
   ['grab-picture-unreadable · Grab from the page', <GrabPictureUnreadable />],
   ['media-unsupported · Your media', <MediaUnsupported name="brochure.pdf" />],
   ['video-wont-play · Your media', <VideoWontPlay name="drone-shot.mov" />],
+  ['home-footer · Make a clip (one line per AI)', (
+    <div style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, color: 'var(--muted)' }}>
+      <span>Groq writes the clip from your words. Your media stays on this computer.</span>
+      <span>Chrome’s built-in AI writes the clip from your words. Everything stays on this computer.</span>
+    </div>
+  )],
   ['ai-footer · Making your clip (one line per AI)', (
     <div style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, color: 'var(--muted)' }}>
       <span>Only your prompt went to Groq. Your media stayed here.</span>
