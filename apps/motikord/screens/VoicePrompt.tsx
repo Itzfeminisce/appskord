@@ -51,7 +51,7 @@ export function HomeListening({ before, after, settled, interim, ms, levels, tra
   );
 }
 
-/** Route screen (dev `?screen=VoicePrompt`): Home as drawn while listening, with the frame's words and no microphone. */
+/** Route screen (dev `#/dev/VoicePrompt`): Home as drawn while listening, with the frame's words and no microphone. */
 export default function VoicePrompt() {
   return <Home preview={{ settled: 'A 15-second promo for our new sourdough, warm and friendly,', interim: 'ending with order today', ms: 7_000 }} />;
 }

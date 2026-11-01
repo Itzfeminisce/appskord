@@ -61,6 +61,34 @@ describe('createRouter on TanStack Router', () => {
     expect(shown(view.host)).toBe('C');
   });
 
+  it('keeps navigate, replace and back the same functions across navigations', async () => {
+    const view = await mount(fake, 'A');
+    const { navigate, replace, back } = view.router;
+    act(() => navigate('B'));
+    await settle();
+    act(() => replace('C'));
+    await settle();
+    expect(view.router.navigate).toBe(navigate);
+    expect(view.router.replace).toBe(replace);
+    expect(view.router.back).toBe(back);
+  });
+
+  it('functions held from an earlier screen use the current back floor', async () => {
+    const view = await mount(fake, 'A');
+    const { navigate, back } = view.router;
+    act(() => view.router.replace('B'));
+    await settle();
+    act(() => navigate('C'));
+    await settle();
+    act(() => back());
+    await settle();
+    expect(shown(view.host)).toBe('B');
+    act(() => back());
+    await settle();
+    expect(shown(view.host)).toBe('B');
+    expect(view.router.canGoBack).toBe(false);
+  });
+
   it('a reload keeps the screen and its params', async () => {
     const view = await mount(fake, 'A');
     act(() => view.router.navigate('C', { clipId: 'c9' }));

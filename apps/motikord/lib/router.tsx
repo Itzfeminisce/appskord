@@ -59,23 +59,21 @@ export function createRouter<S extends string>(screens: Record<S, ComponentType>
   const Context = createContext<Router<S> | null>(null);
   const Children = createContext<ReactNode>(null);
 
-  /** The screen API over a TanStack router; the same calls the stack router had. */
-  function actions(router: AnyRouter): Router<S> {
-    const location = router.state.location;
-    const name = location.pathname.slice(1);
-    const go = (screen: S, params: RouteParams, replace: boolean) =>
+  /** navigate / replace / back over a TanStack router; stable per router and reading the location at call time. */
+  function controls(router: AnyRouter): Pick<Router<S>, 'navigate' | 'replace' | 'back'> {
+    const go = (screen: S, params: RouteParams, replace: boolean) => {
+      const location = router.state.location;
       void router.navigate({
         to: `/${screen}`,
         search: toSearch(params),
         replace,
         state: replace ? clearBackState(location) : pushState(location),
       });
+    };
     return {
-      route: { screen: (isScreen(name) ? name : names[0]) as S, params: toParams(location.search as Record<string, unknown>) },
       navigate: (screen, params = {}) => go(screen, params, false),
       replace: (screen, params = {}) => go(screen, params, true),
-      back: () => { if (canGoBack(location)) router.history.back(); },
-      canGoBack: canGoBack(location),
+      back: () => { if (canGoBack(router.state.location)) router.history.back(); },
     };
   }
 
@@ -83,9 +81,18 @@ export function createRouter<S extends string>(screens: Record<S, ComponentType>
     const router = useSurfaceRouter();
     const href = useRouterState({ select: (s) => s.location.href });
     const index = useRouterState({ select: (s) => (s.location.state as { __TSR_index?: number }).__TSR_index });
+    const stable = useMemo(() => controls(router), [router]);
     // Rebuilt when the location changes, so screens re-render as they did on a stack change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const value = useMemo(() => actions(router), [router, href, index]);
+    const value = useMemo((): Router<S> => {
+      const location = router.state.location;
+      const name = location.pathname.slice(1);
+      return {
+        ...stable,
+        route: { screen: (isScreen(name) ? name : names[0]) as S, params: toParams(location.search as Record<string, unknown>) },
+        canGoBack: canGoBack(location),
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [router, stable, href, index]);
     const children = useContext(Children);
     if (!isScreen(router.state.location.pathname.slice(1))) return null;
     return <Context.Provider value={value}>{children}</Context.Provider>;

@@ -1,4 +1,5 @@
 import { setBadge } from '../lib/badge';
+import { findEditorTab } from '../lib/editorTab';
 import { onMessage } from '../lib/messages';
 
 const EDITOR_URL = '/editor.html';
@@ -7,8 +8,8 @@ const EDITOR_URL = '/editor.html';
 async function openEditor(clipId?: string): Promise<{ tabId: number }> {
   const url = browser.runtime.getURL(EDITOR_URL) + (clipId ? `?clip=${encodeURIComponent(clipId)}` : '');
   // getContexts sees our own tabs without the "tabs" permission.
-  const [open] = await chrome.runtime.getContexts({ contextTypes: [chrome.runtime.ContextType.TAB], documentUrls: [url] });
-  if (open && open.tabId >= 0) {
+  const open = await findEditorTab((filter) => chrome.runtime.getContexts(filter), browser.runtime.getURL(EDITOR_URL), clipId);
+  if (open) {
     await browser.tabs.update(open.tabId, { active: true });
     if (open.windowId >= 0) await browser.windows.update(open.windowId, { focused: true });
     return { tabId: open.tabId };

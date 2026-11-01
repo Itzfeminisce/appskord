@@ -52,6 +52,6 @@ export default defineAppConfig({
     'http://*/*',
   ],
   devOnlyEntrypoints: ['check'],
-  // Dev tools (screen switcher, ?screen=, check link) ship in dev and `npm run build`, never in the release zip.
+  // Dev tools (screen switcher, #/dev/<frame>, check link) ship in dev and `npm run build`, never in the release zip.
   wxt: { vite: () => ({ define: { __MOTIKORD_DEV_TOOLS__: JSON.stringify(!isRelease()) } }) },
 });
