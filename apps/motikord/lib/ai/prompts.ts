@@ -1,4 +1,4 @@
-import type { Aspect, Asset, ClipType, PresetSlot } from '../types';
+import type { Aspect, Asset, ClipType, Pace, PresetSlot, SceneTemplate, SlotDef, StylePack } from '../types';
 import { CLIP_TYPES, MAX_CLIP_MS } from '../recipe/validate';
 import { PRESETS } from '../render/presets';
 import { LAYOUTS } from '../render/reflow';
@@ -137,4 +137,64 @@ export const SHORTER = 'Your last reply was not valid JSON or was cut off. Reply
 export function retryMessage(problems: string[]): string {
   const list = problems.slice(0, 12).map((p) => `- ${p}`).join('\n');
   return `That reply did not work. Fix these problems and reply with the whole JSON again:\n${list}`;
+}
+
+// ---- v2: storyboard, scene fill and visual critic ----
+
+/** What a slot asks for, in the words the fill prompt shows. */
+export function slotLine(d: SlotDef): string {
+  const opt = d.optional ? ', optional' : '';
+  if (d.kind === 'items') return `- ${d.id} (list${opt}): ${d.items?.[0] ?? 1} to ${d.items?.[1] ?? 5} items, each up to ${d.words ?? 6} words.`;
+  if (d.kind === 'chart') return `- ${d.id} (chart${opt}): ${d.items?.[0] ?? 2} to ${d.items?.[1] ?? 6} bars as {"label":"up to ${d.words ?? 2} words","value":number}.`;
+  if (d.id === 'highlight') return `- highlight (optional): one word copied from the other text to pick out in the accent colour.`;
+  return `- ${d.id} (${d.name}${opt}): up to ${d.words ?? 10} words.`;
+}
+
+export interface StoryboardPromptInput {
+  type: ClipType; aspect: Aspect; style: StylePack; pace: Pace; scenes: number;
+  templates: readonly SceneTemplate[];      // the closed list this clip may use
+}
+
+/** Storyboard call: a short plan in plain words, then the beats as JSON, each from the closed template list. */
+export function storyboardSystem(input: StoryboardPromptInput): string {
+  const cta = input.type === 'promo' || input.type === 'social';
+  return [
+    `You plan short animated clips like a senior motion designer. Clip type: ${input.type} (${TYPE_HINTS[input.type]}). Size: ${input.aspect}. Style: ${input.style.name}. Pace: ${input.pace}.`,
+    `First write a short plan in plain words, 2 to 4 lines: the hook that stops the scroll, the beats that build, and the ending${cta ? ' with a call to action' : ''}.`,
+    `Then write the storyboard as JSON: ${input.scenes} scenes, one idea each. Every scene uses one template id from this list, picked by what it fits:`,
+    ...input.templates.map((t) => `- ${t.id}: ${t.fits}`),
+    `Never use one template three times in a row. "line" says what the scene shows, up to 10 words, written fresh: never copy the idea's sentence.`,
+    `Keep the facts from the idea: offer, numbers, dates, names. Never invent prices or dates.`,
+    `JSON, compact on one line: {"name":"2-4 words","hook":"the opening line","beats":[{"template":"title-hook","line":"..."}]}`,
+    `Write the text in the language of the idea.`,
+  ].join('\n');
+}
+
+export const STORYBOARD_REPAIR = 'That storyboard was not valid JSON. Reply again with the JSON only, compact on one line, in the same shape.';
+
+/** Scene fill call: the slots of one template, with their word limits, and nothing else. */
+export function fillSystem(t: SceneTemplate, type: ClipType, style: StylePack): string {
+  const slots = t.slots.filter((d) => d.kind !== 'media' && d.kind !== 'logo');
+  return [
+    `You write the words for one scene of a short animated ${type} clip in the ${style.name} style. Template: ${t.name} (${t.line}).`,
+    `Slots:`,
+    ...slots.map(slotLine),
+    `Stay inside every word limit. Short, punchy, spoken words; no emoji, no hashtags, numbers as digits. Leave out an optional slot when it adds nothing.`,
+    `Keep the facts from the idea; never invent prices, dates or names. Write in the language of the idea.`,
+    `Reply with JSON only: {"slots":{${slots.filter((d) => !d.optional).map((d) => `"${d.id}":…`).join(',')}}}`,
+  ].join('\n');
+}
+
+export function fillRetryMessage(problems: string[]): string {
+  return `That reply could not be used:\n${problems.map((p) => `- ${p}`).join('\n')}\nReply again with the JSON only.`;
+}
+
+/** Visual critic: frames of the clip, and per-scene fixes in words. */
+export function criticSystem(): string {
+  return [
+    `You are a senior motion designer checking small frames of a short animated clip. Each image is one scene once its motion has settled.`,
+    `Look for text that is cut off, too small or hard to read on its background, things that overlap, a crowded or empty frame, and words that don't suit the scene.`,
+    `Reply with JSON only: {"notes":[{"scene":2,"problem":"up to 12 words","fix":"what to change in the scene's words, up to 16 words"}]}.`,
+    `At most one note per scene, only for scenes shown. Reply {"notes":[]} when the frames look good.`,
+  ].join('\n');
 }

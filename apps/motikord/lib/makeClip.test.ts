@@ -16,20 +16,15 @@ beforeEach(() => fakeBrowser.storage.session.set({ groqModel: 'openai/gpt-oss-12
 const KEY = 'gsk_test';
 const settings: Settings = { ...DEFAULT_SETTINGS, keySource: 'paste', onboarded: true };
 const ok = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
-const scene = (ms = 4000) => ({
-  id: 's1', durationMs: ms, background: '#111114', layout: 'center',
-  layers: [{ id: 't1', name: 'Title', type: 'text', role: 'title', text: 'Fresh sourdough', font: 'Geist', sizePx: 96, weight: 700, colour: '#FFFFFF', align: 'center', lineHeight: 1.1, startMs: 0, endMs: ms, box: { x: 0.1, y: 0.4, w: 0.8, h: 0.2 }, opacity: 1 }],
-});
-const recipeJson = (ms = 4000) => JSON.stringify({ name: 'Sourdough', scenes: [scene(ms)] });
-// The creative plan and the design critique are lib/ai's own steps (tested in lib/ai); here they answer outside the count.
-const PLAN = JSON.stringify({ name: 'Sourdough', scenes: [{ headline: 'Fresh sourdough' }] });
+// v2: the storyboard call is counted; each scene's fill is lib/ai's own step (tested there) and answers outside the count.
+const storyboard = (template = 'title-hook') => `Open on the loaf, end on the offer.\n${JSON.stringify({ name: 'Sourdough', hook: 'Fresh sourdough', beats: [{ template, line: 'Fresh sourdough every morning' }] })}`;
+const FILL = JSON.stringify({ slots: { kicker: 'Baked today', headline: 'Fresh sourdough', line: 'Warm from the oven', statement: 'Baked before sunrise', cta: 'Order today', handle: 'crumb.shop' } });
 const own = (init?: RequestInit) => {
   const messages = (JSON.parse(String(init?.body ?? '{}')).messages ?? []) as { content: string }[];
-  if (messages[0]?.content.startsWith('You plan')) return ok(PLAN);
-  if (messages.at(-1)?.content.includes('cut into frames')) return ok('{}');
+  if (messages[0]?.content.startsWith('You write the words')) return ok(FILL);
   return undefined;
 };
-/** A fake Groq: first the type, then the recipe (or whatever `replies` holds). */
+/** A fake Groq: first the type, then the storyboard (or whatever `replies` holds). */
 const groq = (...replies: (string | Response | Error)[]) => {
   const counted: FetchLike = vi.fn(async () => {
     const next = replies.shift();
@@ -44,7 +39,7 @@ const extra: Asset = { id: 'p2', kind: 'image', name: 'other.jpg', mime: 'image/
 
 describe('makeClip', () => {
   it('detects the type, writes the recipe, saves the clip and reports each step', async () => {
-    const g = groq('{"type":"promo"}', recipeJson());
+    const g = groq('{"type":"promo"}', storyboard());
     const saved: Clip[] = [];
     const seen: string[] = [];
     const r = await makeClip({ prompt: 'A promo for sourdough', aspect: '9:16', assets: [photo, extra], id: 'c1' }, {
@@ -55,13 +50,14 @@ describe('makeClip', () => {
     expect(r.clip).toMatchObject({ id: 'c1', createdAt: 5, history: [] });
     expect(r.clip.recipe).toMatchObject({ type: 'promo', aspect: '9:16', prompt: 'A promo for sourdough' });
     expect(validateRecipe(r.clip.recipe)).toEqual([]);
-    expect(Object.keys(r.clip.recipe.assets)).toEqual([]); // neither photo was used by a layer
+    // v2: the title hook's optional background takes the first photo; the unused one is dropped.
+    expect(Object.keys(r.clip.recipe.assets)).toEqual(['p1']);
     expect(saved).toEqual([r.clip]);
     expect(g.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('skips detection when you chose the type', async () => {
-    const g = groq(recipeJson());
+    const g = groq(storyboard());
     const r = await makeClip({ prompt: 'x', aspect: '1:1', type: 'quote', assets: [] }, { ...g.hooks, save: async () => {} });
     expect(r.type).toBe('quote');
     expect(g.fetch).toHaveBeenCalledTimes(1);
@@ -69,8 +65,7 @@ describe('makeClip', () => {
 
   it('keeps used media with no credit, and adds attached music', async () => {
     const song: Asset = { id: 'a1', kind: 'audio', name: 'jingle.mp3', mime: 'audio/mpeg', bytes: 1, opfsPath: 'media/a1.mp3' };
-    const withPhoto = JSON.stringify({ name: 'N', scenes: [{ ...scene(), layers: [{ id: 'm1', name: 'Photo', type: 'image', assetId: 'p1', fit: 'cover', startMs: 0, endMs: 4000, box: { x: 0, y: 0, w: 1, h: 1 }, opacity: 1 }] }] });
-    const g = groq(withPhoto);
+    const g = groq(storyboard('hero'));
     const r = await makeClip({ prompt: 'x', aspect: '9:16', type: 'promo', assets: [photo, extra, song] }, { ...g.hooks, save: async () => {} });
     expect(Object.keys(r.clip.recipe.assets).sort()).toEqual(['a1', 'p1']);
     expect(r.clip.recipe.assets.p1!.credit).toBeUndefined();
@@ -78,11 +73,14 @@ describe('makeClip', () => {
     expect(validateRecipe(r.clip.recipe)).toEqual([]);
   });
 
-  it('reports a clip cut to 60 seconds as the too-long notice', async () => {
-    const g = groq(recipeJson(90_000));
-    const r = await makeClip({ prompt: 'x', aspect: '9:16', type: 'promo', assets: [] }, { ...g.hooks, save: async () => {} });
-    expect(r.notices).toEqual(['too-long']);
-    expect(r.clip.recipe.scenes[0]!.durationMs).toBeLessThanOrEqual(60_000);
+  it('makes a version 2 recipe in the look Auto picks, every scene templated', async () => {
+    const g = groq(storyboard());
+    const steps: string[] = [];
+    const r = await makeClip({ prompt: 'x', aspect: '9:16', type: 'promo', assets: [] }, { ...g.hooks, save: async () => {}, onStep: (s) => steps.push(s) });
+    expect(r.clip.recipe).toMatchObject({ version: 2, style: 'bold', pace: 'normal', mood: 'upbeat' });
+    expect(r.clip.recipe.scenes.every((s) => s.template)).toBe(true);
+    expect(steps).toEqual(['plan', 'fill', 'check', 'open']);
+    expect(r.criticSkipped).toBe('critic-not-available');
   });
 
   const fails = async (replies: (string | Response | Error)[], s: Settings = settings) => {
@@ -94,7 +92,7 @@ describe('makeClip', () => {
     expect(await fails([new Response('{}', { status: 429, headers: { 'retry-after': '20' } })])).toMatchObject({ state: 'provider-busy', retryAfterMs: 20_000 });
     expect(await fails([new Response('{}', { status: 503 })])).toMatchObject({ state: 'provider-down' });
     expect(await fails([new Response('{}', { status: 401 })])).toMatchObject({ state: 'provider-down' });
-    expect(await fails(['not json', 'still not json'])).toMatchObject({ state: 'making-failed' });
+    expect(await fails(['not json', 'still not json'])).toMatchObject({ state: 'storyboard-failed' });
   });
 
   it('maps a missing key by where the key came from', async () => {
@@ -140,7 +138,7 @@ describe('library', () => {
   });
 
   it('a prompt ends with a saved clip and the editor opened', async () => {
-    const g = groq(recipeJson());
+    const g = groq(storyboard());
     const opened: string[] = [];
     const runner = createRunner(deps({ opened, hooks: g.hooks }));
     await runner.start({ prompt: 'A promo', attached: [], type: 'promo' });
@@ -150,7 +148,7 @@ describe('library', () => {
   });
 
   it('"Open the editor now" opens early, and the finished clip replaces the placeholder', async () => {
-    const g = groq(recipeJson());
+    const g = groq(storyboard());
     const opened: string[] = [];
     const notified: string[] = [];
     let release!: () => void;
@@ -164,7 +162,7 @@ describe('library', () => {
     expect((await getClip('id-1'))?.recipe.scenes[0]!.layers).toEqual([]);
     release();
     await run;
-    expect((await getClip('id-1'))?.recipe.scenes[0]!.layers).toHaveLength(1);
+    expect((await getClip('id-1'))?.recipe.scenes[0]!.layers.length).toBeGreaterThan(0);
     expect(opened).toEqual(['id-1']);
     expect(notified).toEqual(['id-1']);
   });
@@ -207,7 +205,7 @@ describe('runner review fixes', () => {
   const gate = () => { let release!: () => void; const p = new Promise<void>((r) => { release = r; }); return { p, release }; };
 
   it('cancel on a finished run keeps the clip', async () => {
-    const g = groq(recipeJson());
+    const g = groq(storyboard());
     const runner = createRunner(deps({ hooks: g.hooks }));
     await runner.start(draftA);
     await runner.cancel();
@@ -215,7 +213,7 @@ describe('runner review fixes', () => {
   });
 
   it('an editor that fails to open keeps the finished clip', async () => {
-    const g = groq(recipeJson());
+    const g = groq(storyboard());
     const d = deps({ hooks: g.hooks });
     const runner = createRunner({ ...d, openEditor: async () => { throw new Error('no tab'); } });
     await runner.start(draftA);
@@ -223,7 +221,7 @@ describe('runner review fixes', () => {
   });
 
   it('a remake reuses the placeholder id and leaves no orphan', async () => {
-    const g = groq(recipeJson());
+    const g = groq(storyboard());
     const opened: string[] = [];
     const notified: string[] = [];
     const hold = gate();
@@ -237,7 +235,7 @@ describe('runner review fixes', () => {
     hold.release();
     await Promise.all([first, second]);
     expect((await listClips()).map((c) => c.id)).toEqual(['id-1']);
-    expect((await getClip('id-1'))?.recipe.scenes[0]!.layers).toHaveLength(1);
+    expect((await getClip('id-1'))?.recipe.scenes[0]!.layers.length).toBeGreaterThan(0);
     expect(opened).toEqual(['id-1']);
     expect(notified).toEqual(['id-1']);
   });
@@ -268,19 +266,66 @@ describe('runner review fixes', () => {
   });
 
   it('openNow loses to a run that finished meanwhile and never overwrites the real clip', async () => {
-    const g = groq(recipeJson());
+    const g = groq(storyboard());
     const runner = createRunner(deps({ hooks: g.hooks }));
     await runner.start(draftA);
     await runner.openNow({ prompt: 'A promo', attached: [] });
-    expect((await getClip('id-1'))?.recipe.scenes[0]!.layers).toHaveLength(1);
+    expect((await getClip('id-1'))?.recipe.scenes[0]!.layers.length).toBeGreaterThan(0);
   });
 
   it('a cancelled run saves nothing, even when the signal fires just before the save', async () => {
-    const g = groq(recipeJson());
+    const g = groq(storyboard());
     const ctl = new AbortController();
     const save = vi.fn(async () => undefined);
     await expect(makeClip({ prompt: 'x', aspect: '9:16', type: 'promo', assets: [] }, { ...g.hooks, settings, signal: ctl.signal, save, onRecipe: () => ctl.abort() })).rejects.toMatchObject({ state: undefined });
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe('runner: v2 Making', () => {
+  afterEach(async () => { await closeDB(); indexedDB.deleteDatabase('motikord'); });
+  const two = `Plan.\n${JSON.stringify({ name: 'Bread', hook: 'Fresh', beats: [{ template: 'title-hook', line: 'Fresh sourdough' }, { template: 'big-statement', line: 'Baked before sunrise' }, { template: 'end-card', line: 'Order today' }] })}`;
+
+  it('shows the plan, fill count, fixes and skipped critic, and the look pill', async () => {
+    const g = groq(two);
+    const runner = createRunner(deps({ hooks: g.hooks }));
+    await runner.start({ prompt: 'Bread', attached: [], type: 'promo' });
+    expect(runner.get()).toMatchObject({
+      status: 'done', step: 'open', filled: 3, total: 3, criticSkipped: 'critic-not-available', criticModel: 'moonshotai/kimi-k2-instruct-0905',
+      look: { style: 'bold', pace: 'normal', mood: 'upbeat' }, paused: false,
+    });
+    expect(runner.get().storyboard?.beats).toHaveLength(3);
+    expect(Array.isArray(runner.get().fixes)).toBe(true);
+  });
+
+  it('"Pause and check the plan" waits on the plan, then makes the edited storyboard', async () => {
+    const g = groq(two, two);
+    const runner = createRunner(deps({ hooks: g.hooks }));
+    runner.pause();
+    const run = runner.start({ prompt: 'Bread', attached: [], type: 'promo' });
+    runner.pause();
+    await vi.waitFor(() => expect(runner.get().paused).toBe(true));
+    expect(runner.get().storyboard?.beats).toHaveLength(3);
+    runner.replan();
+    await vi.waitFor(() => expect(runner.get().paused).toBe(true));
+    const sb = runner.get().storyboard!;
+    runner.resume({ ...sb, beats: [sb.beats[0]!, { template: 'end-card', line: 'Order today', ms: 5000 }] });
+    await run;
+    expect(runner.get()).toMatchObject({ status: 'done', paused: false, total: 2 });
+    expect((await getClip('id-1'))?.recipe.scenes.map((s) => s.durationMs)).toEqual([3000, 5000]);
+    expect(g.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancel while paused stops the run', async () => {
+    const g = groq(two);
+    const runner = createRunner(deps({ hooks: g.hooks }));
+    const run = runner.start({ prompt: 'Bread', attached: [], type: 'promo' });
+    runner.pause();
+    await vi.waitFor(() => expect(runner.get().paused).toBe(true));
+    await runner.cancel();
+    await run;
+    expect(runner.get().status).toBe('idle');
+    expect(await listClips()).toEqual([]);
   });
 });
 

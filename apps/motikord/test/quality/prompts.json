@@ -1,0 +1,369 @@
+[
+ {
+  "id": "explainer-1",
+  "type": "explainer",
+  "aspect": "9:16",
+  "style": "clean",
+  "pace": "normal",
+  "prompt": "How to brew better coffee at home in three easy steps",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 4 beats, close clearly.\n{\"name\": \"Better coffee in\", \"hook\": \"Coffee at home\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Coffee at home\"}, {\"template\": \"big-statement\", \"line\": \"Great coffee starts with fresh beans\"}, {\"template\": \"steps\", \"line\": \"Brew it right\"}, {\"template\": \"stat-reveal\", \"line\": \"4\"}, {\"template\": \"end-card\", \"line\": \"Try it tomorrow\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Coffee at home\", \"headline\": \"Better coffee in 3 steps\"}}",
+    "{\"slots\": {\"statement\": \"Great coffee starts with fresh beans\", \"highlight\": \"fresh\"}}",
+    "{\"slots\": {\"title\": \"Brew it right\", \"steps\": [\"Grind just before brewing\", \"Use water at 94°C\", \"Steep for four minutes\"]}}",
+    "{\"slots\": {\"number\": \"4\", \"label\": \"minutes is the sweet spot\"}}",
+    "{\"slots\": {\"cta\": \"Try it tomorrow\", \"handle\": \"brewbetter.co\"}}"
+   ],
+   "fixes": {
+    "0": "{\"slots\": {\"kicker\": \"Coffee at home\", \"headline\": \"Better coffee\"}}"
+   }
+  }
+ },
+ {
+  "id": "captions-1",
+  "type": "captions",
+  "aspect": "16:9",
+  "style": "clean",
+  "pace": "normal",
+  "prompt": "Turn this into captions: We started in a garage. We failed twice. Then we listened to our customers, and everything changed.",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 3 beats, close clearly.\n{\"name\": \"We started in\", \"hook\": \"We started in a garage\", \"beats\": [{\"template\": \"big-statement\", \"line\": \"We started in a garage\"}, {\"template\": \"big-statement\", \"line\": \"We failed twice\"}, {\"template\": \"title-hook\", \"line\": \"Then\"}, {\"template\": \"big-statement\", \"line\": \"And everything changed\"}]}",
+   "fills": [
+    "{\"slots\": {\"statement\": \"We started in a garage\", \"highlight\": \"garage\"}}",
+    "{\"slots\": {\"statement\": \"We failed twice\", \"highlight\": \"twice\"}}",
+    "{\"slots\": {\"kicker\": \"Then\", \"headline\": \"We listened to customers\"}}",
+    "{\"slots\": {\"statement\": \"And everything changed\", \"highlight\": \"everything\"}}"
+   ]
+  }
+ },
+ {
+  "id": "explainer-2",
+  "type": "explainer",
+  "aspect": "1:1",
+  "style": "clean",
+  "pace": "calm",
+  "prompt": "Explain why sleep matters for memory",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 3 beats, close clearly.\n{\"name\": \"Sleep makes memories\", \"hook\": \"Sleep science\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Sleep science\"}, {\"template\": \"stat-reveal\", \"line\": \"8\"}, {\"template\": \"list\", \"line\": \"Sleep helps you\"}, {\"template\": \"end-card\", \"line\": \"Sleep on it tonight\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Sleep science\", \"headline\": \"Sleep makes memories stick\"}}",
+    "{\"slots\": {\"number\": \"8\", \"label\": \"hours adults need each night\", \"source\": \"Sleep Foundation\"}}",
+    "{\"slots\": {\"title\": \"Sleep helps you\", \"items\": [\"Store new memories\", \"Clear brain waste\", \"Learn faster\"]}}",
+    "{\"slots\": {\"cta\": \"Sleep on it tonight\", \"handle\": \"@sleepwell\"}}"
+   ]
+  }
+ },
+ {
+  "id": "social-1",
+  "type": "social",
+  "aspect": "9:16",
+  "style": "clean",
+  "pace": "normal",
+  "prompt": "A tip: drink a glass of water before your morning coffee",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 3 beats, close clearly.\n{\"name\": \"Water before coffee\", \"hook\": \"Morning tip\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Morning tip\"}, {\"template\": \"big-statement\", \"line\": \"Your body wakes up thirsty\"}, {\"template\": \"list\", \"line\": \"One glass helps\"}, {\"template\": \"end-card\", \"line\": \"Follow for daily tips\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Morning tip\", \"headline\": \"Water before coffee\"}}",
+    "{\"slots\": {\"statement\": \"Your body wakes up thirsty\", \"highlight\": \"thirsty\"}}",
+    "{\"slots\": {\"title\": \"One glass helps\", \"items\": [\"Wake up faster\", \"Less afternoon crash\", \"Better focus\"]}}",
+    "{\"slots\": {\"cta\": \"Follow for daily tips\", \"handle\": \"@dailytips\"}}"
+   ]
+  }
+ },
+ {
+  "id": "chart-1",
+  "type": "chart",
+  "aspect": "16:9",
+  "style": "clean",
+  "pace": "normal",
+  "prompt": "Show how our app downloads grew from 2k in January to 20k in April",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 2 beats, close clearly.\n{\"name\": \"Downloads up 10x\", \"hook\": \"Growth update\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Growth update\"}, {\"template\": \"chart\", \"line\": \"Monthly downloads\"}, {\"template\": \"end-card\", \"line\": \"Join 20,000 users\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Growth update\", \"headline\": \"Downloads up 10x\"}}",
+    "{\"slots\": {\"title\": \"Monthly downloads\", \"bars\": [{\"label\": \"Jan\", \"value\": 2}, {\"label\": \"Feb\", \"value\": 6}, {\"label\": \"Mar\", \"value\": 12}, {\"label\": \"Apr\", \"value\": 20}], \"note\": \"In thousands\"}}",
+    "{\"slots\": {\"cta\": \"Join 20,000 users\", \"handle\": \"getapp.io\"}}"
+   ]
+  }
+ },
+ {
+  "id": "promo-1",
+  "type": "promo",
+  "aspect": "9:16",
+  "style": "bold",
+  "pace": "normal",
+  "prompt": "Spring sale on running shoes, 30% off this weekend only, shop now",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 4 beats, close clearly.\n{\"name\": \"30% off every\", \"hook\": \"This weekend only\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"This weekend only\"}, {\"template\": \"big-statement\", \"line\": \"Spring is here and so are deals\"}, {\"template\": \"stat-reveal\", \"line\": \"30%\"}, {\"template\": \"list\", \"line\": \"Why now\"}, {\"template\": \"end-card\", \"line\": \"Shop the sale now\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"This weekend only\", \"headline\": \"30% off every runner\"}}",
+    "{\"slots\": {\"statement\": \"Spring is here and so are deals\", \"highlight\": \"deals\"}}",
+    "{\"slots\": {\"number\": \"30%\", \"label\": \"off all running shoes\"}}",
+    "{\"slots\": {\"title\": \"Why now\", \"items\": [\"Every size in stock\", \"Free returns\", \"Ends Sunday night\"]}}",
+    "{\"slots\": {\"cta\": \"Shop the sale now\", \"handle\": \"stride.shop\"}}"
+   ],
+   "critic": "{\"notes\": [{\"scene\": 3, \"problem\": \"Label reads small under the number\", \"fix\": \"Say it in fewer words\"}]}",
+   "fixes": {
+    "2": "{\"slots\": {\"number\": \"30%\", \"label\": \"off every runner\"}}"
+   }
+  },
+  "model": "meta-llama/llama-4-scout-17b-16e-instruct"
+ },
+ {
+  "id": "promo-2",
+  "type": "promo",
+  "aspect": "1:1",
+  "style": "bold",
+  "pace": "fast",
+  "prompt": "Launch of our new cold brew coffee in cans, available in stores Monday",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 6 beats, close clearly.\n{\"name\": \"Cold brew in\", \"hook\": \"New this Monday\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"New this Monday\"}, {\"template\": \"big-statement\", \"line\": \"Café taste, ready anywhere\"}, {\"template\": \"list\", \"line\": \"Inside every can\"}, {\"template\": \"stat-reveal\", \"line\": \"20\"}, {\"template\": \"big-statement\", \"line\": \"Find it in stores Monday\"}, {\"template\": \"steps\", \"line\": \"Get yours\"}, {\"template\": \"end-card\", \"line\": \"In stores Monday\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"New this Monday\", \"headline\": \"Cold brew in a can\"}}",
+    "{\"slots\": {\"statement\": \"Café taste, ready anywhere\", \"highlight\": \"anywhere\"}}",
+    "{\"slots\": {\"title\": \"Inside every can\", \"items\": [\"Single origin beans\", \"No added sugar\", \"Twenty hours brewed\"]}}",
+    "{\"slots\": {\"number\": \"20\", \"label\": \"hours of slow brewing\"}}",
+    "{\"slots\": {\"statement\": \"Find it in stores Monday\", \"highlight\": \"Monday\"}}",
+    "{\"slots\": {\"title\": \"Get yours\", \"steps\": [\"Find your store\", \"Grab a cold can\", \"Share the taste\"]}}",
+    "{\"slots\": {\"cta\": \"In stores Monday\", \"handle\": \"@coldcan\"}}"
+   ]
+  }
+ },
+ {
+  "id": "social-2",
+  "type": "social",
+  "aspect": "16:9",
+  "style": "bold",
+  "pace": "normal",
+  "prompt": "Announce our podcast hit 100 episodes",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 3 beats, close clearly.\n{\"name\": \"100 episodes in\", \"hook\": \"Big milestone\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Big milestone\"}, {\"template\": \"stat-reveal\", \"line\": \"100\"}, {\"template\": \"quote\", \"line\": \"Every episode taught us something new.\"}, {\"template\": \"end-card\", \"line\": \"Listen wherever you are\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Big milestone\", \"headline\": \"100 episodes in\"}}",
+    "{\"slots\": {\"number\": \"100\", \"label\": \"episodes and counting\"}}",
+    "{\"slots\": {\"quote\": \"Every episode taught us something new.\", \"name\": \"Dana Lee\", \"role\": \"Host\"}}",
+    "{\"slots\": {\"cta\": \"Listen wherever you are\", \"handle\": \"@thepod\"}}"
+   ]
+  }
+ },
+ {
+  "id": "promo-3",
+  "type": "promo",
+  "aspect": "16:9",
+  "style": "bold",
+  "pace": "calm",
+  "prompt": "Tickets are on sale for the Lagos design meetup on 12 June",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 3 beats, close clearly.\n{\"name\": \"Tickets on sale\", \"hook\": \"Lagos design meetup\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Lagos design meetup\"}, {\"template\": \"big-statement\", \"line\": \"Meet the people shaping design\"}, {\"template\": \"list\", \"line\": \"On the day\"}, {\"template\": \"end-card\", \"line\": \"Book for 12 June\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Lagos design meetup\", \"headline\": \"Tickets on sale now\"}}",
+    "{\"slots\": {\"statement\": \"Meet the people shaping design\", \"highlight\": \"shaping\"}}",
+    "{\"slots\": {\"title\": \"On the day\", \"items\": [\"Six great talks\", \"Portfolio reviews\", \"Food and music\"]}}",
+    "{\"slots\": {\"cta\": \"Book for 12 June\", \"handle\": \"lagosdesign.ng\"}}"
+   ]
+  }
+ },
+ {
+  "id": "logo-1",
+  "type": "logo",
+  "aspect": "1:1",
+  "style": "bold",
+  "pace": "normal",
+  "prompt": "A quick logo reveal for my bakery Crumb & Co",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 1 beats, close clearly.\n{\"name\": \"Baked fresh daily\", \"hook\": \"Baked fresh daily\", \"beats\": [{\"template\": \"logo-sting\", \"line\": \"Baked fresh daily\"}, {\"template\": \"end-card\", \"line\": \"Visit us today\"}]}",
+   "fills": [
+    "{\"slots\": {\"tagline\": \"Baked fresh daily\"}}",
+    "{\"slots\": {\"cta\": \"Visit us today\", \"handle\": \"@crumbandco\"}}"
+   ]
+  },
+  "assets": [
+   {
+    "id": "logo1",
+    "kind": "logo",
+    "name": "logo.png",
+    "mime": "image/png",
+    "bytes": 10,
+    "opfsPath": "media/logo1.png"
+   }
+  ]
+ },
+ {
+  "id": "social-3",
+  "type": "social",
+  "aspect": "9:16",
+  "style": "playful",
+  "pace": "fast",
+  "prompt": "Five desk upgrades under $20 that changed my workday",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 6 beats, close clearly.\n{\"name\": \"Upgrades under $20\", \"hook\": \"Desk glow-up\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Desk glow-up\"}, {\"template\": \"list\", \"line\": \"My top picks\"}, {\"template\": \"big-statement\", \"line\": \"Small changes, big mood\"}, {\"template\": \"stat-reveal\", \"line\": \"$20\"}, {\"template\": \"steps\", \"line\": \"Start today\"}, {\"template\": \"big-statement\", \"line\": \"Your desk deserves better\"}, {\"template\": \"end-card\", \"line\": \"Follow for more\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Desk glow-up\", \"headline\": \"Upgrades under $20\"}}",
+    "{\"slots\": {\"title\": \"My top picks\", \"items\": [\"A monitor riser\", \"A cable tray\", \"One good plant\", \"A warm lamp\"]}}",
+    "{\"slots\": {\"statement\": \"Small changes, big mood\", \"highlight\": \"mood\"}}",
+    "{\"slots\": {\"number\": \"$20\", \"label\": \"or less for each one\"}}",
+    "{\"slots\": {\"title\": \"Start today\", \"steps\": [\"Clear the clutter\", \"Add one upgrade\", \"Enjoy your desk\"]}}",
+    "{\"slots\": {\"statement\": \"Your desk deserves better\", \"highlight\": \"deserves\"}}",
+    "{\"slots\": {\"cta\": \"Follow for more\", \"handle\": \"@deskvibes\"}}"
+   ]
+  }
+ },
+ {
+  "id": "logo-2",
+  "type": "logo",
+  "aspect": "9:16",
+  "style": "playful",
+  "pace": "calm",
+  "prompt": "Logo sting for Kite Studio, a kids animation studio",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 1 beats, close clearly.\n{\"name\": \"Stories that fly\", \"hook\": \"Stories that fly\", \"beats\": [{\"template\": \"logo-sting\", \"line\": \"Stories that fly\"}, {\"template\": \"end-card\", \"line\": \"Say hello\"}]}",
+   "fills": [
+    "{\"slots\": {\"tagline\": \"Stories that fly\"}}",
+    "{\"slots\": {\"cta\": \"Say hello\", \"handle\": \"kitestudio.tv\"}}"
+   ]
+  },
+  "assets": [
+   {
+    "id": "logo1",
+    "kind": "logo",
+    "name": "logo.png",
+    "mime": "image/png",
+    "bytes": 10,
+    "opfsPath": "media/logo1.png"
+   }
+  ]
+ },
+ {
+  "id": "quote-1",
+  "type": "quote",
+  "aspect": "1:1",
+  "style": "playful",
+  "pace": "normal",
+  "prompt": "Quote: \"Play is the highest form of research.\" Albert Einstein",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 1 beats, close clearly.\n{\"name\": \"Play is the\", \"hook\": \"Play is the highest form of research.\", \"beats\": [{\"template\": \"quote\", \"line\": \"Play is the highest form of research.\"}, {\"template\": \"end-card\", \"line\": \"Keep playing today\"}]}",
+   "fills": [
+    "{\"slots\": {\"quote\": \"Play is the highest form of research.\", \"name\": \"Albert Einstein\", \"role\": \"Physicist\"}}",
+    "{\"slots\": {\"cta\": \"Keep playing today\", \"handle\": \"@curiousminds\"}}"
+   ]
+  }
+ },
+ {
+  "id": "promo-4",
+  "type": "promo",
+  "aspect": "16:9",
+  "style": "playful",
+  "pace": "normal",
+  "prompt": "Free shipping on all orders over $50 until Friday",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 4 beats, close clearly.\n{\"name\": \"Free shipping is\", \"hook\": \"Until Friday\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Until Friday\"}, {\"template\": \"stat-reveal\", \"line\": \"$50\"}, {\"template\": \"big-statement\", \"line\": \"Treat yourself, we ship free\"}, {\"template\": \"list\", \"line\": \"Why shop now\"}, {\"template\": \"end-card\", \"line\": \"Shop before Friday\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Until Friday\", \"headline\": \"Free shipping is here\"}}",
+    "{\"slots\": {\"number\": \"$50\", \"label\": \"is all it takes\"}}",
+    "{\"slots\": {\"statement\": \"Treat yourself, we ship free\", \"highlight\": \"free\"}}",
+    "{\"slots\": {\"title\": \"Why shop now\", \"items\": [\"Free shipping over $50\", \"Easy returns\", \"Ends this Friday\"]}}",
+    "{\"slots\": {\"cta\": \"Shop before Friday\", \"handle\": \"happyhome.shop\"}}"
+   ]
+  }
+ },
+ {
+  "id": "captions-2",
+  "type": "captions",
+  "aspect": "9:16",
+  "style": "playful",
+  "pace": "normal",
+  "prompt": "Captions: Nobody tells you this. Practice is boring. But boring is where you get good.",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 3 beats, close clearly.\n{\"name\": \"Nobody tells you\", \"hook\": \"Nobody tells you this\", \"beats\": [{\"template\": \"big-statement\", \"line\": \"Nobody tells you this\"}, {\"template\": \"big-statement\", \"line\": \"Practice is boring\"}, {\"template\": \"title-hook\", \"line\": \"But\"}, {\"template\": \"end-card\", \"line\": \"Keep practising\"}]}",
+   "fills": [
+    "{\"slots\": {\"statement\": \"Nobody tells you this\", \"highlight\": \"Nobody\"}}",
+    "{\"slots\": {\"statement\": \"Practice is boring\", \"highlight\": \"boring\"}}",
+    "{\"slots\": {\"kicker\": \"But\", \"headline\": \"Boring is where you improve\"}}",
+    "{\"slots\": {\"cta\": \"Keep practising\", \"handle\": \"@getgood\"}}"
+   ]
+  }
+ },
+ {
+  "id": "chart-2",
+  "type": "chart",
+  "aspect": "16:9",
+  "style": "corporate",
+  "pace": "normal",
+  "prompt": "Quarterly revenue: Q1 $1.2M, Q2 $1.8M, Q3 $2.5M",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 2 beats, close clearly.\n{\"name\": \"Revenue keeps climbing\", \"hook\": \"Q3 results\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Q3 results\"}, {\"template\": \"chart\", \"line\": \"Revenue by quarter\"}, {\"template\": \"stat-reveal\", \"line\": \"$2.5M\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Q3 results\", \"headline\": \"Revenue keeps climbing\"}}",
+    "{\"slots\": {\"title\": \"Revenue by quarter\", \"bars\": [{\"label\": \"Q1\", \"value\": 1.2}, {\"label\": \"Q2\", \"value\": 1.8}, {\"label\": \"Q3\", \"value\": 2.5}], \"note\": \"In millions of dollars\"}}",
+    "{\"slots\": {\"number\": \"$2.5M\", \"label\": \"revenue in Q3\", \"source\": \"Company accounts\"}}"
+   ],
+   "critic": "{\"notes\": []}"
+  },
+  "model": "meta-llama/llama-4-scout-17b-16e-instruct"
+ },
+ {
+  "id": "quote-2",
+  "type": "quote",
+  "aspect": "9:16",
+  "style": "corporate",
+  "pace": "calm",
+  "prompt": "\"The best way to predict the future is to create it.\" Peter Drucker",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 1 beats, close clearly.\n{\"name\": \"The best way\", \"hook\": \"The best way to predict the future is to create\", \"beats\": [{\"template\": \"quote\", \"line\": \"The best way to predict the future is to create\"}, {\"template\": \"end-card\", \"line\": \"Build what comes next\"}]}",
+   "fills": [
+    "{\"slots\": {\"quote\": \"The best way to predict the future is to create it.\", \"name\": \"Peter Drucker\", \"role\": \"Management writer\"}}",
+    "{\"slots\": {\"cta\": \"Build what comes next\", \"handle\": \"@leadwell\"}}"
+   ]
+  }
+ },
+ {
+  "id": "chart-3",
+  "type": "chart",
+  "aspect": "1:1",
+  "style": "corporate",
+  "pace": "normal",
+  "prompt": "Customer satisfaction rose from 72% to 91% after our support changes",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 2 beats, close clearly.\n{\"name\": \"Happier customers\", \"hook\": \"Support update\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Support update\"}, {\"template\": \"chart\", \"line\": \"Customer satisfaction\"}, {\"template\": \"stat-reveal\", \"line\": \"91%\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Support update\", \"headline\": \"Happier customers\"}}",
+    "{\"slots\": {\"title\": \"Customer satisfaction\", \"bars\": [{\"label\": \"Before\", \"value\": 72}, {\"label\": \"After\", \"value\": 91}], \"note\": \"Percent satisfied\"}}",
+    "{\"slots\": {\"number\": \"91%\", \"label\": \"of customers satisfied\", \"source\": \"Survey, 2026\"}}"
+   ]
+  }
+ },
+ {
+  "id": "explainer-3",
+  "type": "explainer",
+  "aspect": "9:16",
+  "style": "corporate",
+  "pace": "normal",
+  "prompt": "Explain our new hybrid work policy in simple steps",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 4 beats, close clearly.\n{\"name\": \"How hybrid works\", \"hook\": \"Hybrid work\", \"beats\": [{\"template\": \"title-hook\", \"line\": \"Hybrid work\"}, {\"template\": \"big-statement\", \"line\": \"Three office days, two from home\"}, {\"template\": \"steps\", \"line\": \"What to do\"}, {\"template\": \"list\", \"line\": \"What you get\"}, {\"template\": \"end-card\", \"line\": \"Read the full policy\"}]}",
+   "fills": [
+    "{\"slots\": {\"kicker\": \"Hybrid work\", \"headline\": \"How hybrid works here\"}}",
+    "{\"slots\": {\"statement\": \"Three office days, two from home\", \"highlight\": \"home\"}}",
+    "{\"slots\": {\"title\": \"What to do\", \"steps\": [\"Pick your office days\", \"Book a desk\", \"Tell your team\"]}}",
+    "{\"slots\": {\"title\": \"What you get\", \"items\": [\"Flexible hours\", \"Home office budget\", \"Quiet focus days\"]}}",
+    "{\"slots\": {\"cta\": \"Read the full policy\", \"handle\": \"intranet/hybrid\"}}"
+   ]
+  }
+ },
+ {
+  "id": "quote-3",
+  "type": "quote",
+  "aspect": "16:9",
+  "style": "corporate",
+  "pace": "normal",
+  "prompt": "Customer testimonial from Ada O.: it does in one tap what took me ten.",
+  "replies": {
+   "storyboard": "Plan: open on a hook, build with 1 beats, close clearly.\n{\"name\": \"It does in\", \"hook\": \"It does in one tap what took me ten.\", \"beats\": [{\"template\": \"quote\", \"line\": \"It does in one tap what took me ten.\"}, {\"template\": \"end-card\", \"line\": \"Try it free today\"}]}",
+   "fills": [
+    "{\"slots\": {\"quote\": \"It does in one tap what took me ten.\", \"name\": \"Ada O.\", \"role\": \"Customer since 2024\"}}",
+    "{\"slots\": {\"cta\": \"Try it free today\", \"handle\": \"tapwise.app\"}}"
+   ]
+  }
+ }
+]
