@@ -171,6 +171,9 @@ function checkBackground(where: string, b: unknown, bad: (m: string) => void) {
   if (bg.angle !== undefined && !isNum(bg.angle)) bad(`${where} angle must be a number.`);
   if (bg.grain !== undefined && (!isNum(bg.grain) || bg.grain < 0 || bg.grain > 1)) bad(`${where} grain must be between 0 and 1.`);
   if (bg.drift !== undefined && !isBool(bg.drift)) bad(`${where} drift must be true or false.`);
+  if (bg.shapes !== undefined && (!isObj(bg.shapes) || !Object.values(bg.shapes).every((p) => Array.isArray(p) && p.every((pt) => Array.isArray(pt) && pt.length === 2 && pt.every(isNum))))) {
+    bad(`${where} shapes must list [x, y] points for each size.`);
+  }
 }
 
 /** Checks a style pack file (lib/templates/packs/<id>.json). An empty list means it is valid. */

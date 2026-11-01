@@ -1,6 +1,7 @@
 import type { Background } from '../types';
 import type { MediaCache } from './cache';
 import type { Ctx } from './drawFrame';
+import { aspectOf } from '../templates/blocks';
 import { DRIFT_AMOUNT, DRIFT_MS, GRAIN_SEED, GRAIN_TILE } from './tokens';
 
 /** Hex colour with an alpha, for gradient stops that fade a colour out without darkening it. */
@@ -47,6 +48,17 @@ export function drawBackground(ctx: Ctx, bg: Background, w: number, h: number, l
     const layer = blobLayer(cache, colours, w, h, m);
     if (layer) ctx.drawImage(layer, -m + d.x, -m + d.y, w + m * 2, h + m * 2);
     else paintBlobs(ctx, cache, colours, w, h, 0, 0, d);
+  } else if (bg.kind === 'blocks' && bg.shapes) {
+    // The slab the template placed for this size, off every text slot; edge points reach past the edge for drift.
+    const poly = bg.shapes[aspectOf(w, h)] ?? [];
+    if (poly.length >= 3 && colours[1]) {
+      const at = (v: number, size: number, off: number) => (v <= 0 ? -m : v >= 1 ? size + m : v * size + off);
+      ctx.fillStyle = colours[1];
+      ctx.beginPath();
+      poly.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, at(x, w, d.x), at(y, h, d.y)));
+      ctx.closePath();
+      ctx.fill();
+    }
   } else if (bg.kind === 'blocks') {
     // Full-bleed slabs: the first spans the lower third on a slant, the next caps the top corner.
     for (let i = 1; i < colours.length; i++) {
