@@ -38,6 +38,10 @@ jobs:
           else
             app="${TAG%@*}"; tag_version="${TAG#*@}"; dry=false
             case "$tag_version" in *-test) dry=true ;; esac
+            case "${tag_version%-test}" in
+              [0-9]*.[0-9]*.[0-9]*) ;;
+              *) echo "::error::Version in '$TAG' must look like 1.2.3 or 1.2.3-test."; exit 1 ;;
+            esac
           fi
           case "$app" in
             *[!a-z0-9-]*|"") echo "::error::Bad app name in '$TAG'. Use <app>@<version>."; exit 1 ;;
@@ -122,4 +126,4 @@ jobs:
           curl -fsS -X PUT -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
             -T "$ZIP" "$api/upload/chromewebstore/v1.1/items/$ext" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log('Upload state:',r.uploadState);if(r.uploadState!=='SUCCESS'){process.exit(1)}"
           curl -fsS -X POST -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" -H "Content-Length: 0" \
-            "$api/chromewebstore/v1.1/items/$ext/publish" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log('Publish status:',JSON.stringify(r.status))"
+            "$api/chromewebstore/v1.1/items/$ext/publish" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8'));const s=r.status||[];console.log('Publish status:',JSON.stringify(s));if(!s.every(x=>x==='OK'||x==='ITEM_PENDING_REVIEW')||!s.length){process.exit(1)}"
