@@ -35,8 +35,7 @@ export function chooseCodecs(container: Container, support: CodecSupport, withAu
     container === 'mp4' ? (support.avc ? 'avc' : null) : support.vp9 ? 'vp9' : support.vp8 ? 'vp8' : null;
   if (!video) return null;
   if (!withAudio) return { video, audio: null };
-  const audio: WriterAudioCodec | null =
-    container === 'mp4' && support.aac ? 'aac' : support.opus ? 'opus' : null;
+  const audio: WriterAudioCodec | null = container === 'mp4' && support.aac ? 'aac' : support.opus ? 'opus' : null;
   return audio ? { video, audio } : null;
 }
 
