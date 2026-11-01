@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { blankCut } from '../project/cuts';
 import type { Clip, Cut, Placed, Project, Source } from '../project/types';
-import { connectMix, mixPlan, renderMix, type MixPlan } from './mix';
+import { CEILING } from './loudness';
+import { connectMix, EDGE_MS, mixPlan, partEnvelope, softClipCurve, stretchKey, type AudioPart, type MixPlan } from './mix';
 
 const src = (id: string, kind: Source['kind'], offset: number, duration: number, audio = true): Source =>
   ({ id, kind, file: `${id}.webm`, mime: 'audio/webm', offset, duration, video: false, audio });
@@ -69,6 +70,28 @@ describe('mix plan', () => {
     const muted = { ...c, tracks: { music: { muted: true } } };
     expect(mixPlan(project(muted), muted).music).toBeNull();
   });
+
+  it('ducks only under words still heard: not where a take replaces the voice, not when the voice is off', () => {
+    const music = { source: 'song', volume: 0.3, duck: true, fadeIn: 0, fadeOut: 0 };
+    const c = cut([clip('a', 0, 10_000)], { audio: { denoise: false, level: false, tabVolume: 1, voiceVolume: 1, music },
+      voiceovers: [placed('vo', 4000, [0, 3000], { muteOriginal: true })] });
+    const words = [{ start: 1000, end: 1400, text: 'hi' }, { start: 5000, end: 5400, text: 'gone' }];
+    expect(mixPlan(project(c), c, words).music?.duck.map((p) => p.t)).toEqual([880, 1000, 1400, 1850]);
+    const off = { ...c, tracks: { voice: { muted: true } } };
+    expect(mixPlan(project(off), off, words).music?.duck).toEqual([]);
+  });
+
+  it('marks parts of natural-voice clips that change speed', () => {
+    const c = cut([{ ...clip('a', 0, 2000, 2), naturalVoice: true }, { ...clip('b', 2000, 4000), naturalVoice: true }]);
+    expect(mixPlan(project(c), c).parts.filter((p) => p.track === 'voice').map((p) => p.natural)).toEqual([true, undefined]);
+  });
+
+  it('fades each part in and out over 5 ms, except at seams', () => {
+    const part: AudioPart = { track: 'voice', source: 'mic', when: 100, from: 0, length: 1000, rate: 1, gain: 0.5 };
+    expect(partEnvelope(part)).toEqual([{ t: 100, gain: 0 }, { t: 100 + EDGE_MS, gain: 0.5 }, { t: 1100 - EDGE_MS, gain: 0.5 }, { t: 1100, gain: 0 }]);
+    expect(partEnvelope({ ...part, seams: { start: true, end: true } })).toEqual([{ t: 100, gain: 0.5 }, { t: 1100, gain: 0.5 }]);
+    expect(partEnvelope({ ...part, length: 4 })[1]).toEqual({ t: 102, gain: 0.5 });
+  });
 });
 
 // A minimal Web Audio stand-in that records what gets scheduled.
@@ -117,18 +140,28 @@ describe('mix graph', () => {
     expect(ramps).toContainEqual(['ramp', 0, 11]);
   });
 
-  it('renders offline and levels the result when asked', async () => {
-    const data = Float32Array.from({ length: 48_000 * 4 }, (_, i) => 0.05 * Math.sin((2 * Math.PI * 997 * i) / 48_000));
-    const rendered = { numberOfChannels: 1, sampleRate: 48_000, getChannelData: () => data } as unknown as AudioBuffer;
-    const fake = fakeContext();
-    const ctx = Object.assign(fake.ctx, { destination: {}, startRendering: async () => rendered }) as unknown as OfflineAudioContext;
-    const createContext = vi.fn(() => ctx);
-    const denoise = vi.fn(async () => ({ connect: (n: unknown) => n }) as unknown as AudioNode);
-    const out = await renderMix({ ...plan, level: true, denoise: true }, async (id) => (id === 'mic' ? buffer(10) : null), { createContext, denoise });
-    expect(out).toBe(rendered);
-    expect(createContext).toHaveBeenCalledWith(2, 48_000 * 4, 48_000);
-    expect(denoise).toHaveBeenCalledOnce();
-    expect(data.reduce((m, v) => Math.max(m, v), 0)).toBeGreaterThan(0.2);
-    expect(await renderMix(plan, async () => null, { createContext })).toBeNull();
+  it('fades each part at its edges, and starts mid-fade where the preview starts', () => {
+    const { ctx, ramps } = fakeContext();
+    connectMix(ctx, plan, new Map([['mic', buffer(10)]]), {} as AudioNode, { t0: 0, from: 0 });
+    expect(ramps).toContainEqual(['ramp', 1, EDGE_MS / 1000]);
+    expect(ramps).toContainEqual(['ramp', 0, 2]);
+  });
+
+  it('plays a natural-voice part from its stretched buffer at rate 1', () => {
+    const natural: MixPlan = { ...plan, music: null, parts: [{ ...plan.parts[1]!, natural: true }] };
+    const { ctx, started } = fakeContext();
+    const stretched = { duration: 2 } as AudioBuffer;
+    connectMix(ctx, natural, new Map([['mic', buffer(10)]]), {} as AudioNode, { t0: 0, stretched: new Map([[stretchKey(natural.parts[0]!), stretched]]) });
+    expect(started).toEqual([{ at: 2, offset: 0, duration: 2, rate: 1, loop: false }]);
+  });
+});
+
+describe('preview clipper', () => {
+  it('passes quiet audio straight and never goes past the ceiling', () => {
+    const curve = softClipCurve(16);
+    const at = (x: number) => curve[Math.round(((x + 16) / 32) * (curve.length - 1))]!;
+    expect(at(0.5)).toBeCloseTo(0.5, 2);
+    expect(Math.max(...curve)).toBeLessThanOrEqual(CEILING);
+    expect(at(1)).toBeGreaterThan(at(0.85));
   });
 });

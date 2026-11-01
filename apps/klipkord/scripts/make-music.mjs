@@ -1,12 +1,15 @@
 // Writes public/music/<id>.m4a: four loopable tracks synthesised from scratch, so they are ours to release as CC0.
 // Needs ffmpeg on PATH for the level and the AAC encode. Deterministic: the same script always writes the same notes.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const SR = 44100;
 const OUT = new URL('../public/music/', import.meta.url).pathname;
+const PRE = SR;                     // the loop's last second, played first so the filters start in step with the loop
+const FADE = Math.round(SR * 0.05); // the loop's first 50 ms, played after its end and crossfaded into its start
+const LEVEL = 'highpass=f=30,loudnorm=I=-20:TP=-2';
 
 // Names, moods and lengths are the MusicPicker frame's; lib/audio/tracks.ts lists the same ids.
 const TRACKS = [
@@ -217,6 +220,20 @@ function paperPlanes(c, bpm) {
   });
 }
 
+/** The loop with its last second before it and its first 50 ms after it, so filters and the crossfade see it wrap. */
+function wrapped(l, r) {
+  const n = l.length;
+  const pad = (x) => Float32Array.from({ length: PRE + n + FADE }, (_, i) => x[(i - PRE + n) % n]);
+  return [pad(l), pad(r)];
+}
+
+/** Pass one of loudnorm: what the second, linear pass needs to apply one fixed gain. */
+function measure(src) {
+  const run = spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', src, '-af', `${LEVEL}:print_format=json`, '-f', 'null', '-'], { encoding: 'utf8' });
+  const json = JSON.parse(run.stderr.slice(run.stderr.lastIndexOf('{'), run.stderr.lastIndexOf('}') + 1));
+  return `measured_I=${json.input_i}:measured_TP=${json.input_tp}:measured_LRA=${json.input_lra}:measured_thresh=${json.input_thresh}:offset=${json.target_offset}`;
+}
+
 function wav(l, r) {
   const n = l.length;
   const buf = Buffer.alloc(44 + n * 4);
@@ -250,8 +267,16 @@ try {
     track.make(c, track.bpm);
     const src = join(tmp, `${track.id}.wav`);
     const dest = join(OUT, `${track.id}.m4a`);
-    writeFileSync(src, wav(c.l, c.r));
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-af', 'highpass=f=30,loudnorm=I=-20:TP=-2', '-ar', String(SR), '-c:a', 'aac', '-b:a', '48k', '-movflags', '+faststart', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:a', '+bitexact', dest]);
+    writeFileSync(src, wav(...wrapped(c.l, c.r)));
+    // Pass two applies one linear gain; the crossfade then blends the 50 ms after the loop's end into its start.
+    const level = execFileSync('ffmpeg', ['-loglevel', 'error', '-i', src, '-af', `${LEVEL}:linear=true:${measure(src)},aresample=${SR}`, '-f', 'f32le', '-ac', '2', '-'], { maxBuffer: 1 << 30 });
+    const y = new Float32Array(level.buffer, level.byteOffset, level.byteLength / 4);
+    const loop = y.slice(PRE * 2, (PRE + c.n) * 2);
+    for (let i = 0; i < FADE; i++) {
+      const a = i / FADE;
+      for (let ch = 0; ch < 2; ch++) loop[i * 2 + ch] = loop[i * 2 + ch] * a + y[(PRE + c.n + i) * 2 + ch] * (1 - a);
+    }
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'f32le', '-ar', String(SR), '-ac', '2', '-i', '-', '-c:a', 'aac', '-b:a', '48k', '-movflags', '+faststart', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:a', '+bitexact', dest], { input: Buffer.from(loop.buffer) });
     console.log(`${track.id}.m4a ${(statSync(dest).size / 1024).toFixed(0)} KB`);
   }
 } finally {
