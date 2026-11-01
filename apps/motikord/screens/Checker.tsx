@@ -135,7 +135,7 @@ const critics = new Map<string, CriticRun & { provider: Provider }>();
 const v2Kinds: readonly Issue['kind'][] = ['overlap', 'crowding', 'empty', 'align', 'words', 'template-repeat'];
 
 export function CheckerPanel() {
-  const { state, brand, cache, edit, undo, select, go, remake, current } = useEditor();
+  const { state, brand, cache, edit, undo, select, go, remake, remakeEach, current } = useEditor();
   const { cards } = useIssues();
   const r = state.clip.recipe;
   const v2 = r.scenes.some((x) => x.template);
@@ -158,8 +158,10 @@ export function CheckerPanel() {
   const total = cards.length + notes.length;
   const fixAll = () => {
     if (cards.length) edit({ ops: mergeFixes(cards), summary: `Fixed ${noun(cards.length)}` }, { toast: true });
-    const first = notes[0];
-    if (first) remake(r.scenes[first.sceneIndex]!.id, first.fix);
+    // Each critic scene is remade in turn, as its own Change; notes on one scene go in one request.
+    const asks = new Map<string, string[]>();
+    for (const x of notes) asks.set(r.scenes[x.sceneIndex]!.id, [...(asks.get(r.scenes[x.sceneIndex]!.id) ?? []), x.fix]);
+    remakeEach([...asks].map(([sceneId, fixes]) => ({ sceneId, request: fixes.join(' ') })));
     go('Editor');
   };
   const show = (sceneId: string, layerId: string, aspects: Aspect[]) => {

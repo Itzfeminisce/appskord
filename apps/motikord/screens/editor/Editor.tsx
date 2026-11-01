@@ -85,6 +85,8 @@ export interface EditorApi {
   /** The scene being remade (SceneRemaking), if any. */
   remaking?: string;
   remake: (sceneId: string, request?: string) => void;
+  /** Remakes these scenes one after another, each as its own Change; it stops at the first that fails or is stopped. */
+  remakeEach: (jobs: { sceneId: string; request?: string }[]) => void;
   /** The clip's recipe right now, for work that finishes after a render (retries, AI replies). */
   current: () => Recipe;
 }
@@ -390,34 +392,40 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
     tab, setTab, notice, setNotice, overSlot, setOverSlot, remaking,
     openPanel: (p) => setPanel(p),
     current: () => stateRef.current.clip.recipe,
-    remake: (sceneId, request) => {
-      if (remakeStop.current) return;
+    remake: (sceneId, request) => apiRef.current.remakeEach([{ sceneId, request }]),
+    remakeEach: (jobs) => {
+      if (remakeStop.current || !jobs.length) return;
       const { ai, provider } = aiMode.current;
       // Asked inside the click, before any await, so Chrome shows its prompt.
       const access: Promise<HostAccess> = ai === 'cloud' ? requestHost(HOSTS[provider]) : Promise.resolve('granted');
       const ac = new AbortController();
       remakeStop.current = ac;
-      setRemaking(sceneId);
       setNotice(undefined);
       void (async () => {
-        try {
-          if ((await access) === 'denied') throw new Error('host access denied');
-          const from = stateRef.current.clip.recipe;
-          const si = sceneIndex(from, sceneId);
-          const after = await regenerateScene(from, si, request?.trim() || undefined, { signal: ac.signal, brand: loaded.brand });
-          if (ac.signal.aborted) return;
-          // Hand edits made meanwhile stay: only this scene is replaced, in the clip as it is now.
-          const ok = apiRef.current.edit(remakeEdit(stateRef.current.clip.recipe, sceneId, after), { by: ai === 'cloud' ? provider : 'builtin' });
-          setNotice(ok ? { kind: 'scene-remade', sceneId } : { kind: 'scene-remake-failed', sceneId, request });
-        } catch (error) {
-          const e = toAiError(error, 'make');
-          if (e.code === 'cancelled' || ac.signal.aborted) return;
-          console.error('Motikord: could not remake the scene', error);
-          setNotice({ kind: 'scene-remake-failed', sceneId, request });
-        } finally {
-          if (remakeStop.current === ac) remakeStop.current = undefined;
-          setRemaking(undefined);
+        for (const { sceneId, request } of jobs) {
+          if (ac.signal.aborted) break;
+          setRemaking(sceneId);
+          try {
+            if ((await access) === 'denied') throw new Error('host access denied');
+            const from = stateRef.current.clip.recipe;
+            const si = sceneIndex(from, sceneId);
+            if (si < 0) continue;
+            const after = await regenerateScene(from, si, request?.trim() || undefined, { signal: ac.signal, brand: loaded.brand });
+            if (ac.signal.aborted) break;
+            // Hand edits made meanwhile stay: only this scene is replaced, in the clip as it is now.
+            const ok = apiRef.current.edit(remakeEdit(stateRef.current.clip.recipe, sceneId, after), { by: ai === 'cloud' ? provider : 'builtin' });
+            setNotice(ok ? { kind: 'scene-remade', sceneId } : { kind: 'scene-remake-failed', sceneId, request });
+            if (!ok) break;
+          } catch (error) {
+            const e = toAiError(error, 'make');
+            if (e.code === 'cancelled' || ac.signal.aborted) break;
+            console.error('Motikord: could not remake the scene', error);
+            setNotice({ kind: 'scene-remake-failed', sceneId, request });
+            break;
+          }
         }
+        if (remakeStop.current === ac) remakeStop.current = undefined;
+        setRemaking(undefined);
       })();
     },
   }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly, tab, notice, overSlot, remaking]);
