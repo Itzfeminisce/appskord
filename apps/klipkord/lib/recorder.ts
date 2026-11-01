@@ -1,4 +1,6 @@
 import type { CaptureMode, Quality } from './types';
+import type { Source, SourceKind } from './project/types';
+import type { Track } from './videoStore';
 import { formatClock } from './time';
 
 /** Where the offscreen recorder is. 'armed' holds the picked streams while Countdown runs. */
@@ -96,4 +98,46 @@ export function createChunkWriter(append: (chunk: Blob) => Promise<void>, onErro
     flush: (): Promise<void> => chain,
     get bytes() { return bytes; },
   };
+}
+
+/** One MediaRecorder of a take: the file it writes and, on v3 takes, the source it becomes. */
+export interface TakePart { file: Track; kind: SourceKind | null; video: boolean; audio: boolean }
+
+/**
+ * "Bake camera into the video" on: v2's one picture-and-sound file plus the voice. Off: each source its own file;
+ * the mic keeps the 'voice' file so the transcript reads it as before.
+ */
+export function planTake(o: { bake: boolean; camera: boolean; mic: boolean; sound: boolean }): TakePart[] {
+  if (o.bake) {
+    return [
+      { file: 'video', kind: null, video: true, audio: o.mic || o.sound },
+      ...(o.mic ? [{ file: 'voice', kind: null, video: false, audio: true } as TakePart] : []),
+    ];
+  }
+  const parts: TakePart[] = [{ file: 'screen', kind: 'screen', video: true, audio: false }];
+  if (o.camera) parts.push({ file: 'camera', kind: 'camera', video: true, audio: false });
+  if (o.mic) parts.push({ file: 'voice', kind: 'mic', video: false, audio: true });
+  if (o.sound) parts.push({ file: 'tab', kind: 'tab', video: false, audio: true });
+  return parts;
+}
+
+/** Keyframe every second where Chrome takes the option, so the editor can seek quickly. */
+export const KEYFRAME_MS = 1000;
+export const CAMERA_BITRATE = 1_000_000;
+
+export interface StartedPart extends TakePart { mime: string; startedAt: number; width?: number; height?: number }
+
+/** Offset of a file on the take's one clock: when its recorder started, after the clock's start. */
+export const partOffset = (clockStart: number, startedAt: number): number => Math.max(0, Math.round(startedAt - clockStart));
+
+/** The project sources of a v3 take; `duration` is the take's recording time so far. */
+export function takeSources(parts: StartedPart[], clockStart: number, duration: number): Source[] {
+  return parts.flatMap((p) => {
+    if (!p.kind) return [];
+    const offset = partOffset(clockStart, p.startedAt);
+    return [{
+      id: p.kind, kind: p.kind, file: p.file, mime: p.mime, offset, duration: Math.max(0, Math.round(duration - offset)),
+      video: p.video, audio: p.audio, ...(p.width ? { width: p.width } : {}), ...(p.height ? { height: p.height } : {}),
+    }];
+  });
 }

@@ -117,6 +117,24 @@ describe('videoStore', () => {
     expect(await store.size('r2')).toBe(0);
   });
 
+  it('keeps each v3 source in its own file, writes events.json and counts every track', async () => {
+    const { store, root } = setup();
+    await store.open('r4');
+    await store.append('r4', 'screen', new Blob(['scr']));
+    await store.append('r4', 'camera', new Blob(['cam']));
+    await store.append('r4', 'voice', new Blob(['mic']));
+    await store.append('r4', 'tab', new Blob(['tb']));
+    await store.put('r4', 'events.json', new Blob(['{}']));
+    await store.close('r4');
+    expect(await (await store.read('r4', 'camera')).text()).toBe('cam');
+    expect(await (await store.read('r4', 'tab')).text()).toBe('tb');
+    // Screens that still play 'video' get the screen track of a v3 recording.
+    expect(await (await store.read('r4', 'video')).text()).toBe('scr');
+    expect(await store.size('r4')).toBe(11);
+    const dir = await (await root.getDirectoryHandle('recordings')).getDirectoryHandle('r4');
+    expect(await (await (await dir.getFileHandle('events.json')).getFile()).text()).toBe('{}');
+  });
+
   it('reports storage usage', async () => {
     expect(await setup().store.usage()).toEqual({ usage: 1234, quota: 99_999 });
   });
