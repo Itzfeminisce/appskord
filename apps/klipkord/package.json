@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@appskord/llm": "workspace:*",
+    "@appskord/media": "workspace:*",
     "@appskord/penv": "workspace:*",
     "@appskord/platform": "workspace:*",
     "@appskord/ui": "workspace:*",

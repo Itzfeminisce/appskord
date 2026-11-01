@@ -1,0 +1,25 @@
+{
+  "name": "@appskord/media",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Video sources, a frame cache worker, encoder probing and MP4/WebM writers over Mediabunny and WebCodecs. TypeScript source, no build step.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./frames.worker": "./src/frames.worker.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "compile": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@appskord/config": "workspace:*",
+    "@types/chrome": "^0.1.0",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "mediabunny": "^1.65.0"
+  }
+}
