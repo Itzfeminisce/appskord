@@ -30,7 +30,8 @@ export interface Clip {
   gap?: boolean;
 }
 export interface Zoom { id: string; at: number; end: number; depth: number; focus: 'cursor' | { x: number; y: number };
-  feel: Feel; auto: boolean; why?: string }   // why: "3 clicks on Save" (shown in ZoomEdit's list)
+  feel: Feel; auto: boolean; why?: string;    // why: "3 clicks on Save" (shown in ZoomEdit's list)
+  rampIn?: number; rampOut?: number }         // ms, set by autoZoom when less time is left than the feel's ramp
 export interface LayoutSwitch { id: string; at: number; layout: LayoutKind; switch: 'cut' | 'smooth' }
 export interface Camera { corner: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; size: number; // 0..1 of frame height
   shape: 'round' | 'rounded'; mirror: boolean; blur: { on: boolean; mode: 'blur' | 'colour'; colour: string } }
@@ -82,7 +83,7 @@ export interface RenderPlan {
   screen?: { source: string; t: number; crop: Box; dest: Box; radius: number; shadow: number };
   background: Look['background'];
   camera?: { source: string; t: number; dest: Box; shape: Camera['shape']; mirror: boolean; blur: Camera['blur']; alpha: number };
-  cursor?: { x: number; y: number; size: number; click: number };   // click: 0..1 ring progress
+  cursor?: { x: number; y: number; size: number; click: number; ring?: { x: number; y: number } };   // click: 0..1 ring progress; ring: where it is drawn
   overlays: Overlay[]; cards: Card[]; captions?: { words: { text: string; on: boolean }[]; style: CaptionStyle };
   media?: { source: string; t: number };
   fade: number;                               // 0..1 transition mix with the previous clip
