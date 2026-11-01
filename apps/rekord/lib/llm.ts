@@ -3,7 +3,7 @@
  * Never logs or returns a key. Errors are LLMError with a user-facing message and a `code`.
  */
 import { listGroqModels, pickGroqChatModel } from './groqModels';
-import { loadKeys } from './keys';
+import { loadKeys } from './penv';
 import { getSettings, PROVIDERS, updateSettings } from './settings';
 import { formatClock } from './time';
 import type { Meeting, Segment, Settings } from './types';

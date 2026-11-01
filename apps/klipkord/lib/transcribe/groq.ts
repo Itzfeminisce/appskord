@@ -1,6 +1,6 @@
 /** Groq speech-to-text, adapted from Rekord. Sends audio only, never video. Never logs or returns the key. */
 import { PROVIDERS, type FetchLike } from '@/lib/llm';
-import { loadKeys } from '@/lib/keys';
+import { loadKeys } from '@/lib/penv';
 import { getSettings } from '@/lib/settings';
 import type { AiMode } from '@/lib/types';
 import { toWav } from './chunker';

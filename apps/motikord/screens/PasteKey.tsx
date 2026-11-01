@@ -5,7 +5,7 @@ import { Button } from '../components/ui';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { HOSTS, requestHost } from '../lib/hostAccess';
 import { createKeyWatcher, detectKey, serviceLabel, verifyKey, type EnvKeyName, type KeyField } from '../lib/keyDetect';
-import { mergeKeys } from '../lib/keys';
+import { mergeKeys } from '../lib/penv';
 import { getSettings, updateSettings } from '../lib/settings';
 import { SourceToggle } from './PenvConnect';
 import { Footer, Page, StepHead, Title } from './Setup';

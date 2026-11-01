@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { askRecording, ENGINE_FOOTER, type AskResult } from '@/lib/ask';
-import { loadKeys } from '@/lib/keys';
+import { loadKeys } from '@/lib/penv';
 import { availableEngines } from '@/lib/notes/engines';
 import { getSettings } from '@/lib/settings';
 import { formatClock } from '@/lib/time';

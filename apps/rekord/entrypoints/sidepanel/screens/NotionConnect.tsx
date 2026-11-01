@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NOTION_HOSTS, requestHosts } from '@/lib/hosts';
-import { loadKeys, mergeKeys } from '@/lib/keys';
+import { loadKeys, mergeKeys } from '@/lib/penv';
 import { NOTION_INTEGRATIONS_URL, NotionError, validateSecret, type NotionDeps } from '@/lib/share/notion';
 import { Spinner } from '../components';
 import { useRouter } from '../router';

@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
-import { checkKeys, requestHosts, saveKeyStatus } from '@/lib/connect';
-import { loadKeys } from '@/lib/keys';
-import { connectKeyNames, connectPenvApp, loadPenvAppKeys, PenvAppError, wasDisconnected } from '@/lib/penvApp';
+import { checkKeys, connectKeyNames, connectPenvApp, loadKeys, loadPenvAppKeys, PenvAppError, requestHosts, saveKeyStatus, wasDisconnected } from '@/lib/penv';
 import { updateSettings } from '@/lib/settings';
 import { canStart, cloudSettings, NEEDED_KEYS, PENV_CLOUD_URL } from '@/lib/setup';
 import { BannerAction, CARD, ExternalLink, Head, Heading, PAGE, PenvTile, PrimaryButton, StateBanner, useKeyState } from './Setup';

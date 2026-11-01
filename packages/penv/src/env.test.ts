@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fetchPenvKeys, PenvError, type PenvTarget } from './penv';
+import { fetchPenvKeys, PenvError, type PenvTarget } from './env';
 
 const target: PenvTarget = { org: 'acme', project: 'notes', env: 'dev' };
 
@@ -18,7 +18,7 @@ describe('fetchPenvKeys', () => {
       keys: [{ name: 'GROQ_API_KEY', value: 'gsk_test', kind: 'static' }],
     });
 
-    await expect(fetchPenvKeys('pck_test', target, fetchImpl)).resolves.toEqual({
+    await expect(fetchPenvKeys('Rekord', 'pck_test', target, fetchImpl)).resolves.toEqual({
       GROQ_API_KEY: 'gsk_test',
     });
     expect(calls[0]!.url).toBe('https://penv.cloud/api/v1/envs/acme/notes/dev');
@@ -32,25 +32,28 @@ describe('fetchPenvKeys', () => {
     [500, 'http'],
   ])('maps HTTP %i to %s', async (status, code) => {
     const { fetchImpl } = stubFetch(status, {});
-    await expect(fetchPenvKeys('pck_test', target, fetchImpl)).rejects.toMatchObject({ code });
+    await expect(fetchPenvKeys('Rekord', 'pck_test', target, fetchImpl)).rejects.toMatchObject({ code });
   });
 
   it('rejects a write-only environment that returns redacted values', async () => {
     const { fetchImpl } = stubFetch(200, { keys: [{ name: 'GROQ_API_KEY', value: 'redacted' }] });
-    const error = await fetchPenvKeys('pck_test', target, fetchImpl).catch((e) => e);
+    const error = await fetchPenvKeys('Rekord', 'pck_test', target, fetchImpl).catch((e) => e);
     expect(error).toBeInstanceOf(PenvError);
     expect(error.code).toBe('write-only');
   });
 
   it('treats the server redacted: true entries (no value) as write-only too', async () => {
-    const { fetchImpl } = stubFetch(200, { keys: [{ path: 'GROQ_API_KEY', name: 'GROQ_API_KEY', kind: 'secret', redacted: true }] });
-    await expect(fetchPenvKeys('pck_test', target, fetchImpl)).rejects.toMatchObject({ code: 'write-only' });
+    const { fetchImpl } = stubFetch(200, {
+      keys: [{ path: 'GROQ_API_KEY', name: 'GROQ_API_KEY', kind: 'secret', redacted: true }],
+    });
+    await expect(fetchPenvKeys('Rekord', 'pck_test', target, fetchImpl)).rejects.toMatchObject({ code: 'write-only' });
   });
 
   it('rejects a body without a keys array', async () => {
     const { fetchImpl } = stubFetch(200, { data: [] });
-    await expect(fetchPenvKeys('pck_test', target, fetchImpl)).rejects.toMatchObject({
+    await expect(fetchPenvKeys('Motikord', 'pck_test', target, fetchImpl)).rejects.toMatchObject({
       code: 'bad-response',
+      message: 'penv sent a response Motikord does not understand.',
     });
   });
 });
@@ -59,7 +62,7 @@ describe('fetchPenvKeys', () => {
 // and asserts on key names only, never values.
 describe.runIf(process.env.PENV_TOKEN)('penv.cloud (live)', () => {
   it('accepts the pck_ token and returns at least one key', async () => {
-    const keys = await fetchPenvKeys(process.env.PENV_TOKEN!, {
+    const keys = await fetchPenvKeys('Rekord', process.env.PENV_TOKEN!, {
       org: process.env.PENV_ORG ?? 'penvhq',
       project: process.env.PENV_PROJECT ?? 'meeting-notes-taker',
       env: process.env.PENV_ENV ?? 'testing',

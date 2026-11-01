@@ -1,7 +1,7 @@
 import { getRecording, updateRecording, type RecordingPatch } from '../db';
 import { send } from '../messages';
 import type { TranscriptStatus } from '../transcribe/queue';
-import { loadKeys } from '../keys';
+import { loadKeys } from '../penv';
 import type { FetchLike } from '../llm';
 import { getSettings } from '../settings';
 import { formatClock } from '../time';

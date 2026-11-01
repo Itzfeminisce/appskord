@@ -4,7 +4,7 @@
  * Never logs or returns a key.
  */
 import { getMeeting, getRecordingMeta, listRecordingParts, listSegments, putMeeting, putSegment } from './db';
-import { loadKeys } from './keys';
+import { loadKeys } from './penv';
 import type { FetchLike } from './llm';
 import { getSettings } from './settings';
 import type { Meeting, RecordingMeta, Segment } from './types';

@@ -1,74 +1,52 @@
-/** Reads API keys from a penv.cloud environment with a read-only `pck_` machine token. */
+/** Klipkord's keys and Penv Cloud connection, from `@appskord/penv`. Keys stay in chrome.storage.session under `apiKeys`. */
+import { createPenv, type KeyCheckRequest } from '@appskord/penv';
+import { PROVIDERS } from './llm';
+import { getSettings } from './settings';
 
-export const PENV_BASE_URL = 'https://penv.cloud/api/v1';
+export {
+  loadKeyStatus,
+  PenvAppError,
+  PenvError,
+  requestHosts,
+  saveKeyStatus,
+  type KeyResults,
+  type KeyStatus,
+  type PenvAppConnection,
+  type PenvTarget,
+} from '@appskord/penv';
 
-export interface PenvTarget {
-  org: string;
-  project: string;
-  env: string;
-}
+export const penv = createPenv({
+  appName: 'Klipkord',
+  clientId: 'klipkord',
+  keys: { kind: 'map', storageKey: 'apiKeys' },
+  // The cheap "who am I" request for a key name, or null when Klipkord doesn't know that key.
+  keyCheck: (name, key): KeyCheckRequest | null => {
+    const provider = Object.values(PROVIDERS).find((p) => p.keyName === name);
+    if (!provider) return null;
+    if (provider.id === 'anthropic') {
+      return {
+        url: 'https://api.anthropic.com/v1/models',
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      };
+    }
+    return { url: `${provider.baseUrl}/models`, headers: { Authorization: `Bearer ${key}` } };
+  },
+  settings: getSettings,
+});
 
-export type PenvErrorCode = 'unauthorized' | 'not-found' | 'write-only' | 'http' | 'bad-response';
-
-export class PenvError extends Error {
-  constructor(
-    readonly code: PenvErrorCode,
-    message: string,
-    readonly status?: number,
-  ) {
-    super(message);
-    this.name = 'PenvError';
-  }
-}
-
-interface PenvKey {
-  name: string;
-  value?: string;
-  redacted?: boolean;
-}
-
-/** Fetches every key in the environment as a name → value map. Never logs values. */
-export async function fetchPenvKeys(
-  token: string,
-  target: PenvTarget,
-  fetchImpl: typeof fetch = fetch,
-  opts: { skipRedacted?: boolean } = {},
-): Promise<Record<string, string>> {
-  const path = [target.org, target.project, target.env].map(encodeURIComponent).join('/');
-  const response = await fetchImpl(`${PENV_BASE_URL}/envs/${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (response.status === 401 || response.status === 403) {
-    throw new PenvError('unauthorized', 'penv rejected the token.', response.status);
-  }
-  if (response.status === 404) {
-    throw new PenvError('not-found', 'penv could not find that environment.', response.status);
-  }
-  if (!response.ok) {
-    throw new PenvError('http', `penv returned HTTP ${response.status}.`, response.status);
-  }
-
-  const body: unknown = await response.json().catch(() => null);
-  const keys = (body as { keys?: unknown } | null)?.keys;
-  if (!Array.isArray(keys) || !keys.every(isPenvKey)) {
-    throw new PenvError('bad-response', 'penv sent a response Klipkord does not understand.');
-  }
-
-  const isRedacted = (key: PenvKey) => key.redacted === true || key.value === 'redacted';
-  const redacted = keys.filter(isRedacted).map((key) => key.name);
-  if (redacted.length > 0 && !opts.skipRedacted) {
-    throw new PenvError(
-      'write-only',
-      `This penv environment is write-only, so ${redacted.join(', ')} came back redacted.`,
-    );
-  }
-
-  // Redacted entries carry no value: skipped when allowed (app connections share only the approved keys).
-  return Object.fromEntries(keys.filter((key) => !isRedacted(key)).map((key) => [key.name, key.value as string]));
-}
-
-function isPenvKey(value: unknown): value is PenvKey {
-  const key = value as PenvKey | null;
-  return typeof key?.name === 'string' && (typeof key.value === 'string' || key.redacted === true);
-}
+export const {
+  checkKeys,
+  clearKeys,
+  connectKeyNames,
+  connectPaste,
+  connectPenvApp,
+  disconnectPenvApp,
+  ensureKeys,
+  forgetAll,
+  invalidateAppLoads,
+  loadKeys,
+  loadPenvAppKeys,
+  mergeKeys,
+  saveKeys,
+  wasDisconnected,
+} = penv;

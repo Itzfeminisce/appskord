@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { listCalendars, type CalendarInfo } from '@/lib/calendar';
 import { disconnectGoogle, GoogleError, type GoogleDeps, type GoogleSettings } from '@/lib/google';
 import { getSettings, onSettingsChanged, updateSettings } from '@/lib/settings';
-import { loadKeys } from '@/lib/keys';
+import { loadKeys } from '@/lib/penv';
 import { NOTION_HOSTS, requestHosts } from '@/lib/hosts';
 import { Spinner } from '../components';
 import { useRouter } from '../router';

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { saveKeys } from './keys';
+import { saveKeys } from './penv';
 import { chat, LLMError, pickProvider } from './llm';
 
 const reply = (content: unknown, status = 200) =>

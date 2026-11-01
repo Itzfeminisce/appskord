@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../components/ui';
 import { useRouter } from '../entrypoints/sidepanel/router';
-import { loadKeys } from '../lib/keys';
-import { disconnectPenvApp, restoreKeys } from '../lib/penvApp';
+import { disconnectPenvApp, loadKeys, restoreKeys } from '../lib/penv';
 import { getSettings, updateSettings } from '../lib/settings';
 import { PROVIDER_IDS, PROVIDERS } from '../lib/providers';
 import type { Provider, Settings } from '../lib/types';

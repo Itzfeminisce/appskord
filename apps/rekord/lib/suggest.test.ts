@@ -3,7 +3,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { closeDB, getMeeting, listMarkers, putMarker, putMeeting, putSegment } from './db';
-import { saveKeys } from './keys';
+import { saveKeys } from './penv';
 import { getSettings, updateSettings } from './settings';
 import { buildPrompt } from './summarize';
 import { isDuplicate, parseSuggestions, resolveSuggestion, runSuggest, startSuggester, suggestionCounts, visibleMarkers } from './suggest';

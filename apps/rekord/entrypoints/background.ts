@@ -1,7 +1,7 @@
 import { appSources, tabRefusedReply, type AppFlag } from '@/lib/capture';
 import { resolveSources, type Sources } from '@/lib/sources';
 import { getMeeting, pendingChunks, putMeeting } from '@/lib/db';
-import { loadKeys } from '@/lib/keys';
+import { loadKeys } from '@/lib/penv';
 import { onMessage, send, type MessageOf } from '@/lib/messages';
 import { getSettings } from '@/lib/settings';
 import { handleInstalled } from '@/lib/whatsNew';

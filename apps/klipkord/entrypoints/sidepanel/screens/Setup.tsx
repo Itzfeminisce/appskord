@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
-import { checkKeys, loadKeyStatus, saveKeyStatus } from '@/lib/connect';
+import { checkKeys, loadKeys, loadKeyStatus, saveKeyStatus } from '@/lib/penv';
 import { isKeyName } from '@/lib/keyDetect';
-import { loadKeys } from '@/lib/keys';
 import { updateSettings } from '@/lib/settings';
 import { detectMachine, notesEngineFor, setupChoice, type MachineCheck, type RowStatus, type SetupState } from '@/lib/setup';
 import type { AiMode } from '@/lib/types';

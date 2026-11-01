@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { loadKeys } from '@/lib/keys';
+import { loadKeys } from '@/lib/penv';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { NOTION_ADD_CONNECTIONS_URL, NotionError, searchPages, type NotionPageInfo } from '@/lib/share/notion';
 import { Spinner } from '../components';

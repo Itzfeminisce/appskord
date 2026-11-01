@@ -3,7 +3,7 @@ import { Button, Spinner } from '../components';
 import { useRouter } from '../router';
 import { deleteMeeting, listMeetings } from '@/lib/db';
 import { DEEPGRAM_HOSTS, requestHosts } from '@/lib/hosts';
-import { loadKeys } from '@/lib/keys';
+import { loadKeys } from '@/lib/penv';
 import { onMessage, send } from '@/lib/messages';
 import { getSettings, updateSettings } from '@/lib/settings';
 import type { RecordingState, Settings as SettingsT } from '@/lib/types';

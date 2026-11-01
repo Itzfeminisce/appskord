@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
-import { connectErrorMessage, forgetAll, formatEnvPath, loadToken, reconnect, transcriptionKeyName } from '@/lib/connect';
+import { connectErrorMessage, transcriptionKeyName } from '@/lib/connect';
+import { disconnectPenvApp, forgetAll, formatEnvPath, loadPenvAppKeys, loadToken, PenvAppError, reconnect, wasDisconnected } from '@/lib/penv';
 import { hostsForSettings, PENV_HOSTS, requestHosts } from '@/lib/hosts';
 import { serviceLabel } from '@/lib/keyDetect';
 import { getSettings, PROVIDERS, updateSettings } from '@/lib/settings';
-import { disconnectPenvApp, loadPenvAppKeys, PenvAppError, wasDisconnected } from '@/lib/penvApp';
 import { keyUse, STATUS_WORD, type RowStatus } from '@/lib/setup';
 import type { ProviderId, Settings, TranscriptionProvider } from '@/lib/types';
 import { DisconnectedPanel } from './PenvConnect';

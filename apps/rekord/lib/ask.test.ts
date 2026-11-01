@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { ask, buildAskMessages, markUnfinished, parseCitations, saveAnswerAsNote } from './ask';
 import { closeDB, listAsks, listNotes, putMeeting, putNote, putSegment } from './db';
-import { saveKeys } from './keys';
+import { saveKeys } from './penv';
 
 const reply = (content: string, status = 200) =>
   new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status });

@@ -2,7 +2,7 @@
  * Chat client for cloud notes (OpenAI-compatible `/chat/completions`).
  * Never logs or returns a key. Errors are LLMError with a `code`.
  */
-import { loadKeys } from './keys';
+import { loadKeys } from './penv';
 import type { KeyName } from './keyDetect';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
