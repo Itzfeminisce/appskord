@@ -85,8 +85,8 @@ describe('checker v2 cards', () => {
     const edits = autoFixEdits(r, { measure });
     expect(edits.map((e) => e.summary)).toContain('Scene 3 swapped from List to Steps\nIts items read as steps.');
     let s = initState({ id: 'c', recipe: r, history: [], createdAt: 0, updatedAt: 0 });
-    edits.forEach((e, k) => { s = reducer(s, { type: 'edit', edit: e, by: 'template', at: k, id: `f${k}` }); });
-    expect(s.clip.history.every((c) => c.by === 'template')).toBe(true);
+    edits.forEach((e, k) => { s = reducer(s, { type: 'edit', edit: e, by: 'check', at: k, id: `f${k}` }); });
+    expect(s.clip.history.every((c) => c.by === 'check')).toBe(true);
     expect(s.clip.recipe.scenes[2]!.template).toBe('steps');
     for (let k = 0; k < edits.length; k++) s = reducer(s, { type: 'undo', at: 99 });
     expect(s.clip.recipe).toEqual(r);

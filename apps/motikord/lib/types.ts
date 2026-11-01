@@ -12,7 +12,7 @@ export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pex
 export type MediaSourceId = 'openverse' | 'wikimedia' | 'nasa' | 'museums' | 'ccmixter' | 'pexels' | 'pixabay' | 'freesound' | 'jamendo' | 'unsplash';
 export type KeyPlacement = 'bearer' | 'authorization' | 'key' | 'api_key' | 'client_id' | 'header';
 export type CustomFormat = 'openverse' | 'wordpress' | 'mediawiki' | 'pexels' | 'pixabay' | 'generic';
-export type Author = Provider | 'builtin' | 'hand' | 'template';
+export type Author = Provider | 'builtin' | 'hand' | 'template' | 'check';   // check: a quality-check fix
 
 export interface Credit {                                    // every asset someone else made
   title: string; author: string; source: MediaSourceId | 'custom' | 'bundled' | 'page' | 'ai';   // ai: "AI image, OpenAI"

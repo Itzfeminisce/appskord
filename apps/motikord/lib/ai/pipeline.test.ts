@@ -3,6 +3,7 @@ import type { FetchLike } from '../llm';
 import type { Asset, Recipe, Storyboard } from '../types';
 import { SCENE_TEMPLATES } from '../templates/scenes';
 import { validateRecipe } from '../recipe/validate';
+import { applyPatch } from '../patch';
 import { AiError } from './errors';
 import { SCENE_EXAMPLES, pickExamples } from './examples';
 import { allowedTemplates, beatMs, planStoryboard, readStoryboard, sceneCount, StoryboardFailed, type StoryboardInput } from './storyboard';
@@ -161,6 +162,22 @@ describe('the v2 pipeline', () => {
     expect(out.critic).toMatchObject({ frames: 4, notes: [{ sceneIndex: 1 }] });
     expect(out.recipe.scenes[1]!.slots!.statement).toBe('All runners on sale');
     expect(g.sent.filter((s) => s.kind === 'critic')).toHaveLength(1);
+  });
+
+  it('hands back each making-time fix as an undoable step, in the order of its "Fixed for you" line', async () => {
+    const g = fake({
+      storyboard: [SB(FOUR)],
+      fill: (_i, last) => (last.includes('Change:') ? JSON.stringify({ slots: { ...FILLS, statement: 'All runners on sale' } }) : fillAll()),
+      critic: () => JSON.stringify({ notes: [{ scene: 2, problem: 'Too long', fix: 'Shorter statement' }] }),
+    });
+    const brand = { colours: [{ hex: '#FFFFFF', role: 'text' as const }, { hex: '#FAFAFA', role: 'background' as const }, { hex: '#FFFFFF', role: 'primary' as const }], useForNewClips: true };
+    const out = await writeClip(input({ brand, pace: 'fast' }), { ...g.opts, ...vision }, { frames });
+    const lines = out.checks.map((c) => c.summary);
+    expect(lines.filter((x, i) => lines.indexOf(x) === i)).toEqual(out.fixes);
+    expect(out.fixes).toContain('Scene 2 statement recoloured to stand out');
+    // Undoing every step newest first, then redoing them oldest first, lands on the clip as made.
+    const start = out.checks.reduceRight((r, c) => applyPatch(r, c.inverse).doc, out.recipe);
+    expect(out.checks.reduce((r, c) => applyPatch(r, c.patch).doc, start)).toEqual(out.recipe);
   });
 
   it('a critic that cannot be reached leaves the clip ready without it', async () => {

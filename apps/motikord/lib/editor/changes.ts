@@ -14,7 +14,7 @@ export function byLabel(by: Author): string | undefined {
     case 'groq': case 'openai': case 'anthropic': case 'openrouter': return PROVIDERS[by].label;
     case 'builtin': return 'built-in AI';
     case 'hand': return 'by hand';
-    case 'template': return undefined;
+    case 'template': case 'check': return undefined;
   }
 }
 
@@ -71,11 +71,12 @@ export function describe(before: Recipe, after: Recipe): string {
 
 // ---- ChangesV2 ----
 
-/** Who made a change, as ChangesV2 names them: "You", "Groq", "Quality check". */
-export function whoLabel(by: Author): string {
+/** Who made a change, as ChangesV2 names them: "You", "Groq", "Quality check"; a template's own changes name no one. */
+export function whoLabel(by: Author): string | undefined {
   switch (by) {
     case 'hand': return 'You';
-    case 'template': return 'Quality check';
+    case 'check': return 'Quality check';
+    case 'template': return undefined;
     case 'builtin': return 'Built-in AI';
     default: return PROVIDERS[by].label;
   }

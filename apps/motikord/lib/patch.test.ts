@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPatch, PatchError, parsePointer } from './patch';
+import { applyPatch, diffPatch, PatchError, parsePointer } from './patch';
 import type { PatchOp } from './types';
 
 const doc = () => ({ name: 'Clip', scenes: [{ id: 'a', layers: [1, 2, 3] }, { id: 'b', layers: [] as number[] }], 'x/y': { '~': 1 } });
@@ -85,5 +85,24 @@ describe('patch guards', () => {
   it('treats a move onto itself as a no-op', () => {
     const doc = { a: [1, 2] };
     expect(applyPatch(doc, [{ op: 'move', from: '/a/0', path: '/a/0' }]).doc).toEqual(doc);
+  });
+});
+
+describe('diffPatch', () => {
+  it('turns one doc into the other with ops down to the changed values, and its inverse goes back', () => {
+    const a = { name: 'Clip', scenes: [{ id: 's1', durationMs: 3000, layers: [{ id: 'a/b', box: { x: 0.1 } }] }], keep: 1, gone: true };
+    const b = { name: 'Clip', scenes: [{ id: 's1', durationMs: 3600, layers: [{ id: 'a/b', box: { x: 0.2 } }] }], keep: 1, extra: [1, 2] };
+    const ops = diffPatch(a, b);
+    expect(ops).toEqual([
+      { op: 'replace', path: '/scenes/0/durationMs', value: 3600 },
+      { op: 'replace', path: '/scenes/0/layers/0/box/x', value: 0.2 },
+      { op: 'remove', path: '/gone' },
+      { op: 'add', path: '/extra', value: [1, 2] },
+    ]);
+    const { doc, inverse } = applyPatch(a, ops);
+    expect(doc).toEqual(b);
+    expect(applyPatch(doc, inverse).doc).toEqual(a);
+    expect(diffPatch(a, a)).toEqual([]);
+    expect(diffPatch({ l: [1] }, { l: [1, 2] })).toEqual([{ op: 'replace', path: '/l', value: [1, 2] }]);
   });
 });

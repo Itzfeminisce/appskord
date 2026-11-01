@@ -50,7 +50,7 @@ export function ChangesTab(_: { onLayer?: () => void } = {}) {
           </span>
           {detail && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{detail}</span>}
           <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, color: 'var(--faint)' }}><span style={{ fontWeight: 600, color: 'var(--muted)' }}>{whoLabel(c.by)}</span>{` · ${whenLabel(c.at, now)}`}</span>
+            <span style={{ fontSize: 11, color: 'var(--faint)' }}>{whoLabel(c.by) ? <><span style={{ fontWeight: 600, color: 'var(--muted)' }}>{whoLabel(c.by)}</span>{` · ${whenLabel(c.at, now)}`}</> : whenLabel(c.at, now)}</span>
             {on
               ? <button type="button" onClick={undo} style={small}>Undo</button>
               : <button type="button" onClick={() => (kind === 'ahead' ? forward(c) : goBack(c.id))} style={small}>Go back here</button>}

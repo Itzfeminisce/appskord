@@ -128,7 +128,7 @@ const btn = { height: 32, padding: '0 12px', borderRadius: 8, font: '600 12px/1 
 const solid = { ...btn, border: 0, background: 'var(--ink)', color: '#fff' } as const;
 const plain = { ...btn, fontWeight: 500, border: '1px solid var(--line-strong)', background: 'var(--surface)', color: 'var(--ink)' } as const;
 const head = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 4 } as const;
-const AUTO_BY = 'template' as const;
+const AUTO_BY = 'check' as const;
 
 /** The visual critic's last run per clip, for this editor tab (the critic only runs on a make or on Check again). */
 const critics = new Map<string, CriticRun & { provider: Provider }>();

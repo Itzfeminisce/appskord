@@ -71,7 +71,7 @@ describe('changes', () => {
 
 describe('changes v2', () => {
   it('names who and when as ChangesV2 does', () => {
-    expect(['hand', 'groq', 'template'].map((b) => whoLabel(b as Change['by']))).toEqual(['You', 'Groq', 'Quality check']);
+    expect(['hand', 'groq', 'check', 'template'].map((b) => whoLabel(b as Change['by']))).toEqual(['You', 'Groq', 'Quality check', undefined]);
     expect(whenLabel(1000, 30_000)).toBe('now');
     expect(whenLabel(0, 120_000)).toBe('2 min ago');
     expect(madeLine({ ...r0, pace: 'normal' }, 'Bold')).toBe('3 scenes, Bold, Normal pace');
