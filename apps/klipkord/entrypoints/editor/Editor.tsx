@@ -29,6 +29,8 @@ import { C } from './ui';
 export interface EditorSlots {
   transcript?: ComponentType<TranscriptSlotProps>;
   timeline?: ComponentType<SlotProps>;
+  /** A tool panel (T6's Clean up) that covers the inspector while it is open; it renders null when closed. */
+  aside?: ComponentType<SlotProps>;
   inspector?: (props: SlotProps) => Pick<InspectorProps, 'panels' | 'selection'>;
   topBar?: (props: SlotProps) => Partial<Pick<TopBarProps, 'onName' | 'onCuts' | 'onHistory' | 'onShortcuts' | 'onAskAI' | 'onExport'>>;
 }
@@ -178,7 +180,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   const ready = projectReady && !!cut && !!recording && firstFrame;
   const readOnly = session !== 'editing';
   const slotProps: SlotProps | null = project && cut && recording ? {
-    recording, project, cut, out: playback.out, length, playing: playback.playing, ready, readOnly, seek: playback.seek, edit: api.edit,
+    recording, project, cut, out: playback.out, length, playing: playback.playing, ready, readOnly, seek: playback.seek, play: playback.play, edit: api.edit,
   } : null;
   const missing = media?.missing.find((s) => !dismissed[`missing:${s.id}`]);
   const removeMissing = (s: Source) => {
@@ -215,6 +217,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
     : <OpeningSteps times={times} />;
   const extra = slotProps ? slots.topBar?.(slotProps) : undefined;
   const inspector = slotProps ? slots.inspector?.(slotProps) : undefined;
+  const Aside = slots.aside;
 
   return (
     <div style={{ height: '100vh', minHeight: 600, display: 'flex', flexDirection: 'column', background: C.ground, color: C.text, overflow: 'hidden' }}>
@@ -244,7 +247,8 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
           </div>
           {slotProps ? <TimelineSlot {...slotProps} body={slots.timeline} /> : <TimelineOpening />}
         </div>
-        <Inspector panels={ready ? inspector?.panels : undefined} selection={ready ? inspector?.selection : undefined} notices={banners} />
+        <Inspector panels={ready ? inspector?.panels : undefined} selection={ready ? inspector?.selection : undefined} notices={banners}
+          cover={ready && slotProps && Aside ? <Aside {...slotProps} /> : undefined} />
       </div>
       <input ref={fileInput} type="file" hidden onChange={(e) => onPicked(e.target.files?.[0])} />
       {session === 'elsewhere' && (

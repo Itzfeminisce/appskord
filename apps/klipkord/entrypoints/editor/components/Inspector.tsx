@@ -24,6 +24,8 @@ export interface InspectorProps {
   onTab?: (tab: InspectorTab) => void;
   /** Banners (not-saved, media-missing, old-recording, preview-slow) sit here so the preview keeps its full size. */
   notices?: ReactNode[];
+  /** A tool panel over the whole inspector, e.g. Clean up. */
+  cover?: ReactNode;
 }
 
 /** The empty look of a panel while it opens or until its task fills it. */
@@ -37,13 +39,13 @@ export function PanelSkeleton() {
 
 const BODY = { flexGrow: 1, minHeight: 0, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 14 } as const;
 
-export function Inspector({ panels = {}, selection, tab: controlled, onTab, notices = [] }: InspectorProps) {
+export function Inspector({ panels = {}, selection, tab: controlled, onTab, notices = [], cover }: InspectorProps) {
   const [own, setOwn] = useState<InspectorTab>('Layout');
   const tab = controlled ?? own;
   const pick = (t: InspectorTab) => (onTab ? onTab(t) : setOwn(t));
 
   return (
-    <aside aria-label="Inspector" style={{ width: 304, flexShrink: 0, display: 'flex', flexDirection: 'column', borderLeft: `1px solid ${C.line}`, background: C.panel }}>
+    <aside aria-label="Inspector" style={{ position: 'relative', width: 304, flexShrink: 0, display: 'flex', flexDirection: 'column', borderLeft: `1px solid ${C.line}`, background: C.panel }}>
       {notices.length > 0 && (
         <div style={{ flexShrink: 0, maxHeight: '50%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 10px 2px' }}>{notices}</div>
       )}
@@ -73,6 +75,7 @@ export function Inspector({ panels = {}, selection, tab: controlled, onTab, noti
           <div role="tabpanel" aria-label={tab} style={BODY}>{panels[tab] ?? <PanelSkeleton />}</div>
         </>
       )}
+      {cover}
     </aside>
   );
 }
