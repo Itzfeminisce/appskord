@@ -3,7 +3,7 @@ import { listRecordings, listUnfinished } from '@/lib/db';
 import { getSettings } from '@/lib/settings';
 import { isFirstRun } from '@/lib/setup';
 import { Spinner } from './components';
-import { RouterProvider, useRouter, type Route, type ScreenName } from './router';
+import { createRouter, type Route, type ScreenName } from '@/lib/router';
 import Main from './screens/Main';
 import Permissions from './screens/Permissions';
 import Setup from './screens/Setup';
@@ -84,13 +84,14 @@ export async function initialRoute(): Promise<Route> {
   return { screen: 'Main', params: {} };
 }
 
-function CurrentScreen() {
-  const { route } = useRouter();
-  const Screen = SCREENS[route.screen];
+/** The side panel's routes. Countdown holds the picked source only in memory; the live screens keep Back from leaving. */
+export const sidepanel = createRouter(SCREENS, {
   // One key for the Review tabs, so the player stays mounted between them.
-  const name = isReviewTab(route.screen) ? 'Review' : route.screen;
-  return <Screen key={`${name}:${route.params.recordingId ?? ''}`} />;
-}
+  key: (route) => `${isReviewTab(route.screen) ? 'Review' : route.screen}:${route.params.recordingId ?? ''}`,
+  fresh: ['Countdown'],
+  hold: ['Countdown', 'Recording', 'Paused'],
+});
+const { RouterProvider } = sidepanel;
 
 export default function App() {
   const [initial, setInitial] = useState<Route | null>(null);
@@ -106,8 +107,7 @@ export default function App() {
     );
   }
   return (
-    <RouterProvider initial={initial}>
-      <CurrentScreen />
-    </RouterProvider>
+    // `initial` is used only when the hash names no screen; a reload keeps the screen in the hash.
+    <RouterProvider initial={initial} />
   );
 }

@@ -3,8 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import '../sidepanel/style.css';
-import { ReviewShell } from '../sidepanel/components/Player';
-import { RouterProvider } from '../sidepanel/router';
+import { player } from './router';
 
 // The full-screen player window, opened from the side panel's full-screen button.
 const query = new URLSearchParams(location.search);
@@ -13,8 +12,6 @@ const initial = { screen: 'Review' as const, params: { recordingId: query.get('r
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider initial={initial}>
-      <ReviewShell tab="Review" window>{() => null}</ReviewShell>
-    </RouterProvider>
+    <player.RouterProvider initial={initial} />
   </StrictMode>,
 );
