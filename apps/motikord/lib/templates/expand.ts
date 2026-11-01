@@ -13,7 +13,7 @@ type Boxes = Record<Aspect, { x: number; y: number; w: number; h: number }>;
 // Type scale in px at a 1080 short side (SceneTemplates, Clean at 9:16), and each pack's weight and tracking (em).
 const SCALE_PX: Record<TypeScale, number> = { display: 140, headline: 88, body: 54, caption: 40, number: 380 };
 // Slots whose copy at the full word limit does not fit at their scale's size on every shape: the size they are drawn at.
-const SLOT_PX: Record<string, number> = { 'stat-reveal.number': 320, 'quote.quote': 62, 'list.items': 45, 'hero.headline': 100, 'hero.line': 46, 'end-card.cta': 100 };
+const SLOT_PX: Record<string, number> = { 'title-hook.kicker': 46, 'stat-reveal.number': 320, 'quote.quote': 62, 'list.items': 45, 'hero.headline': 100, 'hero.line': 46, 'end-card.cta': 100 };
 const LINE_HEIGHT: Record<TypeScale, number> = { display: 1, headline: 1.08, body: 1.3, caption: 1.3, number: 0.9 };
 type Face = Record<TypeScale, { weight: number; tracking: number }>;
 const FACE: Record<StyleId, Face> = {
@@ -279,7 +279,7 @@ function blockPlans(t: SceneTemplate, fullMedia: boolean): Partial<Record<Aspect
   return Object.fromEntries(ASPECTS.map((a) => [a, planBlocks(field.map((d) => room(d, a)), a, SAFE_AREA[a], (q) => wordsFit(t, a, q))]));
 }
 const PX: Record<Aspect, { w: number; h: number }> = { '9:16': { w: 1080, h: 1920 }, '1:1': { w: 1080, h: 1080 }, '16:9': { w: 1920, h: 1080 } };
-/** Whether every text slot, full of average words, still fits at its size once squeezed (a rough glyph width, with headroom). */
+/** Whether every text slot, full of average words, still fits at its size once squeezed (the checker's rough glyph width). */
 function wordsFit(t: SceneTemplate, a: Aspect, q: Squeeze): boolean {
   return t.slots.every((d) => {
     if (d.kind !== 'text' && d.kind !== 'items') return true;
@@ -287,7 +287,7 @@ function wordsFit(t: SceneTemplate, a: Aspect, q: Squeeze): boolean {
     const b = squeezeBox(d.boxes[a], q);
     const cell = n > 1 && wide(b, a) ? { w: (b.w / n) * 0.9, h: b.h * 0.6 } : { w: b.w * (n > 1 ? 0.8 : 1), h: (b.h / n) * (n > 1 ? 0.85 : 1) };
     const scale = d.scale ?? 'body';
-    const size = (SLOT_PX[`${t.id}.${d.id}`] ?? SCALE_PX[scale]) * 1.08;
+    const size = SLOT_PX[`${t.id}.${d.id}`] ?? SCALE_PX[scale];
     const text = scale === 'number' ? '1,200' : Array.from({ length: d.words ?? 3 }, () => 'people').join(' ');
     const fit = fitText({ text, width: cell.w * PX[a].w, height: cell.h * PX[a].h, maxSize: size, lineHeight: LINE_HEIGHT[scale], measure: (s, px) => s.length * px * 0.56 });
     return fit.fits && fit.sizePx >= Math.floor(size);

@@ -5,6 +5,7 @@ import { clockShort, restTime, sceneStart, sceneTitle } from '../../lib/editor/s
 import { dragSpan, layerTiming, sceneLength, sceneTargets, sceneTiming, scrubTime, SCRUB_MS, ticks, tracks, type DragMode, type Span } from '../../lib/editor/timeline';
 import type { Credit, LicenceId, Recipe } from '../../lib/types';
 import { slotCount, slotOfLayer, templateOf, transitionLabel, transitionOf, TRANSITION_NAMES } from '../../lib/editor/v2';
+import { getPack } from '../../lib/templates/scenes';
 import { useEditor } from './Editor';
 import { Spinner } from './StatesV2';
 
@@ -200,25 +201,51 @@ export function Timeline() {
   const music = musicLabel(r);
   const rows = tracks(r);
   const v2 = r.scenes.some((x) => x.template);
+  const pack = r.style ? getPack(r.style) : undefined;
+  const marker = pack?.palette.accent ?? 'var(--accent)';
+  // One lane for the selected scene's text: a chip per slot at its entry time, never overlapping the one before.
+  const cur = r.scenes.findIndex((x) => x.id === state.sceneId);
+  const chips: { id: string; li: number; name: string; left: number; w: number; on: boolean; long: boolean }[] = [];
+  if (v2 && cur >= 0) {
+    const scene = r.scenes[cur]!;
+    const seen = new Set<string>();
+    let right = -Infinity;
+    scene.layers.forEach((l, li) => {
+      if (l.type !== 'text') return;
+      const ls = slotOfLayer(scene, l.id);
+      const key = ls?.def.id ?? l.id;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const name = ls?.def.name ?? l.name;
+      const long = !!ls && (overSlot === l.id || slotCount(ls.def, scene.slots?.[ls.def.id]).over);
+      const w = Math.round(18 + (long ? name.length + 11 : name.length) * 6.2);
+      const left = Math.max((starts[cur]! + l.startMs) * k + 4, right + 4);
+      right = left + w;
+      const on = scene.layers.some((x) => x.id === state.layerId && (slotOfLayer(scene, x.id)?.def.id ?? x.id) === key);
+      chips.push({ id: key, li, name: name.replace(/:.*/, ''), left, w, on, long });
+    });
+  }
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', padding: '8px 12px 10px', gap: 6, position: 'relative', userSelect: 'none' }}>
-      <div style={{ flexShrink: 0, overflow: 'hidden', scrollbarGutter: 'stable', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ flexShrink: 0, overflow: 'hidden', scrollbarGutter: 'stable', display: 'flex', flexDirection: 'column', gap: v2 ? 14 : 6 }}>
       <div style={{ display: 'flex', paddingLeft: LABEL_W + 8, fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--faint)', height: 12 }}>
         <div style={{ position: 'relative', flex: 1, cursor: 'pointer' }} {...scrubHandlers}>
           {ticks(total).map((t) => <span key={t} style={{ position: 'absolute', left: t * k, pointerEvents: 'none' }}>{clockShort(t)}</span>)}
         </div>
       </div>
-      <Row label="Scenes">
-        <div ref={lane} style={{ position: 'relative', flex: 1, height: 30 }} {...scrubHandlers}>
+      <Row label="Scenes" sub={v2 ? 'Diamonds: transitions' : undefined}>
+        <div ref={lane} style={{ position: 'relative', flex: 1, height: v2 ? 34 : 30 }} {...scrubHandlers}>
           {r.scenes.map((s, si) => {
             const on = s.id === state.sceneId;
             return (
               <span key={s.id} role="button" tabIndex={0} aria-label={`${si + 1} · ${sceneTitle(s)}`} {...handlers}
                 onPointerDown={(e) => down(e, 'scene', si, -1)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectScene(si); } }}
-                style={{ position: 'absolute', left: starts[si]! * k + 1, width: Math.max(4, sceneMs(si) * k - 2), height: 30, borderRadius: 6, background: SCENE_BG[si % 3], outline: on ? '1.5px solid var(--accent)' : undefined, outlineOffset: -1.5, fontSize: 12, fontWeight: on ? 600 : 400, display: 'flex', alignItems: 'center', padding: '0 10px 0 8px', boxSizing: 'border-box', overflow: 'hidden', whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                {remaking === s.id && <Spinner size={12} />}
+                style={v2
+                  ? { position: 'absolute', left: starts[si]! * k + 2, width: Math.max(4, sceneMs(si) * k - 4), height: 34, borderRadius: 7, background: '#18181B', color: '#fff', outline: on ? '2px solid var(--accent)' : undefined, outlineOffset: 1, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7, padding: '0 10px', boxSizing: 'border-box', overflow: 'hidden', whiteSpace: 'nowrap', cursor: 'pointer' }
+                  : { position: 'absolute', left: starts[si]! * k + 1, width: Math.max(4, sceneMs(si) * k - 2), height: 30, borderRadius: 6, background: SCENE_BG[si % 3], outline: on ? '1.5px solid var(--accent)' : undefined, outlineOffset: -1.5, fontSize: 12, fontWeight: on ? 600 : 400, display: 'flex', alignItems: 'center', padding: '0 10px 0 8px', boxSizing: 'border-box', overflow: 'hidden', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                {remaking === s.id ? <Spinner size={12} colour="#fff" /> : v2 && <span aria-hidden="true" style={{ width: 6, height: 14, borderRadius: 2, background: marker, flexShrink: 0, pointerEvents: 'none' }} />}
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{`${si + 1} · ${s.template ? templateOf(s)?.name ?? sceneTitle(s) : sceneTitle(s)}`}</span>
                 <span aria-hidden="true" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: EDGE_PX, cursor: 'ew-resize' }} />
               </span>
@@ -229,20 +256,38 @@ export function Timeline() {
             const t = transitionOf(r, si);
             const on = s.id === state.sceneId;
             return (
-              <span key={`d-${s.id}`} style={{ position: 'absolute', left: starts[si]! * k - 8, top: 7, zIndex: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span key={`d-${s.id}`} style={{ position: 'absolute', left: starts[si]! * k - 7, top: 10, zIndex: 2, width: 14, height: 14 }}>
                 <button type="button" aria-label={`Transition into scene ${si + 1}: ${TRANSITION_NAMES[t.kind]}`} title={transitionLabel(t)}
                   onPointerDown={(e) => e.stopPropagation()} onClick={() => openPanel({ kind: 'transition', sceneId: s.id })}
-                  style={{ width: 16, height: 16, padding: 0, border: '1.5px solid var(--surface)', background: on ? 'var(--accent)' : 'var(--ink)', transform: 'rotate(45deg)', borderRadius: 3, cursor: 'pointer' }} />
-                {on && <span style={{ padding: '2px 6px', borderRadius: 5, background: 'var(--ink)', color: '#fff', font: '500 10px/1.2 var(--mono)', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{transitionLabel(t)}</span>}
+                  style={{ display: 'block', width: 14, height: 14, padding: 0, border: `1.5px solid ${on ? 'var(--accent)' : '#71717A'}`, background: on ? 'var(--accent)' : '#fff', transform: 'rotate(45deg)', borderRadius: 2, cursor: 'pointer' }} />
+                {on && (
+                  <span style={{ position: 'absolute', left: 7, top: -36, transform: 'translateX(-50%)', height: 20, padding: '0 8px', borderRadius: 6, background: 'var(--ink)', color: '#fff', font: '500 11px/1 var(--font)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                    {transitionLabel(t)}
+                  </span>
+                )}
               </span>
             );
           })}
         </div>
       </Row>
-      {v2 && <span style={{ position: 'absolute', top: 6, right: 14, fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--faint)' }}>Diamonds: transitions</span>}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', scrollbarGutter: 'stable', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {rows.map((t) => {
+        {v2 && cur >= 0 && (
+          <Row label={`Scene ${cur + 1} text`}>
+            <div style={{ position: 'relative', flex: 1, height: 22 }} {...scrubHandlers}>
+              {chips.map((c) => (
+                <span key={c.id} role="button" tabIndex={0} aria-label={`${c.name}, scene ${cur + 1}`} aria-pressed={c.on}
+                  onPointerDown={(e) => { e.stopPropagation(); selectLayer(cur, c.li); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectLayer(cur, c.li); } }}
+                  style={{ position: 'absolute', left: c.left, width: c.w, height: 22, borderRadius: 6, background: c.on ? 'var(--accent)' : c.long ? 'var(--error-bg)' : '#FEF9C3', color: c.on ? '#fff' : c.long ? 'var(--error-ink)' : '#713F12', fontSize: 11, display: 'flex', alignItems: 'center', padding: '0 8px', boxSizing: 'border-box', whiteSpace: 'nowrap', overflow: 'hidden', cursor: 'pointer' }}>
+                  {c.long ? `${c.name} · too long` : c.name}
+                </span>
+              ))}
+            </div>
+          </Row>
+        )}
+        {!v2 && rows.map((t) => {
           const mine = t.bars.some((b) => b.layer.id === state.layerId && r.scenes[b.si]!.id === state.sceneId);
           return (
             <Row key={t.name} label={t.name} strong={mine}>
@@ -276,7 +321,7 @@ export function Timeline() {
         })}
         <Row label="Music">
           <button type="button" onClick={() => go('Music')}
-            style={{ flex: 1, height: 24, border: 0, borderRadius: 6, background: 'var(--stage)', color: 'var(--ink)', font: '11px/1 var(--font)', textAlign: 'left', padding: '0 8px', cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+            style={{ flex: 1, height: v2 ? 22 : 24, border: 0, borderRadius: 6, background: v2 ? '#EEF2FF' : 'var(--stage)', color: v2 ? '#3730A3' : 'var(--ink)', font: '11px/1 var(--font)', textAlign: 'left', padding: '0 8px', cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
             {music}
           </button>
         </Row>
@@ -289,10 +334,13 @@ export function Timeline() {
   );
 }
 
-function Row({ label, strong, children }: { label: string; strong?: boolean; children: ReactNode }) {
+function Row({ label, sub, strong, children }: { label: string; sub?: string; strong?: boolean; children: ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-      <span style={{ width: LABEL_W, flexShrink: 0, fontSize: 12, fontWeight: strong ? 600 : 400, color: strong ? 'var(--ink)' : 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ width: LABEL_W, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12, fontWeight: strong ? 600 : 400, color: strong ? 'var(--ink)' : 'var(--muted)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+        {sub && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{sub}</span>}
+      </span>
       {children}
     </div>
   );
