@@ -9,7 +9,7 @@ export const MERGE_MS = 1500;
 /** A merged change stops growing this long after its first edit, so steady typing still leaves undo steps. */
 export const MERGE_CAP_MS = 5000;
 
-export interface RecordMeta { by: Author; summary: string; at: number; id: string; mergeKey?: string }
+export interface RecordMeta { by: Author; summary: string; at: number; id: string; mergeKey?: string; reverts?: string }
 
 const allReplace = (ops: PatchOp[]) => ops.every((o) => o.op === 'replace');
 const paths = (ops: PatchOp[]) => ops.map((o) => o.path).join('\n');
@@ -29,7 +29,7 @@ export function record<T>(doc: T, h: History, ops: PatchOp[], meta: RecordMeta):
     };
     return { doc: next, history: { past: [...h.past.slice(0, -1), change], future: [], mergeKey: meta.mergeKey, mergeStart: h.mergeStart ?? last.at }, change };
   }
-  const change: Change = { id: meta.id, at: meta.at, by: meta.by, summary: meta.summary, patch: ops, inverse };
+  const change: Change = { id: meta.id, at: meta.at, by: meta.by, summary: meta.summary, patch: ops, inverse, ...(meta.reverts ? { reverts: meta.reverts } : {}) };
   return { doc: next, history: { past: [...h.past, change], future: [], mergeKey: meta.mergeKey, mergeStart: meta.at }, change };
 }
 
@@ -50,4 +50,15 @@ export function redo<T>(doc: T, h: History): { doc: T; history: History; change?
   if (!next) return { doc, history: h };
   const { doc: out } = applyPatch(doc, next.patch);
   return { doc: out, history: { past: [...h.past, next], future: h.future.slice(0, -1) }, change: next };
+}
+
+/** Ids of the changes that a later change in `past` takes back. */
+export const reverted = (past: readonly Change[]): Set<string> => new Set(past.flatMap((c) => (c.reverts ? [c.reverts] : [])));
+
+/** Taking one change back: 'undo' when it is the newest, otherwise its inverse as a new change that names it; undefined when it is gone or already taken back. */
+export function takeBack(past: readonly Change[], id: string, summary: string): 'undo' | { ops: PatchOp[]; summary: string; reverts: string } | undefined {
+  const c = past.find((x) => x.id === id);
+  if (!c || reverted(past).has(id)) return undefined;
+  if (past[past.length - 1]?.id === id) return 'undo';
+  return { ops: c.inverse, summary, reverts: id };
 }

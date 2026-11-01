@@ -4,7 +4,9 @@ import { getPreset } from '../../lib/render/presets';
 import { clockShort, restTime, sceneStart, sceneTitle } from '../../lib/editor/store';
 import { dragSpan, layerTiming, sceneLength, sceneTargets, sceneTiming, scrubTime, SCRUB_MS, ticks, tracks, type DragMode, type Span } from '../../lib/editor/timeline';
 import type { Credit, LicenceId, Recipe } from '../../lib/types';
+import { slotCount, slotOfLayer, templateOf, transitionLabel, transitionOf, TRANSITION_NAMES } from '../../lib/editor/v2';
 import { useEditor } from './Editor';
+import { Spinner } from './StatesV2';
 
 // Editor frame, bottom: the ruler, scenes, one track per layer and the music track. Drag a bar to move it; drag an edge to trim it.
 
@@ -33,7 +35,7 @@ function musicLabel(r: Recipe): string {
 }
 
 export function Timeline() {
-  const { state, edit, select, setTime, play, playhead, go } = useEditor();
+  const { state, edit, select, setTime, play, playhead, go, openPanel, remaking, overSlot } = useEditor();
   const r = state.clip.recipe;
   const lane = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLSpanElement>(null);
@@ -197,6 +199,7 @@ export function Timeline() {
   const handlers = { onPointerMove: move, onPointerUp: up, onPointerCancel: cancel };
   const music = musicLabel(r);
   const rows = tracks(r);
+  const v2 = r.scenes.some((x) => x.template);
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', padding: '8px 12px 10px', gap: 6, position: 'relative', userSelect: 'none' }}>
@@ -215,13 +218,28 @@ export function Timeline() {
                 onPointerDown={(e) => down(e, 'scene', si, -1)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectScene(si); } }}
                 style={{ position: 'absolute', left: starts[si]! * k + 1, width: Math.max(4, sceneMs(si) * k - 2), height: 30, borderRadius: 6, background: SCENE_BG[si % 3], outline: on ? '1.5px solid var(--accent)' : undefined, outlineOffset: -1.5, fontSize: 12, fontWeight: on ? 600 : 400, display: 'flex', alignItems: 'center', padding: '0 10px 0 8px', boxSizing: 'border-box', overflow: 'hidden', whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{`${si + 1} · ${sceneTitle(s)}`}</span>
+                {remaking === s.id && <Spinner size={12} />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{`${si + 1} · ${s.template ? templateOf(s)?.name ?? sceneTitle(s) : sceneTitle(s)}`}</span>
                 <span aria-hidden="true" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: EDGE_PX, cursor: 'ew-resize' }} />
+              </span>
+            );
+          })}
+          {v2 && r.scenes.map((s, si) => {
+            if (si === 0) return null;
+            const t = transitionOf(r, si);
+            const on = s.id === state.sceneId;
+            return (
+              <span key={`d-${s.id}`} style={{ position: 'absolute', left: starts[si]! * k - 8, top: 7, zIndex: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button type="button" aria-label={`Transition into scene ${si + 1}: ${TRANSITION_NAMES[t.kind]}`} title={transitionLabel(t)}
+                  onPointerDown={(e) => e.stopPropagation()} onClick={() => openPanel({ kind: 'transition', sceneId: s.id })}
+                  style={{ width: 16, height: 16, padding: 0, border: '1.5px solid var(--surface)', background: on ? 'var(--accent)' : 'var(--ink)', transform: 'rotate(45deg)', borderRadius: 3, cursor: 'pointer' }} />
+                {on && <span style={{ padding: '2px 6px', borderRadius: 5, background: 'var(--ink)', color: '#fff', font: '500 10px/1.2 var(--mono)', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{transitionLabel(t)}</span>}
               </span>
             );
           })}
         </div>
       </Row>
+      {v2 && <span style={{ position: 'absolute', top: 6, right: 14, fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--faint)' }}>Diamonds: transitions</span>}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', scrollbarGutter: 'stable', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {rows.map((t) => {
@@ -233,7 +251,9 @@ export function Timeline() {
                   const span = draft?.kind === 'layer' && draft.si === si && draft.li === li ? draft.span : { startMs: layer.startMs, endMs: Math.min(layer.endMs, sceneMs(si)) };
                   const on = layer.id === state.layerId && r.scenes[si]!.id === state.sceneId;
                   const media = layer.type === 'image' || layer.type === 'video';
-                  const text = on ? undefined : media ? [r.assets[layer.assetId]?.name ?? layer.name, presetLabel(layer.during?.preset)].filter(Boolean).join(' · ') : undefined;
+                  const ls = layer.type === 'text' ? slotOfLayer(r.scenes[si], layer.id) : undefined;
+                  const long = ls && (overSlot === layer.id || slotCount(ls.def, r.scenes[si]!.slots?.[ls.def.id]).over) ? `${ls.def.name} · too long` : undefined;
+                  const text = long ?? (on ? undefined : media ? [r.assets[layer.assetId]?.name ?? layer.name, presetLabel(layer.during?.preset)].filter(Boolean).join(' · ') : undefined);
                   const bg = on ? 'var(--accent)' : media ? 'var(--warning-line)' : mine ? 'var(--tint-strong)' : layer.type === 'text' ? 'var(--line)' : 'var(--line-strong)';
                   const style: CSSProperties = {
                     position: 'absolute', left: (starts[si]! + span.startMs) * k, width: Math.max(6, (span.endMs - span.startMs) * k), height: 24, borderRadius: 6,
@@ -245,7 +265,7 @@ export function Timeline() {
                       onPointerDown={(e) => (layer.locked ? selectLayer(si, li) : down(e, 'layer', si, li))}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectLayer(si, li); } }}>
                       <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: EDGE_PX, cursor: 'ew-resize' }} />
-                      {on ? <><span>{presetLabel(layer.in?.preset)}</span><span>{presetLabel(layer.out?.preset)}</span></> : text && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{text}</span>}
+                      {on && !long ? <><span>{presetLabel(layer.in?.preset)}</span><span>{presetLabel(layer.out?.preset)}</span></> : text && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{text}</span>}
                       <span aria-hidden="true" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: EDGE_PX, cursor: 'ew-resize' }} />
                     </span>
                   );

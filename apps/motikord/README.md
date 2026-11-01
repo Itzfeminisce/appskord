@@ -12,6 +12,13 @@ Think of a free, local, prompt-first Canva or Jitter that lives in Chrome.
 - Export MP4, WebM or GIF in several sizes. Clips with CC BY media always export with `credits.txt`.
 - Keep clips in a library on your computer.
 
+## What's new in 2.0
+
+- A critic that looks at preview frames and fixes what it finds, and a quality bar of 20 recorded prompts that must all pass the checker.
+- Templates and styles, so clips look designed, not just laid out.
+- AI images from a description, and beat sync to your music.
+- A contact sheet of the quality bar: `pnpm quality-sheet` writes `test/quality/sheet.html`.
+
 ## Install
 
 You need Chrome with the side panel.
@@ -46,6 +53,12 @@ There is no account, no analytics and no telemetry.
 | Page grabs | Your computer | The text of a grab goes to the AI only as part of a prompt you send. The page is read only after you press "Grab from this page" and allow access. |
 | Media and music searches | Your computer | Your search words go to every media source that is on (Media sources in Settings: Openverse, Wikimedia Commons and NASA by default; Museums, ccMixter, Pexels, Pixabay, Freesound, Jamendo, Unsplash or your own links if you turn them on). Picked files are downloaded once from their source and kept here. |
 | Keys | `chrome.storage.session`, cleared when Chrome closes | Groq, OpenAI, Anthropic, OpenRouter, Pexels, Pixabay, Freesound, Jamendo and Unsplash keys, and keys for your own media sources, fetched from Penv Cloud after "Connect Penv Cloud", or pasted. Each key goes only to its own service. Never printed, logged or committed. |
+
+Three more things to know:
+
+- Preview frames: when the critic checks a clip, small preview frames of it go to the AI you chose, only if that model can see images.
+- AI images: only the image description goes to the image service, never your media.
+- Beat sync stays on this computer.
 
 The full policy, with every permission and host, is in [docs/privacy.md](docs/privacy.md).
 

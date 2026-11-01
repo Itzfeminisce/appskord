@@ -12,7 +12,7 @@ export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pex
 export type MediaSourceId = 'openverse' | 'wikimedia' | 'nasa' | 'museums' | 'ccmixter' | 'pexels' | 'pixabay' | 'freesound' | 'jamendo' | 'unsplash';
 export type KeyPlacement = 'bearer' | 'authorization' | 'key' | 'api_key' | 'client_id' | 'header';
 export type CustomFormat = 'openverse' | 'wordpress' | 'mediawiki' | 'pexels' | 'pixabay' | 'generic';
-export type Author = Provider | 'builtin' | 'hand' | 'template';
+export type Author = Provider | 'builtin' | 'hand' | 'template' | 'check';   // check: a quality-check fix
 
 export interface Credit {                                    // every asset someone else made
   title: string; author: string; source: MediaSourceId | 'custom' | 'bundled' | 'page' | 'ai';   // ai: "AI image, OpenAI"
@@ -56,7 +56,7 @@ export interface Background {
   drift?: boolean;                                         // slow background motion
 }
 export interface StylePack {                               // lib/templates/packs/<id>.json
-  id: StyleId; name: string;
+  id: StyleId; name: string; description?: string;     // NewLook's line for the pack
   fonts: { display: string; text: string; number: string };
   palette: { bg: string; bg2: string; ink: string; muted: string; accent: string; accent2?: string };
   background: Background; feel: Feel; motionMs: number;
@@ -111,6 +111,7 @@ export interface Recipe {
 
 export interface Change {                                    // "Changes" tab and undo history
   id: string; at: number; by: Author; summary: string; patch: PatchOp[]; inverse: PatchOp[];
+  reverts?: string;                                          // the older change this one takes back
 }
 export type PatchOp =                                        // RFC 6902 subset; AI edits are only ever these
   | { op: 'replace' | 'add'; path: string; value: unknown }

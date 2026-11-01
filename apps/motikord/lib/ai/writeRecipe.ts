@@ -5,7 +5,7 @@ import type {
 import { chat, LLMError, type ChatMessage, type ChatOptions } from '../llm';
 import { MAX_CLIP_MS, validateRecipe } from '../recipe/validate';
 import { autoFix, check } from '../checker';
-import { applyPatch } from '../patch';
+import { applyPatch, diffPatch } from '../patch';
 import { getPreset } from '../render/presets';
 import { AiError, toAiError, type AiStateId } from './errors';
 import { toV2 } from '../recipe/migrate';
@@ -354,7 +354,12 @@ export interface ClipResult {
   issues: Issue[];                                   // what is left for the quality check
   critic?: CriticRun; criticSkipped?: CriticSkip;
   notices: AiStateId[];
+  checks: CheckStep[];                               // the same fixes as undoable steps, oldest first, for the clip's history
 }
+/** One making-time fix as a Change body: `summary` is its "Fixed for you" line. */
+export interface CheckStep { summary: string; patch: PatchOp[]; inverse: PatchOp[] }
+/** The recipe after one noted fix, so each fix can become its own Change. */
+type FixStep = { note: string; recipe: Recipe };
 
 // Checker kinds that fewer or other words can clear; the rest are layout or colour, not words.
 const WORD_FIXES: Partial<Record<Issue['kind'], string>> = {
@@ -412,9 +417,10 @@ const wordCount = (v: string) => v.trim().split(/\s+/).filter(Boolean).length;
 const overflows = (r: Recipe, layerId: string, brand?: BrandKit) => check(r, { brand }).some((i) => i.kind === 'overflow' && i.layerId === layerId);
 
 /** Text that runs out of its template box, cut a word at a time until it fits at its type size; `original` keeps it whole. */
-function cutToFit(recipe: Recipe, brand?: BrandKit): { recipe: Recipe; notes: string[] } {
+function cutToFit(recipe: Recipe, brand?: BrandKit): { recipe: Recipe; notes: string[]; steps: FixStep[] } {
   let cur = recipe;
   const notes: string[] = [];
+  const steps: FixStep[] = [];
   const tried = new Set<string>();
   const pack = getPack(recipe.style ?? 'clean');
   for (let n = 0; pack && n < 30; n++) {
@@ -438,17 +444,19 @@ function cutToFit(recipe: Recipe, brand?: BrandKit): { recipe: Recipe; notes: st
       if (overflows(trial, layer.id, brand)) continue;
       cur = trial;
       notes.push(`Scene ${si + 1} ${def.name.toLowerCase()} cut to ${k} words`);
+      steps.push({ note: notes[notes.length - 1]!, recipe: cur });
       break;
     }
   }
-  return { recipe: cur, notes };
+  return { recipe: cur, notes, steps };
 }
 
 /** Cuts overflowing words, then applies the checker's size, colour and timing fixes one at a time, keeping only those that clear their issue. */
-export function settleLayout(recipe: Recipe, brand?: BrandKit): { recipe: Recipe; notes: string[] } {
+export function settleLayout(recipe: Recipe, brand?: BrandKit): { recipe: Recipe; notes: string[]; steps: FixStep[] } {
   const fit = cutToFit(recipe, brand);
   let cur = fit.recipe;
   const notes: string[] = [...fit.notes];
+  const steps = [...fit.steps];
   const tried = new Set<string>();
   for (let n = 0; n < 60; n++) {
     const next = check(cur, { brand }).find((i) => SETTLE[i.kind] && i.fix.length > 0 && !tried.has(i.id));
@@ -463,8 +471,9 @@ export function settleLayout(recipe: Recipe, brand?: BrandKit): { recipe: Recipe
     const layer = cur.scenes[si]?.layers.find((l) => l.id === next.layerId);
     const note = SETTLE[next.kind]!(si + 1, (layer?.name ?? 'text').toLowerCase());
     if (!notes.includes(note)) notes.push(note);
+    steps.push({ note, recipe: cur });
   }
-  return { recipe: cur, notes };
+  return { recipe: cur, notes, steps };
 }
 
 const rethrowCancel = (e: unknown) => { if (e instanceof AiError && e.code === 'cancelled') throw e; };
@@ -537,8 +546,34 @@ export async function writeClip(input: ClipInput, opts: AiOptions = {}, ev: Pipe
 
   ev.onStep?.('check');
   const fixes: string[] = [];
+  const checks: CheckStep[] = [];
+  // Changes no line names (the critic's rewrites, the 60 s hold) ride with the next fix, or the last one, so undo stays in step.
+  let carried: Omit<CheckStep, 'summary'> | undefined;
+  const carry = (before: Recipe) => {
+    const patch = diffPatch(before, recipe);
+    if (!patch.length) return;
+    const { inverse } = applyPatch(before, patch);
+    carried = carried ? { patch: [...carried.patch, ...patch], inverse: [...inverse, ...carried.inverse] } : { patch, inverse };
+  };
+  const record = (summary: string, before: Recipe, after: Recipe) => {
+    const patch = diffPatch(before, after);
+    if (!patch.length) return;
+    const { inverse } = applyPatch(before, patch);
+    const step = carried ? { summary, patch: [...carried.patch, ...patch], inverse: [...inverse, ...carried.inverse] } : { summary, patch, inverse };
+    carried = undefined;
+    const last = checks[checks.length - 1];
+    if (last?.summary === summary) checks[checks.length - 1] = { summary, patch: [...last.patch, ...step.patch], inverse: [...step.inverse, ...last.inverse] };
+    else checks.push(step);
+  };
   const auto = () => {
     const f = autoFix(recipe, { brand: input.brand });
+    // Replayed one fix at a time, as autoFix applied them, so each line is its own step.
+    for (const x of f.fixed) {
+      const before = recipe;
+      recipe = applyPatch(recipe, x.fix).doc;
+      if (x.note) record(x.note, before, recipe);
+      else carry(before);
+    }
     recipe = f.recipe;
     fixes.push(...f.fixed.map((x) => x.note ?? '').filter(Boolean));
   };
@@ -562,9 +597,20 @@ export async function writeClip(input: ClipInput, opts: AiOptions = {}, ev: Pipe
     if (!why || index < 0 || !recipe.scenes[index]!.template) continue;
     failing.set(index, (failing.get(index) ?? new Set()).add(why));
   }
-  for (const [index, why] of failing) if (await refill(index, [...why].join(' '))) fixes.push(`Scene ${index + 1} rewritten to fit its template`);
+  for (const [index, why] of failing) {
+    const before = recipe;
+    if (!(await refill(index, [...why].join(' ')))) continue;
+    fixes.push(`Scene ${index + 1} rewritten to fit its template`);
+    record(fixes[fixes.length - 1]!, before, recipe);
+  }
   if (failing.size) auto();
-  const settle = () => { const st = settleLayout(recipe, input.brand); recipe = st.recipe; fixes.push(...st.notes.filter((x) => !fixes.includes(x))); };
+  const settle = () => {
+    const st = settleLayout(recipe, input.brand);
+    let at = recipe;
+    for (const x of st.steps) { record(x.note, at, x.recipe); at = x.recipe; }
+    recipe = st.recipe;
+    fixes.push(...st.notes.filter((x) => !fixes.includes(x)));
+  };
   settle();
   ev.onFixes?.(fixes);
 
@@ -585,18 +631,25 @@ export async function writeClip(input: ClipInput, opts: AiOptions = {}, ev: Pipe
       ev.onCriticSkipped?.(criticSkipped, model.model);
     }
     if (critic?.notes.length) {
-      for (const n of critic.notes) await refill(n.sceneIndex, `${n.problem} ${n.fix}`.trim());
+      for (const n of critic.notes) {
+        const before = recipe;
+        if (await refill(n.sceneIndex, `${n.problem} ${n.fix}`.trim())) carry(before);
+      }
       auto();
       settle();
     }
   }
   // The timing fixes lengthen scenes, so the clip is held to 60 s once more.
   if (totalMs(recipe.scenes) > MAX_CLIP_MS) {
+    const before = recipe;
     recipe = fitToMax(recipe);
+    carry(before);
     if (!notices.includes('too-long')) notices.push('too-long');
   }
+  const last = checks[checks.length - 1];
+  if (carried && last) checks[checks.length - 1] = { summary: last.summary, patch: [...last.patch, ...carried.patch], inverse: [...carried.inverse, ...last.inverse] };
   const issues = check(recipe, { brand: input.brand });
-  return { recipe, by, storyboard: sb, fixes, issues, critic, criticSkipped, notices };
+  return { recipe, by, storyboard: sb, fixes, issues, critic, criticSkipped, notices, checks };
 }
 
 /** "Remake this scene": one fill call for that scene, its media kept. Throws AiError (scene-remake-failed). */

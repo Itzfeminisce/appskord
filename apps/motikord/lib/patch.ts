@@ -116,3 +116,22 @@ export function applyPatch<T>(doc: T, ops: PatchOp[]): { doc: T; inverse: PatchO
   }
   return { doc: current as T, inverse };
 }
+
+const isRecord = (v: unknown): v is Record<string, unknown> => isContainer(v) && !Array.isArray(v);
+const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
+/** The ops that turn `a` into `b`, down to the values that changed (lists of a new length are replaced whole). */
+export function diffPatch(a: unknown, b: unknown, tokens: string[] = []): PatchOp[] {
+  if (same(a, b)) return [];
+  const path = toPointer(tokens);
+  if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) return a.flatMap((x, i) => diffPatch(x, b[i], [...tokens, String(i)]));
+  if (!isRecord(a) || !isRecord(b)) return [{ op: 'replace', path, value: b }];
+  const ops: PatchOp[] = [];
+  for (const k of Object.keys(a)) {
+    if (a[k] === undefined) continue;
+    if (b[k] === undefined) ops.push({ op: 'remove', path: toPointer([...tokens, k]) });
+    else ops.push(...diffPatch(a[k], b[k], [...tokens, k]));
+  }
+  for (const k of Object.keys(b)) if (b[k] !== undefined && a[k] === undefined) ops.push({ op: 'add', path: toPointer([...tokens, k]), value: b[k] });
+  return ops;
+}

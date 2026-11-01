@@ -13,7 +13,7 @@ import { send } from './messages';
 import { getSettings, onSettingsChanged } from './settings';
 import { copyTemplate, type Template } from './templates';
 import { autoStyle } from './templates/scenes';
-import type { Aspect, Asset, BrandKit, Clip, ClipType, CriticNote, Issue, LookStyle, Mood, Pace, Provider, Recipe, Settings, StyleId, Storyboard } from './types';
+import type { Aspect, Asset, BrandKit, Change, Clip, ClipType, CriticNote, Issue, LookStyle, Mood, Pace, Provider, Recipe, Settings, StyleId, Storyboard } from './types';
 
 /** What a failed make shows: an AI state card, or one of the two setup cards Making can show. */
 export type MakeState = AiStateId | 'penv-disconnected' | 'provider-access' | 'storyboard-failed';
@@ -111,7 +111,9 @@ export async function makeClip(input: MakeInput, hooks: MakeHooks = {}): Promise
     onRecipe?.(recipe);
     onStep?.('open');
     const at = now();
-    const clip: Clip = { id: recipe.id, recipe, history: [], createdAt: at, updatedAt: at };
+    // The fixes made while making are the clip's first Changes, so "Fixed for you" lists them and each can be undone.
+    const history: Change[] = wrote.checks.map((c, i) => ({ id: crypto.randomUUID(), at: at + i, by: 'check', ...c }));
+    const clip: Clip = { id: recipe.id, recipe, history, createdAt: at, updatedAt: at };
     if (ai.signal?.aborted) throw new AiError('cancelled', 'make');
     await save(clip);
     return {

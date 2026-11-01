@@ -22,7 +22,7 @@ export interface EditorState {
   lastChange?: Change;
 }
 
-export interface Edit { ops: PatchOp[]; summary: string; mergeKey?: string }
+export interface Edit { ops: PatchOp[]; summary: string; mergeKey?: string; reverts?: string }
 
 export type Action =
   | { type: 'load'; clip: Clip }
@@ -59,7 +59,7 @@ export function reducer(s: EditorState, a: Action): EditorState {
     case 'play': return { ...s, playing: a.playing };
     case 'edit': {
       try {
-        const out = record(s.clip.recipe, history(s), a.edit.ops, { by: a.by ?? 'hand', summary: a.edit.summary, at: a.at, id: a.id, mergeKey: a.edit.mergeKey });
+        const out = record(s.clip.recipe, history(s), a.edit.ops, { by: a.by ?? 'hand', summary: a.edit.summary, at: a.at, id: a.id, mergeKey: a.edit.mergeKey, reverts: a.edit.reverts });
         const next = withHistory(s, out.doc, out.history, a.at, out.change);
         return a.select ? keepSelection({ ...next, sceneId: a.select.sceneId, layerId: a.select.layerId }) : next;
       } catch (error) {

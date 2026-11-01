@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Change, PatchOp } from '../types';
 import { record, undo, type History } from './history';
 import { devSampleRecipe } from './store';
-import { agoLabel, describe as describeChange, metaLine, newestFirst, promptSummary, splitSummary, stepsBack } from './changes';
+import { agoLabel, describe as describeChange, madeLine, metaLine, newestFirst, promptSummary, sceneOf, splitSummary, statesAfter, stepsBack, whenLabel, whoLabel } from './changes';
 
 const r0 = devSampleRecipe('c');
 const size = (v: number): PatchOp[] => [{ op: 'replace', path: '/scenes/0/layers/2/sizePx', value: v }];
@@ -66,5 +66,20 @@ describe('changes', () => {
     const { docs } = threeChanges();
     expect(describeChange(docs[1]!, docs[2]!)).toBe('Clip is now 16 s.');
     expect(describeChange(docs[2]!, docs[3]!)).toBe('Title: Rise → Pop.');
+  });
+});
+
+describe('changes v2', () => {
+  it('names who and when as ChangesV2 does', () => {
+    expect(['hand', 'groq', 'check', 'template'].map((b) => whoLabel(b as Change['by']))).toEqual(['You', 'Groq', 'Quality check', undefined]);
+    expect(whenLabel(1000, 30_000)).toBe('now');
+    expect(whenLabel(0, 120_000)).toBe('2 min ago');
+    expect(madeLine({ ...r0, pace: 'normal' }, 'Bold')).toBe('3 scenes, Bold, Normal pace');
+  });
+
+  it('gives the clip just after each change, newest first, for thumbnails', () => {
+    const { doc, h, docs } = threeChanges();
+    expect(statesAfter(doc, h.past)).toEqual([docs[3], docs[2], docs[1]]);
+    expect(sceneOf(h.past[1]!)).toBe(1);
   });
 });

@@ -1,11 +1,11 @@
 import { clipDuration } from '../../lib/render/drawFrame';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
 import { createAutosave, type Autosave, type SaveStatus } from '../../lib/editor/autosave';
-import { stepsBack } from '../../lib/editor/changes';
-import { canRedo, canUndo } from '../../lib/editor/history';
+import { splitSummary, stepsBack } from '../../lib/editor/changes';
+import { canRedo, canUndo, takeBack } from '../../lib/editor/history';
 import { mergeClip, sameVersion } from '../../lib/editor/merge';
 import { switchesSize, toSizeOnly } from '../../lib/editor/sizeOnly';
-import { devSampleRecipe, findLayer, initState, reducer, removeLayer, sceneIndex, type EditorState, type Edit } from '../../lib/editor/store';
+import { devSampleRecipe, findLayer, initState, reducer, removeLayer, sceneIndex, type Action, type EditorState, type Edit } from '../../lib/editor/store';
 import { getBrandKit, getClip, putClip, updateClip } from '../../lib/db';
 import { getMedia } from '../../lib/media';
 import { brandEdit, loadKit, registerBrandFonts } from '../../lib/brand';
@@ -15,7 +15,11 @@ import { goInSidePanel, useWindowId } from '../../lib/sidepanelGo';
 import { MediaCache } from '../../lib/render/cache';
 import { devTools, type RouteParams } from '../../lib/router';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
-import type { Asset, Author, BrandKit, Clip, PresetSlot, Recipe } from '../../lib/types';
+import type { AiMode, Asset, Author, BrandKit, Clip, PresetSlot, Provider, Recipe } from '../../lib/types';
+import { regenerateScene } from '../../lib/ai/writeRecipe';
+import { toAiError } from '../../lib/ai/errors';
+import { HOSTS, requestHost, type HostAccess } from '../../lib/hostAccess';
+import { isV1Clip, remakeEdit } from '../../lib/editor/v2';
 import { useRouter, type EditorScreen } from '../../entrypoints/editor/router';
 import { AddToScene } from './AddToScene';
 import { Canvas } from './Canvas';
@@ -30,6 +34,11 @@ import { ClipNotFound, EditorLoading, FirstRun, MediaMissing, PreviewLight, Save
 import { Timeline } from './Timeline';
 import { TopBar } from './TopBar';
 import { Transport } from './Transport';
+import { NewLookDialog } from './NewLook';
+import { SceneTab } from './SceneTab';
+import { SwapTemplatePopover } from './SwapTemplate';
+import { TransitionPickerPopover } from './TransitionPicker';
+import { Remade, Remaking, Spinner, RestyleDone, RestyleFailed, SceneRemakeFailed, SwapNoFit, TextShortened, V1Clip } from './StatesV2';
 
 /** What every editor part (and T8's timeline, presets and prompt box) reads and calls. */
 export interface EditorApi {
@@ -60,12 +69,41 @@ export interface EditorApi {
   sizeOnly: boolean;
   setSizeOnly: (on: boolean) => void;
   /** A recipe the canvas draws instead of the clip, without recording a change (preset preview). */
-  setPreview: (r: Recipe | undefined) => void;
+  /** `label` names a template preview ("{template} · not applied yet"). */
+  setPreview: (r: Recipe | undefined, label?: string) => void;
+  /** Right panel tab: Scene (v2), Layer or Changes. */
+  tab: EditorTab;
+  setTab: (t: EditorTab) => void;
+  /** The v2 state card shown over the stage (StatesMakeV2). */
+  notice?: Notice;
+  setNotice: (n: Notice | undefined) => void;
+  /** The slot layer being typed past its word limit on the stage, so its timeline bar reads "{slot} · too long". */
+  overSlot?: string;
+  setOverSlot: (layerId: string | undefined) => void;
+  /** SwapTemplate, NewLook and TransitionPicker. */
+  openPanel: (p: V2Panel) => void;
+  /** The scene being remade (SceneRemaking), if any. */
+  remaking?: string;
+  remake: (sceneId: string, request?: string, done?: () => void) => void;
+  /** Remakes these scenes one after another, each as its own Change; it stops at the first that fails or is stopped. `done` runs once its scene is remade. */
+  remakeEach: (jobs: { sceneId: string; request?: string; done?: () => void }[]) => void;
+  /** The clip's recipe right now, for work that finishes after a render (retries, AI replies). */
+  current: () => Recipe;
 }
+
+export type EditorTab = 'scene' | 'layer' | 'changes';
+export type Notice =
+  | { kind: 'text-shortened'; original?: string; changeId?: string }
+  | { kind: 'scene-remade'; sceneId: string; changeId?: string }
+  | { kind: 'scene-remake-failed'; sceneId: string; request?: string }
+  | { kind: 'swap-no-fit'; sceneId: string }
+  | { kind: 'restyle-done'; style: string; changeId?: string }
+  | { kind: 'restyle-failed'; style: string; retry: () => void };
+export type V2Panel = { kind: 'swap'; sceneId: string } | { kind: 'look' } | { kind: 'transition'; sceneId: string };
 
 /** What the editor opens on: a route screen for Presets, Formats or EditorPrompt. */
 export type EditorOpenOn = 'presets' | 'formats' | 'changes';
-type Panel = { kind: 'presets'; sceneId: string; layerId: string; slot: PresetSlot } | { kind: 'formats' };
+type Panel = { kind: 'presets'; sceneId: string; layerId: string; slot: PresetSlot } | { kind: 'formats' } | V2Panel;
 
 const Ctx = createContext<EditorApi | null>(null);
 export function useEditor(): EditorApi {
@@ -186,17 +224,27 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   const [toastText, setToastText] = useState<string>();
   const [firstRun, setFirstRun] = useState(false);
   const [missing, setMissing] = useState(loaded.missing);
-  const [tab, setTab] = useState<'layer' | 'changes'>(open === 'changes' ? 'changes' : 'layer');
+  const [tab, setTab] = useState<EditorTab>(open === 'changes' ? 'changes' : loaded.clip.recipe.scenes.some((s) => s.template) ? 'scene' : 'layer');
+  const [notice, setNotice] = useState<Notice>();
+  const [overSlot, setOverSlot] = useState<string>();
+  const [remaking, setRemaking] = useState<string>();
+  const [keepV1, setKeepV1] = useState(false);
+  const remakeStop = useRef<AbortController>(undefined);
+  const aiMode = useRef<{ ai: AiMode; provider: Provider }>({ ai: 'cloud', provider: 'groq' });
   const [panel, setPanel] = useState<Panel | undefined>(() => {
     if (open === 'formats') return { kind: 'formats' };
     if (open === 'presets' && state.layerId) return { kind: 'presets', sceneId: state.sceneId, layerId: state.layerId, slot: 'in' };
     return undefined;
   });
   const [sizeOnly, setSizeOnly] = useState(false);
-  const [preview, setPreview] = useState<Recipe>();
+  const [preview, setPreviewRecipe] = useState<Recipe>();
+  const [previewLabel, setPreviewLabel] = useState<string>();
+  const setPreview = useCallback((r: Recipe | undefined, label?: string) => { setPreviewRecipe(r); setPreviewLabel(r ? label : undefined); }, []);
   const playhead = useRef(state.timeMs);
   const stateRef = useRef(state);
   stateRef.current = state;
+  // Edits and undos also land on the ref at once, so a run of them in one handler each sees the one before.
+  const act = useCallback((a: Action) => { stateRef.current = reducer(stateRef.current, a); dispatch(a); }, []);
 
   const autosave = useRef<Autosave>(undefined);
   const lastSaved = useRef(state.clip);
@@ -219,8 +267,8 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
     if (m.clip === s.clip) return;
     // Nothing of ours is unsaved: the stored clip is already right, so there is nothing to write back.
     if (!m.dirty) lastSaved.current = m.clip;
-    dispatch({ type: 'merge', clip: m.clip });
-  }, []);
+    act({ type: 'merge', clip: m.clip });
+  }, [act]);
 
   useEffect(() => {
     // Made in the effect so StrictMode's trial unmount cannot leave a disposed saver behind.
@@ -275,11 +323,18 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   }, [state.clip]);
 
   useEffect(() => {
-    void getSettings().then((s) => setSmooth(s.smoothPreview)).catch(() => undefined);
-    const off = onSettingsChanged((s) => setSmooth(s.smoothPreview));
+    void getSettings().then((s) => { setSmooth(s.smoothPreview); aiMode.current = { ai: s.ai, provider: s.provider }; }).catch(() => undefined);
+    const off = onSettingsChanged((s) => { setSmooth(s.smoothPreview); aiMode.current = { ai: s.ai, provider: s.provider }; });
     void browser.storage.local.get(FIRST_RUN_KEY).then((v) => setFirstRun(!v[FIRST_RUN_KEY])).catch(() => undefined);
     return off;
   }, []);
+
+  // Done and shortened cards step aside after a while; failures stay until acted on.
+  useEffect(() => {
+    if (!notice || notice.kind === 'scene-remake-failed' || notice.kind === 'restyle-failed' || notice.kind === 'swap-no-fit') return;
+    const id = setTimeout(() => setNotice(undefined), 10_000);
+    return () => clearTimeout(id);
+  }, [notice]);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const toast = useCallback((text: string) => {
@@ -301,21 +356,21 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
         console.error('Motikord: could not apply an edit', error);
         return false;
       }
-      dispatch({ type: 'edit', edit: e, by: o.by, at: Date.now(), id: newId(), select: o.select });
+      act({ type: 'edit', edit: e, by: o.by, at: Date.now(), id: newId(), select: o.select });
       // "This size only" names one size, so a size switch turns it off.
       if (switched) setSizeOnly(false);
       if (o.toast) toast(e.summary);
       return true;
     },
-    undo: () => { dispatch({ type: 'undo', at: Date.now() }); setToastText(undefined); },
-    redo: () => dispatch({ type: 'redo', at: Date.now() }),
-    select: (sceneId, layerId, timeMs) => dispatch({ type: 'select', sceneId, layerId, timeMs }),
-    setTime: (ms) => { playhead.current = ms; dispatch({ type: 'time', ms }); },
+    undo: () => { act({ type: 'undo', at: Date.now() }); setToastText(undefined); },
+    redo: () => act({ type: 'redo', at: Date.now() }),
+    select: (sceneId, layerId, timeMs) => act({ type: 'select', sceneId, layerId, timeMs }),
+    setTime: (ms) => { playhead.current = ms; act({ type: 'time', ms }); },
     play: (on) => {
       // Pressing play at the end starts again from 0:00.
       const cur = stateRef.current;
-      if (on && cur.timeMs >= clipDuration(cur.clip.recipe) - 1) { playhead.current = 0; dispatch({ type: 'time', ms: 0 }); }
-      dispatch({ type: 'play', playing: on });
+      if (on && cur.timeMs >= clipDuration(cur.clip.recipe) - 1) { playhead.current = 0; act({ type: 'time', ms: 0 }); }
+      act({ type: 'play', playing: on });
     },
     toast,
     go: (screen, params = {}) => {
@@ -332,11 +387,51 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
     },
     goBack: (changeId) => {
       const n = stepsBack(stateRef.current.clip.history, changeId) ?? 0;
-      for (let i = 0; i < n; i++) dispatch({ type: 'undo', at: Date.now() });
+      for (let i = 0; i < n; i++) act({ type: 'undo', at: Date.now() });
       if (n) setToastText(undefined);
     },
     sizeOnly, setSizeOnly, setPreview,
-  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly]);
+    tab, setTab, notice, setNotice: (n) => setNotice(n && undoable(n) && !n.changeId ? { ...n, changeId: stateRef.current.clip.history.at(-1)?.id } : n), overSlot, setOverSlot, remaking,
+    openPanel: (p) => setPanel(p),
+    current: () => stateRef.current.clip.recipe,
+    remake: (sceneId, request, done) => apiRef.current.remakeEach([{ sceneId, request, done }]),
+    remakeEach: (jobs) => {
+      if (remakeStop.current || !jobs.length) return;
+      const { ai, provider } = aiMode.current;
+      // Asked inside the click, before any await, so Chrome shows its prompt.
+      const access: Promise<HostAccess> = ai === 'cloud' ? requestHost(HOSTS[provider]) : Promise.resolve('granted');
+      const ac = new AbortController();
+      remakeStop.current = ac;
+      setNotice(undefined);
+      void (async () => {
+        for (const { sceneId, request, done } of jobs) {
+          if (ac.signal.aborted) break;
+          setRemaking(sceneId);
+          try {
+            if ((await access) === 'denied') throw new Error('host access denied');
+            const from = stateRef.current.clip.recipe;
+            const si = sceneIndex(from, sceneId);
+            if (si < 0) continue;
+            const after = await regenerateScene(from, si, request?.trim() || undefined, { signal: ac.signal, brand: loaded.brand });
+            if (ac.signal.aborted) break;
+            // Hand edits made meanwhile stay: only this scene is replaced, in the clip as it is now.
+            const ok = apiRef.current.edit(remakeEdit(stateRef.current.clip.recipe, sceneId, after), { by: ai === 'cloud' ? provider : 'builtin' });
+            setNotice(ok ? { kind: 'scene-remade', sceneId, changeId: stateRef.current.clip.history.at(-1)?.id } : { kind: 'scene-remake-failed', sceneId, request });
+            if (!ok) break;
+            done?.();
+          } catch (error) {
+            const e = toAiError(error, 'make');
+            if (e.code === 'cancelled' || ac.signal.aborted) break;
+            console.error('Motikord: could not remake the scene', error);
+            setNotice({ kind: 'scene-remake-failed', sceneId, request });
+            break;
+          }
+        }
+        if (remakeStop.current === ac) { remakeStop.current = undefined; setRemaking(undefined); }
+      })();
+    },
+  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly, tab, notice, overSlot, remaking, act]);
+  const stopRemake = () => { remakeStop.current?.abort(); remakeStop.current = undefined; setRemaking(undefined); };
   // The canvas alone sees the preview recipe; everything else keeps the clip.
   const canvasApi = useMemo<EditorApi>(() => (preview ? { ...api, state: { ...api.state, clip: { ...api.state.clip, recipe: preview } } } : api), [api, preview]);
 
@@ -397,21 +492,42 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
           </aside>
           <main style={{ position: 'relative', flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--stage)', minWidth: 0, padding: '12px 20px 10px', gap: 8 }}>
             <Ctx.Provider value={canvasApi}><Canvas /></Ctx.Provider>
+            {previewLabel && (
+              <div role="status" style={{ position: 'absolute', top: 16, left: 20, display: 'flex', gap: 8, alignItems: 'center', zIndex: 4 }}>
+                <span style={{ padding: '3px 8px', borderRadius: 6, background: 'var(--accent)', color: '#fff', font: '600 11px/1.2 var(--font)' }}>Preview</span>
+                <span style={{ padding: '3px 8px', borderRadius: 6, background: 'var(--ink)', color: '#fff', font: '500 12px/1.2 var(--font)' }}>{`${previewLabel} · not applied yet`}</span>
+              </div>
+            )}
+            {remaking && <span role="status" style={{ position: 'absolute', top: 16, right: 20, zIndex: 4, display: 'flex', gap: 6, alignItems: 'center', padding: '4px 10px', borderRadius: 8, background: 'var(--ink)', color: '#fff', font: '600 12px/1.2 var(--font)' }}><Spinner colour="#fff" size={12} />{`Remaking scene ${sceneIndex(state.clip.recipe, remaking) + 1}…`}</span>}
             <Transport />
             {light && <div style={{ maxWidth: 520 }}><PreviewLight /></div>}
             <PromptBox />
             <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', width: 'min(440px, calc(100% - 40px))', display: 'flex', flexDirection: 'column', gap: 8, zIndex: 5 }}>
               {save === 'failed' && <SaveFailed onRetry={() => void autosave.current?.flush()} />}
+              {isV1Clip(state.clip.recipe) && !keepV1 && <V1Clip onNewLook={() => setPanel({ kind: 'look' })} onKeep={() => setKeepV1(true)} />}
+              {notice && <NoticeCard notice={notice} api={api} />}
               {missing && <MediaMissing file={missing.file} scene={missing.scene} onReplace={() => { setMissing(undefined); api.go('YourMedia', { sceneId: state.clip.recipe.scenes[missing.scene - 1]?.id }); }} />}
             </div>
             {router.route.screen === 'Checker' && <CheckerPanel />}
             {firstRun && <div style={{ position: 'absolute', top: 12, left: 12, width: 260, zIndex: 6 }}><FirstRun onDone={dismissFirstRun} /></div>}
-            {toastText && <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 320, zIndex: 6 }}><UndoToast text={toastText} onUndo={api.undo} /></div>}
+            {remaking && (
+              <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 360, zIndex: 7 }}>
+                <Remaking n={sceneIndex(state.clip.recipe, remaking) + 1} others={state.clip.recipe.scenes.length - 1} onStop={stopRemake} />
+              </div>
+            )}
+            {!remaking && notice?.kind === 'scene-remade' && (
+              <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 360, zIndex: 7 }}>
+                <Remade n={sceneIndex(state.clip.recipe, notice.sceneId) + 1} onUndo={() => undoNotice(api, notice.changeId)} onKeep={() => setNotice(undefined)} />
+              </div>
+            )}
+            {toastText && !remaking && notice?.kind !== 'scene-remade' && <div style={{ position: 'absolute', bottom: 96, left: '50%', transform: 'translateX(-50%)', width: 320, zIndex: 6 }}><UndoToast text={toastText} onUndo={api.undo} /></div>}
           </main>
           <aside style={{ width: 300, flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', alignContent: 'start', padding: '14px 16px', gap: 12, overflowY: 'auto' }}>
             {tab === 'changes'
               ? <ChangesTab onLayer={() => setTab('layer')} />
-              : <LayerTab key={`${state.sceneId}/${state.layerId ?? ''}/${si}`} />}
+              : tab === 'scene'
+                ? <SceneTab key={`${state.sceneId}/${si}`} />
+                : <LayerTab key={`${state.sceneId}/${state.layerId ?? ''}/${si}`} />}
           </aside>
         </div>
         <section aria-label="Timeline" style={{ height: 196, flexShrink: 0, background: 'var(--surface)', borderTop: '1px solid var(--line)', display: 'flex' }}>
@@ -422,8 +538,38 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
             <PresetsPopover key={`${panel.sceneId}/${panel.layerId}/${panel.slot}`} sceneId={panel.sceneId} layerId={panel.layerId} slot={panel.slot} onClose={() => setPanel(undefined)} />
           </div>
         )}
+        {panel?.kind === 'swap' && <SwapTemplatePopover sceneId={panel.sceneId} onClose={() => { setPreview(undefined); setPanel(undefined); }} />}
+        {panel?.kind === 'look' && <NewLookDialog onClose={() => setPanel(undefined)} />}
+        {panel?.kind === 'transition' && <TransitionPickerPopover sceneId={panel.sceneId} onClose={() => setPanel(undefined)} />}
         {panel?.kind === 'formats' && <FormatsPanel onClose={() => { setSizeOnly(false); setPanel(undefined); }} />}
       </div>
     </Ctx.Provider>
   );
+}
+
+const undoable = (n: Notice): n is Extract<Notice, { changeId?: string }> => n.kind === 'text-shortened' || n.kind === 'scene-remade' || n.kind === 'restyle-done';
+
+/** A card's Undo takes back its own change: in place while it is the newest, otherwise as a new change, so later edits stay. */
+function undoNotice(api: EditorApi, changeId: string | undefined) {
+  const past = api.state.clip.history;
+  const c = changeId ? past.find((x) => x.id === changeId) : past.at(-1);
+  const back = c && takeBack(past, c.id, `${splitSummary(c.summary).title} undone`);
+  if (back === 'undo') api.undo();
+  else if (back) api.edit(back);
+  api.setNotice(undefined);
+}
+
+/** The StatesMakeV2 card for the newest v2 action (scene-remade shows as the SceneRemaking toast instead). */
+function NoticeCard({ notice, api }: { notice: Notice; api: EditorApi }) {
+  const r = api.state.clip.recipe;
+  const close = () => api.setNotice(undefined);
+  const undo = () => undoNotice(api, 'changeId' in notice ? notice.changeId : undefined);
+  switch (notice.kind) {
+    case 'text-shortened': return <TextShortened original={notice.original} onUndo={undo} />;
+    case 'scene-remade': return null;
+    case 'scene-remake-failed': return <SceneRemakeFailed n={sceneIndex(r, notice.sceneId) + 1} onRetry={() => api.remake(notice.sceneId, notice.request)} />;
+    case 'swap-no-fit': return <SwapNoFit onRemake={() => api.remake(notice.sceneId)} />;
+    case 'restyle-done': return <RestyleDone style={notice.style} onUndo={undo} />;
+    case 'restyle-failed': return <RestyleFailed style={notice.style} onRetry={() => { close(); notice.retry(); }} />;
+  }
 }

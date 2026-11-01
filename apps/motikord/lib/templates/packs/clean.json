@@ -1,6 +1,7 @@
 {
   "id": "clean",
   "name": "Clean",
+  "description": "Inter on a soft white gradient with a blue accent. Text eases in; scenes change with cross-fades and slides.",
   "fonts": {
     "display": "Inter",
     "text": "Inter",

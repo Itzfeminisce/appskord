@@ -1,6 +1,7 @@
 {
   "id": "bold",
   "name": "Bold",
+  "description": "Archivo Black on black with full-bleed yellow blocks. Words snap in with overshoot; scenes change with pushes, wipes and zooms.",
   "fonts": {
     "display": "Archivo Black",
     "text": "Archivo",

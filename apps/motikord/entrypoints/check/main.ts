@@ -4,11 +4,14 @@ import { frameStats, round } from '@/lib/check/stats';
 import { exportVerdict, memoryVerdict, previewVerdict, supportVerdict } from '@/lib/check/verdict';
 import { drawFrame, makeImages } from './draw';
 import type { RenderReply } from './render.worker';
+import { BG_KINDS, jpegFrame, pipeline, previewBackground, previewTransition, TRANSITIONS, type V2Row } from './v2';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const results: Partial<Record<TestId, TestResult>> = {};
 // `?preview=5` shortens the 60 s preview test, for a quick developer run.
 const previewSeconds = Number(new URLSearchParams(location.search).get('preview')) || PREVIEW.seconds;
+// `?v2=3` sets the seconds per v2 preview test.
+const v2Seconds = Number(new URLSearchParams(location.search).get('v2')) || 10;
 
 async function machine(): Promise<Numbers> {
   const nav = navigator as Navigator & { deviceMemory?: number; userAgentData?: { brands?: { brand: string; version: string }[]; platform?: string } };
@@ -213,7 +216,7 @@ for (const [k, v] of Object.entries(await machine())) {
 
 $('all').addEventListener('click', () => void guarded(TESTS.map((t) => t.id)));
 $('copy').addEventListener('click', async () => {
-  const text = JSON.stringify(shapeResults(await machine(), results, new Date().toISOString()), null, 2);
+  const text = JSON.stringify({ ...shapeResults(await machine(), results, new Date().toISOString()), v2: v2Results }, null, 2);
   try {
     await navigator.clipboard.writeText(text);
     $('status').textContent = 'Results copied. Paste them in the thread.';
@@ -224,5 +227,49 @@ $('copy').addEventListener('click', async () => {
     document.body.append(pre);
   }
 });
+const v2Results: V2Row[] = [];
+const v2Tests: [string, () => Promise<V2Row>][] = [
+  ...BG_KINDS.map((k): [string, () => Promise<V2Row>] => [`bg-${k}`, () => previewBackground($('v2preview'), k, v2Seconds)]),
+  ...TRANSITIONS.map((k): [string, () => Promise<V2Row>] => [`tr-${k}`, () => previewTransition($('v2preview'), k, v2Seconds)]),
+  ['jpeg', jpegFrame],
+  ['pipeline', pipeline],
+];
+function v2Row(id: string, cells: string[]) {
+  let tr = document.getElementById(`v2-${id}`);
+  if (!tr) {
+    tr = document.createElement('tr');
+    tr.id = `v2-${id}`;
+    tr.innerHTML = '<td></td><td></td><td class="verdict"></td><td class="lines"></td>';
+    $('v2rows').append(tr);
+  }
+  cells.forEach((c, i) => { tr.children[i]!.textContent = c; });
+  const verdict = cells[2] ?? '';
+  tr.children[2]!.className = `verdict ${verdict === 'Running' ? 'running' : verdict}`;
+}
+for (const [id] of v2Tests) v2Row(id, [id, '', '', '']);
+async function runV2() {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  v2Results.length = 0;
+  for (const [id, test] of v2Tests) {
+    $('status').textContent = `Running v2 ${id}`;
+    v2Row(id, [id, '', 'Running', '']);
+    try {
+      const r = await test();
+      v2Results.push(r);
+      v2Row(id, [r.name, r.budget, r.pass ? 'Pass' : 'Fail', `${r.value} ${r.unit}\n${numbersText(r.numbers)}`]);
+    } catch (error) {
+      console.error('Motikord: could not run the v2 check', error);
+      v2Results.push({ id, name: id, budget: '', value: null, unit: '', pass: false, numbers: { error: String(error) } });
+      v2Row(id, [id, '', 'Fail', String(error)]);
+    }
+  }
+  $('status').textContent = 'Done. Press Copy results.';
+  document.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+  busy = false;
+}
+$('v2').addEventListener('click', () => void runV2());
 // Results for scripted runs.
+(globalThis as { motikordV2?: () => Promise<V2Row[]> }).motikordV2 = async () => { await runV2(); return v2Results; };
 (globalThis as { motikordResults?: () => unknown }).motikordResults = async () => shapeResults(await machine(), results, new Date().toISOString());
