@@ -186,14 +186,15 @@ describe('checker v2', () => {
     const r = v2([free([txt('head', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), logoLayer({ x: 0.12, y: 0.12, w: 0.2, h: 0.1 })])]);
     const hit = same(r, 'overlap');
     expect(hit.length).toBeGreaterThan(0);
-    expect(hit[0]!.note).toBe('Logo overlaps head in scene 1');
+    expect(hit[0]!.note).toBe('Scene 1 logo moved off the head');
     expect(same(apply(r, 'overlap'), 'overlap')).toEqual([]);
     expect(v2kinds(v2([free([txt('head', { x: 0.1, y: 0.1, w: 0.8, h: 0.2 }), logoLayer({ x: 0.7, y: 0.6, w: 0.2, h: 0.1 })])]))).not.toContain('overlap');
   });
 
   it('overlap: a templated scene falls back to the template boxes', () => {
     const s = tpl('s1', 'title-hook');
-    s.layers = s.layers.map((l, i) => (i === 1 ? { ...l, boxes: { ...l.boxes, '9:16': { ...s.layers[0]!.boxes!['9:16']! } } } : l));
+    const [first, second] = s.layers.filter((l) => l.type === 'text');
+    s.layers = s.layers.map((l) => (l === second ? { ...l, boxes: { ...l.boxes, '9:16': { ...first!.boxes!['9:16']! } } } : l));
     const r = v2([s]);
     expect(same(r, 'overlap').length).toBeGreaterThan(0);
     expect(same(apply(r, 'overlap'), 'overlap')).toEqual([]);

@@ -330,7 +330,7 @@ function layout(recipe: Recipe, scene: Scene, si: number, opts: CheckOptions, ou
       const lead = logo ?? b;
       out.push({
         id: id('overlap', scene.id, `${a.layer.id}+${b.layer.id}`, aspect), sceneId: scene.id, layerId: lead.layer.id, aspect, kind: 'overlap', fix,
-        note: logo ? `Logo overlaps ${label(other).toLowerCase()} in scene ${n}` : `${label(a)} overlaps ${label(b).toLowerCase()} in scene ${n}`,
+        note: corner ? `Scene ${n} logo moved off the ${label(other).toLowerCase()}` : logo ? `Logo overlaps ${label(other).toLowerCase()} in scene ${n}` : `${label(a)} overlaps ${label(b).toLowerCase()} in scene ${n}`,
       });
     }
     // align: left edges or centres within 2% of each other, but not equal
@@ -352,7 +352,7 @@ function layout(recipe: Recipe, scene: Scene, si: number, opts: CheckOptions, ou
       out.push({
         id: id('align', scene.id, `${a.layer.id}+${b.layer.id}`, aspect), sceneId: scene.id, layerId: b.layer.id, aspect, kind: 'align',
         fix: ok ? [boxFix(recipe, b.layer, si, b.li, aspect, to)] : [],
-        note: `${label(b)} lined up with ${label(a).toLowerCase()} in scene ${n}`,
+        note: `Scene ${n} ${label(b).toLowerCase()} lined up with the ${label(a).toLowerCase()}`,
       });
     }
     // empty: visible content under 12% of the frame for over a second
@@ -432,7 +432,7 @@ function words(recipe: Recipe, scene: Scene, si: number, opts: CheckOptions, out
   out.push({
     id: id('words', scene.id, bad[0]!.id, recipe.aspect), sceneId: scene.id, layerId: bad[0]!.id, aspect: recipe.aspect, kind: 'words',
     fix: fresh ? [{ op: 'replace', path: `/scenes/${si}`, value: fresh }] : [],
-    note: `Scene ${si + 1} shortened to fit ${t.name}`,
+    note: `Scene ${si + 1} ${bad[0]!.name.toLowerCase()} cut to ${bad[0]!.words} words`,
   });
 }
 
@@ -525,7 +525,7 @@ function repeats(recipe: Recipe, opts: CheckOptions, out: Issue[]) {
       if (!slots || !pack) continue;
       const swapped = expandScene({ ...scene, template: cand, slots, original: undefined, layers: [] }, pack, opts.brand);
       fix = [{ op: 'replace', path: `/scenes/${i}`, value: swapped }];
-      note = `Scene ${i + 1} swapped from ${names} to ${getSceneTemplate(cand)?.name ?? cand}\n${REASON[`${tpl}>${cand}`] ?? `Its words fit ${getSceneTemplate(cand)?.name ?? cand}.`}`;
+      note = `Scene ${i + 1} swapped from ${names} to ${getSceneTemplate(cand)?.name ?? cand}\n${REASON[`${tpl}>${cand}`] ?? `Same template ${REPEAT_RUN} times in a row.`}`;
       break;
     }
     out.push({ id: id('template-repeat', scene.id, '', recipe.aspect), sceneId: scene.id, layerId: '', aspect: recipe.aspect, kind: 'template-repeat', fix, note });

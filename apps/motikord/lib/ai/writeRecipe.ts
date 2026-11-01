@@ -1,10 +1,21 @@
-import type { Issue, Layer, Motion, PatchOp, PresetSlot, Recipe, Scene } from '../types';
+import type {
+  Aspect, Asset, BrandKit, ClipType, Issue, Layer, Mood, Motion, Pace, PatchOp, PresetSlot, Provider, Recipe, Scene,
+  Settings, SlotValue, StyleId, Storyboard, StylePack,
+} from '../types';
 import { chat, LLMError, type ChatMessage, type ChatOptions } from '../llm';
 import { MAX_CLIP_MS, validateRecipe } from '../recipe/validate';
-import { check } from '../checker';
+import { autoFix, check } from '../checker';
 import { applyPatch } from '../patch';
 import { getPreset } from '../render/presets';
 import { AiError, toAiError, type AiStateId } from './errors';
+import { toV2 } from '../recipe/migrate';
+import { renderFrames } from '../render/frames';
+import { cutWords, expandScene } from '../templates/expand';
+import { paceMs, transitionFor } from '../templates/pick';
+import { autoStyle, getPack, getSceneTemplate } from '../templates/scenes';
+import { criticModel, criticScenes, criticSkip, runCritic, type CriticRun, type CriticSkip, type FrameRenderer } from './critic';
+import { assignMedia, fillScene, mergeSlots, storyboardOf } from './fillScene';
+import { cleanStoryboard, planStoryboard, StoryboardFailed } from './storyboard';
 import { critiqueMessage, planSystem, recipeRequest, recipeSystem, retryMessage, SCENE_RANGE, SHORTER, type ClipPlan, type PlanScene, type RecipePromptInput } from './prompts';
 
 export type AiOptions = Omit<ChatOptions, 'json' | 'maxTokens'>;
@@ -308,4 +319,308 @@ export async function writeRecipe(input: WriteInput, opts: AiOptions = {}): Prom
     // The first recipe is valid; a failed second try still makes the clip.
   }
   return finish(first, input);
+}
+
+// ---- v2 pipeline: storyboard, one fill per scene, layout check and fixes, then the visual critic ----
+
+/** Making's steps (MakingStoryboard): planning, filling, checking, looking at frames, opening the editor. */
+export type MakeStep = 'plan' | 'fill' | 'check' | 'critic' | 'open';
+/** The pause point: resolves with the storyboard to make (edited or not), or 'replan' for "Plan it again". */
+export type Gate = (storyboard: Storyboard) => Promise<Storyboard | 'replan'>;
+
+export interface PipelineEvents {
+  onStep?(step: MakeStep): void;
+  onStoryboard?(storyboard: Storyboard): void;
+  gate?: Gate;
+  look?(): Promise<{ style: StyleId; pace: Pace; mood: Mood } | undefined>;   // read again after the pause point, so a look changed while paused applies
+  onFilling?(index: number, total: number): void;   // the scene being filled now ("Scene 3 · List")
+  onFilled?(done: number, total: number): void;
+  onRetry?(index: number): void;                    // scene-retrying
+  onFixes?(notes: string[]): void;                  // "Fixed 2 things"
+  onCritic?(look: { scenes: number[]; frames: number }): void;
+  onCriticSkipped?(skip: CriticSkip, model: string): void;
+  frames?: FrameRenderer;
+}
+
+export interface ClipInput {
+  prompt: string; type: ClipType; aspect: Aspect; assets: Asset[]; id?: string; lengthMs?: number;
+  style: StyleId; pace: Pace; mood?: Mood;
+  brand?: BrandKit;                                  // only when it is used for new clips
+  critic: boolean; settings: Pick<Settings, 'ai' | 'provider' | 'models'>;
+}
+export interface ClipResult {
+  recipe: Recipe; by: Provider | 'builtin'; storyboard: Storyboard;
+  fixes: string[];                                   // the "Fixed for you" lines, in order
+  issues: Issue[];                                   // what is left for the quality check
+  critic?: CriticRun; criticSkipped?: CriticSkip;
+  notices: AiStateId[];
+}
+
+// Checker kinds that fewer or other words can clear; the rest are layout or colour, not words.
+const WORD_FIXES: Partial<Record<Issue['kind'], string>> = {
+  overflow: 'Some text runs out of its box: use fewer words.',
+  crowding: 'The scene is crowded: fewer, shorter items.',
+  overlap: 'Text overlaps other text: shorten it.',
+  words: 'Some text is over its word limit.',
+  empty: 'A slot is empty: fill it.',
+  'too-small': 'Text is too small to read: use fewer words.',
+  'too-fast': 'Too many words to read in the time: use fewer.',
+};
+
+/** A scene with new slots, expanded in the pack's look; its "Show original" text goes. */
+function withSlots(recipe: Recipe, index: number, slots: Record<string, SlotValue>, pack: StylePack, brand?: BrandKit): Recipe {
+  const s = recipe.scenes[index]!;
+  const scenes = recipe.scenes.slice();
+  scenes[index] = expandScene({ ...s, slots, original: undefined }, pack, brand);
+  return { ...recipe, scenes };
+}
+
+const packFor = (style: StyleId | undefined, type: ClipType) => getPack(style ?? autoStyle(type)) ?? getPack('clean')!;
+
+/** The recipe a storyboard and its filled slots make: version 2, every scene templated and expanded. */
+export function buildRecipe(sb: Storyboard, slots: Record<string, SlotValue>[], input: Omit<ClipInput, 'critic' | 'settings'>, id: string): Recipe {
+  const pack = packFor(input.style, input.type);
+  const scenes: Scene[] = sb.beats.map((b, i) => {
+    const s: Scene = { id: `s${i + 1}`, durationMs: b.ms, background: pack.palette.bg, layout: 'center', layers: [], template: b.template, slots: slots[i] ?? {} };
+    if (i > 0) s.transition = transitionFor(pack, i, input.pace);
+    return expandScene(s, pack, input.brand);
+  });
+  return {
+    version: 2, id, name: sb.name, type: input.type, aspect: input.aspect, scenes,
+    assets: Object.fromEntries(input.assets.map((a) => [a.id, a])), prompt: input.prompt || undefined,
+    style: pack.id, pace: input.pace, ...(input.mood ? { mood: input.mood } : {}),
+  };
+}
+
+/** A storyboard that runs past 60 s, shortened in proportion. */
+function fitStoryboard(sb: Storyboard): { storyboard: Storyboard; cut: boolean } {
+  const total = sb.beats.reduce((t, b) => t + b.ms, 0);
+  if (total <= MAX_CLIP_MS) return { storyboard: sb, cut: false };
+  const k = MAX_CLIP_MS / total;
+  return { storyboard: { ...sb, beats: sb.beats.map((b) => ({ ...b, ms: Math.max(1000, Math.floor((b.ms * k) / 50) * 50) })) }, cut: true };
+}
+
+// What the checker's own fix does, as a "Fixed for you" line; used after the word fixes for what words could not clear.
+// Overflow is not here: text is never made smaller than its slot's type size (cutToFit cuts the words instead).
+const SETTLE: Partial<Record<Issue['kind'], (n: number, name: string) => string>> = {
+  'too-small': (n, name) => `Scene ${n} ${name} made bigger to read`,
+  contrast: (n, name) => `Scene ${n} ${name} recoloured to stand out`,
+  'too-fast': (n, name) => `Scene ${n} ${name} stays on screen longer`,
+};
+
+const wordCount = (v: string) => v.trim().split(/\s+/).filter(Boolean).length;
+const overflows = (r: Recipe, layerId: string, brand?: BrandKit) => check(r, { brand }).some((i) => i.kind === 'overflow' && i.layerId === layerId);
+
+/** Text that runs out of its template box, cut a word at a time until it fits at its type size; `original` keeps it whole. */
+function cutToFit(recipe: Recipe, brand?: BrandKit): { recipe: Recipe; notes: string[] } {
+  let cur = recipe;
+  const notes: string[] = [];
+  const tried = new Set<string>();
+  const pack = getPack(recipe.style ?? 'clean');
+  for (let n = 0; pack && n < 30; n++) {
+    const next = check(cur, { brand }).find((i) => i.kind === 'overflow' && !tried.has(i.layerId));
+    if (!next) break;
+    tried.add(next.layerId);
+    const si = cur.scenes.findIndex((s) => s.id === next.sceneId);
+    const scene = cur.scenes[si];
+    const layer = scene?.layers.find((l) => l.id === next.layerId);
+    const slot = layer?.slot;
+    const def = scene?.template && slot ? getSceneTemplate(scene.template)?.slots.find((d) => d.id === slot && d.kind === 'text') : undefined;
+    const v = slot ? scene?.slots?.[slot] : undefined;
+    if (!scene || !layer || !def || typeof v !== 'string') continue;
+    const full = scene.original?.[def.id] ?? v;
+    for (let k = wordCount(v) - 1; k >= 1; k--) {
+      const fresh = expandScene({ ...scene, slots: { ...scene.slots, [def.id]: cutWords(v, k) } }, pack, brand);
+      fresh.original = { ...fresh.original, [def.id]: full };
+      const scenes = [...cur.scenes];
+      scenes[si] = fresh;
+      const trial = { ...cur, scenes };
+      if (overflows(trial, layer.id, brand)) continue;
+      cur = trial;
+      notes.push(`Scene ${si + 1} ${def.name.toLowerCase()} cut to ${k} words`);
+      break;
+    }
+  }
+  return { recipe: cur, notes };
+}
+
+/** Cuts overflowing words, then applies the checker's size, colour and timing fixes one at a time, keeping only those that clear their issue. */
+export function settleLayout(recipe: Recipe, brand?: BrandKit): { recipe: Recipe; notes: string[] } {
+  const fit = cutToFit(recipe, brand);
+  let cur = fit.recipe;
+  const notes: string[] = [...fit.notes];
+  const tried = new Set<string>();
+  for (let n = 0; n < 60; n++) {
+    const next = check(cur, { brand }).find((i) => SETTLE[i.kind] && i.fix.length > 0 && !tried.has(i.id));
+    if (!next) break;
+    tried.add(next.id);
+    let after: Recipe;
+    try { after = applyPatch(cur, next.fix).doc; } catch { continue; }
+    const left = check(after, { brand });
+    if (left.some((i) => i.id === next.id) || left.length >= check(cur, { brand }).length) continue;
+    cur = after;
+    const si = cur.scenes.findIndex((s) => s.id === next.sceneId);
+    const layer = cur.scenes[si]?.layers.find((l) => l.id === next.layerId);
+    const note = SETTLE[next.kind]!(si + 1, (layer?.name ?? 'text').toLowerCase());
+    if (!notes.includes(note)) notes.push(note);
+  }
+  return { recipe: cur, notes };
+}
+
+const rethrowCancel = (e: unknown) => { if (e instanceof AiError && e.code === 'cancelled') throw e; };
+
+/** The whole v2 make. Throws AiError, or StoryboardFailed when the plan made no sense twice. */
+export async function writeClip(input: ClipInput, opts: AiOptions = {}, ev: PipelineEvents = {}): Promise<ClipResult> {
+  const id = input.id ?? newId();
+  let pack = packFor(input.style, input.type);
+  let { pace, mood } = input;
+  const media = input.assets.filter((a) => a.kind === 'image' || a.kind === 'video').length;
+  const logo = !!input.brand?.logoAssetId || input.assets.some((a) => a.kind === 'logo');
+  const plan = () => planStoryboard({ prompt: input.prompt, type: input.type, aspect: input.aspect, style: pack.id, pace, lengthMs: input.lengthMs, media, logo }, opts);
+
+  ev.onStep?.('plan');
+  let planned = await plan();
+  let by = planned.by;
+  let sb = planned.storyboard;
+  ev.onStoryboard?.(sb);
+  const relook = async () => {
+    const next = await ev.look?.();
+    if (!next) return;
+    pack = packFor(next.style, input.type);
+    ({ pace, mood } = next);
+    if (sb.style !== pack.id) sb = { ...sb, style: pack.id };
+  };
+  const replan = async () => { ev.onStep?.('plan'); planned = await plan(); by = planned.by; sb = planned.storyboard; ev.onStoryboard?.(sb); };
+  // The pause point: an edited storyboard replaces the plan; true when it changed.
+  const pass = async (): Promise<boolean> => {
+    if (!ev.gate) return false;
+    const shown = sb;
+    const g = await ev.gate(sb);
+    if (g === 'replan') { await relook(); await replan(); return true; }
+    await relook();
+    if (g === shown) return false;
+    sb = cleanStoryboard({ ...g, style: pack.id }, { media, logo });
+    ev.onStoryboard?.(sb);
+    return true;
+  };
+  const done = new Map<string, Record<string, SlotValue>>();   // kept across an edit for beats that did not change
+  let words: Record<string, SlotValue>[] = [];
+  fill: for (;;) {
+    while (await pass()) { /* paused again on the new plan until it is let through */ }
+    if (!sb.beats.length) throw new StoryboardFailed();
+    ev.onStep?.('fill');
+    words = [];
+    const total = sb.beats.length;
+    for (let i = 0; i < total; i++) {
+      const beat = sb.beats[i]!;
+      const key = `${beat.template}|${beat.line}`;
+      let w = done.get(key);
+      ev.onFilling?.(i, total);
+      if (!w) {
+        const r = await fillScene({ prompt: input.prompt, type: input.type, style: pack.id, storyboard: sb, index: i }, opts, { onRetry: ev.onRetry });
+        by = r.by;
+        w = r.slots;
+        done.set(key, w);
+      }
+      words.push(w);
+      ev.onFilled?.(i + 1, total);
+      if (i < total - 1 && (await pass())) continue fill;
+    }
+    break;
+  }
+
+  const notices: AiStateId[] = [];
+  const fitted = fitStoryboard(sb);
+  if (fitted.cut) { sb = fitted.storyboard; notices.push('too-long'); }
+  const assigned = assignMedia(sb.beats.map((b) => b.template), input.assets);
+  let recipe = buildRecipe(sb, words.map((w, i) => ({ ...w, ...assigned[i] })), { ...input, style: pack.id, pace, mood }, id);
+
+  ev.onStep?.('check');
+  const fixes: string[] = [];
+  const auto = () => {
+    const f = autoFix(recipe, { brand: input.brand });
+    recipe = f.recipe;
+    fixes.push(...f.fixed.map((x) => x.note ?? '').filter(Boolean));
+  };
+  const refill = async (index: number, request: string): Promise<boolean> => {
+    const s = recipe.scenes[index]!;
+    const t = s.template && getSceneTemplate(s.template);
+    if (!t) return false;
+    try {
+      const r = await fillScene({ prompt: input.prompt, type: input.type, style: pack.id, storyboard: sb, index, request, previous: s.slots }, opts);
+      const slots = mergeSlots(t, r.slots, s.slots);
+      if (JSON.stringify(slots) === JSON.stringify(s.slots)) return false;
+      recipe = withSlots(recipe, index, slots, pack, input.brand);
+      return true;
+    } catch (e) { rethrowCancel(e); return false; }   // a failed fix keeps the scene as it was
+  };
+  auto();
+  const failing = new Map<number, Set<string>>();
+  for (const issue of check(recipe, { brand: input.brand })) {
+    const why = WORD_FIXES[issue.kind];
+    const index = recipe.scenes.findIndex((s) => s.id === issue.sceneId);
+    if (!why || index < 0 || !recipe.scenes[index]!.template) continue;
+    failing.set(index, (failing.get(index) ?? new Set()).add(why));
+  }
+  for (const [index, why] of failing) if (await refill(index, [...why].join(' '))) fixes.push(`Scene ${index + 1} rewritten to fit its template`);
+  if (failing.size) auto();
+  const settle = () => { const st = settleLayout(recipe, input.brand); recipe = st.recipe; fixes.push(...st.notes.filter((x) => !fixes.includes(x))); };
+  settle();
+  ev.onFixes?.(fixes);
+
+  const model = await criticModel(input.settings, opts);
+  let criticSkipped = criticSkip(input.critic, model);
+  let critic: CriticRun | undefined;
+  if (criticSkipped) ev.onCriticSkipped?.(criticSkipped, model.model);
+  else {
+    ev.onStep?.('critic');
+    const scenes = criticScenes(recipe);
+    ev.onCritic?.({ scenes, frames: scenes.length });
+    try {
+      // Sent to the model decided on above, so the frames go to the model that was checked for images.
+      critic = await runCritic(recipe, ev.frames ?? ((r, t) => renderFrames(r, t)), { ...opts, ai: model.ai, provider: model.provider, model: model.model });
+    } catch (e) {
+      rethrowCancel(e);
+      criticSkipped = 'critic-unreachable';
+      ev.onCriticSkipped?.(criticSkipped, model.model);
+    }
+    if (critic?.notes.length) {
+      for (const n of critic.notes) await refill(n.sceneIndex, `${n.problem} ${n.fix}`.trim());
+      auto();
+      settle();
+    }
+  }
+  // The timing fixes lengthen scenes, so the clip is held to 60 s once more.
+  if (totalMs(recipe.scenes) > MAX_CLIP_MS) {
+    recipe = fitToMax(recipe);
+    if (!notices.includes('too-long')) notices.push('too-long');
+  }
+  const issues = check(recipe, { brand: input.brand });
+  return { recipe, by, storyboard: sb, fixes, issues, critic, criticSkipped, notices };
+}
+
+/** "Remake this scene": one fill call for that scene, its media kept. Throws AiError (scene-remake-failed). */
+export async function regenerateScene(recipe: Recipe, index: number, request?: string, opts: AiOptions & { brand?: BrandKit } = {}): Promise<Recipe> {
+  const { brand, ...ai } = opts;
+  const s = recipe.scenes[index];
+  const t = s?.template && getSceneTemplate(s.template);
+  if (!s || !t) throw new AiError('invalid-reply', 'make', { problems: ['That scene has no template.'] });
+  const pack = packFor(recipe.style, recipe.type);
+  const r = await fillScene({ prompt: recipe.prompt ?? recipe.name, type: recipe.type, style: pack.id, storyboard: storyboardOf(recipe), index, request, previous: s.slots }, ai);
+  return withSlots(recipe, index, mergeSlots(t, r.slots, s.slots), pack, brand);
+}
+
+/** A new look with the same words: re-expands every templated scene in the pack; pace rescales lengths, held to 60 s. No AI call. */
+export function restyle(recipe: Recipe, style: StyleId, pace: Pace, brand?: BrandKit): Recipe {
+  const pack = getPack(style);
+  if (!pack) throw new Error(`Motikord has no style called ${style}`);
+  const k = paceMs(pace).sceneMs / paceMs(recipe.pace ?? 'normal').sceneMs;
+  const scenes = recipe.scenes.map((s, i) => {
+    if (!s.template) return s;
+    const next: Scene = { ...s, durationMs: Math.max(1000, Math.round((s.durationMs * k) / 50) * 50) };
+    if (i > 0) next.transition = transitionFor(pack, i, pace);
+    else delete next.transition;
+    return expandScene(next, pack, brand);
+  });
+  return fitToMax(toV2({ ...recipe, style, pace, scenes }));
 }

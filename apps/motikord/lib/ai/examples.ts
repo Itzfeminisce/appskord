@@ -1,4 +1,4 @@
-import type { ClipType } from '../types';
+import type { ClipType, SlotValue, StyleId, TemplateId } from '../types';
 
 // Few-shot recipes in the compact reply shape, modelled on the best templates (product-drop, three-steps, bold-quote).
 type L = Record<string, unknown>;
@@ -55,4 +55,47 @@ export const EXAMPLE_DRAFTS = { MULTI, SHORT } as const;
 /** The one example that suits the type, as compact JSON for the prompt. */
 export function exampleFor(type: ClipType): string {
   return JSON.stringify(type === 'quote' || type === 'logo' ? SHORT : MULTI);
+}
+
+// ---- v2: hand-made scene fills, at least one per template; the fill call gets the 2 or 3 nearest ----
+
+export interface SceneExample { type: ClipType; template: TemplateId; style: StyleId; line: string; slots: Record<string, SlotValue> }
+
+export const SCENE_EXAMPLES: readonly SceneExample[] = [
+  { type: 'promo', template: 'title-hook', style: 'bold', line: 'Running shoes are 30% off this weekend', slots: { kicker: 'This weekend only', headline: '30% off every runner' } },
+  { type: 'social', template: 'title-hook', style: 'playful', line: 'Hook: most people water plants wrong', slots: { kicker: 'Plant tip', headline: "You're overwatering. Probably." } },
+  { type: 'explainer', template: 'title-hook', style: 'clean', line: 'How compound interest grows your savings', slots: { kicker: 'Money basics', headline: 'Let your money work' } },
+  { type: 'promo', template: 'big-statement', style: 'bold', line: 'Cold brew that tastes like the café', slots: { statement: 'Café cold brew, now in a can', highlight: 'can' } },
+  { type: 'quote', template: 'big-statement', style: 'corporate', line: 'The idea behind the quote: start small', slots: { statement: 'Every big team started as two people', highlight: 'two' } },
+  { type: 'social', template: 'big-statement', style: 'playful', line: 'Mondays are better with a plan', slots: { statement: 'Plan Sunday, win Monday', highlight: 'win' } },
+  { type: 'chart', template: 'stat-reveal', style: 'corporate', line: 'Sign-ups tripled this year', slots: { number: '3x', label: 'more sign-ups this year', source: 'Company data, 2026' } },
+  { type: 'promo', template: 'stat-reveal', style: 'bold', line: 'Ten thousand happy customers', slots: { number: '10,000', label: 'customers and counting' } },
+  { type: 'chart', template: 'chart', style: 'corporate', line: 'Revenue by quarter', slots: { title: 'Revenue by quarter', bars: [{ label: 'Q1', value: 12 }, { label: 'Q2', value: 18 }, { label: 'Q3', value: 25 }, { label: 'Q4', value: 31 }], note: 'In thousands of dollars' } },
+  { type: 'explainer', template: 'chart', style: 'clean', line: 'Sleep hours by age group', slots: { title: 'How much we sleep', bars: [{ label: 'Teens', value: 7 }, { label: 'Adults', value: 6.8 }, { label: 'Seniors', value: 7.5 }] } },
+  { type: 'quote', template: 'quote', style: 'corporate', line: 'Maya Angelou on how people remember you', slots: { quote: 'People will never forget how you made them feel.', name: 'Maya Angelou', role: 'Poet' } },
+  { type: 'social', template: 'quote', style: 'clean', line: 'A customer on the new app', slots: { quote: 'It does in one tap what took me ten.', name: 'Ada O.', role: 'Customer since 2024' } },
+  { type: 'explainer', template: 'list', style: 'clean', line: 'Three things to pack for a day hike', slots: { title: 'Pack these three', items: ['Two litres of water', 'A warm layer', 'A charged phone'] } },
+  { type: 'promo', template: 'list', style: 'bold', line: 'What comes in the starter box', slots: { title: "What's in the box", items: ['Six fresh bagels', 'Two cream cheeses', 'Free delivery'] } },
+  { type: 'social', template: 'list', style: 'playful', line: 'Desk upgrades under twenty dollars', slots: { title: 'Desk upgrades under $20', items: ['A monitor riser', 'A cable tray', 'One good plant', 'A warm lamp'] } },
+  { type: 'promo', template: 'hero', style: 'bold', line: 'The new trail shoe in action', slots: { headline: 'Built for wet trails', line: 'Grip that holds on every descent' } },
+  { type: 'social', template: 'hero', style: 'playful', line: 'Sunday at the market', slots: { headline: 'Sunday market vibes' } },
+  { type: 'promo', template: 'split', style: 'clean', line: 'The lamp that dims itself at night', slots: { headline: 'Light that knows bedtime', body: 'Dims to a warm glow after 9 pm, so you sleep sooner.' } },
+  { type: 'explainer', template: 'split', style: 'corporate', line: 'Why we moved to solar', slots: { headline: 'Why we went solar', body: 'Our roof now covers 80% of the office power.' } },
+  { type: 'promo', template: 'before-after', style: 'bold', line: 'The kitchen before and after the remodel', slots: { before: 'Dark and cramped', after: 'Open and bright' } },
+  { type: 'social', template: 'before-after', style: 'playful', line: 'My desk before and after a tidy', slots: { before: 'Monday chaos', after: 'Friday calm' } },
+  { type: 'explainer', template: 'steps', style: 'clean', line: 'How to brew pour-over coffee', slots: { title: 'Pour-over in 3 steps', steps: ['Rinse the filter', 'Bloom for 30 seconds', 'Pour in slow circles'] } },
+  { type: 'promo', template: 'steps', style: 'corporate', line: 'How to get started with the app', slots: { title: 'Start in three steps', steps: ['Download the app', 'Link your bank', 'Set a goal'] } },
+  { type: 'logo', template: 'logo-sting', style: 'playful', line: 'Our logo with the tagline', slots: { tagline: 'Baked fresh daily' } },
+  { type: 'logo', template: 'logo-sting', style: 'corporate', line: 'Brand reveal', slots: { tagline: 'Built on trust' } },
+  { type: 'promo', template: 'end-card', style: 'bold', line: 'Shop the sale now', slots: { cta: 'Shop the sale now', handle: 'stride.shop' } },
+  { type: 'social', template: 'end-card', style: 'playful', line: 'Follow for more tips', slots: { cta: 'Follow for more tips', handle: '@greenthumb' } },
+  { type: 'explainer', template: 'end-card', style: 'clean', line: 'Learn more on our site', slots: { cta: 'Read the full guide', handle: 'savewell.org' } },
+];
+
+/** The 2 or 3 examples nearest a scene: same template first, then same clip type, then same style. */
+export function pickExamples(type: ClipType, template: TemplateId, style: StyleId): SceneExample[] {
+  const score = (e: SceneExample) => (e.template === template ? 4 : 0) + (e.type === type ? 2 : 0) + (e.style === style ? 1 : 0);
+  const ranked = SCENE_EXAMPLES.map((e, i) => ({ e, i, s: score(e) })).sort((a, b) => b.s - a.s || a.i - b.i);
+  const third = ranked[2];
+  return ranked.slice(0, third && third.e.template === template ? 3 : 2).map((r) => r.e);
 }

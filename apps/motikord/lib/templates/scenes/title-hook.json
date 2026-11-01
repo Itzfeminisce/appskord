@@ -4,69 +4,6 @@
   "line": "Headline words stagger up, kicker fades",
   "slots": [
     {
-      "id": "kicker",
-      "name": "Kicker",
-      "kind": "text",
-      "words": 4,
-      "scale": "caption",
-      "align": "left",
-      "boxes": {
-        "9:16": {
-          "x": 0.07,
-          "y": 0.58,
-          "w": 0.86,
-          "h": 0.04
-        },
-        "1:1": {
-          "x": 0.06,
-          "y": 0.56,
-          "w": 0.88,
-          "h": 0.06
-        },
-        "16:9": {
-          "x": 0.05,
-          "y": 0.55,
-          "w": 0.63,
-          "h": 0.07
-        }
-      },
-      "motion": {
-        "in": "fade-in"
-      }
-    },
-    {
-      "id": "headline",
-      "name": "Headline",
-      "kind": "text",
-      "words": 6,
-      "scale": "display",
-      "align": "left",
-      "boxes": {
-        "9:16": {
-          "x": 0.07,
-          "y": 0.63,
-          "w": 0.86,
-          "h": 0.21
-        },
-        "1:1": {
-          "x": 0.06,
-          "y": 0.63,
-          "w": 0.88,
-          "h": 0.31
-        },
-        "16:9": {
-          "x": 0.05,
-          "y": 0.64,
-          "w": 0.63,
-          "h": 0.3
-        }
-      },
-      "motion": {
-        "in": "rise-in",
-        "stagger": "word"
-      }
-    },
-    {
       "id": "background",
       "name": "Background",
       "kind": "media",
@@ -94,6 +31,69 @@
       "motion": {
         "in": "fade-in",
         "during": "slow-zoom"
+      }
+    },
+    {
+      "id": "kicker",
+      "name": "Kicker",
+      "kind": "text",
+      "words": 4,
+      "scale": "caption",
+      "align": "left",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.34,
+          "w": 0.86,
+          "h": 0.04
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.06,
+          "w": 0.88,
+          "h": 0.06
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.3,
+          "w": 0.9,
+          "h": 0.07
+        }
+      },
+      "motion": {
+        "in": "fade-in"
+      }
+    },
+    {
+      "id": "headline",
+      "name": "Headline",
+      "kind": "text",
+      "words": 6,
+      "scale": "display",
+      "align": "left",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.39,
+          "w": 0.86,
+          "h": 0.45
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.13,
+          "w": 0.88,
+          "h": 0.81
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.38,
+          "w": 0.9,
+          "h": 0.56
+        }
+      },
+      "motion": {
+        "in": "rise-in",
+        "stagger": "word"
       }
     }
   ],
