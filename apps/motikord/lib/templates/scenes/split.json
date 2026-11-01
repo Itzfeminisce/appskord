@@ -1,0 +1,99 @@
+{
+  "id": "split",
+  "name": "Split",
+  "line": "Media slides in from its side",
+  "slots": [
+    {
+      "id": "media",
+      "name": "Media",
+      "kind": "media",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.1,
+          "w": 0.86,
+          "h": 0.38
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.06,
+          "w": 0.42,
+          "h": 0.88
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.06,
+          "w": 0.44,
+          "h": 0.88
+        }
+      },
+      "motion": {
+        "in": "slide-in"
+      }
+    },
+    {
+      "id": "headline",
+      "name": "Headline",
+      "kind": "text",
+      "words": 6,
+      "scale": "headline",
+      "align": "left",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.52,
+          "w": 0.86,
+          "h": 0.13
+        },
+        "1:1": {
+          "x": 0.54,
+          "y": 0.2,
+          "w": 0.4,
+          "h": 0.26
+        },
+        "16:9": {
+          "x": 0.54,
+          "y": 0.18,
+          "w": 0.41,
+          "h": 0.28
+        }
+      },
+      "motion": {
+        "in": "rise-in"
+      }
+    },
+    {
+      "id": "body",
+      "name": "Body",
+      "kind": "text",
+      "words": 16,
+      "scale": "body",
+      "align": "left",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.67,
+          "w": 0.86,
+          "h": 0.17
+        },
+        "1:1": {
+          "x": 0.54,
+          "y": 0.5,
+          "w": 0.4,
+          "h": 0.36
+        },
+        "16:9": {
+          "x": 0.54,
+          "y": 0.5,
+          "w": 0.41,
+          "h": 0.32
+        }
+      },
+      "motion": {
+        "in": "fade-in"
+      }
+    }
+  ],
+  "defaultMs": 3000,
+  "fits": "A photo or video beside a headline and a sentence about it."
+}

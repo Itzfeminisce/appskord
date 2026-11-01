@@ -1,0 +1,102 @@
+{
+  "id": "hero",
+  "name": "Hero",
+  "line": "Media drifts in a slow Ken Burns",
+  "slots": [
+    {
+      "id": "media",
+      "name": "Media",
+      "kind": "media",
+      "boxes": {
+        "9:16": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        },
+        "1:1": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        },
+        "16:9": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "motion": {
+        "in": "fade-in",
+        "during": "slow-zoom"
+      }
+    },
+    {
+      "id": "headline",
+      "name": "Headline",
+      "kind": "text",
+      "words": 6,
+      "scale": "display",
+      "align": "left",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.58,
+          "w": 0.86,
+          "h": 0.16
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.58,
+          "w": 0.88,
+          "h": 0.2
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.56,
+          "w": 0.7,
+          "h": 0.22
+        }
+      },
+      "motion": {
+        "in": "rise-in",
+        "stagger": "word"
+      }
+    },
+    {
+      "id": "line",
+      "name": "Line",
+      "kind": "text",
+      "words": 10,
+      "scale": "body",
+      "align": "left",
+      "optional": true,
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.75,
+          "w": 0.86,
+          "h": 0.09
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.8,
+          "w": 0.88,
+          "h": 0.14
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.8,
+          "w": 0.7,
+          "h": 0.14
+        }
+      },
+      "motion": {
+        "in": "fade-in"
+      }
+    }
+  ],
+  "defaultMs": 3000,
+  "fits": "A full-screen photo or video with a short headline over it."
+}

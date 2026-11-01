@@ -1,0 +1,69 @@
+{
+  "id": "logo-sting",
+  "name": "Logo sting",
+  "line": "Logo scales with overshoot; tagline tracks out",
+  "slots": [
+    {
+      "id": "logo",
+      "name": "Logo",
+      "kind": "logo",
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.36,
+          "w": 0.86,
+          "h": 0.16
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.3,
+          "w": 0.88,
+          "h": 0.28
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.28,
+          "w": 0.9,
+          "h": 0.28
+        }
+      },
+      "motion": {
+        "in": "pop-in"
+      }
+    },
+    {
+      "id": "tagline",
+      "name": "Tagline",
+      "kind": "text",
+      "words": 5,
+      "scale": "body",
+      "align": "center",
+      "optional": true,
+      "boxes": {
+        "9:16": {
+          "x": 0.07,
+          "y": 0.55,
+          "w": 0.86,
+          "h": 0.05
+        },
+        "1:1": {
+          "x": 0.06,
+          "y": 0.62,
+          "w": 0.88,
+          "h": 0.08
+        },
+        "16:9": {
+          "x": 0.05,
+          "y": 0.62,
+          "w": 0.9,
+          "h": 0.09
+        }
+      },
+      "motion": {
+        "in": "fade-in"
+      }
+    }
+  ],
+  "defaultMs": 2500,
+  "fits": "Your logo with a short tagline, to open or close a clip."
+}

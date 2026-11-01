@@ -4,6 +4,7 @@ import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import '@appskord/ui/tokens.css';
 import '../../styles/tokens.css';
+import '../../styles/fonts.css';
 import App from './App';
 
 createRoot(document.getElementById('root')!).render(
