@@ -1,4 +1,3 @@
-import { clockElapsed, type Clock } from './recorder';
 import type { EventsTrack, RecEvent } from './project/types';
 
 /** At most this many moves (and scrolls) a second leave the page. */
@@ -76,21 +75,31 @@ export function share(v: number, size: number): number {
 /** What the page sends: events stamped with wall time (`t` = Date.now()), mapped to recording time on arrival. */
 export interface EventsBatch { viewport: { w: number; h: number }; events: RecEvent[] }
 
-/** Wall time → recording time on the take's clock; null while paused or before the take ran. */
-export function recTime(clock: Clock, wall: number): number | null {
-  if (clock.runningSince === null || wall < clock.runningSince) return null;
-  return Math.round(clockElapsed(clock, wall));
+/** A stretch of wall time the take was running; `offset` is the recording time at `from`. */
+export interface Span { from: number; to: number | null; offset: number }
+
+/** Wall time → recording time; null in a paused gap, before the take ran, or after it stopped. A late event still lands in the span it was stamped in. */
+export function recTime(spans: readonly Span[], wall: number): number | null {
+  for (const s of spans) {
+    if (wall >= s.from && (s.to === null || wall <= s.to)) return Math.round(s.offset + wall - s.from);
+  }
+  return null;
 }
 
-/** Collects one take's events in recording time. Events outside the running clock are dropped. */
+/** Collects one take's events in recording time. Events outside the running spans are dropped. */
 export function createEventsLog() {
   const events: RecEvent[] = [];
+  const spans: Span[] = [];
   let viewport = { w: 0, h: 0 };
   return {
-    add(batch: EventsBatch, clock: Clock): void {
+    /** The take runs from `wall`, with `offset` ms already recorded. */
+    run(wall: number, offset: number): void { spans.push({ from: wall, to: null, offset }); },
+    /** The take paused or stopped at `wall`. */
+    halt(wall: number): void { const s = spans[spans.length - 1]; if (s && s.to === null) s.to = wall; },
+    add(batch: EventsBatch): void {
       if (batch.viewport.w > 0 && batch.viewport.h > 0) viewport = { w: batch.viewport.w, h: batch.viewport.h };
       for (const e of batch.events) {
-        const t = recTime(clock, e.t);
+        const t = recTime(spans, e.t);
         if (t === null) continue;
         // A key event is rebuilt so nothing but its name can travel through.
         if (e.type === 'key') {

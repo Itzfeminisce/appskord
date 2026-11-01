@@ -4,7 +4,7 @@ import { cleanupStack, guard } from '@/lib/check/guard';
 import { deleteRecording, getRecording, putRecording, updateRecording, type RecordingPatch } from '@/lib/db';
 import { EVENTS_FILE, createEventsLog, type EventsBatch } from '@/lib/events';
 import { fromRecording } from '@/lib/project/migrate';
-import { putProject } from '@/lib/project/store';
+import { flushProjects, putProject } from '@/lib/project/store';
 import { onMessage, send, type MessageOf } from '@/lib/messages';
 import { createMix, createSilenceWatch, type Mix } from '@/lib/mix';
 import {
@@ -375,6 +375,7 @@ async function begin(): Promise<RecorderReply> {
   });
   for (const p of parts) p.recorder.start(1000);
   take = t;
+  t.events?.run(now, 0);
   setState({ status: 'recording', recordingId: id, clock: clockStart(now), silentMic: false, disk: undefined, endedBy: undefined });
   // The transcript listens to its own copy of the mic; the recorder never waits on it.
   void startTranscript(id, micTrack ?? null).catch((error) => console.error('Klipkord: could not start the transcript', error));
@@ -405,17 +406,21 @@ async function persist(t: Take, patch: RecordingPatch = {}) {
   const duration = patch.duration ?? clockElapsed(state.clock, Date.now());
   try {
     await updateRecording(t.id, { duration, bytes: takeBytes(t), ...transcriptPatch(t.id), ...patch });
-    if (isV3(t)) await saveProject(t, duration);
+    if (isV3(t)) await saveProject(t, duration, patch.status !== undefined);
   } catch (error) {
     console.error('Klipkord: could not update the recording', error);
   }
 }
 
 /** The v3 project keeps each source's offset and length, so a recovered take opens with its tracks lined up. */
-async function saveProject(t: Take, duration: number) {
+async function saveProject(t: Take, duration: number, now = false) {
   const rec = await getRecording(t.id);
   if (!rec?.v3) return;
-  await putProject(fromRecording({ ...rec, duration }, takeSources(t.parts, t.clockStart, duration)));
+  const saved = putProject(fromRecording({ ...rec, duration }, takeSources(t.parts, t.clockStart, duration)));
+  // A state change writes at once and does not wait, so the controls answer straight away.
+  if (!now) return saved;
+  void flushProjects();
+  saved.catch((error) => console.error('Klipkord: could not save the project', error));
 }
 
 /** events.json next to the tracks; true once it is written. */
@@ -431,7 +436,7 @@ async function writeEvents(t: Take): Promise<boolean> {
 }
 
 function addEvents(batch: EventsBatch) {
-  if (take?.events && state.status === 'recording') take.events.add(batch, state.clock);
+  take?.events?.add(batch);
 }
 
 /** Leaves the real cursor out of the screen where Chrome allows it; the editor draws a smooth one from the events. */
@@ -469,7 +474,9 @@ async function pauseTake(): Promise<RecorderReply> {
   // Commits what is written so far; a crash while paused loses nothing.
   void videoStore.close(take.id).catch((error) => console.error('Klipkord: could not save the video', error));
   void writeEvents(take);
-  setState({ status: 'paused', clock: clockPause(state.clock, Date.now()), silentMic: false });
+  const now = Date.now();
+  take.events?.halt(now);
+  setState({ status: 'paused', clock: clockPause(state.clock, now), silentMic: false });
   await persist(take, { status: 'paused' });
   return ok;
 }
@@ -478,7 +485,10 @@ async function resumeTake(): Promise<RecorderReply> {
   if (!take || state.status !== 'paused') return fail('not paused');
   for (const p of take.parts) if (p.recorder.state === 'paused') p.recorder.resume();
   pauseTranscript(false);
-  setState({ status: 'recording', clock: clockResume(state.clock, Date.now()) });
+  const now = Date.now();
+  const clock = clockResume(state.clock, now);
+  take.events?.run(now, clock.accumulated);
+  setState({ status: 'recording', clock });
   await persist(take, { status: 'recording' });
   return ok;
 }
@@ -486,7 +496,9 @@ async function resumeTake(): Promise<RecorderReply> {
 async function finish(endedBy: EndReason): Promise<RecorderReply> {
   const t = take;
   if (!t || (state.status !== 'recording' && state.status !== 'paused')) return fail('not recording');
-  const clock = clockPause(state.clock, Date.now());
+  const stoppedAt = Date.now();
+  const clock = clockPause(state.clock, stoppedAt);
+  t.events?.halt(stoppedAt);
   setState({ status: 'saving', clock });
   t.timers.forEach(clearInterval);
   pauseTranscript(true);

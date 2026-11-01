@@ -205,13 +205,13 @@ export default function Settings() {
                   );
                 })}
               </div>
-              <span style={{ fontSize: 12, lineHeight: 1.45, color: '#6E7079' }}>Tab recordings always draw the bubble into the video.</span>
+              <span style={{ fontSize: 12, lineHeight: 1.45, color: '#6E7079' }}>{s.bakeCamera ? 'Tab recordings draw the bubble into the video, as in v2.' : 'The camera is saved as its own track, so you can move or resize it in the editor.'}</span>
             </div>
             {DIVIDER}
             <div style={{ ...ROW, padding: '12px 14px' }}>
               <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <span id="bake-camera-label">Bake camera into the video</span>
-                <span style={{ fontSize: 12, lineHeight: 1.45, color: '#6E7079' }}>For new recordings. Off keeps the camera separate so you can move it here.</span>
+                <span style={{ fontSize: 12, lineHeight: 1.45, color: '#6E7079' }}>For people who only download. Off keeps the camera separate for the editor.</span>
               </span>
               <button type="button" role="switch" aria-checked={s.bakeCamera} aria-labelledby="bake-camera-label" onClick={() => void save({ bakeCamera: !s.bakeCamera })}
                 style={{ width: 40, height: 24, border: 'none', borderRadius: 999, background: s.bakeCamera ? '#C2410C' : '#DCDCE0', position: 'relative', flexShrink: 0, cursor: 'pointer' }}>

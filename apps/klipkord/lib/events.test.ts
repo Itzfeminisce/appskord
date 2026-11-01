@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { createEventsLog, createThrottle, isSecretField, keyName, recTime, share, type KeyLike } from './events';
-import { clockPause, clockResume, clockStart } from './recorder';
+import { createEventsLog, createThrottle, isSecretField, keyName, recTime, share, type KeyLike, type Span } from './events';
 
 const key = (k: Partial<KeyLike> & { key: string; code?: string }): KeyLike =>
   ({ code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...k });
@@ -73,20 +72,19 @@ describe('share', () => {
 });
 
 describe('recording time', () => {
-  it('maps wall time onto the take clock across a pause', () => {
-    let c = clockStart(1000);
-    expect(recTime(c, 1500)).toBe(500);
-    expect(recTime(c, 900)).toBeNull();
-    c = clockPause(c, 2000);
-    expect(recTime(c, 2500)).toBeNull();
-    c = clockResume(c, 5000);
-    expect(recTime(c, 5250)).toBe(1250);
-    expect(recTime(c, 4000)).toBeNull();
+  it('maps wall time onto the take across a pause, keeping late events from before it', () => {
+    const spans: Span[] = [{ from: 1000, to: 2000, offset: 0 }, { from: 5000, to: null, offset: 1000 }];
+    expect(recTime(spans, 1500)).toBe(500);
+    expect(recTime(spans, 900)).toBeNull();
+    expect(recTime(spans, 1990)).toBe(990);
+    expect(recTime(spans, 2500)).toBeNull();
+    expect(recTime(spans, 5250)).toBe(1250);
+    expect(recTime(spans, 4000)).toBeNull();
   });
 
   it('collects events in recording time, sorted, and drops typed characters that slip in', () => {
     const log = createEventsLog();
-    const clock = clockStart(10_000);
+    log.run(10_000, 0);
     log.add({
       viewport: { w: 1280, h: 720 },
       events: [
@@ -96,8 +94,8 @@ describe('recording time', () => {
         { t: 10_350, type: 'key', key: 'Ctrl+C', x: 0.3, y: 0.4 },
         { t: 9_000, type: 'scroll', dy: 0.1 },
       ],
-    }, clock);
-    log.add({ viewport: { w: 0, h: 0 }, events: [{ t: 10_500, type: 'page' }] }, clock);
+    });
+    log.add({ viewport: { w: 0, h: 0 }, events: [{ t: 10_500, type: 'page' }] });
     expect(log.track()).toEqual({
       version: 1,
       viewport: { w: 1280, h: 720 },
@@ -110,9 +108,14 @@ describe('recording time', () => {
     });
   });
 
-  it('keeps nothing while paused', () => {
+  it('keeps events stamped before a pause or stop that arrive after it, and drops those inside the gap', () => {
     const log = createEventsLog();
-    log.add({ viewport: { w: 1, h: 1 }, events: [{ t: 5, type: 'move', x: 0, y: 0 }] }, clockPause(clockStart(0), 1));
-    expect(log.size).toBe(0);
+    log.run(0, 0);
+    log.halt(1000);
+    log.add({ viewport: { w: 1, h: 1 }, events: [{ t: 900, type: 'move', x: 0, y: 0 }, { t: 1200, type: 'move', x: 0, y: 0 }] });
+    log.run(2000, 1000);
+    log.halt(3000);
+    log.add({ viewport: { w: 1, h: 1 }, events: [{ t: 2900, type: 'page' }, { t: 3100, type: 'page' }] });
+    expect(log.track().events.map((e) => e.t)).toEqual([900, 1900]);
   });
 });
