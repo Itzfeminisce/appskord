@@ -179,18 +179,19 @@ export function CheckerPanel() {
 
   /** "Check again": the safe fixes as one Change each, then the visual critic when Settings has it on. */
   const checkAgain = () => {
-    const model = settings && criticModel(settings);
-    const skip = settings ? criticSkip(settings.critic, model!) : 'critic-off';
-    const access: Promise<HostAccess> | undefined = !skip && model?.ai === 'cloud' ? requestHost(HOSTS[model.provider]) : !skip ? Promise.resolve('granted') : undefined;
+    // Host access is asked for now, inside the click; which model looks is settled after.
+    const on = !!settings?.critic;
+    const access: Promise<HostAccess> | undefined = !settings || !on ? undefined : settings.ai === 'cloud' ? requestHost(HOSTS[settings.provider]) : Promise.resolve('granted');
     for (const e of autoFixEdits(current(), { measure: pageMeasure(), brand })) edit(e, { by: AUTO_BY });
-    if (!access || !model) return;
+    if (!access || !settings) return;
     const ac = new AbortController();
     stop.current?.abort();
     stop.current = ac;
     setChecking(true);
     void (async () => {
       try {
-        if ((await access) === 'denied') return;
+        const model = await criticModel(settings, { signal: ac.signal });
+        if (criticSkip(settings.critic, model) || (await access) === 'denied') return;
         const render: FrameRenderer = (rec, times) => renderFrames(rec, times, { cache });
         const run = await runCritic(current(), render, { signal: ac.signal });
         const out = { ...run, provider: model.provider };

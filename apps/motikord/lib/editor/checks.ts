@@ -46,10 +46,12 @@ export interface LayoutText { title: string; body: string; action: string }
 export function layoutText(kind: Issue['kind'], r: Recipe, sceneId: string, layerId: string, aspect: Aspect, fix: PatchOp[], note = ''): LayoutText | undefined {
   const n = sceneNo(r, sceneId);
   const scene = r.scenes[n - 1];
-  const what = note.replace(/ in scene \d+$/, '');
+  const what = note.replace(/ in scene \d+$/, '').replace(/^Scene \d+ /, '');
   switch (kind) {
     case 'overlap': {
-      const m = /^(.+?) overlaps (.+)$/.exec(what);
+      // The checker words a logo it can move as done ("logo moved off the head"); the card still names the problem.
+      const moved = /^logo moved off the (.+)$/.exec(what);
+      const m = moved ? ['', 'Logo', moved[1]!] : /^(.+?) overlaps (.+)$/.exec(what);
       const logo = m?.[1] === 'Logo';
       return { title: m ? `${m[1]} overlaps the ${m[2]}` : what, body: '', action: logo ? 'Move logo' : `Use the ${aspect} layout` };
     }
@@ -65,7 +67,7 @@ export function layoutText(kind: Issue['kind'], r: Recipe, sceneId: string, laye
     case 'empty':
       return { title: `Scene ${n} is mostly empty at ${aspect}`, body: aspect === '16:9' ? 'Both sides of the frame are bare.' : '', action: `Use the ${aspect} layout` };
     case 'align': {
-      const m = /^(.+?) lined up with (.+)$/.exec(what);
+      const m = /^(.+?) lined up with (?:the )?(.+)$/.exec(what);
       const layer = scene?.layers.find((l) => l.id === layerId);
       const v = (fix[0] as { value?: Record<string, unknown> } | undefined)?.value;
       const to = (typeof v?.x === 'number' ? v : (v?.[aspect] as { x?: number } | undefined))?.x as number | undefined;
