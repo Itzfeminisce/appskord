@@ -53,14 +53,14 @@ export function MakingFailed({ onTryAgain, onTemplates }: { onTryAgain?: () => v
 }
 export function ProviderBusy({ provider = 'groq', seconds = 20, onTryNow }: { provider?: Provider; seconds?: number; onTryNow?: () => void }) {
   return (
-    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is busy right now`} actions={<button type="button" onClick={onTryNow} style={actionStyle}>Try now</button>}>
+    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is busy right now`} actions={<button type="button" onClick={onTryNow} style={secondary}>Try now</button>}>
       {`You’ve reached ${label(provider)}’s limit for the moment. Motikord will try again in ${seconds} seconds.`}
     </Notice>
   );
 }
 export function ProviderBusyRetried({ provider = 'groq', onTryNow }: { provider?: Provider; onTryNow?: () => void }) {
   return (
-    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is still busy`} actions={<button type="button" onClick={onTryNow} style={actionStyle}>Try now</button>}>
+    <Notice tone="warning" role="status" glyph="clock" title={`${label(provider)} is still busy`} actions={<button type="button" onClick={onTryNow} style={secondary}>Try now</button>}>
       {`Motikord tried again and ${label(provider)} is still at its limit. Try now, or come back in a few minutes.`}
     </Notice>
   );
@@ -190,7 +190,7 @@ export function CriticOff() {
 /** The footer under v2 Making; after the critic looked at frames it says what else left. */
 export function MakeFooter({ by, frames }: { by: Provider | 'builtin'; frames?: number }) {
   if (by === 'builtin') return <AiFooter by={by} />;
-  return <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>{frames
+  return <span style={{ textAlign: 'center', fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>{frames
     ? `Your words and ${frames} small preview frames went to ${label(by)}. Nothing else left this computer.`
     : `Your words go to ${label(by)}. Your media stays on this computer.`}</span>;
 }

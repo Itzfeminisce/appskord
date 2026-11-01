@@ -8,6 +8,7 @@ import { formatLength, TEMPLATES, type Template } from '../lib/templates';
 import { autoStyle, getPack, STYLE_PACKS } from '../lib/templates/scenes';
 import type { ClipType, Recipe, StyleId } from '../lib/types';
 import { BackButton } from './Setup';
+import { SceneThumb } from './makeParts';
 
 export const TYPE_NAMES: Record<ClipType, string> = {
   promo: 'Promo', quote: 'Quote', chart: 'Chart reveal', explainer: 'Explainer', logo: 'Logo intro', captions: 'Captions', social: 'Social post',
@@ -86,6 +87,41 @@ export function TemplateCard({ template, height, onUse, pack }: { template: Temp
   );
 }
 
+const sel = (on: boolean) => on
+  ? { border: '1px solid var(--accent)', background: 'var(--tint)', color: 'var(--accent-hover)', fontWeight: 600 }
+  : { border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 400 };
+
+/** The style's colour mark on its chip and tag. */
+function StyleDot({ id, size = 8 }: { id: StyleId; size?: number }) {
+  const p = getPack(id)?.palette;
+  if (!p) return null;
+  const mark = id === 'corporate' ? p.bg : p.accent;
+  return <span aria-hidden="true" style={{ width: size, height: size, borderRadius: id === 'playful' ? '50%' : 2, background: mark, boxShadow: id === 'bold' ? `inset 0 0 0 1px ${p.bg}` : undefined, flexShrink: 0 }} />;
+}
+
+/** TemplatesV2 card: a tall 9:16 thumbnail, name, line and the pack tag. */
+function TallCard({ template, onUse }: { template: Template; onUse: (t: Template) => void }) {
+  const pack = packOf(template);
+  const tall = useMemo(() => ({ ...template.recipe, aspect: '9:16' as const }), [template]);
+  return (
+    <li>
+      <button type="button" onClick={() => onUse(template)} aria-label={`${template.name}, ${TYPE_NAMES[template.type]}, ${getPack(pack)?.name}. Opens your own copy`}
+        style={{ width: '100%', border: 0, background: 'none', padding: 0, font: 'inherit', textAlign: 'left', color: 'var(--ink)', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }}>
+        <span style={{ width: '100%', aspectRatio: '9 / 16', borderRadius: 14, overflow: 'hidden', display: 'block', boxShadow: '0 1px 2px rgba(16,16,20,0.06), 0 8px 20px rgba(16,16,20,0.10)' }}>
+          <SceneThumb recipe={tall} index={0} width={178} height={316} atMs={2200} style={{ width: '100%', height: '100%' }} />
+        </span>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{template.name}</span>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>{templateLine(template)}</span>
+        </span>
+        <span style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 8px', borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--line)', fontSize: 11, fontWeight: 500, color: 'var(--muted)' }}>
+          <StyleDot id={pack} size={7} />{getPack(pack)?.name}
+        </span>
+      </button>
+    </li>
+  );
+}
+
 export default function Templates() {
   const { back } = useRouter();
   const use = useUseTemplate();
@@ -97,40 +133,45 @@ export default function Templates() {
     const on = filter === id;
     return (
       <button key={id} type="button" aria-pressed={on} onClick={() => { setFilter(id); if (style !== 'any' && !TEMPLATES.some((t) => (id === 'all' || t.type === id) && packOf(t) === style)) setStyle('any'); }}
-        style={{ height: 30, padding: '0 12px', borderRadius: 999, border: on ? 0 : '1px solid #E0E0E4', background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink)', font: `${on ? 500 : 400} 12px var(--font)`, cursor: 'pointer' }}>
+        style={{ height: 30, padding: '0 12px', borderRadius: 999, ...sel(on), fontSize: 13, fontFamily: 'var(--font)', cursor: 'pointer' }}>
         {label}
       </button>
     );
   };
   return (
     <main data-frame="Templates" style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', paddingBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '20px 24px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '12px 12px 0' }}>
         <BackButton onBack={back} />
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: '-0.01em', flexGrow: 1 }}>Templates</h1>
+        <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Templates</h1>
       </div>
-      <span style={{ margin: '4px 24px 0', fontSize: 12, color: 'var(--muted)' }}>Every template keeps its look. Your brand kit replaces colours, fonts and logo.</span>
-      <div role="group" aria-label="Clip type" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '12px 16px 0' }}>
+      <div style={{ margin: '10px 16px 0', padding: '10px 12px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" /></svg>
+        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--muted)' }}>Every template keeps its look. Your brand kit replaces colours, fonts and logo.</p>
+      </div>
+      <div role="group" aria-label="Type" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '14px 0 0', padding: '0 16px' }}>
         {chip('all', 'All')}
         {TYPE_ORDER.map((t) => chip(t, TYPE_NAMES[t]))}
       </div>
-      <div role="group" aria-label="Style" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, padding: '8px 16px 0' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, marginRight: 4 }}>Style</span>
+      <span id="style-label" style={{ margin: '14px 16px 0', fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>Style</span>
+      <div role="group" aria-labelledby="style-label" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, margin: '6px 16px 0' }}>
         {([['any', 'Any'], ...STYLE_PACKS.map((p) => [p.id, p.name])] as [StyleId | 'any', string][]).map(([id, name]) => {
           const on = style === id;
           const empty = id !== 'any' && !TEMPLATES.some((t) => fits(t) && packOf(t) === id);
           return (
             <button key={id} type="button" aria-pressed={on} aria-disabled={empty || undefined} disabled={empty} onClick={() => setStyle(id)}
-              style={{ height: 30, padding: '0 12px', borderRadius: 999, border: on ? 0 : '1px solid #E0E0E4', background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink)', font: `${on ? 500 : 400} 12px var(--font)`, cursor: empty ? 'default' : 'pointer', opacity: empty ? 0.4 : 1 }}>{name}</button>
+              style={{ height: 28, padding: '0 10px', borderRadius: 8, ...sel(on), fontSize: 12, fontFamily: 'var(--font)', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: empty ? 'default' : 'pointer', opacity: empty ? 0.4 : 1 }}>
+              {id !== 'any' && <StyleDot id={id} />}{name}
+            </button>
           );
         })}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px 0' }}>
-        <span className="mono" style={{ fontSize: 11, color: 'var(--faint)' }}>{`${shown.length} templates`}</span>
-        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Tap one to open your own copy</span>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '14px 16px 0' }}>
+        <span style={{ fontSize: 12, color: 'var(--faint)' }}>{`${shown.length} templates`}</span>
+        <span style={{ fontSize: 12, color: 'var(--faint)' }}>Tap one to open your own copy</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, padding: '14px 16px 0' }}>
-        {shown.map((t) => <TemplateCard key={t.id} template={t} height={150} onUse={use} pack />)}
-      </div>
+      <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: '0 16px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px 12px' }}>
+        {shown.map((t) => <TallCard key={t.id} template={t} onUse={use} />)}
+      </ul>
       <span style={{ margin: 'auto 24px 0', paddingTop: 18, textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>A template becomes your own copy. Change anything with words or by hand.</span>
     </main>
   );
