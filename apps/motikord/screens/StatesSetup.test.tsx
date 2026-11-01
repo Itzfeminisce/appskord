@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { PRIVACY_ROWS } from './Privacy';
+import { privacyRows } from './Privacy';
+import { DEFAULT_SETTINGS } from '../lib/settings';
 import StatesSetup, { KeyRejected, KeyWrongProvider, PenvNoUsableKeys, ProviderAccess } from './StatesSetup';
 
 describe('StatesSetup', () => {
@@ -24,7 +25,7 @@ describe('StatesSetup', () => {
     expect(r(<KeyRejected provider="openai" />)).toContain('Get an OpenAI key');
     expect(r(<KeyWrongProvider provider="anthropic" detected="groq" />)).toContain('its keys start with sk-ant-.');
   });
-  it('has the seven privacy rows', () => {
-    expect(PRIVACY_ROWS).toHaveLength(7);
+  it('has the six privacy rows', () => {
+    expect(privacyRows(DEFAULT_SETTINGS)).toHaveLength(6);
   });
 });

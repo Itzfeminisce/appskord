@@ -4,6 +4,7 @@ import BrandKit from '../../screens/BrandKit';
 import ClipType from '../../screens/ClipType';
 import Grab from '../../screens/Grab';
 import Home from '../../screens/Home';
+import ImageKey from '../../screens/ImageKey';
 import Library from '../../screens/Library';
 import LibraryEmpty from '../../screens/LibraryEmpty';
 import Main from '../../screens/Main';
@@ -28,9 +29,10 @@ import VoicePrompt from '../../screens/VoicePrompt';
 import YourMedia from '../../screens/YourMedia';
 
 /** Side panel screens, one per FRAMES.md frame, named as the frame (rows 1, 2, 4 and 6). */
+
 export const sidepanel = createRouter({
   Main, Setup, PenvConnect, PasteKey, PenvConnected,
-  Home, VoicePrompt, ClipType, Templates, YourMedia, Making, MakingFailed, Grab,
+  Home, ImageKey, VoicePrompt, ClipType, Templates, YourMedia, Making, MakingFailed, Grab,
   BrandKit, Library, LibraryEmpty, Settings, SettingsModel, MediaSources, AddSource, Privacy, Recovered, StatesSetup, StatesCreate, StatesLibrary, StatesVoice, StatesSources,
 });
 export type SidepanelScreen = (typeof sidepanel.names)[number];

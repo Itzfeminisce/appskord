@@ -12,14 +12,14 @@
     "test": "vitest run",
     "compile": "tsc --noEmit"
   },
+  "dependencies": {
+    "mediabunny": "^1.65.0"
+  },
   "devDependencies": {
     "@appskord/config": "workspace:*",
     "@types/chrome": "^0.1.0",
     "@types/node": "^22.20.5",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5"
-  },
-  "dependencies": {
-    "mediabunny": "^1.65.0"
   }
 }

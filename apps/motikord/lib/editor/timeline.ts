@@ -1,6 +1,7 @@
 import { MAX_CLIP_MS } from '../recipe/validate';
 import { clipDuration } from '../render/drawFrame';
 import type { Layer, PatchOp, Recipe } from '../types';
+import { nearestBeat } from '../beats';
 import { clock, sceneStart, type Edit } from './store';
 
 // Timeline maths, pure: bars snap, stay inside their scene and never make a recipe the validator refuses.
@@ -96,7 +97,11 @@ export function sceneLength(r: Recipe, si: number, wantMs: number): number {
   if (!scene) return 0;
   const floor = Math.max(MIN_SCENE_MS, ...scene.layers.map((l) => l.startMs + MIN_LAYER_MS));
   const ceiling = MAX_CLIP_MS - (clipDuration(r) - scene.durationMs);
-  return Math.max(Math.ceil(floor / GRID_MS) * GRID_MS, Math.min(snap(wantMs), Math.floor(ceiling / GRID_MS) * GRID_MS));
+  // With beat sync on, the cut at this scene's end lands on a beat within 150 ms.
+  const at = sceneStart(r, si);
+  const want = r.beatSync && r.beats?.length ? nearestBeat(at + wantMs, r.beats) - at : wantMs;
+  const grid = want === wantMs ? snap(wantMs) : want;
+  return Math.max(Math.ceil(floor / GRID_MS) * GRID_MS, Math.min(grid, Math.floor(ceiling / GRID_MS) * GRID_MS));
 }
 
 /** Trims a scene; layers that ran to or past the old end follow the new end. */

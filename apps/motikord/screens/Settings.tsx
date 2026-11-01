@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { PROVIDER_IDS, PROVIDERS } from '../lib/providers';
+import { canSeeImages } from '@appskord/llm';
+import { PROVIDER_IDS, PROVIDERS, SUGGESTED_MODELS } from '../lib/providers';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { getBrandKit } from '../lib/db';
 import { chooseFolder } from '../lib/folder';
 import { loadKeys } from '../lib/penv';
 import { sourcesSummary } from '../lib/media/sources/summary';
 import { getSettings, onSettingsChanged, updateSettings, type SettingsPatch } from '../lib/settings';
-import type { BrandKit, FileKind, Provider, Quality, Settings as SettingsData } from '../lib/types';
+import type { BrandKit, FileKind, LookStyle, Pace, Provider, Quality, Settings as SettingsData } from '../lib/types';
 import { CODE_URL } from './Privacy';
 import { BackButton, probeMachine } from './Setup';
 import { ModelBuiltIn, ModelField } from './SettingsModel';
@@ -39,11 +40,12 @@ const selectStyle = { height: 32, borderRadius: 8, border: '1px solid #E0E0E4', 
 const btn2 = { height: 32, padding: '0 12px', border: '1px solid #E0E0E4', borderRadius: 9, background: 'var(--surface)', font: '600 12px var(--font)', color: 'var(--ink)', cursor: 'pointer', flexShrink: 0 } as const;
 
 /** A toggle, accent when on. The real checkbox stays for keyboards and screen readers. */
-function Switch({ label, hint, checked, onChange, top }: { label: string; hint: string; checked: boolean; onChange: (v: boolean) => void; top?: boolean }) {
+function Switch({ label, hint, checked, onChange, top, on }: { label: string; hint: ReactNode; checked: boolean; onChange: (v: boolean) => void; top?: boolean; on?: boolean }) {
   return (
     <label style={{ ...rowStyle, ...(top ? first : null) }}>
       {text(label, hint)}
       <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ position: 'absolute', opacity: 0, width: 1, height: 1, margin: 0 }} />
+      {on && <b style={{ fontSize: 12, fontWeight: checked ? 600 : 500, color: checked ? 'var(--accent)' : 'var(--muted)', minWidth: 22, textAlign: 'right' }}>{checked ? 'On' : 'Off'}</b>}
       <span aria-hidden="true" style={{ position: 'relative', width: 34, height: 20, borderRadius: 999, background: checked ? 'var(--accent)' : '#DCDCE0', flexShrink: 0, transition: 'background 150ms' }}>
         <span style={{ position: 'absolute', top: 2, left: checked ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(16,16,20,0.2)', transition: 'left 150ms' }} />
       </span>
@@ -54,6 +56,45 @@ function Switch({ label, hint, checked, onChange, top }: { label: string; hint: 
 function Status({ ready, children }: { ready: boolean; children: string }) {
   const c = ready ? 'var(--success-ink)' : 'var(--faint)';
   return <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, color: c }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: ready ? 'var(--success-ink)' : '#C8C8CE' }} />{children}</span>;
+}
+
+/** The visual critic's line: whether the chosen model can see images. Built-in AI never can. */
+export function criticStatus(s: SettingsData): { ready: boolean; text: string } {
+  const label = PROVIDERS[s.provider].label;
+  const model = s.models[s.provider] ?? SUGGESTED_MODELS[s.provider].models[0]!;
+  const ready = s.ai === 'cloud' && canSeeImages(s.provider, model);
+  return { ready, text: ready ? `${label}'s model can see images · Ready` : `${label}'s model can't see images. The layout check still runs.` };
+}
+
+const STYLES: [LookStyle, string][] = [['auto', 'Auto'], ['clean', 'Clean'], ['bold', 'Bold'], ['playful', 'Playful'], ['corporate', 'Corporate']];
+const PACE_LABELS: [Pace, string][] = [['calm', 'Calm'], ['normal', 'Normal'], ['fast', 'Fast']];
+
+/** Row 11 SettingsLook: defaults for new clips and the switches for the critic, beat sync and AI images. */
+export function LookSection({ s, set, onImageKey, onModel }: { s: SettingsData; set: (patch: SettingsPatch) => void; onImageKey: () => void; onModel?: () => void }) {
+  const status = criticStatus(s);
+  return (
+    <Section title="Look and quality">
+      <label style={{ ...rowStyle, ...first }}>
+        {text('Default style', 'Used for new clips. You can change it per clip under Look.')}
+        <select aria-label="Default style" value={s.look.style} onChange={(e) => set({ look: { style: e.target.value as LookStyle } })} style={selectStyle}>
+          {STYLES.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+      </label>
+      <div style={rowStyle}>
+        {text('Default pace')}
+        <div role="radiogroup" aria-label="Default pace" style={{ display: 'flex', padding: 2, borderRadius: 9, background: '#F1F1F3', gap: 2 }}>
+          {PACE_LABELS.map(([id, name]) => (
+            <button key={id} type="button" role="radio" aria-checked={s.look.pace === id} onClick={() => set({ look: { pace: id } })}
+              style={{ border: 0, borderRadius: 7, padding: '5px 10px', font: `${s.look.pace === id ? 600 : 500} 12px var(--font)`, color: s.look.pace === id ? 'var(--ink)' : 'var(--muted)', background: s.look.pace === id ? 'var(--surface)' : 'transparent', cursor: 'pointer' }}>{name}</button>
+          ))}
+        </div>
+      </div>
+      <Switch label="Visual critic" checked={s.critic} onChange={(v) => set({ critic: v })} on
+        hint={<>{`Sends 2 to 4 small frames of the clip to ${PROVIDERS[s.provider].label} to spot what looks wrong. Only with models that can see images. The frames show your text and any media in the clip.`}<span style={{ display: 'block', marginTop: 4 }}><Status ready={status.ready}>{status.text}</Status>{!status.ready && onModel && <> <a href="#model" onClick={(e) => { e.preventDefault(); onModel(); }} style={{ color: 'var(--accent)', fontWeight: 500 }}>Change model</a></>}</span></>} />
+      <Switch label="Beat sync" checked={s.beatSync} onChange={(v) => set({ beatSync: v })} on hint="Cuts and motion land on the music's beats. The beats are found on this computer; the music never leaves it." />
+      <Switch label="AI images" checked={s.aiImages} onChange={(v) => { set({ aiImages: v }); if (v) onImageKey(); }} on hint="Makes a picture for an empty image slot when no photo fits. Only the slot's few-word description goes to the image provider." />
+    </Section>
+  );
 }
 
 const tick = <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style={{ position: 'absolute', top: 10, right: 10 }}><circle cx="12" cy="12" r="10" fill="var(--accent)" /><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
@@ -101,7 +142,6 @@ export default function Settings() {
   const change = async () => {
     try { await chooseFolder(); } catch (error) { console.error('Motikord: could not choose the save folder', error); }
   };
-  const version = browser.runtime.getManifest().version;
   const connected = s.keySource === 'penv-app';
   const provider = s.provider;
 
@@ -130,6 +170,8 @@ export default function Settings() {
           : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><span style={{ fontSize: 13, fontWeight: 600 }}>Model</span><ModelBuiltIn /></div>}
       </div>
       {builtInAi === false && <div style={{ margin: '10px 16px 0' }}><NoBuiltInAi provider={provider} onUseGroq={() => set({ ai: 'cloud' })} /></div>}
+
+      <LookSection s={s} set={set} onImageKey={() => navigate('ImageKey')} onModel={() => navigate('SettingsModel')} />
 
       <Section title="Keys">
         <a href="#keys" onClick={(e) => { e.preventDefault(); navigate('PenvConnected'); }} style={{ ...rowStyle, ...first }}>
@@ -195,7 +237,7 @@ export default function Settings() {
 
       <div style={{ flexGrow: 1 }} />
       <div style={{ padding: '12px 24px 18px', marginTop: 20, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--faint)' }}>
-        <span>Motikord {version}</span>
+        <span>Motikord 2.0.0</span>
         <a href={CODE_URL} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', fontWeight: 500 }}>Open source on GitHub</a>
       </div>
     </main>

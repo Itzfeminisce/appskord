@@ -3,8 +3,8 @@ import { send } from './messages';
 
 // "Open Settings" and "Go to your clips" from the editor tab: an open side panel hears the message; one that is just opening reads the key on start.
 const KEY = 'sidepanelGo';
-export type SidepanelGoal = 'Settings' | 'Library' | 'PasteKey' | 'MediaSources';
-const GOALS: readonly string[] = ['Settings', 'Library', 'PasteKey', 'MediaSources'];
+export type SidepanelGoal = 'Settings' | 'Library' | 'PasteKey' | 'MediaSources' | 'ImageKey';
+const GOALS: readonly string[] = ['Settings', 'Library', 'PasteKey', 'MediaSources', 'ImageKey'];
 
 /** Call inside the click (no await before it), so Chrome lets the side panel open. */
 export function openSidePanelOn(windowId: number, screen: SidepanelGoal): void {

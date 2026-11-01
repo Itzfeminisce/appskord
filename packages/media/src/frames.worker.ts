@@ -1,5 +1,12 @@
 import type { EncodedPacket } from 'mediabunny';
-import { FrameCache, cacheCapacity, packetReader, webCodecsDecoder, type FramesRequest, type FramesResponse } from './frames';
+import {
+  FrameCache,
+  cacheCapacity,
+  packetReader,
+  webCodecsDecoder,
+  type FramesRequest,
+  type FramesResponse,
+} from './frames';
 import { openSource, type OpenedSource } from './source';
 
 let source: OpenedSource | null = null;
