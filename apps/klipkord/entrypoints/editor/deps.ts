@@ -25,6 +25,10 @@ export interface EditorDeps {
   /** "Use Groq instead" for the transcript still being made. */
   useGroq(): void;
   closeTab(): void;
+  /** Opens a recording's editor in its own tab. */
+  openEditor(recordingId: string): void;
+  /** Duplicate project: copies the recording, its files and the project; resolves with the new recording id. */
+  duplicateProject(project: Project): Promise<string>;
   /** media-missing "Find the file": puts the picked file back under the recording's folder. */
   putFile(recordingId: string, name: string, file: Blob): Promise<void>;
 }

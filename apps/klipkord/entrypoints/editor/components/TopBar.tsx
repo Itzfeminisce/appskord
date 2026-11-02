@@ -53,11 +53,11 @@ export function TopBar(p: TopBarProps) {
         <Icon>{ICONS.keys}</Icon>
       </button>
       <span style={{ ...DIVIDER, margin: '0 4px' }} />
-      <button type="button" onClick={p.onAskAI}
+      <button type="button" data-tour="ask-ai" onClick={p.onAskAI}
         style={{ height: 32, padding: '0 12px', borderRadius: 8, background: C.raised, border: `1px solid ${C.line}`, color: C.text, display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
         <Icon size={15}>{ICONS.ai}</Icon><span>Ask AI</span>
       </button>
-      <button type="button" onClick={p.onExport}
+      <button type="button" data-tour="export" onClick={p.onExport}
         style={{ height: 32, padding: '0 14px', borderRadius: 8, background: C.accent, color: '#FFFFFF', border: 0, display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
         <Icon size={15}>{ICONS.export}</Icon><span>Export</span>
       </button>
