@@ -32,12 +32,13 @@ export default function FollowUps() {
   const [status, setStatus] = useState<CatchupStatus | undefined>();
   const [meeting, setMeeting] = useState<Meeting | undefined>();
   const [segments, setSegments] = useState<Segment[]>([]);
-  const [reopened, setReopened] = useState<string | undefined>(followUpsDev.reopened);
+  const [reopened, setReopened] = useState<string | undefined>(() => { const r = followUpsDev.reopened; followUpsDev.reopened = undefined; return r; });
   const [draft, setDraft] = useState(followUpsDev.draft ?? '');
-  const [voiceFor, setVoiceFor] = useState<string | undefined>(followUpsDev.voice?.questionId);
-  const [voiceFrom, setVoiceFrom] = useState(followUpsDev.voice?.fromMs ?? 0);
+  const [devVoice] = useState(() => { const v = followUpsDev.voice; followUpsDev.voice = undefined; return v; });
+  const [voiceFor, setVoiceFor] = useState<string | undefined>(devVoice?.questionId);
+  const [voiceFrom, setVoiceFrom] = useState(devVoice?.fromMs ?? 0);
   const voiceBefore = useRef<ToldBefore | undefined>(undefined);
-  const [levels, setLevels] = useState<number[]>(followUpsDev.voice?.levels ?? []);
+  const [levels, setLevels] = useState<number[]>(devVoice?.levels ?? []);
   const [busy, setBusy] = useState(false);
   const port = useRef<ReturnType<typeof browser.runtime.connect> | undefined>(undefined);
   const asked = useRef(false);

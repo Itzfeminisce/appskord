@@ -179,7 +179,7 @@ export async function finishCatchup(meetingId: string, deps: { fetchFn?: FetchLi
 }
 
 export type QuestionState = CatchupQuestion & { state: 'open' | 'answered' | 'skipped' };
-/** found: every memory item kept from the catch-up (promises, decisions, questions, people). */
+/** found: every memory item kept from the catch-up (promises, decisions, questions); people are not counted. */
 export interface CatchupStatus { steps: CatchupProgress[]; decisions: number; promises: number; found: number; questions: QuestionState[] }
 
 /** V41Processing: each step's state, read from what is saved, so any page (or a reopened panel) can show it. */

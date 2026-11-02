@@ -90,7 +90,7 @@ describe('state cards', () => {
     await seedSampleV41(await getDB(), 'after');
     progress(status(0));
     const view = await mount(sidepanel, 'catchupProcessing', `/catchupProcessing?meeting=${V41_CATCHUP.id}`);
-    const keep = await waitFor(() => [...view.host.querySelectorAll('button')].find((b) => b.textContent === 'Keep as a note'));
+    const keep = await waitFor(() => [...view.host.querySelectorAll('button')].find((b) => b.textContent === 'Keep as a note') || false);
     expect(view.router.route.screen).toBe('catchupProcessing');
     act(() => keep!.click());
     await waitFor(() => view.router.route.screen === 'summary' || undefined);

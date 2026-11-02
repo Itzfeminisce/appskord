@@ -14,6 +14,8 @@ import { Banner, Tick } from './tellParts';
 export const processingDev: { status?: CatchupStatus } = {};
 
 const POLL_MS = 1_000;
+/** The extracted marker is written before the items, so an empty result must hold across two polls this far apart. */
+const CONFIRM_MS = 1_500;
 
 const Sparkle = () => (
   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" /></svg>
@@ -29,6 +31,7 @@ export default function CatchupProcessing() {
   const [status, setStatus] = useState<CatchupStatus | undefined>(processingDev.status);
   const [meeting, setMeeting] = useState<Meeting | undefined>();
   const [ai, setAi] = useState(PROVIDERS.groq.label);
+  const [confirmedEmpty, setConfirmedEmpty] = useState(false);
   const summaryAt = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -40,6 +43,7 @@ export default function CatchupProcessing() {
     if (processingDev.status) return undefined;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let emptyPolls = 0;
     const tick = async () => {
       const st = await send<CatchupStatus>({ type: 'catchup/progress', meetingId }).catch(() => undefined);
       if (!alive) return;
@@ -48,10 +52,14 @@ export default function CatchupProcessing() {
         const summary = st.steps.find((s) => s.step === 'summary');
         if (summary?.done && summaryAt.current === undefined) summaryAt.current = Date.now();
         if (processingDone(st, summaryAt.current === undefined ? 0 : Date.now() - summaryAt.current)) {
-          // Nothing found stays here, so the user picks Add more or Keep as a note.
-          if (!nothingFound(st)) replace('summary', { meetingId });
+          if (!nothingFound(st)) { replace('summary', { meetingId }); return; }
+          // Nothing found stays here, so the user picks Add more or Keep as a note; two empty polls in a row, since items are written just after the marker.
+          emptyPolls += 1;
+          if (emptyPolls >= 2) { setConfirmedEmpty(true); return; }
+          timer = setTimeout(() => void tick(), CONFIRM_MS);
           return;
         }
+        emptyPolls = 0;
       }
       timer = setTimeout(() => void tick(), POLL_MS);
     };
@@ -62,7 +70,7 @@ export default function CatchupProcessing() {
   const steps = status ? stepViews(status) : [];
   const failed = status?.steps.find((s) => s.step === 'summary')?.failed === 'ai';
   const limit = status?.steps.find((s) => s.failed === 'limit' && s.resumesAt);
-  const empty = !!status && !!status.steps.find((s) => s.step === 'summary')?.done && nothingFound(status);
+  const empty = processingDev.status ? !!status && !!status.steps.find((s) => s.step === 'summary')?.done && nothingFound(status) : confirmedEmpty;
   const readTelling = () => navigate('transcript', { meetingId });
   const tryAgain = () => {
     setStatus((s) => s && { ...s, steps: s.steps.map((x) => (x.step === 'summary' ? { step: x.step, done: false } : x)) });
@@ -103,8 +111,8 @@ export default function CatchupProcessing() {
         {meeting && <p className="ct-due"><span><Calendar /></span>{`Due dates are worked out from ${dayOf(meeting.startedAt)}, the day of the meeting.`}</p>}
       </div>
       <div className="ct-proc-foot">
-        <button type="button" className="ct-read" onClick={readTelling}>Read your telling meanwhile</button>
-        <span>The meeting page opens by itself when it is ready. You can close the panel. Rekord finishes in the background.</span>
+        {!empty && <button type="button" className="ct-read" onClick={readTelling}>Read your telling meanwhile</button>}
+        <span>{empty ? '' : 'The meeting page opens by itself when it is ready. '}You can close the panel. Rekord finishes in the background.</span>
       </div>
     </div>
   );

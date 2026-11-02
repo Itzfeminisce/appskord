@@ -51,6 +51,34 @@ describe('prompt ticks', () => {
 });
 
 describe('telling rules', () => {
+  it('processing: an empty poll between the extracted marker and the items does not show the empty state', async () => {
+    await open('V41Tell');
+    delete processingDev.status;
+    const full = (found: number): CatchupStatus => ({
+      steps: (['text', 'questions', 'decisions', 'promises', 'summary'] as const).map((step) => ({ step, done: true })),
+      decisions: found, promises: 0, found, questions: [],
+    });
+    const replies = [full(0), full(2)];
+    vi.spyOn(browser.runtime, 'sendMessage').mockImplementation((async () => replies.shift() ?? full(2)) as never);
+    const view = await mount(sidepanel, 'catchupProcessing', `/catchupProcessing?meeting=${V41_CATCHUP.id}`);
+    await waitFor(() => view.router.route.screen === 'summary', 6000);
+    expect(view.host.textContent).not.toContain('Nothing to remember yet');
+  });
+
+  it('processing: two empty polls in a row show the empty state without the opens-by-itself line or the read link', async () => {
+    await open('V41Tell');
+    delete processingDev.status;
+    const empty: CatchupStatus = {
+      steps: (['text', 'questions', 'decisions', 'promises', 'summary'] as const).map((step) => ({ step, done: true })),
+      decisions: 0, promises: 0, found: 0, questions: [],
+    };
+    vi.spyOn(browser.runtime, 'sendMessage').mockImplementation((async () => empty) as never);
+    const view = await mount(sidepanel, 'catchupProcessing', `/catchupProcessing?meeting=${V41_CATCHUP.id}`);
+    await waitFor(() => view.host.textContent?.includes('Nothing to remember yet'), 6000);
+    expect(view.host.textContent).not.toContain('opens by itself');
+    expect(view.host.textContent).not.toContain('Read your telling meanwhile');
+  });
+
   it('back while talking asks first; otherwise it leaves', () => {
     expect(backAction(true)).toBe('confirm');
     expect(backAction(false)).toBe('leave');
