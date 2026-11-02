@@ -5,7 +5,7 @@ import { loadKeys } from '@/lib/penv';
 import { onMessage, send, type MessageOf } from '@/lib/messages';
 import { getSettings } from '@/lib/settings';
 import { handleInstalled } from '@/lib/whatsNew';
-import { BACKFILL_ALARM, runBackfill } from '@/lib/memory/backfill';
+import { BACKFILL_ALARM, BACKFILL_KEY, QUEUE_KEY, runBackfill } from '@/lib/memory/backfill';
 import { rankOpenLoops } from '@/lib/memory/rank';
 import { openLoops } from '@/lib/memory/store';
 import { isStreamRequest, tokenReply } from '@/lib/transcribe/stream';
@@ -81,6 +81,8 @@ function updateBadge(): void {
   refreshBadge().catch((error) => console.error('Rekord: could not update the badge', error));
 }
 
+export const BADGE_ALARM = 'rekord.badge';
+
 export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(({ reason }) => {
     handleInstalled(reason, browser.runtime.getManifest().version).catch((error) => console.error('Rekord: could not record the update', error));
@@ -92,6 +94,11 @@ export default defineBackground(() => {
     if (msg?.type === 'rekord.badge.refresh') updateBadge();
     return undefined;
   });
+  // The engine saves items from this worker, so its progress writes are the cue; the daily alarm covers promises that turn overdue.
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && (BACKFILL_KEY in changes || QUEUE_KEY in changes)) updateBadge();
+  });
+  browser.alarms.create(BADGE_ALARM, { periodInMinutes: 24 * 60 }).catch((error) => console.error('Rekord: could not schedule the badge update', error));
   // We open the panel ourselves from action.onClicked: with openPanelOnActionClick the click never reaches
   // the extension, so the meeting tab is not granted (activeTab) and tab capture is refused.
   browser.sidePanel
@@ -109,7 +116,8 @@ export default defineBackground(() => {
 
   // Memory backfill: started, resumed after a rate limit, or picked up after a restart by its alarm.
   browser.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === BACKFILL_ALARM) runBackfill().catch((error) => console.error('Rekord: could not build memory', error));
+    if (alarm.name === BACKFILL_ALARM) runBackfill().catch((error) => console.error('Rekord: could not build memory', error)).finally(updateBadge);
+    if (alarm.name === BADGE_ALARM) updateBadge();
   });
 
   // After a browser restart, finish transcribing chunks left pending by an earlier meeting.

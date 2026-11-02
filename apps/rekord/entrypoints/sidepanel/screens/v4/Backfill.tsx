@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { PROVIDERS } from '@appskord/llm';
 import { clock } from '@/lib/calendar';
 import { listMeetings } from '@/lib/db';
+import { BACKFILL_KEY, readBackfill, requestBackfill, type BackfillMeeting, type BackfillProgress } from '@/lib/memory/backfill';
 import { getSettings } from '@/lib/settings';
 import { BackIcon, CheckIcon, PauseIcon } from '../../components/v4/icons';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
-import { BACKFILL_KEY, backfillView, moreLine, type BackfillMeeting, type BackfillProgress } from './backfillView';
+import { backfillView, moreLine } from './backfillView';
 import '../../components/v4/shell.css';
 import './v4.css';
 
@@ -16,8 +17,8 @@ function useProgress(): BackfillProgress | null {
   const [progress, setProgress] = useState<BackfillProgress | null>(null);
   useEffect(() => {
     let alive = true;
-    browser.storage.local.get(BACKFILL_KEY)
-      .then((stored) => alive && setProgress((stored[BACKFILL_KEY] as BackfillProgress | undefined) ?? null))
+    readBackfill()
+      .then((stored) => alive && setProgress(stored ?? null))
       .catch((error) => console.error('Rekord: could not read memory progress', error));
     const listener = (changes: Record<string, { newValue?: unknown }>, area: string) => {
       if (area === 'local' && BACKFILL_KEY in changes) setProgress((changes[BACKFILL_KEY]!.newValue as BackfillProgress | undefined) ?? null);
@@ -36,7 +37,7 @@ function Row({ meeting, startedAt, paused }: { meeting: BackfillMeeting; started
         <span className="bf-row-title">{meeting.title}</span>
         {startedAt !== undefined && <span className="bf-row-date">{day(startedAt)}</span>}
       </span>
-      {meeting.status === 'done' && <span className="bf-state"><CheckIcon />{meeting.found ?? 0} found</span>}
+      {(meeting.status === 'done' || meeting.status === 'failed') && <span className="bf-state">{meeting.status === 'done' && <CheckIcon />}{meeting.found ?? 0} found</span>}
       {meeting.status === 'working' && paused && <span className="bf-state"><PauseIcon size={14} stroke={2.2} />Paused</span>}
       {meeting.status === 'working' && !paused && <span className="bf-spin" />}
       {meeting.status === 'waiting' && <span className="bf-wait">Waiting</span>}
@@ -45,7 +46,7 @@ function Row({ meeting, startedAt, paused }: { meeting: BackfillMeeting; started
 }
 
 export default function Backfill() {
-  const { back, canGoBack, replace } = useRouter();
+  const { back, canGoBack, replace, navigate } = useRouter();
   const progress = useProgress();
   const [dates, setDates] = useState<Record<string, number>>({});
   const [ai, setAi] = useState(PROVIDERS.groq.label);
@@ -92,6 +93,17 @@ export default function Backfill() {
           <span className="bf-paused-text">
             <span className="bf-paused-title">Paused for now</span>
             <span>{ai}’s free limit is used up for now. Rekord carries on at {clock(progress!.resumeAt!)} by itself.</span>
+          </span>
+        </section>
+      )}
+      {progress?.error && (
+        <section aria-label="AI connection" className="bf-paused" role="alert">
+          <span className="bf-paused-text">
+            <span className="bf-paused-title">{progress.error === 'key' ? `${ai} didn’t accept your key.` : `${ai} isn’t responding.`}</span>
+            <span className="bf-actions">
+              <button type="button" className="wn-later" onClick={() => navigate('settings')}>{progress.error === 'key' ? 'Open Settings' : 'Switch provider'}</button>
+              <button type="button" className="wn-later" onClick={() => void requestBackfill().catch((error) => console.error('Rekord: could not resume building memory', error))}>Build memory</button>
+            </span>
           </span>
         </section>
       )}

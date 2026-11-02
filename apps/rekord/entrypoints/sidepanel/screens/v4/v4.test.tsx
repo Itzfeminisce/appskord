@@ -10,7 +10,8 @@ import { initialRoute, sidepanel } from '../../App';
 import { world } from '../../components/v4/world';
 import { DEV_FRAMES } from '../../dev/frames';
 import { frameInHash } from '../../dev/open';
-import { BACKFILL_KEY, backfillView, moreLine, type BackfillMeeting } from './backfillView';
+import { BACKFILL_ALARM, BACKFILL_KEY, type BackfillMeeting } from '@/lib/memory/backfill';
+import { backfillView, moreLine } from './backfillView';
 import { backfillMinutes } from './WhatsNew';
 
 const rows = (done: number, waiting: number): BackfillMeeting[] => [
@@ -53,7 +54,6 @@ describe('v4 screens', () => {
   });
 
   it('what’s new offers to build memory from earlier meetings and starts it', async () => {
-    const send = vi.spyOn(browser.runtime, 'sendMessage').mockResolvedValue(undefined);
     const view = await mount(sidepanel, 'whatsnew');
     await settle();
     expect(view.host.querySelector('h2')?.textContent).toBe('Build memory from your 24 earlier meetings');
@@ -61,7 +61,8 @@ describe('v4 screens', () => {
     await settle();
     expect(view.router.route.screen).toBe('backfill');
     expect((await getSettings()).memory.backfill).toBe('running');
-    expect(send).toHaveBeenCalledWith({ type: 'rekord.backfill.start' });
+    expect(await browser.alarms.get(BACKFILL_ALARM)).toBeDefined();
+    expect(((await browser.storage.local.get(BACKFILL_KEY))[BACKFILL_KEY] as { total: number }).total).toBe(20);
   });
 
   it('Not now is asked once', async () => {
@@ -92,6 +93,29 @@ describe('v4 screens', () => {
     const done = await mount(sidepanel, 'backfill');
     await settle();
     expect(done.host.querySelector('.bf-toast')?.textContent).toBe('Memory is ready: 41 promises, 18 decisions, 12 people');
+  });
+});
+
+describe('backfill failures', () => {
+  it('counts a failed meeting as finished and shows the connection problem', async () => {
+    await DEV_FRAMES.V4Backfill!.setup!();
+    const stored = (await browser.storage.local.get(BACKFILL_KEY))[BACKFILL_KEY] as { meetings: BackfillMeeting[] };
+    stored.meetings.find((m) => m.status === 'working')!.status = 'failed';
+    await browser.storage.local.set({ [BACKFILL_KEY]: { ...stored, error: 'key', failed: 1 } });
+    const view = await mount(sidepanel, 'backfill');
+    await settle();
+    expect(view.host.querySelector('.bf-failed')).not.toBeNull();
+    expect(view.host.querySelector('[aria-label="AI connection"]')?.textContent).toContain('Groq didn’t accept your key.');
+    await browser.storage.local.set({ [BACKFILL_KEY]: { ...stored, error: 'model' } });
+    const model = await mount(sidepanel, 'backfill');
+    await settle();
+    expect(model.host.querySelector('[aria-label="AI connection"]')?.textContent).toContain('Groq isn’t responding.');
+  });
+
+  it('a finished and a failed meeting both leave the current row behind', () => {
+    const list: BackfillMeeting[] = [{ id: 'a', title: 'A', status: 'failed' }, { id: 'b', title: 'B', status: 'waiting' }];
+    expect(backfillView(list).rows).toHaveLength(2);
+    expect(backfillView(list).more.count).toBe(0);
   });
 });
 

@@ -3,7 +3,7 @@ import { getDB } from '@/lib/db';
 import { M, SAMPLE_MEETINGS } from '@/lib/memory/sample';
 import { getSettings, updateSettings } from '@/lib/settings';
 import type { RouteParams, ScreenName } from '../router';
-import { BACKFILL_KEY, type BackfillMeeting, type BackfillProgress } from '../screens/v4/backfillView';
+import { BACKFILL_KEY, type BackfillMeeting, type BackfillProgress } from '@/lib/memory/backfill';
 
 export interface DevFrame {
   screen: ScreenName;

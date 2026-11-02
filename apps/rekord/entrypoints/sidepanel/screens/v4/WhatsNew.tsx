@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { PROVIDERS } from '@appskord/llm';
 import { listMeetings } from '@/lib/db';
-import { startBackfill } from '@/lib/memory/backfillStart';
+import { requestBackfill } from '@/lib/memory/backfill';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { markWhatsNewSeen } from '@/lib/whatsNew';
 import { Header } from '../../components/v4/Header';
@@ -53,7 +53,7 @@ export default function WhatsNew() {
   }, []);
 
   const build = () => {
-    void startBackfill();
+    void requestBackfill().catch((error) => console.error('Rekord: could not start building memory', error));
     navigate('backfill');
   };
   const notNow = async () => {
@@ -98,7 +98,7 @@ export default function WhatsNew() {
           <span className="wn-once">Asked once. You can build it later from Settings.</span>
         </section>
       )}
-      <button type="button" className="wn-ledger" onClick={() => { if (has(ledger)) navigate(ledger); }}>
+      <button type="button" className="wn-ledger" aria-disabled={!has(ledger) || undefined} onClick={() => { if (has(ledger)) navigate(ledger); }}>
         <LockIcon size={14} />See what stays on this computer
       </button>
     </div>
