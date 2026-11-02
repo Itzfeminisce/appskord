@@ -27,7 +27,13 @@ export interface BackfillProgress {
 }
 
 /** Meetings finished after their summary, waiting for extraction in the background. */
-export interface ExtractQueue { ids: string[]; rateLimits: Record<string, number>; resumeAt?: number }
+export interface ExtractQueue {
+  ids: string[]; rateLimits: Record<string, number>; resumeAt?: number;
+  /** Set while the queue waits for the AI connection to be fixed (V4States "Memory is waiting for Groq"). */
+  stopped?: 'key' | 'model';
+  /** Meetings whose extraction failed; "Try again" queues them again. */
+  failed?: string[];
+}
 
 export async function readBackfill(): Promise<BackfillProgress | undefined> {
   return (await browser.storage.local.get(BACKFILL_KEY))[BACKFILL_KEY] as BackfillProgress | undefined;
@@ -53,7 +59,10 @@ async function changeQueue(change: (q: ExtractQueue) => void): Promise<ExtractQu
 
 /** After a summary: hands the meeting to the background, so extraction survives the panel closing. */
 export async function enqueueExtraction(meetingId: string): Promise<void> {
-  const q = await changeQueue((x) => { if (!x.ids.includes(meetingId)) x.ids.push(meetingId); });
+  const q = await changeQueue((x) => {
+    if (!x.ids.includes(meetingId)) x.ids.push(meetingId);
+    if (x.failed) x.failed = x.failed.filter((id) => id !== meetingId);
+  });
   if (!q.resumeAt) await browser.alarms.create(BACKFILL_ALARM, { when: Date.now() });
 }
 
@@ -138,16 +147,24 @@ async function drainQueue(ids: string[], tried: Set<string>, deps: ExtractDeps, 
           const n = progressed ? 1 : (q.rateLimits[id] ?? 0) + 1;
           q.resumeAt = resumeAt;
           if (n < MAX_RATE_LIMITS) q.rateLimits[id] = n;
-          else drop(q, id);
+          else {
+            drop(q, id);
+            q.failed = [...new Set([...(q.failed ?? []), id])];
+          }
         });
         await browser.alarms.create(BACKFILL_ALARM, { when: resumeAt });
         return 'paused';
       }
       // The AI connection needs fixing: keep the meeting queued for the next wake.
-      if (stopCode(error)) return 'stopped';
+      const code = stopCode(error);
+      if (code) {
+        await changeQueue((q) => { q.stopped = code; });
+        return 'stopped';
+      }
       console.error('Rekord: could not extract memory', error);
+      await changeQueue((q) => { q.failed = [...new Set([...(q.failed ?? []), id])]; });
     }
-    await changeQueue((q) => drop(q, id));
+    await changeQueue((q) => { drop(q, id); delete q.stopped; });
   }
   return 'finished';
 }

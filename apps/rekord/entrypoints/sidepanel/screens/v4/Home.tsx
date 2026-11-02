@@ -6,7 +6,9 @@ import { putItem } from '@/lib/memory/store';
 import type { MemoryItem } from '@/lib/memory/types';
 import { useCalendar } from '../../components/CalendarCard';
 import { nearMeeting } from '../../components/v4/recordBar';
+import { HomeStates } from '../../components/v4/HomeStates';
 import { Shell } from '../../components/v4/Shell';
+import { EmptyCard } from '../../components/v4/states';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
 import { appLabel, counterpartId, dueChip, meetingLine, setPendingToast, takePendingToast, weekdayShort, type Toast } from './loops';
@@ -104,6 +106,7 @@ export function LoopsHome({ tab: forced, sheet = false, children }: { tab?: Loop
       <Shell tab="loops">
         <div className="lp-home">
           <BriefCard />
+          <HomeStates />
           {looksDone.length > 0 && (
             <button type="button" className="lp-looks" onClick={() => navigate('looksDone', { itemId: looksDone[0]!.id })}>
               <BigCheck size={16} />
@@ -123,10 +126,7 @@ export function LoopsHome({ tab: forced, sheet = false, children }: { tab?: Loop
             <button type="button" className="lp-decisions" aria-label="Decisions" onClick={() => navigate('decisions')}><DecisionIcon /></button>
           </div>
           {empty ? (
-            <div className="lp-empty">
-              <span className="lp-empty-title">Nothing open. Every promise is kept.</span>
-              <span className="lp-empty-text">New promises from your meetings will show up here.</span>
-            </div>
+            <EmptyCard title="Nothing open. Every promise is kept." body="New promises from your meetings will show up here." />
           ) : (
             <div className="lp-list">
               {loops.sections.map((s) => (

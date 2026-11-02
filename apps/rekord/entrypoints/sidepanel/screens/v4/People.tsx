@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Shell } from '../../components/v4/Shell';
+import { EmptyCard } from '../../components/v4/states';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
 import { Avatar, ChevronIcon, FindIcon, PairIcon, peopleFlash, readNotSame, useEvents, usePeopleData } from './PeopleParts';
@@ -44,6 +45,7 @@ export default function People() {
             <span className="pp-banner-icon"><ChevronIcon /></span>
           </button>
         )}
+        {data && rows.length === 0 && <EmptyCard title="No people yet" body="People appear after your first meeting with someone." />}
         {shown.length > 0 && (
           <section aria-label="People" className="pp-card">
             {shown.map(({ person, line, open, lastMet }) => (

@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { forgetAll, listItems, listLedger, listPeople, listVectors } from '@/lib/memory/store';
 import type { MemorySettings } from '@/lib/memory/types';
-import { ensureModel, modelState, removeModel, type ModelState } from '@/lib/recall';
+import { ensureModel, modelState, removeModel, type ModelState, type Progress } from '@/lib/recall';
 import { MODEL_CACHE, MODEL_ID } from '@/lib/recall/protocol';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { BackIcon } from '../../components/v4/icons';
+import { ModelDownloadCard, ModelFailedBanner } from '../../components/v4/states';
 import { useRouter } from '../../router';
 import './settings.css';
 
@@ -70,6 +71,7 @@ export default function SettingsMemory() {
   const { back, canGoBack, replace } = useRouter();
   const [memory, setMemory] = useState<MemorySettings | null>(null);
   const [model, setModel] = useState<{ state: ModelState; bytes: number }>({ state: 'none', bytes: 0 });
+  const [progress, setProgress] = useState<Progress>({ loaded: 0, total: 0 });
   const [size, setSize] = useState<{ items: number; bytes: number } | null>(null);
 
   const loadSize = () => memorySize().then(setSize).catch((error) => console.error('Rekord: could not measure memory', error));
@@ -103,7 +105,8 @@ export default function SettingsMemory() {
 
   async function download() {
     setModel({ state: 'downloading', bytes: 0 });
-    const ok = await ensureModel().catch(() => false);
+    setProgress({ loaded: 0, total: 0 });
+    const ok = await ensureModel(setProgress).catch(() => false);
     if (ok) await save({ searchModel: 'ready' });
     await loadModel();
   }
@@ -145,6 +148,8 @@ export default function SettingsMemory() {
           <Row title="Memory size" sub="Kept on this computer only">
             {size && <span className="sm-value">{size.items} items · {megabytes(size.bytes)}</span>}
           </Row>
+          {model.state === 'downloading' && <div className="sm-state"><ModelDownloadCard loaded={progress.loaded} total={progress.total} /></div>}
+          {model.state === 'failed' && <div className="sm-state"><ModelFailedBanner onRetry={() => void download()} /></div>}
           <LinkRow to="folder" title="Rekord folder" sub="Your notes as plain Markdown files" />
           <LinkRow to="move" title="Move to a new computer" sub="Save everything, bring it back later" />
           <LinkRow to="ledger" title="What left this computer" sub="Every time something was sent out" />

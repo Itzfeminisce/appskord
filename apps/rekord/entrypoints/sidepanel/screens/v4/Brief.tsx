@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { getSettings } from '@/lib/settings';
+import { EmptyCard } from '../../components/v4/states';
 import { agendaMinutes, SOURCE_LABEL, withGoal, GOAL_ID } from '@/lib/memory/agenda';
 import { APP_LABEL, clockOf, dayMonth, dueLabel, firstName, whenChip, type Brief as BriefData } from '@/lib/memory/brief';
 import type { Agenda } from '@/lib/memory/types';
@@ -161,13 +163,23 @@ function BriefNew({ brief, agenda }: { brief: BriefData; agenda: Agenda }) {
 
 /** V4Brief: the meeting about to start (or the one a notification named), from local data. */
 export default function Brief() {
-  const { route, back, canGoBack, replace } = useRouter();
+  const { route, back, canGoBack, replace, navigate } = useRouter();
   const [view] = useBrief(route.params.eventId);
+  const [calendarOff, setCalendarOff] = useState(false);
+  useEffect(() => {
+    getSettings().then((s) => setCalendarOff(!s.google.calendar)).catch((error) => console.error('Rekord: could not load your settings', error));
+  }, []);
   if (!view.ready) return <div className="bp-screen" />;
   if (!view.brief || !view.agenda) {
     return (
       <div className="bp-screen">
         <BackHeader label="Back to open loops" onBack={() => (canGoBack ? back() : replace('home'))} />
+        {calendarOff && (
+          <main className="bp-main">
+            <EmptyCard title="No briefs without a calendar" body="Connect Google Calendar to get briefs."
+              action={{ label: 'Connect Google Calendar', onClick: () => navigate('googleConnect') }} />
+          </main>
+        )}
       </div>
     );
   }

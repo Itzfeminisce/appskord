@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { deleteMeeting, listMeetings, listSegments } from '@/lib/db';
 import { dateLabel, groupMeetings, joinTranscript, matchesQuery, openActions } from '@/lib/library';
 import { attendeeLine } from '@/lib/askAll';
@@ -7,6 +7,10 @@ import type { Meeting } from '@/lib/types';
 import { Button, EmptyState, Spinner } from '../components';
 import { ComingUp } from '../components/CalendarCard';
 import { useRouter } from '../router';
+import { itemsForMeeting } from '@/lib/memory/store';
+import { StateBanner } from '../components/v4/states';
+
+const UNDO_MS = 8000;
 
 type Filter = 'all' | 'actions';
 
@@ -36,16 +40,41 @@ export default function Library() {
 
   const open = (m: Meeting) => navigate(m.status === 'done' ? 'summary' : m.status === 'recording' ? 'live' : 'processing', { meetingId: m.id });
 
-  const remove = async (id: string) => {
-    setConfirming(null);
-    const target = meetings?.find((m) => m.id === id);
-    if (target && (target.status === 'recording' || target.status === 'processing')) return;
+  // V4States "Meeting deleted": the meeting leaves the list at once and is deleted when Undo has gone.
+  const [deleted, setDeleted] = useState<{ meeting: Meeting; items: number } | null>(null);
+  const pending = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const flush = useCallback(async () => {
+    const p = pending.current;
+    if (!p) return;
+    pending.current = null;
+    clearTimeout(p.timer);
+    setDeleted(null);
     try {
-      await deleteMeeting(id);
-      setMeetings((cur) => cur?.filter((m) => m.id !== id));
+      await deleteMeeting(p.id);
     } catch {
       setError(true);
     }
+  }, []);
+  useEffect(() => () => { void flush(); }, [flush]);
+
+  const remove = async (id: string) => {
+    setConfirming(null);
+    const target = meetings?.find((m) => m.id === id);
+    if (!target || target.status === 'recording' || target.status === 'processing') return;
+    await flush();
+    const items = (await itemsForMeeting(id).catch(() => [])).length;
+    pending.current = { id, timer: setTimeout(() => void flush(), UNDO_MS) };
+    setDeleted({ meeting: target, items });
+    setMeetings((cur) => cur?.filter((m) => m.id !== id));
+  };
+  const undo = () => {
+    const p = pending.current;
+    if (!p || !deleted) return;
+    clearTimeout(p.timer);
+    pending.current = null;
+    const back = deleted.meeting;
+    setMeetings((cur) => [...(cur ?? []), back].sort((a, b) => b.startedAt - a.startedAt));
+    setDeleted(null);
   };
 
   const actionCount = useMemo(() => (meetings ?? []).filter((m) => openActions(m) > 0).length, [meetings]);
@@ -151,6 +180,13 @@ export default function Library() {
         </section>
       )}
       <ComingUp />
+      {deleted && (
+        <div style={{ position: 'sticky', bottom: 12, margin: '12px 16px 0', zIndex: 5 }}>
+          <StateBanner tone="plain" icon="done" title={`“${deleted.meeting.title || 'Untitled meeting'}” was deleted`}
+            body={deleted.items ? `Its ${deleted.items} memory ${deleted.items === 1 ? 'item is' : 'items are'} gone too.` : undefined}
+            action={{ label: 'Undo', kind: 'light', onClick: undo }} />
+        </div>
+      )}
     </main>
   );
 }

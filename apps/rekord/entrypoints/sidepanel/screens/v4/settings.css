@@ -73,3 +73,4 @@ button.sm-row[aria-disabled] { cursor: default; }
 .mv-in-count { font-size: 14px; font-weight: 600; color: #1e1b5c; }
 .mv-mono { font-family: var(--mono); }
 .mv-hidden { display: none; }
+.sm-state { padding: 0 12px 12px; }

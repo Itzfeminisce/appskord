@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getMeeting } from '@/lib/db';
 import { record } from '@/lib/ledger';
 import { itemsForMeeting, listItems, listPeople } from '@/lib/memory/store';
+import { StateBanner } from '../../components/v4/states';
 import { bodyTooLong, composeUrl } from '@/lib/services/gmail';
 import {
   draftFollowUp, followUpFacts, GMAIL_LEDGER_WHAT, plainDraft,
@@ -36,6 +37,7 @@ export default function FollowUp() {
   const [body, setBody] = useState('');
   const [drafting, setDrafting] = useState(false);
   const [error, setError] = useState('');
+  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -76,6 +78,15 @@ export default function FollowUp() {
 
   const draft = { to: to.map((r) => r.email), subject, body };
   const gmail = composeUrl(draft);
+  // Opened from code so a blocked pop-up can be told apart (V4States "Chrome blocked the email draft").
+  const openGmail = () => {
+    const tab = window.open(gmail, '_blank');
+    setBlocked(!tab);
+    if (!tab) return;
+    tab.opener = null;
+    if (bodyTooLong(draft)) navigator.clipboard.writeText(body).catch((err) => console.error('Rekord: could not copy the email', err));
+    void record({ meetingId, service: 'gmail', what: GMAIL_LEDGER_WHAT }).catch((err) => console.error('Rekord: could not record the Gmail draft', err));
+  };
 
   return (
     <main className="af-page">
@@ -122,15 +133,15 @@ export default function FollowUp() {
           </div>
         </div>
         {error && <p role="alert" className="af-alert">{error}</p>}
+        {blocked && (
+          <StateBanner alert tone="warn" icon="warn" title="Chrome blocked the email draft" body="Allow pop-ups for Rekord, then try again."
+            action={{ label: 'Try again', kind: 'light', onClick: openGmail }} />
+        )}
         <div className="fu-actions">
           <div className="fu-row">
             <a
               href={gmail} target="_blank" rel="noreferrer" className="fu-gmail" aria-disabled={drafting || undefined}
-              onClick={(e) => {
-                if (drafting) { e.preventDefault(); return; }
-                if (bodyTooLong(draft)) navigator.clipboard.writeText(body).catch((err) => console.error('Rekord: could not copy the email', err));
-                void record({ meetingId, service: 'gmail', what: GMAIL_LEDGER_WHAT }).catch((err) => console.error('Rekord: could not record the Gmail draft', err));
-              }}
+              onClick={(e) => { e.preventDefault(); if (!drafting) openGmail(); }}
             >Open in Gmail</a>
             <button type="button" className="fu-copy" onClick={() => { navigator.clipboard.writeText(body).catch((e) => console.error('Rekord: could not copy the email', e)); }}>Copy text</button>
           </div>

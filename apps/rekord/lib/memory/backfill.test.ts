@@ -5,7 +5,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { closeDB, putMeeting, putSegment } from '../db';
 import { saveKeys } from '../penv';
 import { getSettings } from '../settings';
-import { BACKFILL_ALARM, BACKFILL_KEY, MAX_RATE_LIMITS, readBackfill, requestBackfill, runBackfill, type BackfillProgress } from './backfill';
+import { BACKFILL_ALARM, BACKFILL_KEY, enqueueExtraction, MAX_RATE_LIMITS, readBackfill, readQueue, requestBackfill, runBackfill, type BackfillProgress } from './backfill';
 import { listLedger } from './store';
 
 const reply = (content: unknown) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
@@ -123,5 +123,21 @@ describe('backfill', () => {
     const again = await requestBackfill();
     expect(again.meetings).toEqual([{ id: 'a', title: 'A', status: 'done', found: 1 }]);
     expect(await fakeBrowser.alarms.get(BACKFILL_ALARM)).toBeUndefined();
+  });
+
+  it('marks a finished meeting waiting on a key problem, and a failed one for Try again', async () => {
+    await enqueueExtraction('a');
+    await runBackfill({ fetchFn: async () => new Response(JSON.stringify({ error: { message: 'Invalid API Key' } }), { status: 401 }) });
+    expect(await readQueue()).toMatchObject({ ids: ['a'], stopped: 'key' });
+
+    await runBackfill({ fetchFn: async () => new Response('nope', { status: 500 }) });
+    let q = await readQueue();
+    expect(q.ids).toEqual([]);
+    expect(q.failed).toEqual(['a']);
+    expect(q.stopped).toBeUndefined();
+
+    await enqueueExtraction('a');
+    q = await readQueue();
+    expect(q).toMatchObject({ ids: ['a'], failed: [] });
   });
 });

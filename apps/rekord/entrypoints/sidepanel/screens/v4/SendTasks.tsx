@@ -6,12 +6,13 @@ import type { MemoryItem, Person } from '@/lib/memory/types';
 import { LINEAR_HOSTS } from '@/lib/hosts';
 import { loadKeys } from '@/lib/penv';
 import { DEFAULT_LIST, listTaskLists, tasksTurnedOn, turnOnTasks, type TaskList } from '@/lib/services/gtasks';
-import { LINEAR_KEY, listTeams, savedTeam, type LinearTeam } from '@/lib/services/linear';
+import { LINEAR_KEY, LinearError, listTeams, savedTeam, type LinearTeam } from '@/lib/services/linear';
 import { notionDatabases, sendable, sendItems, sentTo, SERVICE_NAMES, type SendDeps, type SendService, type SendTarget } from '@/lib/services/send';
 import type { NotionDatabase } from '@/lib/share/notion';
 import type { Meeting } from '@/lib/types';
 import { Spinner } from '../../components';
 import { BackIcon } from '../../components/v4/icons';
+import { StateBanner } from '../../components/v4/states';
 import { dayLabel, firstName, isoDay, shortDate } from '../../components/v4/review';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
@@ -62,6 +63,9 @@ export default function SendTasks() {
   const [teamId, setTeamId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // V4States: Google said no to the Tasks permission (the item it was for), or Linear rejected the saved key.
+  const [refused, setRefused] = useState('');
+  const [keyRejected, setKeyRejected] = useState(false);
 
   useEffect(() => { delete sendTasksSession.done; }, []);
 
@@ -130,6 +134,8 @@ export default function SendTasks() {
   async function send() {
     if (busy || chosen.length === 0) return;
     setError('');
+    setRefused('');
+    setKeyRejected(false);
     let target: SendTarget;
     let label: string;
     if (tab === 'gtasks') {
@@ -139,7 +145,8 @@ export default function SendTasks() {
           await turnOnTasks(deps.tasks); // Chrome's and Google's prompts, inside this click
           setTasksOn(true);
         } catch (e) {
-          setError(e instanceof GoogleError ? e.message : errorText(e));
+          if (e instanceof GoogleError && e.code === 'cancelled') setRefused(chosen[0]!.text);
+          else setError(e instanceof GoogleError ? e.message : errorText(e));
           setBusy(false);
           return;
         }
@@ -166,7 +173,8 @@ export default function SendTasks() {
       if (result.error) setChecked((c) => new Set([...c].filter((id) => !sentById.has(id))));
       else setDone({ meetingId, service: tab, target: label, sentIds: result.sent.map((s) => s.item.id) });
     }
-    if (result.error) setError(errorText(result.error));
+    if (result.error instanceof LinearError && result.error.code === 'auth') setKeyRejected(true);
+    else if (result.error) setError(errorText(result.error));
     setBusy(false);
   }
 
@@ -271,6 +279,14 @@ export default function SendTasks() {
           <p className="st-info">The first time, Google asks you for one more permission. Rekord asks Google to add tasks. It can’t read your other tasks.</p>
         )}
         {error && <p role="alert" className="af-alert">{error}</p>}
+        {refused && (
+          <StateBanner alert tone="warn" icon="warn" title="Google Tasks said no" body={`Rekord can’t add “${refused}” without your permission.`}
+            action={{ label: 'Ask again', kind: 'light', onClick: () => void send() }} />
+        )}
+        {keyRejected && (
+          <StateBanner alert tone="alert" icon="warn" title="Linear didn’t accept this key" body="Make sure you copied all of it, or create a new key in Linear."
+            action={{ label: 'Update key', kind: 'link', onClick: () => navigate('linearConnect') }} />
+        )}
         {needsConnect ? (
           <button type="button" className="af-primary" onClick={() => navigate(tab === 'notion' ? 'notionConnect' : 'linearConnect')}>
             Connect {name}

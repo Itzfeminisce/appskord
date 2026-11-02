@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { listMeetings } from '@/lib/db';
+import { listMeetings, listSegments } from '@/lib/db';
+import { quoteFound } from '@/lib/memory/check';
 import { nextWake } from '@/lib/memory/rank';
 import { itemsByStatus, listPeople } from '@/lib/memory/store';
 import type { MemoryItem, Person, Quote } from '@/lib/memory/types';
 import { useRouter } from '../../router';
 import { world } from '../../components/v4/world';
-import { initials, quoteCaption, tint, type Chip, type Meetings } from './loops';
+import { QuoteMissingCard } from '../../components/v4/states';
+import { initials, meetingLine, quoteCaption, quoteClock, tint, type Chip, type Meetings } from './loops';
 import './loops.css';
 
 const base = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
@@ -39,6 +41,19 @@ export function KindTag({ kind }: { kind: MemoryItem['kind'] }) {
 /** The quote with its caption and a play button that opens the transcript at that moment. */
 export function QuoteBlock({ quote, meetings, accent = '#3730A3', variant }: { quote: Quote; meetings: Meetings; accent?: string; variant?: 'compact' | 'log' }) {
   const { navigate } = useRouter();
+  const [missing, setMissing] = useState(false);
+  // The transcript may have been edited since the checker found the quote: say so instead of opening the wrong moment.
+  const play = async () => {
+    const found = quoteFound(quote, await listSegments(quote.meetingId).catch(() => []));
+    if (found) navigate('transcript', { meetingId: quote.meetingId, atMs: quote.atMs });
+    else setMissing(true);
+  };
+  if (missing) {
+    return (
+      <QuoteMissingCard quote={`${quote.speaker}: “${quote.text}”`} caption={[meetingLine(quote.meetingId, meetings), quoteClock(quote.atMs)].join(' · ')}
+        onOpen={() => navigate('summary', { meetingId: quote.meetingId })} />
+    );
+  }
   return (
     <figure className={variant ? `lp-quote lp-quote-${variant}` : 'lp-quote'} style={{ borderLeftColor: accent }}>
       <div className="lp-quote-text">
@@ -46,7 +61,7 @@ export function QuoteBlock({ quote, meetings, accent = '#3730A3', variant }: { q
         <figcaption>{quoteCaption(quote, meetings)}</figcaption>
       </div>
       <button type="button" className="lp-play" aria-label="Play this moment in the transcript"
-        onClick={() => navigate('transcript', { meetingId: quote.meetingId, atMs: quote.atMs })}>
+        onClick={() => void play()}>
         <span><PlayIcon /></span>
       </button>
     </figure>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LINEAR_HOSTS, requestHosts } from '@/lib/hosts';
 import { loadKeys, mergeKeys } from '@/lib/penv';
+import { StateBanner } from '../../components/v4/states';
 import { LINEAR_KEY, LINEAR_KEYS_URL, LinearError, listTeams, savedTeam, saveTeam, type LinearDeps, type LinearTeam } from '@/lib/services/linear';
 import { getSettings } from '@/lib/settings';
 import { Spinner } from '../../components';
@@ -38,6 +39,7 @@ export default function LinearConnect() {
   const [teamId, setTeamId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [rejected, setRejected] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -72,9 +74,16 @@ export default function LinearConnect() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pasted, how]);
 
+  function updateKey() {
+    setHow('paste');
+    setPasted('');
+    requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.lc-key')?.focus());
+  }
+
   async function connect() {
     if (busy) return;
     setError('');
+    setRejected(false);
     // Asked before any other await, so the click still counts as the gesture Chrome wants.
     const allowed = requestHosts(LINEAR_HOSTS);
     const key = how === 'paste' ? pasted.trim() : penvKey;
@@ -102,7 +111,8 @@ export default function LinearConnect() {
       await saveTeam(team);
       if (canGoBack) back(); else replace('home');
     } catch (e) {
-      setError(e instanceof LinearError ? e.message : 'Linear didn’t connect. Try again in a moment.');
+      if (e instanceof LinearError && e.code === 'auth') setRejected(true);
+      else setError(e instanceof LinearError ? e.message : 'Linear didn’t connect. Try again in a moment.');
       setBusy(false);
     }
   }
@@ -150,6 +160,10 @@ export default function LinearConnect() {
           <span className="lc-hint">You can change the team each time you send.</span>
         </div>
         {error && <p role="alert" className="af-alert">{error}</p>}
+        {rejected && (
+          <StateBanner alert tone="alert" icon="warn" title="Linear didn’t accept this key" body="Make sure you copied all of it, or create a new key in Linear."
+            action={{ label: 'Update key', kind: 'link', onClick: updateKey }} />
+        )}
         <button type="button" className="af-primary lc-connect" onClick={() => void connect()} disabled={busy} aria-busy={busy || undefined}>
           {busy && <Spinner label="Connecting to Linear" size={16} />}
           Connect Linear

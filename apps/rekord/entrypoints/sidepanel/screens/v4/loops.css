@@ -46,14 +46,11 @@
 .lp-chip-plain { background: #f1f1f3; color: #44464d; }
 .lp-chip-done { background: #eaf6ef; color: #1a6b40; }
 
-.lp-empty { background: #ffffff; border: 1px solid #e8e8eb; border-radius: 18px; padding: 24px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
-.lp-empty-title { font-size: 15px; font-weight: 600; }
-.lp-empty-text { font-size: 13px; line-height: 1.45; color: #44464d; }
 
 .lp-toast-wrap { position: absolute; left: 16px; right: 16px; bottom: 84px; z-index: 5; }
 .lp-toast { padding: 4px 8px 4px 16px; min-height: 52px; box-sizing: border-box; border-radius: 14px; background: #111114; color: #ffffff; display: flex; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 8px 24px rgba(16, 16, 20, 0.18); }
 .lp-toast span { font-size: 13px; font-weight: 500; }
-.lp-toast button { height: 44px; padding: 0 8px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c7c9ff; }
+.lp-toast button { height: 44px; padding: 0 8px; border: none; background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: #c7c9ff; }
 
 /* Sheets */
 .lp-scrim { position: absolute; inset: 0; background: rgba(17, 17, 20, 0.5); z-index: 10; }

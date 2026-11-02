@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listMeetings } from '@/lib/db';
+import { StateBanner } from '../../components/v4/states';
 import { allowFolder, chooseFolder, folderStatus, meetingPath, personPath, stopFolder, writeAll, DECISIONS_PATH, OPEN_LOOPS_PATH, type FolderStatus } from '@/lib/folder';
 import { listPeople } from '@/lib/memory/store';
 import { BackIcon } from '../../components/v4/icons';
@@ -71,6 +72,10 @@ function On({ status, tree, allow, all, change, stop, busy }: OnProps) {
           </div>
           <button type="button" className="sm-btn" onClick={allow}>Allow</button>
         </div>
+      )}
+      {status.state === 'missing' && (
+        <StateBanner alert tone="alert" icon="warn" title="Rekord folder can’t be found" body="It may have been moved or deleted. Your notes are still in Rekord."
+          action={{ label: 'Choose a folder', kind: 'primary', onClick: change }} />
       )}
       <div className="fo-card">
         <div className="fo-where">

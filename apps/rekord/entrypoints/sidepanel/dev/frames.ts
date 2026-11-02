@@ -1,7 +1,7 @@
 // Dev frame routes: one entry per FRAMES.md frame, opened at `#/dev/<Frame>`. Later tasks add their frames here.
 import { askMemory, askMemorySession } from '@/lib/askAll';
 import { getDB, listMeetings } from '@/lib/db';
-import { getItem } from '@/lib/memory/store';
+import { getItem, itemsForMeeting } from '@/lib/memory/store';
 import { DEFAULT_SETTINGS } from '@/lib/settings';
 import { world } from '../components/v4/world';
 import { SAMPLE_EVENT, SAMPLE_PEOPLE } from '@/lib/memory/sample';
@@ -338,6 +338,17 @@ Object.assign(DEV_FRAMES, {
   V4BriefTab: { screen: 'brief', setup: briefWorld, page: async () => (await import('../../brief/BriefTab')).default },
   V4Notification: { screen: 'brief', setup: briefWorld, page: async () => (await import('./NotificationPreview')).default },
   V4LookBack: { screen: 'home', now: at(10, 30, 16, 0), setup: weekWorld, page: async () => (await import('../../lookback/LookBack')).default },
+  // T14: every V4States card stacked on one 400-wide board.
+  V4States: {
+    screen: 'home',
+    // The board's "Intro with Lumen" holds 3 memory items; the sample world keeps one, so two dismissed ones join it.
+    setup: async () => {
+      const [lumen] = await itemsForMeeting(M.lumen);
+      if (!lumen) return;
+      for (const id of ['i-lumen-2', 'i-lumen-3']) await putItem({ ...lumen, id, status: 'dismissed' });
+    },
+    page: async () => (await import('./StatesBoard')).default,
+  },
 } satisfies Record<string, DevFrame>);
 
 function redactParams() { return { atMs: REDACT_SPAN.startMs, endMs: REDACT_SPAN.endMs }; }

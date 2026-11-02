@@ -27,6 +27,7 @@ export interface DirHandle {
   getDirectoryHandle(name: string, o?: { create?: boolean }): Promise<DirHandle>;
   getFileHandle(name: string, o?: { create?: boolean }): Promise<FileHandle>;
   removeEntry?(name: string): Promise<void>;
+  keys?(): AsyncIterableIterator<string>;
 }
 
 let dbName = 'rekord-folder';
@@ -55,16 +56,27 @@ const writeMeta = async (m: FolderMeta) => { await (await folderDB.get()).put('m
 
 export type FolderStatus =
   | { state: 'off' }
-  | { state: 'on' | 'needsPermission'; name: string; lastWrittenAt?: number; queued: number; past: number };
+  | { state: 'on' | 'needsPermission' | 'missing'; name: string; lastWrittenAt?: number; queued: number; past: number };
 
 export async function folderStatus(): Promise<FolderStatus> {
   const [handle, meta] = await Promise.all([handles().get(), readMeta()]);
   if (!handle || !meta) return { state: 'off' };
   const permission = await (handle as unknown as DirHandle).queryPermission?.({ mode: 'readwrite' }).catch(() => 'prompt' as const);
-  const state = permission === 'granted' ? 'on' : 'needsPermission';
+  const state = permission !== 'granted' ? 'needsPermission' : (await isGone(handle as unknown as DirHandle)) ? 'missing' : 'on';
   const written = new Set(meta.written);
   const past = (await listMeetings()).filter((m) => !written.has(m.id)).length;
   return { state, name: meta.name, lastWrittenAt: meta.lastWrittenAt, queued: meta.queue.length, past };
+}
+
+// A folder moved or deleted outside Chrome throws NotFoundError when it is read.
+async function isGone(dir: DirHandle): Promise<boolean> {
+  if (!dir.keys) return false;
+  try {
+    await dir.keys().next();
+    return false;
+  } catch (error) {
+    return error instanceof DOMException && error.name === 'NotFoundError';
+  }
 }
 
 /** Opens the folder picker (needs the user's click) and keeps the handle; past meetings wait for "Write all". */
