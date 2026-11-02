@@ -9,6 +9,7 @@ import { spanAt, spans, toRec } from '@/lib/project/time';
 import type { EventsTrack, Project, Source } from '@/lib/project/types';
 import { videoStore, type Track as StoreTrack } from '@/lib/videoStore';
 import { units } from '@/lib/wordCuts';
+import { useDraftMarks } from '../ai/store';
 import type { SlotProps } from '../components/slots';
 import { chapterTitle } from '../dialogs/ChaptersEdit';
 import { Cuts } from '../dialogs/Cuts';
@@ -72,6 +73,8 @@ const sameKind = (sel: Selected | null, kind: Selected['kind']) => sel?.kind ===
 /** The timeline (T7): toolbar, ruler, tracks, playhead, menus, the dialogs the top bar opens and the first-run tour. */
 export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO }) {
   const { project, cut, recording, out, length, playing, seek, edit, readOnly } = p;
+  // A waiting AI draft shows in orange, as Ask AI promises.
+  const draft = useDraftMarks(project, recording);
   const tl = useTimeline();
   const root = useRef<HTMLDivElement>(null);
   const area = useRef<HTMLDivElement>(null);
@@ -485,6 +488,8 @@ export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO
   const zoomHint = sel?.kind === 'zooms' && sel.ids.length === 1 ? 'Drag the edges to change when it zooms in and out' : '';
   const toolbarHint = hint || (sel?.kind === 'chapters' || drag?.type === 'flag' ? 'Drag a flag to move a chapter' : multi || zoomHint);
   const playX = xOf(out, view, width);
+  const inView = (a: number, b: number) => b >= view.start && a <= view.end;
+  const clampX = (t: number) => Math.max(0, Math.min(width, xOf(t, view, width)));
   const atClip = spanAt(cut, out);
   const speedClipsSel = sel?.kind === 'clips' && tl.speedOpen ? cut.clips.filter((c) => sel.ids.includes(c.id)) : [];
   const speedSpan = speedClipsSel[0] ? clipSpans.find((s) => s.clip.id === speedClipsSel[0]!.id) : undefined;
@@ -515,6 +520,12 @@ export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO
             onBlockDown={onBlockDown} onBlockMenu={onBlockMenu} onEmptyDown={onEmptyDown} onHint={onHint} onToggle={onToggle} />
         ))}
       </div>
+      {draft && draft.cuts.filter((c) => inView(c.start, c.end)).map((c) => (
+        <span key={`c${c.start}`} aria-hidden="true" data-draft="cut" style={{ position: 'absolute', left: HEAD_PX + clampX(c.start), width: Math.max(2, clampX(c.end) - clampX(c.start)), top: 36, bottom: 0, background: 'rgba(251,146,60,0.18)', borderLeft: `1px solid ${C.accentText}`, borderRight: `1px solid ${C.accentText}`, boxSizing: 'border-box', zIndex: 3, pointerEvents: 'none' }} />
+      ))}
+      {draft && draft.at.filter((t) => inView(t, t)).map((t, i) => (
+        <span key={`a${i}`} aria-hidden="true" data-draft="change" style={{ position: 'absolute', left: HEAD_PX + clampX(t) - 1, width: 2, top: 36, bottom: 0, background: C.accentText, zIndex: 3, pointerEvents: 'none' }} />
+      ))}
       {playX >= 0 && playX <= width && (
         <span aria-hidden="true" style={{ position: 'absolute', left: HEAD_PX + playX, top: 36, bottom: 0, width: 2, background: '#FFFFFF', zIndex: 4, pointerEvents: 'none' }}>
           <span style={{ position: 'absolute', top: 0, left: -5, width: 12, height: 10, borderRadius: 2, background: '#FFFFFF' }} />

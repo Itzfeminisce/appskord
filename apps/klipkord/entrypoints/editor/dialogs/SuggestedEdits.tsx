@@ -8,6 +8,8 @@ import { ICON } from '../transcript/icons';
 import { outAt } from '../transcript/model';
 import { QUICK_WINS_KEY, setUi, useUi } from '../transcript/store';
 import { C, Icon, iconButton } from '../ui';
+import { useAiWins } from '../ai/actions';
+import { useUnits } from '../ai/store';
 
 const KIND_ICON: Record<QuickWinKind, keyof typeof ICON> = { fillers: 'cut', retake: 'retake', pauses: 'speed', zooms: 'zoom' };
 
@@ -42,7 +44,10 @@ export function SuggestedEdits({ recording, project, ready, readOnly, seek, play
   }, [id]);
 
   const wanted = ready && !readOnly && !closed && events !== undefined && (project.quickWins === 'new' || ui.quickWins);
-  const wins = useMemo(() => (wanted ? quickWins(project, recording.transcript, events, recording.duration) : []), [wanted, project, recording, events]);
+  const local = useMemo(() => (wanted ? quickWins(project, recording.transcript, events, recording.duration) : []), [wanted, project, recording, events]);
+  // T15: AI suggestions join the local list when an AI is set up.
+  const ai = useAiWins(project, useUnits(recording), wanted);
+  const wins = useMemo(() => [...local, ...ai], [local, ai]);
   const { before, after } = useMemo(() => (wins.length ? lengths(project, wins) : { before: 0, after: 0 }), [project, wins]);
 
   const close = () => {

@@ -4,6 +4,7 @@ import { setCaptions } from '@/lib/project/ops';
 import type { SlotProps } from '../components/slots';
 import { Seg } from '../timeline/controls';
 import { C, Icon, ICONS } from '../ui';
+import { openTranslate } from '../ai/store';
 
 const STYLES = [
   { value: 'clean', label: 'Clean', aa: { fontSize: 12, fontWeight: 500 } },
@@ -21,12 +22,12 @@ const HEAD: CSSProperties = { display: 'flex', alignItems: 'center', justifyCont
 const Head = ({ children }: { children: ReactNode }) => <div style={HEAD}><span>{children}</span></div>;
 
 export interface CaptionsPanelProps extends SlotProps {
-  /** T15 fills Translate. Without it the button shows its "needs AI" state. */
+  /** Translate; T15's TranslateCaptions panel by default, which shows ai-not-set-up when there is no AI. */
   onTranslate?: () => void;
 }
 
 /** The Captions tab: every choice is one `setCaptions` step on the current cut. */
-export function CaptionsPanel({ project, cut, readOnly, edit, onTranslate }: CaptionsPanelProps) {
+export function CaptionsPanel({ project, cut, readOnly, edit, onTranslate = openTranslate }: CaptionsPanelProps) {
   const c = cut.captions;
   const set = (patch: Partial<CaptionStyle>) => edit((p) => setCaptions(p, { patch }));
   const languages = Object.keys(project.translations);
@@ -78,9 +79,9 @@ export function CaptionsPanel({ project, cut, readOnly, edit, onTranslate }: Cap
           </select>
           <span aria-hidden="true" style={{ position: 'absolute', right: 8, top: 9, pointerEvents: 'none', color: C.secondary }}><Icon size={14}>{ICONS.down}</Icon></span>
         </div>
-        <button type="button" disabled={readOnly || !onTranslate} title={onTranslate ? undefined : 'Turn on AI edits'} onClick={onTranslate}
+        <button type="button" disabled={readOnly} onClick={onTranslate}
           style={{ height: 32, padding: '0 12px', borderRadius: 8, background: C.raised, color: C.text, border: `1px solid ${C.line}`, fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-            display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', boxSizing: 'border-box', opacity: onTranslate && !readOnly ? 1 : 0.5, cursor: onTranslate && !readOnly ? 'pointer' : 'default' }}>
+            display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', boxSizing: 'border-box', opacity: readOnly ? 0.5 : 1, cursor: readOnly ? 'default' : 'pointer' }}>
           <Icon size={15}>{ICONS.ai}</Icon>Translate
         </button>
       </div>
