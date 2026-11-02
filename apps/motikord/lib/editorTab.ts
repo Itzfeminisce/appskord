@@ -17,3 +17,7 @@ export async function findEditorTab(getContexts: GetContexts, editorUrl: string,
     return page === editorUrl && clipOf(new URL(context.documentUrl)) === clipId;
   });
 }
+
+/** Why the editor's clip is missing: removed because its make stopped, or deleted. */
+export type GoneReason = 'unfinished' | 'deleted';
+export const goneReason = (clipId: string | undefined, unfinished: unknown): GoneReason => (clipId !== undefined && unfinished === clipId ? 'unfinished' : 'deleted');

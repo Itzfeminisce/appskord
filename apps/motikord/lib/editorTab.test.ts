@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { findEditorTab } from './editorTab';
+import { findEditorTab, goneReason } from './editorTab';
 
 const EDITOR = 'chrome-extension://abc/editor.html';
 const tab = (tabId: number, documentUrl: string) => ({ tabId, windowId: 1, documentUrl });
@@ -32,5 +32,14 @@ describe('findEditorTab', () => {
   it('matches an editor with no clip only when none is asked for', async () => {
     expect((await findEditorTab(fake, EDITOR))?.tabId).toBe(4);
     expect(await findEditorTab(fake, EDITOR, 'c9')).toBeUndefined();
+  });
+});
+
+describe('goneReason', () => {
+  it('reads unfinished only for the clip whose make stopped', () => {
+    expect(goneReason('c1', 'c1')).toBe('unfinished');
+    expect(goneReason('c1', 'c2')).toBe('deleted');
+    expect(goneReason('c1', undefined)).toBe('deleted');
+    expect(goneReason(undefined, undefined)).toBe('deleted');
   });
 });

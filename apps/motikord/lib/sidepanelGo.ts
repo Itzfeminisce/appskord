@@ -14,6 +14,12 @@ export function openSidePanelOn(windowId: number, screen: SidepanelGoal): void {
     .catch((error: unknown) => console.error('Motikord: could not open the side panel', error));
 }
 
+/** Opens the side panel on whatever it shows now. Call inside the click, like openSidePanelOn. */
+export function openSidePanel(windowId: number | undefined): void {
+  if (windowId === undefined) return;
+  browser.sidePanel.open({ windowId }).catch((error: unknown) => console.error('Motikord: could not open the side panel', error));
+}
+
 /** The screen the editor asked the side panel to show, once; undefined when there is none. */
 export async function takeSidePanelGoal(): Promise<SidepanelGoal | undefined> {
   try {

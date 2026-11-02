@@ -9,7 +9,7 @@ import { getMedia } from './media';
 import { MediaCache } from './render/cache';
 import { renderFrames } from './render/frames';
 import type { HostAccess } from './hostAccess';
-import { send } from './messages';
+import { send, UNFINISHED_CLIP } from './messages';
 import { getSettings, onSettingsChanged } from './settings';
 import { copyTemplate, type Template } from './templates';
 import { autoStyle } from './templates/scenes';
@@ -197,6 +197,8 @@ export interface RunnerDeps {
   make: typeof makeClip;
   openEditor(clipId: string): Promise<unknown>;
   notifySaved(clipId: string): Promise<unknown>;
+  /** Tells an open editor tab its unfinished clip is about to be removed, so it does not read as deleted. */
+  notifyUnfinished(clipId: string): Promise<unknown>;
   save(clip: Clip): Promise<void>;
   remove(clipId: string): Promise<void>;
   settings(): Promise<Settings>;
@@ -209,6 +211,10 @@ const defaultDeps: RunnerDeps = {
   make: makeClip,
   openEditor: (clipId) => send({ type: 'editor/open', clipId }),
   notifySaved: (clipId) => send({ type: 'clip/saved', clipId }),
+  notifyUnfinished: async (clipId) => {
+    await browser.storage.session.set({ [UNFINISHED_CLIP]: clipId }).catch(() => undefined);
+    return send({ type: 'clip/unfinished', clipId });
+  },
   save: putClip,
   remove: deleteClip,
   settings: getSettings,
@@ -334,13 +340,20 @@ export function createRunner(deps: RunnerDeps = defaultDeps) {
     pending = saving.catch(() => undefined);
     try { await saving; } catch (error) { placeholder = false; opening = false; throw error; }
     opening = false;
+    // The make failed while the placeholder was saving, after its own clean-up ran: remove the placeholder too.
+    if (mine === sequence && store.get().status !== 'running') { await discard(); return; }
     if (mine !== sequence) return;
     patch({ editorOpen: true, clipId: id });
     await deps.openEditor(id);
   }
 
   async function discard(): Promise<void> {
-    if (placeholder && reserved) await deps.remove(reserved).catch((e: unknown) => console.error('Motikord: could not remove the unfinished clip', e));
+    if (placeholder && reserved) {
+      const id = reserved;
+      placeholder = false;
+      await deps.notifyUnfinished(id).catch(() => undefined);
+      await deps.remove(id).catch((e: unknown) => console.error('Motikord: could not remove the unfinished clip', e));
+    }
     placeholder = false;
   }
 
