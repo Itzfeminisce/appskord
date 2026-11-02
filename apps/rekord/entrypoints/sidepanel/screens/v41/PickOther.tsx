@@ -19,22 +19,33 @@ const pad = (n: number) => String(n).padStart(2, '0');
 /** Local "YYYY-MM-DD". */
 export const dayKey = (ms: number): string => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 
-/** No name, or a date after today, stops the form (V41StatesMore). */
-export function checkOther(form: Pick<SomethingElseForm, 'name' | 'date'>, now: number): OtherErrors {
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Local "HH:MM". */
+const clockKey = (ms: number): string => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
+/** No name, a date after today, or today with a start still ahead, stops the form (V41StatesMore). */
+export function checkOther(form: Pick<SomethingElseForm, 'name' | 'date' | 'start'>, now: number): OtherErrors {
   const errors: OtherErrors = {};
   if (!form.name.trim()) errors.name = NAME_ERROR;
-  if (!form.date || form.date > dayKey(now)) errors.date = DATE_ERROR;
+  const today = dayKey(now);
+  if (!form.date || form.date > today || (form.date === today && form.start > clockKey(now))) errors.date = DATE_ERROR;
   return errors;
 }
 
-/** The route params Tell reads: attendees go in `who`, separated by "|"; an entry with "@" is an email, else a name. */
+/** A typed name or email as an attendee. */
+export const toAttendee = (text: string): SomethingElseForm['attendees'][number] => (EMAIL.test(text) ? { email: text } : { name: text });
+
+/** The route params Tell reads: attendees go in `who`, each entry encodeURIComponent-ed and joined by "|". */
 export function otherParams(form: SomethingElseForm): RouteParams {
-  const who = form.attendees.map((a) => a.email ?? a.name ?? '').filter(Boolean).join('|');
+  const who = form.attendees.map((a) => a.email ?? a.name ?? '').filter(Boolean).map((entry) => encodeURIComponent(entry)).join('|');
   return { title: form.name.trim(), date: form.date, time: form.start, lengthMin: form.lengthMin, ...(who ? { who } : {}) };
 }
 
-/** A typed name or email as an attendee. */
-export const toAttendee = (text: string): SomethingElseForm['attendees'][number] => (text.includes('@') ? { email: text } : { name: text });
+/** Reads `who` back: split on "|", decode each entry, and count it as an email only when it is one. */
+export function parseWho(who: string): SomethingElseForm['attendees'] {
+  const decode = (entry: string) => { try { return decodeURIComponent(entry); } catch { return entry; } };
+  return who.split('|').map((entry) => decode(entry).trim()).filter(Boolean).map((text) => toAttendee(text));
+}
 const label = (a: { name?: string; email?: string }) => a.name ?? a.email ?? '';
 const initials = (text: string) => text.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
 
@@ -66,7 +77,7 @@ export default function PickOther() {
 
   const submit = () => {
     const all = addTyped();
-    const found = checkOther({ name, date }, world.now());
+    const found = checkOther({ name, date, start }, world.now());
     setErrors(found);
     if (found.name) return nameRef.current?.focus();
     if (found.date) return dateRef.current?.focus();

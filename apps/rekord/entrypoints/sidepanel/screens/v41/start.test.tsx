@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { IDBFactory } from 'fake-indexeddb';
 import { act } from 'react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DISMISSED_KEY } from '@/lib/catchup/types';
 import { closeDB, getDB } from '@/lib/db';
 import { seedSample, V41_FORM, V41_NOW } from '@/lib/memory/sample';
@@ -10,7 +10,7 @@ import { mount, settle, waitFor } from '../../../../test/mountRouter';
 import { sidepanel } from '../../App';
 import { world } from '../../components/v4/world';
 import { DEV_FRAMES } from '../../dev/frames';
-import { checkOther, DATE_ERROR, NAME_ERROR, otherParams } from './PickOther';
+import { checkOther, DATE_ERROR, NAME_ERROR, otherParams, parseWho, toAttendee } from './PickOther';
 
 const click = (el: Element | null | undefined) => act(() => (el as HTMLElement).click());
 const button = (root: Element, text: string) => [...root.querySelectorAll('button')].find((b) => b.textContent === text)!;
@@ -21,6 +21,10 @@ const type = (input: HTMLInputElement, value: string) => act(() => {
 });
 
 describe('start screens', () => {
+  // The dev frame patches Date.now for the missed-meeting hook; put it back after each test.
+  const originalNow = Date.now;
+  afterEach(() => { Date.now = originalNow; });
+
   beforeEach(async () => {
     await closeDB();
     globalThis.indexedDB = new IDBFactory();
@@ -59,6 +63,8 @@ describe('start screens', () => {
     click(view.host.querySelector('[aria-label="Dismiss. Don’t ask about this meeting again"]'));
     await waitFor(() => !view.host.querySelector('[aria-label="Missed meeting"]'));
     expect((await browser.storage.local.get(DISMISSED_KEY))[DISMISSED_KEY]).toEqual(['evt-northwind-1102']);
+    // The toast waits for the dismiss write, so the card can leave before the toast shows.
+    await waitFor(() => view.host.querySelector('[role="status"]') ?? false);
     expect(view.host.querySelector('[role="status"]')?.textContent).toContain('Won’t ask about “Q4 planning with Northwind” again');
     click(button(view.host.querySelector('[role="status"]')!, 'Undo'));
     await waitFor(() => view.host.querySelector('[aria-label="Missed meeting"]') ?? false);
@@ -120,20 +126,35 @@ describe('start screens', () => {
     expect(view.host.querySelector('[aria-label="Remove Dana Ruiz"]')).not.toBeNull();
     click(button(view.host, 'Start telling'));
     await settle();
-    expect(view.router.route).toEqual({ screen: 'catchupTell', params: { title: 'Lunch with Dana', date: '2026-10-30', time: '12:30', lengthMin: 60, who: 'Dana Ruiz' } });
+    expect(view.router.route).toEqual({ screen: 'catchupTell', params: { title: 'Lunch with Dana', date: '2026-10-30', time: '12:30', lengthMin: 60, who: 'Dana%20Ruiz' } });
   });
 });
 
 describe('form rules', () => {
+  // Local time, so the "today" cases do not depend on the machine's zone.
+  const MORNING = new Date(2026, 10, 2, 9, 0).getTime();
+
   it('checkOther: a name and a day that has happened', () => {
-    expect(checkOther({ name: '  ', date: '2026-10-30' }, V41_NOW)).toEqual({ name: NAME_ERROR });
-    expect(checkOther({ name: 'Lunch', date: '2026-11-05' }, V41_NOW)).toEqual({ date: DATE_ERROR });
-    expect(checkOther({ name: 'Lunch', date: '2026-11-02' }, V41_NOW)).toEqual({});
-    expect(checkOther({ name: 'Lunch', date: '' }, V41_NOW)).toEqual({ date: DATE_ERROR });
+    expect(checkOther({ name: '  ', date: '2026-10-30', start: '09:00' }, V41_NOW)).toEqual({ name: NAME_ERROR });
+    expect(checkOther({ name: 'Lunch', date: '2026-11-05', start: '09:00' }, V41_NOW)).toEqual({ date: DATE_ERROR });
+    expect(checkOther({ name: 'Lunch', date: '2026-10-30', start: '09:00' }, V41_NOW)).toEqual({});
+    expect(checkOther({ name: 'Lunch', date: '', start: '09:00' }, V41_NOW)).toEqual({ date: DATE_ERROR });
   });
 
-  it('otherParams: attendees as names or emails joined by "|"', () => {
-    expect(otherParams({ ...V41_FORM, attendees: [{ name: 'Dana Ruiz' }, { email: 'sam@x.co' }] }).who).toBe('Dana Ruiz|sam@x.co');
+  it('checkOther: today with a start time still ahead is rejected; one already past is fine', () => {
+    expect(checkOther({ name: 'Lunch', date: '2026-11-02', start: '17:00' }, MORNING)).toEqual({ date: DATE_ERROR });
+    expect(checkOther({ name: 'Lunch', date: '2026-11-02', start: '08:00' }, MORNING)).toEqual({});
+  });
+
+  it('otherParams: attendees encoded and joined by "|"; a "|" in a name survives the round trip', () => {
+    expect(otherParams({ ...V41_FORM, attendees: [{ name: 'Dana Ruiz' }, { email: 'sam@x.co' }] }).who).toBe('Dana%20Ruiz|sam%40x.co');
     expect(otherParams({ ...V41_FORM, attendees: [] }).who).toBeUndefined();
+    const who = otherParams({ ...V41_FORM, attendees: [{ name: 'Ops | Dana' }] }).who as string;
+    expect(parseWho(who)).toEqual([{ name: 'Ops | Dana' }]);
+  });
+
+  it('parseWho: "Dana @ Acme" is a name, not an email; a real address is an email', () => {
+    expect(parseWho('Dana%20%40%20Acme|sam%40x.co')).toEqual([{ name: 'Dana @ Acme' }, { email: 'sam@x.co' }]);
+    expect(toAttendee('Dana @ Acme')).toEqual({ name: 'Dana @ Acme' });
   });
 });

@@ -74,7 +74,10 @@ export function MissedStart({ onDismissed }: { onDismissed: (event: CalendarEven
     <MissedCard
       event={latest} more={missed.length - 1}
       onCatchUp={() => navigate('catchupTell', { eventId: latest.id })}
-      onDismiss={() => { onDismissed(latest); void dismiss(latest.id).catch((error) => console.error('Rekord: could not dismiss the missed-meeting card', error)); }}
+      onDismiss={async () => {
+        // The toast's Undo must run after the write, or it can restore before the dismissal lands.
+        try { await dismiss(latest.id); onDismissed(latest); } catch (error) { console.error('Rekord: could not dismiss the missed-meeting card', error); }
+      }}
       onMore={() => navigate('catchupPick')}
     />
   );
