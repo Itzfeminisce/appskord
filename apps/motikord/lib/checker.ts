@@ -225,6 +225,14 @@ function backgroundUnder(bg: Background, box: Box, aspect: Aspect): (Rgb | undef
 
 const worst = (ink: Rgb, colours: Rgb[]) => Math.min(...colours.map((c) => ratioOf(ink, c)));
 
+/** A plate the ink reads on: the base colour, else near-black or near-white, else a near-black plate with near-white ink. */
+function plate(l: TextLayer, path: string, base: string, need: number): PatchOp[] {
+  const reads = (p: string) => { const ink = over(l.colour, l.opacity, parseHex(p)); return !!ink && ratioOf(ink, parseHex(p)!) >= need; };
+  const fill = [base, DARK, LIGHT].find(reads);
+  if (fill) return [{ op: 'add', path: `${path}/background`, value: fill }];
+  return [{ op: 'add', path: `${path}/background`, value: DARK }, { op: 'replace', path: `${path}/colour`, value: LIGHT }];
+}
+
 function contrast({ recipe, scene, layer, si, li }: At, opts: CheckOptions, out: Issue[]) {
   const l = layer as TextLayer;
   const path = layerPath(si, li);
@@ -254,7 +262,7 @@ function contrast({ recipe, scene, layer, si, li }: At, opts: CheckOptions, out:
       if (out.some((i) => i.kind === 'contrast' && i.sceneId === scene.id && i.fix[0]?.path === `/scenes/${si}/bg`)) return;
       const again = scene.template ? reexpand(recipe, scene, opts) : undefined;
       const relaid = again?.bg && JSON.stringify(again.bg) !== JSON.stringify(scene.bg);
-      push(relaid ? [{ op: 'replace', path: `/scenes/${si}/bg`, value: again!.bg }, ...ASPECTS.flatMap((a) => templateBoxes(recipe, scene, si, a, opts))] : [{ op: 'add', path: `${path}/background`, value: toHex(colours[0]!) }],
+      push(relaid ? [{ op: 'replace', path: `/scenes/${si}/bg`, value: again!.bg }, ...ASPECTS.flatMap((a) => templateBoxes(recipe, scene, si, a, opts))] : plate(l, path, toHex(colours[0]!), need),
         `Scene ${n} ${name} runs onto a block it can't be read on`);
     } else {
       push([{ op: 'replace', path: `${path}/colour`, value: pick.c }], `Scene ${n} ${name} is hard to read on its background`);

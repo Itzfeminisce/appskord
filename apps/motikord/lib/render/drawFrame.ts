@@ -180,7 +180,7 @@ const spacing = (em: number, px: number) => `${(em * px).toFixed(2)}px`;
 function fitIn(ctx: Ctx, cache: MediaCache, l: Face, text: string, width: number, height: number, maxSize: number, lineHeight: number): Fit {
   const w = Math.round(width);
   const h = Math.round(height);
-  const key = `${l.font}|${cache.fontReady(l.font) ? 1 : 0}|${l.weight}|${l.letterSpacing ?? 0}|${Math.round(maxSize)}|${w}|${h}|${lineHeight}|${text}`;
+  const key = `${l.font}|${cache.fontReady(l.font, l.weight) ? 1 : 0}|${l.weight}|${l.letterSpacing ?? 0}|${Math.round(maxSize)}|${w}|${h}|${lineHeight}|${text}`;
   return cache.fit(key, () => fitText({ text, width: w, height: h, maxSize, lineHeight, measure: measurer(ctx, l) }));
 }
 
@@ -253,7 +253,7 @@ interface Word { text: string; x: number; y: number; w: number; index: number; l
 
 // Word positions only change with the fit, so they are measured once and reused every frame.
 function layoutWords(ctx: Ctx, cache: MediaCache, l: TextLayer, fit: Fit, x: number, step: number): Word[] {
-  const key = `words|${l.font}|${cache.fontReady(l.font) ? 1 : 0}|${l.weight}|${l.letterSpacing ?? 0}|${l.align}|${fit.sizePx}|${x.toFixed(1)}|${step.toFixed(1)}|${fit.lines.join('\n')}`;
+  const key = `words|${l.font}|${cache.fontReady(l.font, l.weight) ? 1 : 0}|${l.weight}|${l.letterSpacing ?? 0}|${l.align}|${fit.sizePx}|${x.toFixed(1)}|${step.toFixed(1)}|${fit.lines.join('\n')}`;
   return cache.paint(key, () => {
     const words: Word[] = [];
     let index = 0;

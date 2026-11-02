@@ -9,6 +9,7 @@ import type { RenderItem } from '@/lib/exportPlan';
 import { getMedia } from '@/lib/media';
 import { MediaCache } from '@/lib/render/cache';
 import { activeLayers, drawFrame, sceneAt } from '@/lib/render/drawFrame';
+import { bundledFacesFor, loadBundledFonts } from '@/lib/render/fontList';
 import type { Recipe } from '@/lib/types';
 
 // Render worker: draws every frame with drawFrame on an OffscreenCanvas and encodes it, so the editor stays responsive.
@@ -43,7 +44,8 @@ async function preview(canvas: OffscreenCanvas): Promise<ImageBitmap | undefined
 
 async function render(recipe: Recipe, item: RenderItem, audio: Extract<ToWorker, { type: 'start' }>['audio']) {
   const cache = new MediaCache({ read: (a) => getMedia(a.opfsPath) });
-  await cache.load(recipe);
+  // The pack fonts live only in the pages' fonts.css; a worker has its own font set, so it loads them before measuring.
+  await Promise.all([cache.load(recipe), loadBundledFonts((self as unknown as { fonts: FontFaceSet }).fonts, self.location.origin, bundledFacesFor(recipe))]);
   const prepare = holders(recipe, cache);
   const canvas = new OffscreenCanvas(item.width, item.height);
   const gif = item.kind === 'gif';
