@@ -126,7 +126,7 @@ export type Message =
   | { type: 'recording/stop' }                          // side panel → background
   | { type: 'recording/state'; state: RecordingState }  // background → all (also on request)
   | { type: 'recording/get-state' }
-  | { type: 'offscreen/start'; streamId: string; meetingId: string; startedAt: number; sources?: { mic: boolean; tab: boolean }; catchup?: { offsetMs: number } } // background → offscreen; catchup: mic only, times are telling time after offsetMs
+  | { type: 'offscreen/start'; streamId: string; meetingId: string; startedAt: number; sources?: { mic: boolean; tab: boolean }; catchup?: { offsetMs: number; part: number } } // background → offscreen; catchup: mic only, times are telling time after offsetMs; part: index in told.parts (audio seq base)
   | { type: 'recording/pause'; on: boolean }           // side panel → background: pause or resume a catch-up telling
   | { type: 'offscreen/pause'; on: boolean; at: number } // background → offscreen; at: the click (epoch ms)
   | { type: 'catchup/typed'; catchup: CatchupStart; text: string } // side panel → background: typed or pasted telling; reply RecordingReply

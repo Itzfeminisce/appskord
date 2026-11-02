@@ -1,6 +1,6 @@
 import { createDB, type DBSchema, type IDBPDatabase } from '@appskord/platform';
 import type { Agenda, AskTurn, CatchupStart, Chunk, LedgerEntry, Marker, Meeting, MemoryItem, Note, Person, RecordingMeta, RecordingPart, Segment, VectorRow } from './types';
-import { addPart, newCatchupMeeting, typedPart } from './catchup/session';
+import { addPart, locateTelling, newCatchupMeeting, partOfSeq, tellSeqBase, typedPart } from './catchup/session';
 import type { CatchupAnswer, TellPart } from './catchup/types';
 
 export interface RekordDB extends DBSchema {
@@ -76,17 +76,63 @@ export async function listMeetings(): Promise<Meeting[]> {
   return all.sort((a, b) => b.startedAt - a.startedAt);
 }
 // v4.1 catch-up: one meeting, many parts
-/** Opens a telling: a new catch-up for the picked meeting, or (append) the same one again. Resolves the telling so far (ms). */
-export async function beginCatchup(start: CatchupStart, language: Meeting['language'], now: number): Promise<number> {
+/**
+ * Opens a telling: a new catch-up for the picked meeting, or (append) the same one again. Resolves the telling so far
+ * (`offsetMs`) and the index the new part will take in `told.parts` (`part`, its audio's seq base).
+ */
+export async function beginCatchup(start: CatchupStart, language: Meeting['language'], now: number): Promise<{ offsetMs: number; part: number }> {
   const existing = await getMeeting(start.meetingId);
   if (start.append) {
     if (existing?.source !== 'catchup' || !existing.told) throw new Error('No catch-up to add to.');
+    const part = existing.told.parts.length;
+    await deleteTellingAudioFrom(start.meetingId, part); // audio of a telling that never became a part
     await putMeeting({ ...existing, status: 'recording' });
-    return existing.told.ms;
+    return { offsetMs: existing.told.ms, part };
   }
   if (existing) throw new Error('This catch-up already exists.');
   await putMeeting(newCatchupMeeting(start.meetingId, start.picked, language, now));
-  return 0;
+  return { offsetMs: 0, part: 0 };
+}
+
+/** One voice part's audio: `offsetMs` into the joined telling, `ms` long, one file. */
+export interface TellingAudio { part: number; offsetMs: number; ms: number; blob: Blob }
+
+/** Every voice part of a catch-up that still has audio, in telling order. Empty after "Delete audio of your telling". */
+export async function listTellingAudio(meetingId: string): Promise<TellingAudio[]> {
+  const [meeting, slices] = await Promise.all([getMeeting(meetingId), listRecordingParts(meetingId)]);
+  const told = meeting?.told;
+  if (!told) return [];
+  const out: TellingAudio[] = [];
+  let offsetMs = 0;
+  for (const [part, p] of told.parts.entries()) {
+    const mine = p.kind === 'voice' ? slices.filter((r) => partOfSeq(r.seq) === part) : [];
+    if (mine.length > 0) out.push({ part, offsetMs, ms: p.ms, blob: new Blob(mine.map((r) => r.blob), { type: mine[0]!.mimeType }) });
+    offsetMs += p.ms;
+  }
+  return out;
+}
+
+/** "Play your telling at atMs": the voice part's file and where to seek in it (ms). Null in a typed part or with no audio. */
+export async function tellingAudioAt(meetingId: string, atMs: number): Promise<(TellingAudio & { seekMs: number }) | null> {
+  const told = (await getMeeting(meetingId))?.told;
+  const at = told && locateTelling(told.parts, atMs);
+  if (!at) return null;
+  const audio = (await listTellingAudio(meetingId)).find((a) => a.part === at.part);
+  return audio ? { ...audio, seekMs: at.seekMs } : null;
+}
+
+/** "Delete audio of your telling": removes every voice part's audio, keeps the segments and sets `told.audioDeleted`. */
+export async function deleteTellingAudio(meetingId: string): Promise<void> {
+  await deleteRecording(meetingId);
+  const meeting = await getMeeting(meetingId);
+  if (meeting?.told) await putMeeting({ ...meeting, told: { ...meeting.told, audioDeleted: true } });
+}
+
+/** Removes the audio of voice part `part` and every later one (a failed write, or a telling that was never kept). */
+export async function deleteTellingAudioFrom(meetingId: string, part: number): Promise<void> {
+  const tx = (await getDB()).transaction('recordings', 'readwrite');
+  const rows = await tx.store.index('meetingId').getAll(meetingId);
+  await Promise.all([...rows.filter((r) => r.seq >= tellSeqBase(part)).map((r) => tx.store.delete(r.id)), tx.done]);
 }
 
 /** Ends a telling: its part (and voice answer) joins the meeting, which then goes to processing. Times stay the meeting's. */

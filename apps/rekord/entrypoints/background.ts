@@ -1,5 +1,5 @@
 import { appSources, CATCHUP_SOURCES, MIC_BLOCKED, micBlockedReply, tabRefusedReply, type AppFlag } from '@/lib/capture';
-import { cappedPartMs, limitState, pauseClock, resumeClock, startClock } from '@/lib/catchup/session';
+import { cappedPartMs, pauseClock, resumeClock, startClock } from '@/lib/catchup/session';
 import { resolveSources, type Sources } from '@/lib/sources';
 import { beginCatchup, deleteMeeting, endCatchupPart, getMeeting, pendingChunks, putMeeting, saveTypedPart } from '@/lib/db';
 import { loadKeys } from '@/lib/penv';
@@ -369,14 +369,10 @@ async function startCatchup(start: CatchupStart): Promise<RecordingReply> {
   let begun = false;
   try {
     const settings = await getSettings();
-    if (start.append) {
-      const told = (await getMeeting(meetingId))?.told;
-      if (told && limitState(told.ms) === 'stop') throw new Error('This catch-up already has 60 minutes.');
-    }
-    const offsetMs = await beginCatchup(start, settings.language, now);
+    const { offsetMs, part } = await beginCatchup(start, settings.language, now);
     begun = true;
     await ensureOffscreen();
-    const reply = await send<OffscreenReply>({ type: 'offscreen/start', streamId: '', meetingId, startedAt: now, sources: CATCHUP_SOURCES, catchup: { offsetMs } });
+    const reply = await send<OffscreenReply>({ type: 'offscreen/start', streamId: '', meetingId, startedAt: now, sources: CATCHUP_SOURCES, catchup: { offsetMs, part } });
     if (!reply?.ok) throw new Error(reply?.error ?? START_ERROR);
     if (reply.micUnavailable) throw new Error(MIC_BLOCKED);
     catchup = start;
