@@ -33,16 +33,17 @@ The first time on-device Whisper runs, Chrome downloads its model files from Hug
 
 ## Permissions and why
 - `sidePanel`: shows Klipkord beside the page.
-- `offscreen`: keeps recording and transcribing while the panel is closed.
 - `desktopCapture`: lets you choose the screen, window or tab to record.
 - `storage` and `unlimitedStorage`: keep your settings and recordings on your computer. Videos are large.
 - `identity`: signs you in to Penv Cloud so your keys can be fetched.
-- `activeTab` and `scripting`: after you press a shortcut, show a small marker toast in the tab you are on. Nothing else is read from the page.
+- `activeTab` and `scripting`: after you press a shortcut, show a small marker toast or the drawing layer in the tab you are on. While a tab is being recorded, Klipkord also notes where you click in it, so the editor can zoom there; this stays on your computer and password fields are skipped. Nothing else is read from the page.
 - Host access to `huggingface.co` and `*.hf.co`: downloads the Whisper models.
 - Optional host access, asked only when you turn the feature on:
   - `penv.cloud`: fetches your keys after "Connect Penv Cloud".
   - `api.groq.com`, `openrouter.ai`, `api.openai.com`, `api.anthropic.com`: the cloud AI you choose.
   - `localhost:11434`: your own Ollama.
+  - `www.googleapis.com`: saves a video to your Google Drive when you choose to.
+  - The page you are recording: for markers, drawing and click zooms.
 
 ## What Klipkord does not do
 - No tracking, analytics, advertising or crash reporting.

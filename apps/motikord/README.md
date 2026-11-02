@@ -94,7 +94,7 @@ npm run zip        # release zip in .output/ (leaves out the machine check)
 - `npm run build` keeps the developer tools and the machine check page. See [CHECK.md](CHECK.md).
 - A manual test for the owner is in [TEST-STEPS.md](TEST-STEPS.md).
 - `npm run icons` rewrites the icons in `public/icon/`.
-- Store listing text is in [STORE.md](STORE.md).
+- Store listing text is in [public/store/STORE.md](public/store/STORE.md).
 
 ## Plans and specs
 

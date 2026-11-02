@@ -1,1 +1,1 @@
-export { defineAppConfig, isRelease, isStoreBuild, type AppConfigOptions, type AppIcons } from './defineAppConfig';
+export { defineAppConfig, isRelease, isStoreBuild, STORE_FOLDER, type AppConfigOptions, type AppIcons } from './defineAppConfig';

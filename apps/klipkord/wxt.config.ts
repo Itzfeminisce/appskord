@@ -12,7 +12,7 @@ export default defineAppConfig({
   // No `icons` shipped before; WXT found these in public/icon. Listed so the built manifest stays the same.
   icons: { 16: 'icon/16.png', 32: 'icon/32.png', 48: 'icon/48.png', 128: 'icon/128.png' },
   // activeTab (granted by a shortcut) + scripting draw the marker toast in the active tab.
-  permissions: ['sidePanel', 'offscreen', 'desktopCapture', 'storage', 'unlimitedStorage', 'identity', 'activeTab', 'scripting'],
+  permissions: ['sidePanel', 'desktopCapture', 'storage', 'unlimitedStorage', 'identity', 'activeTab', 'scripting'],
   // The Whisper check fetches models from Hugging Face, which redirects to its CDN hosts.
   hostPermissions: ['https://huggingface.co/*', 'https://*.hf.co/*'],
   // Requested only when the user turns on Penv Cloud, a cloud key, Ollama or Google Drive, or allows drawing on a site.
