@@ -69,7 +69,7 @@ describe('Text and cards panel', () => {
     act(() => button('Blur').click());
     const next = edit.mock.calls[0]![0](p.project) as Project;
     const [blur] = currentCut(next).overlays;
-    expect(blur).toMatchObject({ kind: 'blur', at: 35_000, end: 38_000, motion: 'fade', blur: { mode: 'blur', amount: 0.6, follow: false } });
+    expect(blur).toMatchObject({ kind: 'blur', at: 35_000, end: 38_000, motion: 'fade', blur: { mode: 'blur', amount: 0.9, follow: false } });
     expect(lastStep(next)).toBe('Added a blur');
     expect(timelineState().selected).toEqual({ kind: 'overlays', ids: [blur!.id] });
     expect(storyState().panel).toBe(false);
@@ -155,6 +155,27 @@ describe('preview handles', () => {
   });
 });
 
+describe('corner resize', () => {
+  it('commits one undo step for a corner drag', () => {
+    const blur: Overlay = { id: 'b', kind: 'blur', at: 0, end: 10_000, box: { x: 0.4, y: 0.3, w: 0.2, h: 0.1 }, motion: 'none', blur: { mode: 'blur', amount: 0.9, follow: false } };
+    const project = setup([blur]);
+    const { p, edit } = props(project, 1000);
+    select({ kind: 'overlays', ids: ['b'] });
+    const { host } = render(<OverlayHandles {...p} />);
+    const box = host.querySelector('[data-overlay-box="b"]') as HTMLElement;
+    (box.parentElement as HTMLElement).getBoundingClientRect = () => ({ width: 960, height: 540, x: 0, y: 0, top: 0, left: 0, right: 960, bottom: 540, toJSON: () => ({}) });
+    const corner = host.querySelector('[data-handle="se"]') as HTMLElement;
+    const fire = (type: string, x: number) => corner.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, clientX: x, clientY: x, pointerId: 1 }));
+    act(() => { fire('pointerdown', 100); });
+    act(() => { fire('pointermove', 150); });
+    act(() => { fire('pointerup', 150); });
+    expect(edit).toHaveBeenCalledTimes(1);
+    const next = edit.mock.calls[0]![0](project) as Project;
+    expect(next.history[next.current]!.undo.length - project.history[project.current]!.undo.length).toBe(1);
+    expect(currentCut(next).overlays[0]!.box.w).toBeGreaterThan(0.2);
+  });
+});
+
 describe('brand kit dialog', () => {
   it('shows the BrandKit frame, saves colours and fonts, and offers the kit to Motikord', async () => {
     const mine = brandStore(area());
@@ -179,7 +200,7 @@ describe('brand kit dialog', () => {
     act(() => { heading.value = 'Inter'; heading.dispatchEvent(new Event('change', { bubbles: true })); });
     await act(async () => { button('Save').click(); await new Promise((r) => setTimeout(r, 0)); });
     const saved = onSave.mock.calls[0]![0];
-    expect(saved.kit).toEqual({ colours: [{ hex: '#2563EB', role: 'primary' }], headingFont: 'Inter', useForNewClips: false });
+    expect(saved.kit).toEqual({ colours: [{ hex: '#2563EB', role: 'primary' }], headingFont: 'Inter', bodyFont: 'Inter', useForNewClips: false });
     expect(await mine.load()).toEqual(saved);
     expect(await theirs.load()).toEqual(saved);
     expect(onClose).toHaveBeenCalled();

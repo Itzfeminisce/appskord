@@ -68,7 +68,7 @@ export function OverlayHandles(p: SlotProps & { events?: EventsTrack }) {
         style={{ position: 'absolute', left: pct(b.x, frame.w), top: pct(b.y, frame.h), width: pct(b.w, frame.w), height: pct(b.h, frame.h),
           border: '1.5px solid #FFFFFF', outline: `1px dashed ${C.accent}`, boxSizing: 'border-box', cursor: p.readOnly ? 'default' : 'move', pointerEvents: 'auto', touchAction: 'none' }}>
         {CORNERS.map(([h, style]) => (
-          <span key={h} data-handle={h} onPointerDown={down(h)} onPointerMove={move} onPointerUp={up}
+          <span key={h} data-handle={h} onPointerDown={down(h)}
             style={{ position: 'absolute', width: 8, height: 8, background: '#FFFFFF', border: `1px solid ${C.accent}`, ...style }} />
         ))}
         <span style={{ position: 'absolute', left: 0, top: -22, padding: '2px 6px', borderRadius: 4, background: C.accent, color: '#FFFFFF', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>

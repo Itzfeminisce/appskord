@@ -18,7 +18,10 @@ const START_BOX: Record<Overlay['kind'], Box> = {
 };
 
 /** Default blur strength: the Overlays frame's slider at 60% reads "Strong". */
-export const BLUR_AMOUNT = 0.6;
+/** Blur Amount's three stops; Strong is the default. */
+export const BLUR_STOPS = [{ value: 'light', label: 'Light', amount: 0.3 }, { value: 'medium', label: 'Medium', amount: 0.6 }, { value: 'strong', label: 'Strong', amount: 0.9 }] as const;
+export const BLUR_AMOUNT = 0.9;
+export const blurStop = (amount: number) => BLUR_STOPS.reduce((a, b) => (Math.abs(b.amount - amount) < Math.abs(a.amount - amount) ? b : a));
 
 /** OVERLAY_MS from the playhead (output ms), in recording time, ending by the recording's end. */
 export function spanAt(cut: Cut, out: number, duration: number): { at: number; end: number } {

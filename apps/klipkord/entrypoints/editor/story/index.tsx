@@ -31,9 +31,11 @@ function inspector(p: SlotProps, base: Pick<InspectorProps, 'selection'> | undef
   if (!selection || selected?.kind !== 'overlays' || selected.ids.length !== 1) return base;
   const o = p.cut.overlays.find((x) => x.id === selected.ids[0]);
   if (!o) return base;
+  // "{i} of {n}" counts this kind's overlays in time order, as the other selected blocks do.
+  const same = p.cut.overlays.filter((x) => x.kind === o.kind).sort((a, b) => a.at - b.at);
   return {
     selection: {
-      ...selection, name: OVERLAY_NAMES[o.kind],
+      ...selection, name: OVERLAY_NAMES[o.kind], index: same.findIndex((x) => x.id === o.id) + 1, count: same.length,
       body: <div key={o.id} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}><OverlayPanel p={p} o={o} /></div>,
     },
   };

@@ -1,4 +1,3 @@
-import { colourOf } from '@appskord/brand';
 import { cardsReady } from '@/lib/render/layers/card';
 import type { SlotProps } from '../components/slots';
 import { StateCard } from '../states/StateCard';
@@ -14,13 +13,14 @@ const ADD_BUTTON = {
   fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
 } as const;
 
-/** The brand kit row: its main colour and Edit. */
+/** The brand kit row: the kit's logo as the swatch, and Edit. */
 function BrandRow() {
   const brand = useBrand();
-  const main = brand ? colourOf(brand.kit, 'primary') ?? colourOf(brand.kit, 'text') : undefined;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, background: C.raised, border: `1px solid ${C.line}` }}>
-      <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 5, background: main ?? 'transparent', border: main ? 0 : `1px dashed ${C.line}`, boxSizing: 'border-box' }} />
+      <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 5, background: brand?.logo ? '#FFFFFF' : 'transparent', border: brand?.logo ? 0 : `1px dashed ${C.line}`, boxSizing: 'border-box', overflow: 'hidden', display: 'flex' }}>
+        {brand?.logo && <img src={brand.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+      </span>
       <span style={{ flexGrow: 1, fontSize: 12.5 }}>Brand kit</span>
       <button type="button" onClick={() => setStory({ brandKit: true })}
         style={{ border: 0, background: 'transparent', padding: 0, color: C.accentText, fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Edit</button>

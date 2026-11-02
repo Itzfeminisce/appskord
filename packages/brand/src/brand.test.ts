@@ -8,6 +8,11 @@ import {
   colourOf,
   emptyKit,
   isBrandKit,
+  isBrandRecord,
+  MAX_LOGO_LENGTH,
+  brandFontFamily,
+  BRAND_FONTS,
+  DEFAULT_BRAND_FONT,
   logoAssetId,
   offerBrand,
   pullBrand,
@@ -161,5 +166,31 @@ describe('sync between Klipkord and Motikord', () => {
     expect(reply).not.toHaveBeenCalled();
     off();
     expect(spy.onMessageExternal.removeListener).toHaveBeenCalled();
+  });
+});
+
+describe('limits and fonts', () => {
+  it('refuses a huge logo and more colours than roles', () => {
+    expect(isBrandRecord({ ...record(1), logo: 'data:image/png;base64,' + 'A'.repeat(MAX_LOGO_LENGTH) })).toBe(false);
+    expect(isBrandRecord({ ...record(1), logo: 'data:image/png;base64,AAAA' })).toBe(true);
+    const k = kit();
+    expect(isBrandKit({ ...k, colours: [...k.colours, ...k.colours, ...k.colours, ...k.colours, ...k.colours] })).toBe(
+      false,
+    );
+  });
+
+  it('clamps a peer clock in the future to now', async () => {
+    const store = brandStore(area());
+    const before = Date.now();
+    expect(await store.keepNewer(record(Date.now() + 10 ** 12))).toBe(true);
+    const saved = (await store.load())!;
+    expect(saved.updatedAt).toBeGreaterThanOrEqual(before);
+    expect(saved.updatedAt).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('names the bundled fonts, Inter by default', () => {
+    expect(BRAND_FONTS).toEqual(['Geist', 'Inter', 'Archivo', 'Archivo Black']);
+    expect(DEFAULT_BRAND_FONT).toBe('Inter');
+    expect(brandFontFamily('Archivo Black')).toContain("'Archivo Black'");
   });
 });

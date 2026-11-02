@@ -1,4 +1,4 @@
-import { isBrandRecord, newer, type BrandRecord } from './kit';
+import { clampRecord, isBrandRecord, newer, type BrandRecord } from './kit';
 
 /** The part of `chrome.storage.local` the store needs; tests pass a map. */
 export interface BrandArea {
@@ -31,8 +31,10 @@ export function brandStore(area: BrandArea): BrandStore {
     load,
     save,
     async keepNewer(record) {
-      if (!isBrandRecord(record) || !newer(await load(), record)) return false;
-      await save(record);
+      if (!isBrandRecord(record)) return false;
+      const peer = clampRecord(record);
+      if (!newer(await load(), peer)) return false;
+      await save(peer);
       return true;
     },
     subscribe(onChange) {
