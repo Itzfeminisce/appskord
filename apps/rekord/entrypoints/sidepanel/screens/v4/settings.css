@@ -66,7 +66,8 @@ button.sm-row[aria-disabled] { cursor: default; }
 .mv-size-mb { font-family: var(--mono); font-size: 13px; font-weight: 500; white-space: nowrap; }
 .mv-size-what { font-size: 12px; line-height: 1.4; color: #44464d; }
 .mv-warn { margin: 0; padding: 10px 12px; border-radius: 12px; background: #fff4e5; color: #8a4b00; font-size: 12.5px; line-height: 1.45; font-weight: 500; }
-.mv-file { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px dashed #dcdce0; background: transparent; font: inherit; text-align: left; cursor: pointer; min-height: 44px; box-sizing: border-box; }
+.mv-file { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px dashed #dcdce0; background: transparent; font: inherit; text-align: left; cursor: pointer; position: relative; }
+.mv-file::after { content: ''; position: absolute; inset: -3px 0; }
 .mv-file span { font-family: var(--mono); font-size: 12px; color: #111114; overflow-wrap: anywhere; }
 .mv-in { padding: 12px; border-radius: 12px; background: #eef0ff; border: 1px solid #d9d7fb; display: flex; flex-direction: column; gap: 4px; }
 .mv-in-label { font-size: 12px; font-weight: 500; color: #3730a3; }

@@ -271,7 +271,7 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
     screen: 'redact', moment: 'after', params: { meetingId: M.sarah3, ...redactParams() },
     setup: async () => {
       await redactWorld();
-      await redactSpan(M.sarah3, REDACT_SPAN, { now: new Date(2026, 10, 3, 10, 41).getTime(), decode: async () => undefined, notify: () => undefined, recording: async () => undefined });
+      await redactSpan(M.sarah3, REDACT_SPAN, { now: new Date(2026, 10, 3, 10, 41).getTime(), decode: async () => ({ sampleRate: 16_000, samples: new Float32Array(16_000) }), encode: async () => new Blob([new Uint8Array(1)], { type: 'audio/webm' }), notify: () => undefined, recording: async () => undefined });
     },
   },
   V4Ledger: { screen: 'ledger', moment: 'after', params: { meetingId: M.sarah3 } },
@@ -296,7 +296,7 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
     screen: 'move',
     setup: async () => {
       // A kept recording, so the file reads "with audio" at about the frame's size.
-      await putRecordingPart({ id: 'rec-sample', meetingId: M.sync2, seq: 0, mimeType: 'audio/webm', blob: new Blob([new Uint8Array(30.5 * MB)], { type: 'audio/webm' }) });
+      await putRecordingPart({ id: 'rec-sample', meetingId: M.sync2, seq: 0, mimeType: 'audio/webm', blob: new Blob([new Uint8Array(40.5 * MB)], { type: 'audio/webm' }) });
       moveDev.chosen = { name: 'rekord-2026-10-30.rekord', preview: { meetings: 312, people: 48, already: 6 } };
     },
   },
