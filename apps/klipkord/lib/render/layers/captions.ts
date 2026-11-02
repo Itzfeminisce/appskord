@@ -6,10 +6,12 @@ type Captions = NonNullable<RenderPlan['captions']>;
 
 /** The spoken word in "Word by word", as in the Captions frame. */
 export const WORD_ON = '#FDBA74';
+// Clean sits on the frames' caption backing too, so it reads on a light screen.
+const BACKING = 'rgba(17,17,20,0.82)';
 const LOOKS = {
-  clean: { weight: 500, box: '', pad: [0, 0], radius: 0 },
+  clean: { weight: 500, box: BACKING, pad: [10 / 15, 5 / 15], radius: 8 / 15 },
   bold: { weight: 800, box: '#111114', pad: [0.4, 0.15], radius: 0.2 },
-  word: { weight: 700, box: 'rgba(17,17,20,0.82)', pad: [10 / 15, 5 / 15], radius: 8 / 15 },
+  word: { weight: 700, box: BACKING, pad: [10 / 15, 5 / 15], radius: 8 / 15 },
 } as const;
 /** Captions keep this share of the frame clear at the top or bottom, so they sit in a phone's safe area too. */
 export const CAPTION_MARGIN = { top: 0.1, bottom: 0.14 };
@@ -62,18 +64,12 @@ export function layoutCaption(captions: Captions, frame: Size, measure: (text: s
   return { font, size, lineHeight, box: look.box, radius: look.radius * size, x, y, w: boxW, h: boxH, lines };
 }
 
-/** Draws a caption; the context is in frame px, `scale` canvas px per frame px (shadows ignore the transform). */
-export function drawCaption(ctx: Ctx2D, layout: CaptionLayout, scale: number): void {
+/** Draws a caption on its backing; the context is in frame px. */
+export function drawCaption(ctx: Ctx2D, layout: CaptionLayout): void {
   ctx.save();
-  if (layout.box) {
-    ctx.fillStyle = layout.box;
-    roundRect(ctx, layout.x, layout.y, layout.w, layout.h, layout.radius);
-    ctx.fill();
-  } else {
-    // Clean has no box, so a soft shadow keeps it readable on a light screen.
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = layout.size * 0.25 * scale;
-  }
+  ctx.fillStyle = layout.box;
+  roundRect(ctx, layout.x, layout.y, layout.w, layout.h, layout.radius);
+  ctx.fill();
   ctx.font = layout.font;
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';

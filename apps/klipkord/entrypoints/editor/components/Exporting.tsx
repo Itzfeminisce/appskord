@@ -397,7 +397,8 @@ async function upload(item: DoneItem, interactive: boolean): Promise<void> {
   }
 }
 
-const card = { position: 'fixed', right: 12, top: 56, zIndex: 16, width: 330, borderRadius: 12, background: C.panel, border: `1px solid ${C.line}`,
+// The frame's 330 px is the content width; padding and border sit outside it.
+const card = { position: 'fixed', right: 12, top: 56, zIndex: 16, width: 330, boxSizing: 'content-box', borderRadius: 12, background: C.panel, border: `1px solid ${C.line}`,
   boxShadow: '0 18px 44px rgba(0,0,0,0.55)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, color: C.text } as const;
 
 /** The top bar pill: "Exporting 62%"; a click shows or hides the card. */
@@ -420,7 +421,7 @@ function DoneRow({ item }: { item: DoneItem }) {
       <span style={{ width: 44, height: 26, borderRadius: 4, background: 'linear-gradient(135deg, #1E3A8A, #3B82F6)', flexShrink: 0 }} />
       <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <span title={item.name} style={{ fontSize: 12.5, fontWeight: 500, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
-        <span style={{ fontSize: 11.5, color: C.muted }}>Saved · {sizeText(item.size)}</span>
+        <span style={{ fontSize: 11.5, color: C.muted, whiteSpace: 'nowrap' }}>Saved · {sizeText(item.size)}</span>
       </span>
       <Btn onClick={() => exportDeps.show(item.file)}>Show</Btn>
       <Btn icon={LINK_ICON} onClick={() => void shareItem(item, true)}>Copy link</Btn>

@@ -41,7 +41,7 @@ export function ExportModal({ label, sub, width, onClose, footer, children }: { 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,5,7,0.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20 }}
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-label={label} style={{ width, maxHeight: 600, borderRadius: 14, background: C.panel, border: `1px solid ${C.line}`, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden', color: C.text }}>
+      <div role="dialog" aria-label={label} style={{ width, boxSizing: 'content-box', maxHeight: 600, borderRadius: 14, background: C.panel, border: `1px solid ${C.line}`, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden', color: C.text }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '16px 16px 0 20px' }}>
           <div style={{ flexGrow: 1 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{label}</h2>
@@ -74,8 +74,8 @@ interface Choice {
   burn: boolean | null; captionFiles: boolean; chapters: boolean; audioOnly: boolean; thumbnail: boolean; drive: boolean;
 }
 
-// The choices stay while the tab is open.
-let remembered: Choice = { preset: 'youtube', quality: 'best', container: 'mp4', burn: null, captionFiles: false, chapters: false, audioOnly: false, thumbnail: false, drive: false };
+// The choices stay while the tab is open; the first ones are the ExportVideo frame's.
+let remembered: Choice = { preset: 'youtube', quality: 'best', container: 'mp4', burn: null, captionFiles: false, chapters: true, audioOnly: false, thumbnail: true, drive: false };
 
 /** ThumbnailPicker's "Use this" also ticks the Thumbnail box. */
 export function saveThumbnail(): void {

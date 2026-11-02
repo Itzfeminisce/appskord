@@ -42,8 +42,8 @@ export const Offline = () => (
 export function NotSetUp() {
   const deps = useDeps();
   return (
-    <StateCard state="ai-not-set-up" title="Turn on AI edits" body="Ask the AI to cut, reorder, zoom and caption for you. Every other tool works without it."
-      actions={[{ label: 'Connect Penv Cloud', tone: 'primary', onClick: () => deps.openPanel('PenvConnect') }, { label: 'Paste a key', tone: 'secondary', onClick: () => deps.openPanel('PasteKey') }]} />
+    <StateCard state="ai-not-set-up" tight title="Turn on AI edits" body="Ask the AI to cut, reorder, zoom and caption for you. Every other tool works without it."
+      actions={[{ label: 'Connect Penv Cloud', tone: 'accent', onClick: () => deps.openPanel('PenvConnect') }, { label: 'Paste a key', tone: 'secondary', onClick: () => deps.openPanel('PasteKey') }]} />
   );
 }
 

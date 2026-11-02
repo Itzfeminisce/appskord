@@ -96,7 +96,7 @@ export function GifExport({ p, onBack, onClose, onStart }: { p: SlotProps; onBac
         <DialogButton tone="accent" onClick={() => void make()} disabled={length <= 0}>Make GIF</DialogButton>
       </>}>
       <div style={{ height: 200, borderRadius: 8, position: 'relative', overflow: 'hidden', background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {frames.length > 0 && <img src={frames[shown % frames.length]} alt="" style={{ maxWidth: '100%', maxHeight: '100%' }} />}
+        {frames.length > 0 && <img src={frames[shown % frames.length]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
         <span style={{ position: 'absolute', left: 10, top: 10, padding: '2px 6px', borderRadius: 4, background: 'rgba(17,17,20,0.8)', color: '#FFFFFF', fontSize: 11, fontWeight: 600 }}>Loops</span>
       </div>
       <div ref={strip} style={{ position: 'relative', height: 40, borderRadius: 6, background: '#33333B', overflow: 'hidden' }}>

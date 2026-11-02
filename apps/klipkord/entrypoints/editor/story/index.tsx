@@ -9,7 +9,8 @@ import { saveBrand } from './brand';
 import { OverlayHandles } from './Handles';
 import { OverlayPanel } from './OverlayPanel';
 import { StoryPanel } from './Panel';
-import { OVERLAY_NAMES, setStory, storyState, subscribeStory } from './store';
+import { Icon } from '../ui';
+import { OVERLAY_ICONS, OVERLAY_NAMES, setStory, storyState, subscribeStory } from './store';
 
 const useStory = () => useSyncExternalStore(subscribeStory, storyState);
 
@@ -51,7 +52,7 @@ function inspector(p: SlotProps, base: Pick<InspectorProps, 'selection'> | undef
   const same = p.cut.overlays.filter((x) => x.kind === o.kind).sort((a, b) => a.at - b.at);
   return {
     selection: {
-      ...selection, name: OVERLAY_NAMES[o.kind], index: same.findIndex((x) => x.id === o.id) + 1, count: same.length,
+      ...selection, name: OVERLAY_NAMES[o.kind], icon: <Icon>{OVERLAY_ICONS[o.kind]}</Icon>, index: same.findIndex((x) => x.id === o.id) + 1, count: same.length,
       body: <div key={o.id} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}><OverlayPanel p={p} o={o} /></div>,
     },
   };
