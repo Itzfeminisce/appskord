@@ -23,6 +23,10 @@ import Settings from './screens/Settings';
 import ErrorScreen from './screens/Error';
 import WhatsNew from './screens/v4/WhatsNew';
 import Backfill from './screens/v4/Backfill';
+import People from './screens/v4/People';
+import Person from './screens/v4/Person';
+import PersonMerge from './screens/v4/PersonMerge';
+import Forget from './screens/v4/Forget';
 import { Shell } from './components/v4/Shell';
 import Connections from './screens/Connections';
 import Share from './screens/Share';
@@ -70,6 +74,10 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   notionPage: NotionPage,
   home: Home,
   backfill: Backfill,
+  people: People,
+  person: Person,
+  personMerge: PersonMerge,
+  forget: Forget,
 };
 
 /** First screen: onboarding until the user has finished it, then Open loops. */
