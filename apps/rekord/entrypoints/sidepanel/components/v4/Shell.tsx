@@ -7,7 +7,9 @@ import { Header } from './Header';
 import { nearMeeting } from './recordBar';
 import { world } from './world';
 import './shell.css';
+import '../../screens/v41/start.css';
 import { refreshBadge } from '@/lib/messages';
+import { CatchUpLine } from '../../screens/v41/MissedCard';
 
 export type ShellTab = 'loops' | 'meetings' | 'people';
 
@@ -56,13 +58,13 @@ function Tabs({ tab }: { tab: ShellTab }) {
 }
 
 /** The 72 px record bar; within 10 minutes of a calendar meeting it names the meeting and offers its brief. */
-export function RecordBar() {
+export function RecordBar({ catchUp = false }: { catchUp?: boolean }) {
   const { navigate, has } = useRouter();
   const calendar = useCalendar();
   const events = world.events ?? (calendar.status === 'ready' ? calendar.events : []);
   const near = nearMeeting(events, world.now());
   const brief: string = 'brief';
-  return (
+  const bar = (
     <div className="v4-record">
       <button type="button" className="v4-record-btn" onClick={() => navigate('start')}>
         <span className="v4-record-dot" />
@@ -75,10 +77,12 @@ export function RecordBar() {
       )}
     </div>
   );
+  // V41Home: the quiet line to the picker sits above the bar.
+  return catchUp ? <div className="v4-record-stack"><CatchUpLine />{bar}</div> : bar;
 }
 
 /** Header, tabs and record bar shared by every v4 tab screen; the body scrolls under a soft fade. */
-export function Shell({ tab, children }: { tab: ShellTab; children?: ReactNode }) {
+export function Shell({ tab, catchUp = false, children }: { tab: ShellTab; catchUp?: boolean; children?: ReactNode }) {
   return (
     <div className="v4-shell">
       <Header />
@@ -87,7 +91,7 @@ export function Shell({ tab, children }: { tab: ShellTab; children?: ReactNode }
         <div className="v4-scroll">{children}</div>
         <div className="v4-fade" aria-hidden="true" />
       </main>
-      <RecordBar />
+      <RecordBar catchUp={catchUp} />
     </div>
   );
 }

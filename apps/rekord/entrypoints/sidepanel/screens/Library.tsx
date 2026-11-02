@@ -9,6 +9,7 @@ import { ComingUp } from '../components/CalendarCard';
 import { useRouter } from '../router';
 import { itemsForMeeting } from '@/lib/memory/store';
 import { StateBanner } from '../components/v4/states';
+import { CatchUpLine } from './v41/MissedCard';
 
 const UNDO_MS = 8000;
 
@@ -180,6 +181,7 @@ export default function Library() {
         </section>
       )}
       <ComingUp />
+      <CatchUpLine className="cu-quiet cu-quiet-foot" />
       {deleted && (
         <div style={{ position: 'sticky', bottom: 12, margin: '12px 16px 0', zIndex: 5 }}>
           <StateBanner tone="plain" icon="done" title={`“${deleted.meeting.title || 'Untitled meeting'}” was deleted`}
