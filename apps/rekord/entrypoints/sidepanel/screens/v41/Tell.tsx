@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { questionsKey } from '@/lib/catchup/pipeline';
+import { questionsKey, trimTelling, type ToldBefore as Told } from '@/lib/catchup/pipeline';
 import { clockMs, isPaused, limitState, partMs, TELL_PORT } from '@/lib/catchup/session';
 import type { PickedMeeting } from '@/lib/catchup/types';
-import { deleteChunk, deleteMeeting, deleteSegment, deleteTellingAudioFrom, getMeeting, listSegments, pendingChunks, putMeeting } from '@/lib/db';
+import { deleteMeeting, getMeeting, listSegments } from '@/lib/db';
 import { mergeSegment } from '@/lib/live';
 import { onMessage, send } from '@/lib/messages';
 import { openPermissionTab, watchMic } from '@/lib/mic';
@@ -25,17 +25,6 @@ export const tellDev: { rec?: RecordingState; levels?: number[]; typed?: string 
 const START_ERROR = 'Rekord couldn’t start recording. Try again in a moment.';
 const NOTHING_HEARD_MS = 8_000;
 const LINES = 3;
-
-type Told = { ms: number; parts: number; status: Meeting['status'] };
-
-/** "Discard" after "Add more": the meeting goes back to the telling it had before this screen. */
-async function trimTelling(meetingId: string, before: Told): Promise<void> {
-  for (const c of await pendingChunks(meetingId)) await deleteChunk(c.id);
-  await deleteTellingAudioFrom(meetingId, before.parts);
-  for (const s of await listSegments(meetingId)) if (s.startMs >= before.ms) await deleteSegment(s.id);
-  const m = await getMeeting(meetingId);
-  if (m?.told) await putMeeting({ ...m, status: before.status, told: { ...m.told, ms: before.ms, parts: m.told.parts.slice(0, before.parts) } });
-}
 
 /** The meeting the route names: a calendar event, "Something else", or (Add more) a catch-up already told. */
 async function pickedFromRoute(p: ReturnType<typeof useRouter>['route']['params']): Promise<PickedMeeting | null> {
@@ -194,13 +183,14 @@ export default function Tell() {
   // After "Allow microphone": the permission tab grants it, and telling starts.
   useEffect(() => {
     if (!micBlocked) return undefined;
-    return watchMic((state) => { if (state === 'granted' && mode === 'talk') void begin(); });
+    return watchMic((state) => { if (state === 'granted' && mode === 'talk') void (tell && paused ? pause(false) : begin()); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [micBlocked, mode]);
 
   async function pause(on: boolean) {
     const reply = await send<{ ok: boolean; micBlocked?: true }>({ type: 'recording/pause', on }).catch(() => undefined);
     if (reply?.micBlocked) setMicBlocked(true);
+    else if (reply?.ok) setMicBlocked(false);
   }
 
   function toType() {
@@ -225,11 +215,13 @@ export default function Tell() {
     setBusy(true);
     setConfirm(false);
     stopping.current = true;
-    if (tell) await send({ type: 'recording/stop' }).catch(() => undefined);
+    // With a telling, the typed text goes with the stop, so the follow-up questions read both.
+    const text = hasTyped && picked ? { catchup: { meetingId, picked, append: true }, text: typed } : undefined;
+    const stopped = tell ? await send<RecordingReply>({ type: 'recording/stop', ...(text && { typed: text }) }).catch(() => undefined) : undefined;
     releasePort();
     let saved = started.current;
     if (hasTyped && picked) {
-      const reply = await send<RecordingReply>({ type: 'catchup/typed', catchup: { meetingId, picked, ...(saved && { append: true }) }, text: typed }).catch(() => undefined);
+      const reply = tell ? stopped : await send<RecordingReply>({ type: 'catchup/typed', catchup: { meetingId, picked, ...(saved && { append: true }) }, text: typed }).catch(() => undefined);
       if (reply?.ok) saved = true;
       else { setError(reply && !reply.ok ? reply.error : START_ERROR); setBusy(false); stopping.current = false; return; }
     }
@@ -244,7 +236,7 @@ export default function Tell() {
     setShort(false);
     stopping.current = true;
     setBusy(true);
-    if (tell) await send({ type: 'recording/stop' }).catch(() => undefined);
+    if (tell) await send({ type: 'recording/stop', discard: true }).catch(() => undefined);
     releasePort();
     try {
       if (adding && before.current) await trimTelling(meetingId, before.current);
