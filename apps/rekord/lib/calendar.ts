@@ -88,16 +88,18 @@ export function listWindow(now: number): { timeMin: number; timeMax: number } {
   return { timeMin: now - LOOKBACK_MS, timeMax: end.getTime() };
 }
 
-/** Lists today's events (from 15 minutes ago) for the calendar, or until `until`. Throws GoogleError ('auth' = access lost). */
-export async function listEvents(calendarId: string | undefined, now: number, deps: GoogleDeps = {}, until?: number): Promise<CalendarEvent[]> {
-  const { timeMin, timeMax: endOfDay } = listWindow(now);
+/** Lists today's events (from 15 minutes ago, or from `from`) for the calendar, or until `until`. Throws GoogleError ('auth' = access lost). */
+export async function listEvents(calendarId: string | undefined, now: number, deps: GoogleDeps = {}, until?: number, from?: number): Promise<CalendarEvent[]> {
+  const { timeMin: soon, timeMax: endOfDay } = listWindow(now);
+  const timeMin = from ?? soon;
   const timeMax = until ?? endOfDay;
   const q = new URLSearchParams({
     timeMin: new Date(timeMin).toISOString(),
     timeMax: new Date(timeMax).toISOString(),
     singleEvents: 'true',
     orderBy: 'startTime',
-    maxResults: '50',
+    // A week back holds far more than one day.
+    maxResults: from === undefined ? '50' : '250',
   });
   const id = encodeURIComponent(calendarId || 'primary');
   const res = await googleFetch(`https://www.googleapis.com/calendar/v3/calendars/${id}/events?${q}`, [SCOPES.calendar], deps);

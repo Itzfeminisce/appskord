@@ -1,5 +1,6 @@
 import type { OffRecordState, OffSpan } from './live/offRecord';
 import type { MemorySettings } from './memory/types';
+import type { Told } from './catchup/types';
 export type * from './memory/types';
 
 export type Speaker = 'you' | 'others';                 // UI labels: "You", "Others"
@@ -8,7 +9,7 @@ export type MeetingStatus = 'recording' | 'processing' | 'done' | 'error';
 export type SpeakerLabel = string;               // 'A', 'B', ... from diarization; only on 'others' segments
 export type TranscriptionProvider = 'groq' | 'openai' | 'deepgram';
 export type SetupPreset = 'free' | 'realtime' | 'custom';
-export type MeetingSource = 'tab' | 'app';      // 'app' = desktop app via system audio
+export type MeetingSource = 'tab' | 'app' | 'catchup'; // 'app' = desktop app via system audio; 'catchup' = told after the meeting
 
 export interface Meeting {
   id: string;                 // crypto.randomUUID()
@@ -27,6 +28,7 @@ export interface Meeting {
   shares?: ShareRecord[];
   realtime?: boolean;                              // live labels came from Deepgram streaming
   offSpans?: OffSpan[];                            // v4: off the record spans (meeting ms), shown as markers
+  told?: Told;                                     // v4.1: only on source 'catchup'; startedAt/endedAt are then the meeting's times
 }
 
 export interface CalendarEvent {
@@ -106,6 +108,7 @@ export interface Settings {
   notion: { pageId?: string; pageTitle?: string };
   lastSeenVersion?: string;                        // What's new shows when the manifest version is newer
   memory: MemorySettings;
+  missedMeetingCard: boolean;                      // v4.1 Home card for a calendar meeting Rekord missed, default true
 }
 
 export type ConnectionState =
