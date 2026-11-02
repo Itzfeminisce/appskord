@@ -23,6 +23,17 @@ describe('fixtures', () => {
   });
 });
 
+describe('fixture wording', () => {
+  it('has a decision and an open line in the 30-minute telling', () => {
+    const t = TELLINGS[2]!;
+    expect(t.lines.some((l) => /we decided/i.test(l))).toBe(true);
+    expect(t.lines.some((l) => /still open/i.test(l))).toBe(true);
+  });
+  it('keeps the filler in first person with no repeated line', () => {
+    for (const t of TELLINGS) expect(new Set(t.lines).size).toBeGreaterThan(t.lines.length * 0.9);
+  });
+});
+
 describe('extraction prompt', () => {
   it('starts with the catch-up preamble and the meeting date', () => {
     const t = TELLINGS[0]!;
@@ -36,6 +47,10 @@ describe('matchSheet', () => {
   const sheet = [{ owner: 'Priya', due: '2026-10-30' }, { owner: 'Marcus', due: '2026-11-04' }];
   it('counts owner and due date together', () => {
     expect(matchSheet(sheet, [{ kind: 'promise', owner: 'Priya Rao', due: '2026-10-30' }, { kind: 'promise', owner: 'Marcus', due: '2026-11-05' }])).toBe(1);
+  });
+  it('accepts a full name when its first token matches the sheet', () => {
+    expect(matchSheet(sheet, [{ kind: 'promise', owner: 'Priya Rao', due: '2026-10-30' }, { kind: 'promise', owner: 'Marcus Webb', due: '2026-11-04' }])).toBe(2);
+    expect(matchSheet(sheet, [{ kind: 'promise', owner: 'Priyanka Rao', due: '2026-10-30' }])).toBe(0);
   });
   it('ignores decisions and ownerless promises', () => {
     expect(matchSheet(sheet, [{ kind: 'decision', owner: 'Priya', due: '2026-10-30' }, { kind: 'promise', due: '2026-11-04' }])).toBe(0);
@@ -56,6 +71,11 @@ describe('scores', () => {
     const r = scoreCoverage(TELLINGS.map((t) => coverageDelays(t)));
     expect(r.verdict).toBe('go');
     expect(r.worstMs).toBeLessThan(15_000);
+  });
+  it('adds the measured mic time to the simulated worst delay', () => {
+    const d = [{ who: 1000, decided: 1000, promised: 1000, open: 8000 }];
+    expect(scoreCoverage(d, 6000)).toEqual({ verdict: 'go', worstMs: 14_000 });
+    expect(scoreCoverage(d, 7000).verdict).toBe('no-go');
   });
   it('is No-go when a prompt never ticks or is late', () => {
     expect(scoreCoverage([{ who: 1000 }]).verdict).toBe('no-go');

@@ -4,7 +4,7 @@ import { GOOGLE_CLIENT_ID } from '@/lib/googleAuth';
 import { TELLINGS } from '@/lib/catchup/fixtures';
 import { record } from '@/lib/ledger';
 import { chat, LLMError } from '@/lib/llm';
-import { extractedKey, extractMeeting, LEDGER_WHAT, REPLY_TOKENS } from '@/lib/memory/extract';
+import { extractedKey, extractMeeting, LEDGER_SERVICE, LEDGER_WHAT, NOT_SENT, REPLY_TOKENS } from '@/lib/memory/extract';
 import { listPeople, putPerson } from '@/lib/memory/store';
 import { loadKeys } from '@/lib/penv';
 import { ensureModel, timeSyntheticSearch } from '@/lib/recall';
@@ -224,7 +224,8 @@ const showK = (r: CatchupResult) => {
   v.className = r.verdict ?? '';
 };
 const busyK = (id: CatchupCheckId, text: string) => { K(id, 'value').textContent = text; K(id, 'verdict').textContent = ''; };
-const LEDGER_SERVICE = { groq: 'groq', openai: 'openai', openrouter: 'openrouter', anthropic: 'anthropic' } as const;
+/** Measured by the mic check: seconds from stopping to the first text, so the coverage check can add transcription lag. */
+let micLagMs: number | undefined;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const K_HINTS: Record<CatchupCheckId, string> = {
@@ -241,17 +242,25 @@ const RUN_K: Record<CatchupCheckId, () => Promise<void>> = {
     if (!start?.ok) return showK({ id: 'mic', verdict: 'no-go', value: 'Did not start', note: scrub(start?.error ?? 'No answer from the background') });
     const meetingId = start.meetingId!;
     try {
+      const state = (await browser.runtime.sendMessage({ type: 'recording/get-state' })) as { micUnavailable?: boolean } | undefined;
+      if (state?.micUnavailable) {
+        await browser.runtime.sendMessage({ type: 'recording/stop' }).catch(() => undefined);
+        return showK({ id: 'mic', verdict: 'no-go', value: 'Microphone unavailable', note: 'Allow the microphone for Rekord, then run again' });
+      }
       for (let s = MIC_SECONDS; s > 0; s--) { busyK('mic', `Recording... ${s} s. Say a few sentences.`); await sleep(1000); }
-      await browser.runtime.sendMessage({ type: 'recording/stop' });
+      const stop = (await browser.runtime.sendMessage({ type: 'recording/stop' })) as RecordingReply | undefined;
+      if (!stop?.ok) return showK({ id: 'mic', verdict: 'no-go', value: 'Did not stop cleanly', note: scrub(stop?.error ?? 'No answer from the background') });
       busyK('mic', 'Transcribing...');
+      const stoppedAt = Date.now();
       const until = Date.now() + 90_000;
       let words = 0;
       while (!words && Date.now() < until) {
         await sleep(2000);
         words = (await listSegments(meetingId)).filter((x) => !x.interim).reduce((n, x) => n + x.text.trim().split(/\s+/).filter(Boolean).length, 0);
       }
+      if (words) micLagMs = Math.max(0, Date.now() - stoppedAt);
       showK(words
-        ? { id: 'mic', verdict: 'go', value: 'Recorded and transcribed', note: `${words} words, mic only, no tab` }
+        ? { id: 'mic', verdict: 'go', value: 'Recorded and transcribed', note: `${words} words, mic only, no tab, first text ${secs(micLagMs!).toFixed(0)} s after stop` }
         : { id: 'mic', verdict: 'no-go', value: 'No text came back', note: 'Check the microphone permission and the transcription key' });
     } finally {
       await deleteMeeting(meetingId).catch((e) => console.error('Rekord: could not delete the check recording', e));
@@ -261,7 +270,7 @@ const RUN_K: Record<CatchupCheckId, () => Promise<void>> = {
     const [settings, keys] = await Promise.all([getSettings(), loadKeys()]);
     const keyName = PROVIDERS[settings.summary.provider].keyName;
     if (keyName && !keys[keyName]) return showK({ id: 'extract', value: 'Add a key first' });
-    const service = LEDGER_SERVICE[settings.summary.provider as keyof typeof LEDGER_SERVICE];
+    const service = LEDGER_SERVICE[settings.summary.provider];
     const secrets = Object.values(keys).filter((k): k is string => typeof k === 'string');
     let matched = 0;
     let total = 0;
@@ -275,7 +284,7 @@ const RUN_K: Record<CatchupCheckId, () => Promise<void>> = {
         try {
           replies.push(await chat([{ role: 'system', content: catchupSystem(t.startedAt) }, { role: 'user', content: user }], { json: true, maxTokens: REPLY_TOKENS }));
         } catch (e) {
-          sent = !(e instanceof LLMError && ['no-key', 'offline', 'local-unavailable', 'cancelled'].includes(e.code));
+          sent = !(e instanceof LLMError && NOT_SENT.has(e.code));
           throw new Error(scrub(e instanceof Error ? e.message : String(e), secrets));
         } finally {
           if (service && sent) await record({ service, what: LEDGER_WHAT });
@@ -290,8 +299,9 @@ const RUN_K: Record<CatchupCheckId, () => Promise<void>> = {
   },
   async coverage() {
     const delays = TELLINGS.map((t) => coverageDelays(t));
-    const r = scoreCoverage(delays);
-    showK({ id: 'coverage', verdict: r.verdict, value: r.worstMs === undefined ? 'A prompt never ticked' : `slowest ${secs(r.worstMs).toFixed(0)} s`, note: 'from the covering line to its tick, 5 s steps' });
+    const r = scoreCoverage(delays, micLagMs);
+    showK({ id: 'coverage', verdict: r.verdict, value: r.worstMs === undefined ? 'A prompt never ticked' : `slowest ${secs(r.worstMs).toFixed(0)} s`,
+      note: micLagMs === undefined ? 'simulated, excludes transcription time; run the mic check to add it' : `simulated 5 s steps plus ${secs(micLagMs).toFixed(0)} s measured mic time to first text` });
   },
 };
 

@@ -212,9 +212,9 @@ export interface ExtractDeps { fetchFn?: FetchLike; now?: () => number; newId?: 
 
 const EMPTY: ExtractResult = { found: 0, promises: 0, decisions: 0, questions: 0, people: 0, leftOut: 0, looksDone: 0 };
 // Ollama runs on the person's computer, so nothing leaves it and nothing is recorded.
-const LEDGER_SERVICE: Partial<Record<string, LedgerEntry['service']>> = { groq: 'groq', openai: 'openai', openrouter: 'openrouter', anthropic: 'anthropic' };
+export const LEDGER_SERVICE: Partial<Record<string, LedgerEntry['service']>> = { groq: 'groq', openai: 'openai', openrouter: 'openrouter', anthropic: 'anthropic' };
 // These failures happen before any text leaves the browser.
-const NOT_SENT = new Set(['no-key', 'offline', 'local-unavailable', 'cancelled']);
+export const NOT_SENT = new Set(['no-key', 'offline', 'local-unavailable', 'cancelled']);
 
 export const extractedKey = (meetingId: string) => `rekord.extracted.${meetingId}`;
 export const partsKey = (meetingId: string) => `rekord.extract.parts.${meetingId}`;

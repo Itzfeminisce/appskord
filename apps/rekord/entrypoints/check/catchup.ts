@@ -47,10 +47,13 @@ export function extractUsers(t: Telling): string[] {
 
 const first = (name: string) => name.trim().toLowerCase().split(/\s+/)[0] ?? '';
 
+/** The sheet gives a first name; a full name from the model counts when its first token matches. */
+const sameOwner = (given: string, sheetOwner: string) => first(given) === first(sheetOwner);
+
 /** How many sheet entries have a promise with that owner and that due date. */
 export function matchSheet(sheet: Telling['sheet'], found: Pick<RawItem, 'kind' | 'owner' | 'due'>[]): number {
   const promises = found.filter((i) => i.kind === 'promise' && i.owner);
-  return sheet.filter((s) => promises.some((p) => first(p.owner!) === first(s.owner) && p.due === s.due)).length;
+  return sheet.filter((s) => promises.some((p) => sameOwner(p.owner!, s.owner) && p.due === s.due)).length;
 }
 
 /** Items from the replies of every part; a reply that is not JSON adds none. */
@@ -72,11 +75,11 @@ export function coverageDelays(t: Telling, stepMs = COVERAGE_STEP_MS): Partial<R
   return delays;
 }
 
-/** Go when every prompt gets a tick and the slowest is under 15 s. */
-export function scoreCoverage(delays: Partial<Record<CatchupPrompt, number>>[]): { verdict: Verdict; worstMs?: number } {
+/** Go when every prompt gets a tick and the slowest, plus the measured mic time to first text if it ran, is under 15 s. The simulated feed has no transcription lag, so that is added from the mic check. */
+export function scoreCoverage(delays: Partial<Record<CatchupPrompt, number>>[], transcribeMs = 0): { verdict: Verdict; worstMs?: number } {
   const all = delays.flatMap((d) => CATCHUP_PROMPTS.map((p) => d[p]));
   if (!all.length || all.some((x) => x === undefined)) return { verdict: 'no-go' };
-  const worstMs = Math.max(...(all as number[]));
+  const worstMs = Math.max(...(all as number[])) + Math.max(0, transcribeMs);
   return { verdict: worstMs < COVERAGE_LIMIT_MS ? 'go' : 'no-go', worstMs };
 }
 
