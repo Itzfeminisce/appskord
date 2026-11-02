@@ -1,5 +1,5 @@
 // Recall card: the live loop looks up memory for what is being said and words a card from stored text. No AI call.
-import { queryWords, shortDate } from '../askAll';
+import { queryWords, shortDate, type MeetingData } from '../askAll';
 import { topicOf } from '../memory/agenda';
 import type { MemoryItem, Person } from '../memory/types';
 import type { SearchResult } from '../recall';
@@ -94,8 +94,10 @@ export function strongHits(result: SearchResult, query: string, seen: Set<string
     .map(({ item }) => item);
 }
 
+const lightLoad = async (meeting: Meeting): Promise<MeetingData> => ({ meeting, segments: [], notes: [] });
+
 export interface RecallDeps {
-  search: (query: string, opts: { meetings: Meeting[]; limit: number; itemFilter: (i: MemoryItem) => boolean }) => Promise<SearchResult>;
+  search: (query: string, opts: { meetings: Meeting[]; limit: number; itemFilter: (i: MemoryItem) => boolean; load: (m: Meeting) => Promise<MeetingData> }) => Promise<SearchResult>;
   meetings: Meeting[];
   people: Person[];
   now: number;
@@ -105,6 +107,7 @@ export interface RecallDeps {
 export async function findRecall(meetingId: string, query: string, seen: Set<string>, deps: RecallDeps): Promise<RecallCard | undefined> {
   if (!query.trim()) return undefined;
   const meetings = deps.meetings.filter((m) => m.id !== meetingId && m.status === 'done');
-  const result = await deps.search(query, { meetings, limit: 6, itemFilter: (i) => recallable(i, meetingId) });
+  // The card is built from items only: no meeting's transcript is loaded on the live tick.
+  const result = await deps.search(query, { meetings, limit: 6, itemFilter: (i) => recallable(i, meetingId), load: lightLoad });
   return recallCard(strongHits(result, query, seen), meetings, deps.people, deps.now);
 }

@@ -1,5 +1,6 @@
 import { getMeeting, listMarkers, listNotes, listSegments, putMeeting } from './db';
 import { enqueueExtraction } from './memory/backfill';
+import { onRecord } from './live/offRecord';
 import { chat, LLMError, transcriptLines, type FetchLike } from './llm';
 import { getSettings } from './settings';
 import { formatClock } from './time';
@@ -104,9 +105,10 @@ export async function summarize(meetingId: string, fetchFn: FetchLike = (u, i) =
   if (!meeting) throw new SummarizeError('This meeting could not be found.');
   const done: Meeting = { ...meeting, status: 'done', endedAt: meeting.endedAt ?? Date.now() };
   try {
-    const [settings, segments, notes, markers] = await Promise.all([
+    const [settings, all, notes, markers] = await Promise.all([
       getSettings(), listSegments(meetingId), listNotes(meetingId), listMarkers(meetingId),
     ]);
+    const segments = onRecord(all, meeting.offSpans);
     const { model } = settings.summary;
     if (!segments.some((s) => s.text.trim()) && !notes.length) {
       done.summary = { overview: '', decisions: [], actions: [], questions: [], generatedAt: Date.now(), model };

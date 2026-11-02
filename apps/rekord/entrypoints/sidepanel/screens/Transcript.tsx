@@ -10,7 +10,10 @@ import { redactionsOf, type Span } from '@/lib/redact';
 import { Button, EmptyState, Spinner, Tag } from '../components';
 import { useRouter } from '../router';
 import { useRecordingMeeting } from './v4/Redact';
+import { EyeOffIcon } from './v4/liveIcons';
+import { spanLabel } from '@/lib/live/offRecord';
 import './v4/v4.css';
+import './v4/live.css';
 
 type Data = { meeting?: Meeting; items: TimelineItem[] };
 
@@ -33,9 +36,11 @@ function copyText(items: TimelineItem[], speakers: Meeting['speakers']): string 
     .join('\n');
 }
 
-/** Timeline items with each redaction placed at its time. */
-function withRedactions(items: TimelineItem[], marks: { startMs: number; endMs: number }[]) {
-  const out: (TimelineItem | { mark: { startMs: number; endMs: number } })[] = [];
+type Mark = { startMs: number; endMs: number; off?: boolean };
+
+/** Timeline items with each redaction and off-the-record span placed at its time. */
+function withRedactions(items: TimelineItem[], marks: Mark[]) {
+  const out: (TimelineItem | { mark: Mark })[] = [];
   const left = [...marks].sort((a, b) => a.startMs - b.startMs);
   for (const it of items) {
     while (left.length && left[0]!.startMs <= it.atMs) out.push({ mark: left.shift()! });
@@ -151,9 +156,10 @@ export default function Transcript() {
         <EmptyState title="Nothing was transcribed" body="This meeting has no transcript yet." />
       ) : (
         <section className="tr-list" aria-label="Transcript">
-          {withRedactions(data.items, redactionsOf(data.meeting)).map((entry) => {
+          {withRedactions(data.items, [...redactionsOf(data.meeting), ...(data.meeting?.offSpans ?? []).map((s) => ({ ...s, off: true }))]).map((entry) => {
             if ('mark' in entry) {
               const { mark } = entry;
+              if (mark.off) return <div className="lv-gap" key={`off-${mark.startMs}`}><i /><EyeOffIcon size={13} stroke={2.2} /><span className="mono">{spanLabel(mark)}</span><i /></div>;
               return (
                 <div className="rd-gone" key={`redacted-${mark.startMs}`}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>

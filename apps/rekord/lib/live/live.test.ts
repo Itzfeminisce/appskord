@@ -6,7 +6,9 @@ import type { Segment } from '../types';
 import { mentions, minutesLeft, skipItem, trackAgenda } from './agenda';
 import { clashCandidates, confirmClash, parseClash, replacingDecision } from './clash';
 import { missedWindow, parseMissed, whatDidIMiss, MISSED_LEDGER_WHAT } from './missed';
-import { goOff, goOn, inOffSpan, OffRecordGate, spanLabel, offClock } from './offRecord';
+import { gatedChunks, goOff, goOn, inOffSpan, OffRecordGate, spanLabel, offClock } from './offRecord';
+import { Chunker } from '../audio/chunker';
+import type { Chunk } from '../types';
 import { promiseFromQuestion, promiseText, questionsForYou } from './questions';
 import { findRecall, recallAllowed, recallCard, recentText, RECALL_GAP_MS } from './recall';
 
@@ -51,8 +53,10 @@ describe('recall cards', () => {
     const query = 'What about the team plan, is it twelve a seat?';
     const card = await findRecall(M.sarah3, query, new Set(), { search, meetings: SAMPLE_MEETINGS, people: SAMPLE_PEOPLE, now: NOW });
     expect(card?.text).toBe('On 26 Oct you decided $12 a seat.');
-    const opts = (search.mock.calls[0] as unknown as [string, { meetings: { id: string }[]; itemFilter: (i: unknown) => boolean }])[1];
+    const opts = (search.mock.calls[0] as unknown as [string, { meetings: { id: string }[]; itemFilter: (i: unknown) => boolean; load: (m: unknown) => Promise<{ segments: unknown[]; notes: unknown[] }> }])[1];
     expect(opts.meetings.some((m) => m.id === M.sarah3)).toBe(false);
+    // No meeting's transcript is read on the live tick.
+    expect(await opts.load(SAMPLE_MEETINGS[0])).toMatchObject({ segments: [], notes: [] });
     expect(await findRecall(M.sarah3, query, new Set(['d-team-12']), { search, meetings: SAMPLE_MEETINGS, people: SAMPLE_PEOPLE, now: NOW })).toBeUndefined();
   });
 
@@ -79,6 +83,15 @@ describe('agenda tracking', () => {
     expect(t.total).toBe(4);
     expect(minutesLeft(t.leftMs!)).toBe('2 min left');
     expect(t.used).toBeCloseTo(0.6);
+  });
+
+  it('a single passing mention does not cover an item', () => {
+    const t = trackAgenda(SAMPLE_AGENDA, [
+      seg(0, 20, 'Q3 usage numbers first?'),
+      seg(1, 0, 'Actually, the revised pricing deck.'),
+      seg(1, 30, 'The pricing deck is nearly done.'),
+    ], mmss(2, 0));
+    expect(t.rows.map((r) => r.state)).toEqual(['open', 'current', 'next', 'open']);
   });
 
   it('starts on the first item, and a skip moves on', () => {
@@ -137,21 +150,63 @@ describe('clash', () => {
 
 describe('off the record', () => {
   const START = 1_000_000;
-  it('stops capture before the span and drops any chunk with audio from it', async () => {
+  it('stamps the span at the click and drops any chunk with audio from after it', async () => {
     let t = START + mmss(18, 42);
     const calls: string[] = [];
-    const gate = new OffRecordGate(START, { stop: async () => { calls.push('stop'); }, start: async () => { calls.push('start'); } }, () => t);
+    const gate = new OffRecordGate(START, { stop: async (cut) => { calls.push(`stop ${cut}`); }, start: async () => { calls.push('start'); } }, () => t);
     expect(gate.keep({ startMs: mmss(18, 30), endMs: mmss(18, 40) })).toBe(true);
-    await gate.set(true);
+    const click = START + mmss(18, 42);
+    t += 1_200; // the switch reaches the recorder a moment after the click
+    await gate.set(true, click);
     expect(gate.off).toBe(true);
-    // The last chunk flushed at the switch is kept; anything recorded after it is dropped.
-    expect(gate.keep({ startMs: mmss(18, 40), endMs: mmss(18, 42) + 200 })).toBe(true);
+    expect(calls).toEqual([`stop ${mmss(18, 42)}`]);
+    // The chunk in flight at the click ends after it: dropped, even by a few ms.
+    expect(gate.keep({ startMs: mmss(18, 40), endMs: mmss(18, 42) + 1 })).toBe(false);
+    expect(gate.keep({ startMs: mmss(18, 32), endMs: mmss(18, 42) })).toBe(true);
     expect(gate.keep({ startMs: mmss(18, 42), endMs: mmss(18, 52) })).toBe(false);
     t += mmss(2, 0);
-    await gate.set(false);
-    expect(calls).toEqual(['stop', 'start']);
+    await gate.set(false, START + mmss(20, 42));
+    expect(calls).toEqual([`stop ${mmss(18, 42)}`, 'start']);
     expect(gate.keep({ startMs: mmss(19, 0), endMs: mmss(19, 10) })).toBe(false);
+    expect(gate.keep({ startMs: mmss(20, 40), endMs: mmss(20, 43) })).toBe(false);
     expect(gate.keep({ startMs: mmss(20, 42), endMs: mmss(20, 52) })).toBe(true);
+  });
+
+  it('judges chunks against the click at once, while capture is still stopping', async () => {
+    let release: (() => void) | undefined;
+    const gate = new OffRecordGate(START, { stop: () => new Promise<void>((r) => { release = r; }), start: async () => undefined }, () => START + mmss(5, 0));
+    const switching = gate.set(true, START + mmss(1, 0));
+    // A chunk finished by the recorder before the switch runs, with audio past the click: dropped.
+    expect(gate.keep({ startMs: mmss(0, 55), endMs: mmss(1, 0) + 300 })).toBe(false);
+    while (!release) await Promise.resolve();
+    release();
+    await switching;
+    expect(gate.keep({ startMs: mmss(0, 50), endMs: mmss(1, 0) })).toBe(true);
+  });
+
+  it('audio from after the click never reaches storage or the transcription queue', async () => {
+    let t = START;
+    const saved: Chunk[] = [];
+    const queued: string[] = [];
+    let n = 0;
+    const capture = { stop: async () => { await chunker.stop(); }, start: async () => undefined };
+    const gate = new OffRecordGate(START, capture, () => t);
+    const hooks = gatedChunks((c) => gate.keep(c), async (c) => { saved.push(c); }, (id) => queued.push(id));
+    const chunker: Chunker = new Chunker({
+      meetingId: 'm', speaker: 'you', startedAt: START, now: () => t, newId: () => `c${++n}`,
+      createRecorder: () => ({ mimeType: 'audio/webm', start: () => undefined, stop: async () => new Blob(['x']) }),
+      ...hooks,
+    });
+    chunker.start();
+    t = START + 10_000;
+    await chunker.tick(0.5); // c1: 0–10 s, before the click
+    t = START + 12_000;
+    await chunker.tick(0.5);
+    const click = t;
+    t += 400; // the switch reaches the recorder after the click: c2 (10–12.4 s) holds audio from after it
+    await gate.set(true, click);
+    expect(saved.map((c) => [c.id, c.startMs, c.endMs])).toEqual([['c1', 0, 10_000]]);
+    expect(queued).toEqual(['c1']);
   });
 
   it('keeps spans in meeting time and labels them', () => {

@@ -51,7 +51,7 @@ export function trackAgenda(agenda: Pick<Agenda, 'items'>, segments: Segment[], 
   const coveredAt = items.map((item, i): number | undefined => {
     if (item.coveredAtMs !== undefined) return item.coveredAtMs;
     const own = hits[i]!;
-    if (!own.length || item.skipped) return undefined;
+    if (own.length < 2 || item.skipped) return undefined; // one passing mention does not cover an item
     const laterStart = items
       .map((_, j) => (j > i && moved[j] !== undefined && hits[j]![0]! > own[0]! ? hits[j]![0]! : undefined))
       .filter((t): t is number => t !== undefined);

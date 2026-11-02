@@ -1,11 +1,12 @@
 import { getDB } from './db';
 import type { LedgerEntry } from './memory/types';
 
-export interface LedgerCall { meetingId?: string; service: LedgerEntry['service']; what: string; at?: number }
+/** `span`: a row with a start and an end (off the record): its 2nd call closes it, a 3rd opens a new row. */
+export interface LedgerCall { meetingId?: string; service: LedgerEntry['service']; what: string; at?: number; span?: boolean }
 
 /** Folds one call into the rows: same meeting, service and what add to one row's count and times. */
 export function mergeCall(rows: LedgerEntry[], call: LedgerCall, at: number, newId: () => string): LedgerEntry {
-  const row = rows.find((r) => r.meetingId === call.meetingId && r.service === call.service && r.what === call.what);
+  const row = rows.find((r) => r.meetingId === call.meetingId && r.service === call.service && r.what === call.what && (!call.span || r.count < 2));
   if (!row) return { id: newId(), meetingId: call.meetingId, service: call.service, what: call.what, count: 1, firstAt: at, lastAt: at };
   return { ...row, count: row.count + 1, firstAt: Math.min(row.firstAt, at), lastAt: Math.max(row.lastAt, at) };
 }

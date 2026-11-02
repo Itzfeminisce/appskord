@@ -9,8 +9,8 @@ import { appSources, type AppFlag } from '@/lib/capture';
 import { APP_AUDIO_PORT, receiveAppAudio, SilenceWatch } from '@/lib/audio/appAudio';
 import { drain, drainAll, enqueue, startTranscriber } from '@/lib/transcribe';
 import { isStreamRequest, mediaRecorderAudio, RealtimeSession, requestToken, wantsRealtime, type SocketLike, type StreamRequest } from '@/lib/transcribe/stream';
-import { OffRecordGate } from '@/lib/live/offRecord';
-import type { Chunk, Speaker, TranscriberConfig } from '@/lib/types';
+import { gatedChunks, OffRecordGate } from '@/lib/live/offRecord';
+import type { Speaker, TranscriberConfig } from '@/lib/types';
 
 const TICK_MS = 125; // silence sampling; levels are posted every 2nd tick (~4/s)
 
@@ -22,6 +22,8 @@ interface Track {
   speaker: Speaker;
   /** A fresh chunker on the same stream, for coming back on the record. */
   newChunker: () => Chunker;
+  /** Its chunker is recording; starting it again is a no-op, so a track never gets two. */
+  running: boolean;
 }
 
 interface Session {
@@ -76,8 +78,14 @@ onMessage((msg) => {
   }
   if (msg.type === 'offscreen/stop') return (busy = busy.then(() => stop()));
   if (msg.type === 'offscreen/off-record') {
-    if (session) session.offAsked = msg.on;
-    return (busy = busy.then(async () => { await session?.gate.set(msg.on); return { ok: true }; }));
+    // Judged at once (not behind `busy`), so no tick, chunk or line from after the click slips through.
+    const s = session;
+    if (s) s.offAsked = msg.on;
+    const switched = s ? s.gate.set(msg.on, msg.at) : busy.then(() => session?.gate.set(msg.on, msg.at));
+    return (busy = busy.then(() => switched).then(
+      (): OffscreenReply => ({ ok: true }),
+      (error): OffscreenReply => ({ ok: false, error: String(error) }),
+    ));
   }
   // "Try real time again" / "Retry now" also reconnect a dropped stream.
   if (msg.type === 'transcription/catch-up') session?.realtime?.retry();
@@ -132,13 +140,15 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
   const mimeType = pickMimeType();
   const mine = () => (session?.meetingId === meetingId ? session : undefined);
   // Off the record: a chunk holding audio from the span is dropped here, before it is saved, queued or sent.
-  const dropped = new Set<string>();
-  const saveChunk = (chunk: Chunk) => {
-    const s = mine();
-    if (s && !s.gate.keep(chunk)) { dropped.add(chunk.id); return Promise.resolve(); }
-    const rt = s ? s.realtime : realtime ?? undefined;
-    return rt ? rt.saveChunk(chunk) : putChunk(chunk);
-  };
+  const { saveChunk, onPending } = gatedChunks(
+    (chunk) => mine()?.gate.keep(chunk) ?? true,
+    (chunk) => {
+      const s = mine();
+      const rt = s ? s.realtime : realtime ?? undefined;
+      return rt ? rt.saveChunk(chunk) : putChunk(chunk);
+    },
+    enqueue,
+  );
   const track = (stream: MediaStream, speaker: Speaker, source: MediaStreamAudioSourceNode): Track => {
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
@@ -147,16 +157,22 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
       meetingId, speaker, startedAt,
       createRecorder: () => mediaRecorder(stream, mimeType),
       saveChunk,
-      onPending: (chunk) => { if (!dropped.delete(chunk.id)) enqueue(chunk.id); },
+      onPending,
     });
-    return { stream, analyser, buffer: new Float32Array(analyser.fftSize), chunker: newChunker(), speaker, newChunker };
+    return { stream, analyser, buffer: new Float32Array(analyser.fftSize), chunker: newChunker(), speaker, newChunker, running: false };
+  };
+  const run = (t: Track) => {
+    if (t.running) return;
+    t.chunker = t.newChunker();
+    t.chunker.start();
+    t.running = true;
   };
   const tracks: Track[] = [];
   const tabTrack = tab && tabSource ? track(tab, 'others', tabSource) : undefined;
   const micTrack = mic ? track(mic, 'you', ctx.createMediaStreamSource(mic)) : undefined;
   if (tabTrack) tracks.push(tabTrack);
   if (micTrack) tracks.push(micTrack);
-  tracks.forEach((t) => t.chunker.start());
+  tracks.forEach(run);
   if (realtime && tab) realtime.addTrack('others', mediaRecorderAudio(tab, mimeType));
   if (realtime && mic) realtime.addTrack('you', mediaRecorderAudio(mic, mimeType));
 
@@ -182,13 +198,16 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
       void a.playback.play().catch(() => undefined);
       a.others = track(stream, 'others', ctx.createMediaStreamSource(stream));
       tracks.push(a.others);
-      // Off the record: the new stream waits; coming back on starts every track.
+      // Off the record: the new stream waits; coming back on starts every track (and owns starting it).
       if (!session?.offAsked) {
-        a.others.chunker.start();
+        run(a.others);
         session?.realtime?.addTrack('others', mediaRecorderAudio(stream, mimeType));
       }
       a.watch.reset();
-      if (first && session) session.recording = startContinuous(stream, meetingId, startedAt, mimeType);
+      if (first && session) {
+        session.recording = startContinuous(stream, meetingId, startedAt, mimeType)
+          .then((r) => { if (session?.offAsked) r?.pause(); return r; });
+      }
     },
   } : undefined;
 
@@ -210,23 +229,26 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
 
   const recording = tab ? startContinuous(tab, meetingId, startedAt, mimeType) : Promise.resolve(null);
   const gate = new OffRecordGate(startedAt, {
-    stop: async () => {
+    // All at once: the real-time audio and the speaker recording stop now, not after the chunkers have flushed.
+    stop: async (cutoffMs) => {
       const s = mine();
       if (!s) return;
-      await Promise.all(s.tracks.map((t) => t.chunker.stop()));
-      (await s.recording)?.pause();
       const rt = s.realtime;
-      s.realtime = undefined;
-      if (rt) s.hadRealtime = (await rt.stop().catch(() => false)) || s.hadRealtime;
+      await Promise.all([
+        rt?.stop(cutoffMs).then((had) => { s.hadRealtime = had || s.hadRealtime; }, () => undefined),
+        s.recording.then((r) => r?.pause()),
+        ...s.tracks.map((t) => { t.running = false; return t.chunker.stop(); }),
+      ]);
+      if (s.realtime === rt) s.realtime = undefined;
     },
     start: async () => {
       const s = mine();
       if (!s) return;
-      s.realtime = (await realtimeSession(meetingId, startedAt)) ?? undefined;
+      const rt = (await realtimeSession(meetingId, startedAt)) ?? undefined;
+      s.realtime = rt;
       for (const t of s.tracks) {
-        t.chunker = t.newChunker();
-        t.chunker.start();
-        s.realtime?.addTrack(t.speaker, mediaRecorderAudio(t.stream, mimeType));
+        run(t);
+        rt?.addTrack(t.speaker, mediaRecorderAudio(t.stream, mimeType));
       }
       (await s.recording)?.resume();
     },

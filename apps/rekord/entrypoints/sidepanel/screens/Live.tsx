@@ -145,6 +145,7 @@ export default function Live() {
   const scroller = useRef<HTMLElement>(null);
   const follow = useRef(true);
   const recallGate = useRef({ muted: false, lastShownAt: liveDev.recall ? world.now() : undefined as number | undefined, seen: new Set<string>() });
+  const promising = useRef(new Set<string>());
   const clashSeen = useRef({ cursor: -1, dismissed: new Set<string>() });
 
   // Live state: ask once, then follow broadcasts.
@@ -196,6 +197,10 @@ export default function Live() {
       .catch(() => alive && setLoadFailed(true));
     readSession<string[]>(sessionKey(meetingId, 'asked'), []).then((ids) => alive && setHandled(ids), () => undefined);
     readSession<boolean>(sessionKey(meetingId, 'recallMuted'), false).then((m) => { recallGate.current.muted = m; }, () => undefined);
+    // Reopening the panel keeps the gap since the last recall card.
+    readSession<number | null>(sessionKey(meetingId, 'recallShownAt'), null).then((at) => {
+      if (at !== null) recallGate.current.lastShownAt = Math.max(at, recallGate.current.lastShownAt ?? at);
+    }, () => undefined);
     return () => { alive = false; };
   }, [meetingId]);
 
@@ -256,6 +261,7 @@ export default function Live() {
         const card = await findRecall(meetingId, recentText(segRef.current, msRef.current), gate.seen, { search, meetings, people, now: at });
         if (card && !signal.aborted) {
           gate.lastShownAt = at;
+          writeSession(sessionKey(meetingId, 'recallShownAt'), at);
           card.itemIds.forEach((id) => gate.seen.add(id));
           setRecall(card);
         }
@@ -371,18 +377,22 @@ export default function Live() {
   }
 
   async function addPromise(q: AskedYou) {
-    if (!meetingId) return;
+    if (!meetingId || promising.current.has(q.id)) return;
+    promising.current.add(q.id);
     // Owed to whoever asked: the invited person with that first name, else nobody yet.
     const first = (n: string) => n.trim().toLowerCase().split(/\s+/)[0] ?? '';
     const invited = new Set((meeting?.event?.attendees ?? []).map((x) => x.email?.toLowerCase()).filter(Boolean));
     const person = (await listPeople().catch(() => [])).find((p) => first(p.name) === first(q.speaker) && !!p.email && invited.has(p.email.toLowerCase()));
     try {
-      await putItem(promiseFromQuestion(q, meetingId, world.now(), person?.id));
+      // One promise per question: a second tap overwrites the same row instead of adding another.
+      await putItem(promiseFromQuestion(q, meetingId, world.now(), person?.id, () => `promise:${meetingId}:${q.id}`));
       void browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
       handle(q);
     } catch (error) {
       console.error('Rekord: could not save the promise', error);
       setSaveFailed(true);
+    } finally {
+      promising.current.delete(q.id);
     }
   }
 

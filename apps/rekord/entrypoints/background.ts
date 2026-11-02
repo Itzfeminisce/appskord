@@ -293,30 +293,32 @@ async function startRecording(tabId: number, sources: Sources, app = false): Pro
 }
 
 /**
- * Off the record: the recorder stops capture before the state says so, and starts it again after.
+ * Off the record: the recorder switches first (stamped at the click); the state and ledger follow only once it says ok.
  * The ledger keeps one "nothing sent" row per span: its first and last times are when it began and ended.
  */
 async function setOffRecord(on: boolean): Promise<{ ok: boolean }> {
   if (state.status !== 'recording' || (state.offRecord?.since !== undefined) === on) return { ok: state.status === 'recording' };
   const { meetingId, startedAt } = state;
-  const reply = on ? await send<{ ok?: boolean }>({ type: 'offscreen/off-record', on: true }) : undefined;
-  if (on && reply?.ok !== true) return { ok: false };
+  // The click: the recorder drops everything heard from here, and the span starts here too.
   const now = Date.now();
+  const reply = await send<{ ok?: boolean }>({ type: 'offscreen/off-record', on, at: now });
+  if (reply?.ok !== true) return { ok: false };
   if (state.status !== 'recording' || state.meetingId !== meetingId) return { ok: false };
   setState({ ...state, offRecord: on ? goOff(state.offRecord, now) : goOn(state.offRecord, now, startedAt) });
   persist();
-  await recordCall({ meetingId, service: 'off-record', what: OFF_RECORD_WHAT, at: now })
+  await recordCall({ meetingId, service: 'off-record', what: OFF_RECORD_WHAT, at: now, span: true })
     .catch((error) => console.error('Rekord: could not record off the record', error));
-  if (!on) await send({ type: 'offscreen/off-record', on: false });
   return { ok: true };
 }
 
 async function stopRecording(): Promise<RecordingReply> {
   if (state.status === 'starting' && starting) await starting.catch(() => undefined); // stop as soon as start reaches 'recording' (or aborts)
   if (state.status !== 'recording') return { ok: true };
-  const { meetingId } = state;
+  const { meetingId, startedAt } = state;
+  // An open span closes at the stop; the spans are kept on the meeting for the saved transcript.
+  const offSpans = state.offRecord ? goOn(state.offRecord, Date.now(), startedAt).spans : [];
   if (state.offRecord?.since !== undefined) {
-    await recordCall({ meetingId, service: 'off-record', what: OFF_RECORD_WHAT })
+    await recordCall({ meetingId, service: 'off-record', what: OFF_RECORD_WHAT, span: true })
       .catch((error) => console.error('Rekord: could not record off the record', error));
   }
   setState({ ...state, status: 'stopping' });
@@ -327,7 +329,7 @@ async function stopRecording(): Promise<RecordingReply> {
   // v3: a realtime meeting already has live speaker labels; the names step uses those.
   const realtime = stopped?.ok === true && stopped.realtime === true;
   const speakerStep = stopped?.ok && (stopped.recorded || realtime) ? ({ speakerStep: 'pending' } as const) : {};
-  if (meeting) await putMeeting({ ...meeting, status: 'processing', endedAt: Date.now(), ...speakerStep, ...(realtime && { realtime: true }) });
+  if (meeting) await putMeeting({ ...meeting, status: 'processing', endedAt: Date.now(), ...speakerStep, ...(realtime && { realtime: true }), ...(offSpans.length > 0 && { offSpans }) });
   if (drainedWhileStopping === meetingId) {
     drainedWhileStopping = null; // already drained: nothing left to wait for
   } else {

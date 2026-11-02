@@ -1,4 +1,4 @@
-import type { OffRecordState } from './live/offRecord';
+import type { OffRecordState, OffSpan } from './live/offRecord';
 import type { MemorySettings } from './memory/types';
 export type * from './memory/types';
 
@@ -26,6 +26,7 @@ export interface Meeting {
   event?: CalendarEvent;                           // the matched calendar event
   shares?: ShareRecord[];
   realtime?: boolean;                              // live labels came from Deepgram streaming
+  offSpans?: OffSpan[];                            // v4: off the record spans (meeting ms), shown as markers
 }
 
 export interface CalendarEvent {
@@ -124,7 +125,7 @@ export type Message =
   | { type: 'offscreen/start'; streamId: string; meetingId: string; startedAt: number; sources?: { mic: boolean; tab: boolean } } // background → offscreen
   | { type: 'offscreen/stop' }
   | { type: 'recording/off-record'; on: boolean }      // side panel → background (also Alt+Shift+O)
-  | { type: 'offscreen/off-record'; on: boolean }      // background → offscreen
+  | { type: 'offscreen/off-record'; on: boolean; at: number } // background → offscreen; at: the click (epoch ms)
   | { type: 'offscreen/levels'; micLevel: number; tabLevel: number }              // offscreen → background, ~4/s
   | { type: 'segment/added'; segment: Segment }         // offscreen/transcriber → all
   | { type: 'connection/state'; state: ConnectionState }

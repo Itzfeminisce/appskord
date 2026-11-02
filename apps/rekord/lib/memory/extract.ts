@@ -1,5 +1,6 @@
 import { getMeeting, listMeetings, listSegments } from '../db';
 import { record } from '../ledger';
+import { onRecord } from '../live/offRecord';
 import { chat, displayName, LLMError, transcriptLines, type FetchLike } from '../llm';
 import { getSettings } from '../settings';
 import type { Meeting, Segment } from '../types';
@@ -255,7 +256,7 @@ async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<Extrac
   const [meeting, segments, settings] = await Promise.all([getMeeting(meetingId), listSegments(meetingId), getSettings()]);
   if (!meeting) return EMPTY;
   if ((await isExtracted(meetingId)) || (await itemsForMeeting(meetingId)).length) return EMPTY;
-  const parts = splitParts(segments, meeting.speakers);
+  const parts = splitParts(onRecord(segments, meeting.offSpans), meeting.speakers);
   if (!parts.length) return EMPTY;
 
   const [items, people, meetings] = await Promise.all([listItems(), listPeople(), listMeetings()]);

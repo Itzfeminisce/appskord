@@ -6,7 +6,7 @@ import { closeDB, getDB } from '@/lib/db';
 import { M, SAMPLE_AFTER, seedSample } from '@/lib/memory/sample';
 import { getItem, getPerson } from '@/lib/memory/store';
 import type { MemoryItem } from '@/lib/memory/types';
-import { mount, settle } from '../../../../test/mountRouter';
+import { mount, settle, waitFor } from '../../../../test/mountRouter';
 import { sidepanel } from '../../App';
 import { confirmable, dueChip, dueFor, ownerChip, personSuggestions } from '../../components/v4/review';
 import type { Person } from '@/lib/memory/types';
@@ -59,9 +59,9 @@ describe('review card and summary strip', () => {
 
   it('confirm all saves every item, folds the moved promise into the earlier one and links Tom', async () => {
     const view = await mount(sidepanel, 'review', `/review?meeting=${M.sarah3}`);
-    expect(view.host.querySelector('h1')?.textContent).toBe('Rekord found 7 things in 1:1 with Sarah');
+    await waitFor(() => expect(view.host.querySelector('h1')?.textContent).toBe('Rekord found 7 things in 1:1 with Sarah'));
     click(view.host.querySelector('.rv-all'));
-    await settle();
+    await waitFor(() => expect(view.router.route.screen).toBe('summary'));
     for (const id of ['n-demo', 'n-seats', 'n-intro', 'n-rollout-16', 'n-yearly']) expect((await getItem(id))?.status).toBe('open');
     expect(await getItem('n-deck')).toBeUndefined();
     expect((await getItem('i-deck'))?.due).toBe('2026-11-03');

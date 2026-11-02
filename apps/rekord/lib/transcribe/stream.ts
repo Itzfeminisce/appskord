@@ -241,6 +241,8 @@ export class LiveTrack {
   private retryTimer: unknown = null;
   private interimShown = false;
   private closeWaiter: (() => void) | null = null;
+  /** Off the record: words starting at or after this (meeting ms) are never shown or saved. */
+  private cutoff = Infinity;
   /** A drop or failed connect happened and the socket isn't live again yet. */
   down = false;
   lastError: StreamErrorKind = 'server';
@@ -305,8 +307,9 @@ export class LiveTrack {
   }
 
   /** Flushes the socket (CloseStream) so the last finals arrive, then settles every held chunk. */
-  async stop(): Promise<void> {
+  async stop(cutoffMs?: number): Promise<void> {
     this.stopping = true;
+    if (cutoffMs !== undefined) this.cutoff = Math.min(this.cutoff, cutoffMs);
     this.clearRetry();
     const ws = this.ws;
     if (ws) {
@@ -353,12 +356,13 @@ export class LiveTrack {
     const segs = toSegments(r, { meetingId: this.o.meetingId, speaker: this.speaker, offsetMs: this.offset, diarize: this.diarize, newId: this.d.newId });
     if (!r.final) {
       const seg = segs[0];
-      if (seg) { this.interimShown = true; this.d.emit({ type: 'segment/added', segment: seg }); }
+      if (seg && seg.startMs < this.cutoff) { this.interimShown = true; this.d.emit({ type: 'segment/added', segment: seg }); }
       return;
     }
     this.finalUntil = Math.max(this.finalUntil, this.offset + r.endMs);
     if (this.interimShown) this.clearInterim();
     for (const seg of segs) {
+      if (seg.startMs >= this.cutoff) continue; // said after going off the record
       if (this.groqRanges.some(([a, b]) => within(seg, a, b))) continue; // Groq already has these words
       this.stored.push({ id: seg.id, startMs: seg.startMs, endMs: seg.endMs });
       this.finals += 1;
@@ -459,9 +463,12 @@ export class RealtimeSession {
     return Promise.resolve();
   }
 
-  /** Closes every socket after its last finals, settles all chunks; true when the meeting was transcribed live. */
-  async stop(): Promise<boolean> {
-    await Promise.all([...this.tracks.values()].map((t) => t.stop()));
+  /**
+   * Closes every socket after its last finals, settles all chunks; true when the meeting was transcribed live.
+   * `cutoffMs` (off the record): finals that start at or after it are dropped.
+   */
+  async stop(cutoffMs?: number): Promise<boolean> {
+    await Promise.all([...this.tracks.values()].map((t) => t.stop(cutoffMs)));
     while (this.pending.size) await Promise.all([...this.pending]);
     const realtime = this.realtime;
     this.set('off');

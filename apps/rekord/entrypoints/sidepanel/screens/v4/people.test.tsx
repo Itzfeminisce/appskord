@@ -6,7 +6,7 @@ import { closeDB, getDB, listMeetings } from '@/lib/db';
 import { detectSeries, nextMeeting, seriesLine } from '@/lib/memory/series';
 import { SAMPLE_EVENT, SAMPLE_ITEMS, SAMPLE_MEETINGS, SAMPLE_NOW, SAMPLE_PEOPLE, seedSample } from '@/lib/memory/sample';
 import { getPerson, itemsByKind, itemsForPerson, listItems, listPeople } from '@/lib/memory/store';
-import { mount, settle } from '../../../../test/mountRouter';
+import { mount, settle, waitFor } from '../../../../test/mountRouter';
 import { sidepanel } from '../../App';
 import { world } from '../../components/v4/world';
 import { dueBadge, personRows } from './peopleView';
@@ -88,16 +88,15 @@ describe('people screens', () => {
 
   it('merges Sam into Sam Ortiz from the banner', async () => {
     const view = await mount(sidepanel, 'people', '/people');
-    await settle();
-    expect(view.host.querySelector('.pp-banner')?.textContent).toBe('2 people to check: are they the same person?');
-    expect(view.host.querySelectorAll('.pp-row')).toHaveLength(12);
+    await waitFor(() => {
+      expect(view.host.querySelector('.pp-banner')?.textContent).toBe('2 people to check: are they the same person?');
+      expect(view.host.querySelectorAll('.pp-row')).toHaveLength(12);
+    });
     click(view.host.querySelector('.pp-banner'));
-    await settle();
-    expect(view.router.route).toEqual({ screen: 'personMerge', params: { personId: 'p-sam-guest', otherId: 'p-sam' } });
-    click(button(view.host, 'Same person, merge'));
-    await settle();
-    expect(view.router.route.params.personId).toBe('p-sam');
-    expect(await listPeople()).toHaveLength(11);
+    await waitFor(() => expect(view.router.route).toEqual({ screen: 'personMerge', params: { personId: 'p-sam-guest', otherId: 'p-sam' } }));
+    click(await waitFor(() => button(view.host, 'Same person, merge') ?? false));
+    await waitFor(() => expect(view.router.route.params.personId).toBe('p-sam'));
+    await waitFor(async () => expect(await listPeople()).toHaveLength(11));
     const merged = await getPerson('p-sam');
     expect(merged?.aliases).toContain('Sam');
     expect(merged?.meetingIds).toHaveLength(5);

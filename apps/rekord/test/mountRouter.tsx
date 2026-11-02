@@ -52,3 +52,19 @@ export async function settle() {
 
 export const shown = (host: HTMLElement) => host.querySelector('[data-test-screen]')?.getAttribute('data-test-screen');
 export const fakeScreen = (name: string): ComponentType => () => <p data-test-screen={name}>{name}</p>;
+
+/** Polls (letting React and IndexedDB work) until `check` neither throws nor returns false; then its result. */
+export async function waitFor<T>(check: () => T | Promise<T>, timeoutMs = 4000): Promise<Exclude<T, false>> {
+  const until = Date.now() + timeoutMs;
+  let last: unknown = new Error('waitFor: condition stayed false');
+  for (;;) {
+    try {
+      const value = await check();
+      if (value !== false) return value as Exclude<T, false>;
+    } catch (error) {
+      last = error;
+    }
+    if (Date.now() > until) throw last;
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  }
+}
