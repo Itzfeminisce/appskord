@@ -23,6 +23,9 @@ const near = (a: number, b: number) => Math.abs(a - b) <= 30;
  * BeatSync's waveform over the clip: a tick at each beat (taller on the bar's first beat), the track's peaks (played
  * part darker), a tall accent marker where a cut lands on a beat, and the playhead.
  */
+// A fixed ripple over the peaks, so a loud, even track still reads as a waveform; the same bar always gets the same height.
+const texture = (i: number) => 0.35 + 0.65 * Math.abs(Math.sin(i * 12.9898) * 0.6 + Math.sin(i * 0.37) * 0.4);
+
 function BeatWave({ peaks, beats, clipMs, trackMs, cuts, snapped, playMs }: { peaks: number[]; beats: number[]; clipMs: number; trackMs: number; cuts: number[]; snapped: boolean; playMs: number }) {
   const span = Math.max(1, clipMs);
   const x = (ms: number) => PAD + (Math.min(ms, span) / span) * (W - PAD * 2);
@@ -30,8 +33,8 @@ function BeatWave({ peaks, beats, clipMs, trackMs, cuts, snapped, playMs }: { pe
   const n = Math.floor((W - PAD * 2) / 3);
   const bars = Array.from({ length: n }, (_, i) => {
     const t = ((i + 0.5) / n) * span;
-    const p = peaks[Math.min(peaks.length - 1, Math.floor((t / Math.max(trackMs, span)) * peaks.length))] ?? 0;
-    return { t, h: Math.max(3, (p / max) * 40) };
+    const p = peaks.length ? (peaks[Math.min(peaks.length - 1, Math.floor((t / Math.max(trackMs, span)) * peaks.length))] ?? 0) / max : 0.6;
+    return { t, h: Math.max(3, p * texture(i) * 30) };
   });
   return (
     <svg viewBox={`0 0 ${W} 96`} width="100%" height={90} role="img" aria-label="Waveform with beats and cuts" style={{ display: 'block' }}>
@@ -203,7 +206,7 @@ export default function Music() {
   );
 
   return (
-    <DialogShell width={360} label="Music" style={{ padding: 16, gap: 14, overflowY: 'auto', boxShadow: '0 12px 32px rgba(16,16,20,0.12)' }}>
+    <DialogShell width={360} label="Music" style={{ padding: 16, gap: 14, overflowY: 'auto', alignSelf: 'flex-start', boxShadow: '0 12px 32px rgba(16,16,20,0.12)' }}>
       {head}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, background: 'var(--tint)', border: '1px solid var(--tint-strong)', flexShrink: 0 }}>
         {nowId && (

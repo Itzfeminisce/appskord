@@ -60,6 +60,7 @@ export interface StylePack {                               // lib/templates/pack
   id: StyleId; name: string; description?: string;     // NewLook's line for the pack
   fonts: { display: string; text: string; number: string };
   palette: { bg: string; bg2: string; ink: string; muted: string; accent: string; accent2?: string };
+  label?: { bg: string; ink: string };                    // a caption slot (not the kicker) drawn as a pill
   background: Background; feel: Feel; motionMs: number;
   transitions: TransitionKind[]; clipTypes: ClipType[];   // clipTypes: Auto picks this pack for them
 }
@@ -82,6 +83,7 @@ export interface TextLayer extends LayerBase {
   type: 'text'; role: 'title' | 'body' | 'caption' | 'label';
   text: string; font: string; sizePx: number; weight: number; colour: string;   // sizePx at 1080 short side
   align: 'left' | 'center' | 'right'; lineHeight: number; background?: string;
+  pill?: boolean;                                            // the background hugs the words as a pill instead of filling the box
   letterSpacing?: number;                                    // em
   highlight?: { word: number; colour: string }; shadow?: boolean; stagger?: 'word' | 'line'; slot?: string;
 }

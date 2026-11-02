@@ -51,7 +51,7 @@ interface At { recipe: Recipe; scene: Scene; layer: Layer; si: number; li: numbe
 
 function overflow({ recipe, scene, layer, si, li }: At, measure: Measure, out: Issue[]) {
   const l = layer as TextLayer;
-  const pad = l.background ? 32 : 0;
+  const pad = l.background && !l.pill ? 32 : 0;
   const fits = ASPECTS.map((aspect) => {
     const b = boxFor(l, aspect, recipe.aspect, scene.layout);
     const { w, h } = canvasSize(aspect, 1080);
@@ -75,7 +75,7 @@ function tooSmall({ recipe, scene, layer, si, li }: At, measure: Measure, out: I
   const fitAt = (aspect: Aspect, maxSize: number) => {
     const b = boxFor(l, aspect, recipe.aspect, scene.layout);
     const { w, h } = canvasSize(aspect, 1080);
-    const pad = l.background ? 32 : 0;
+    const pad = l.background && !l.pill ? 32 : 0;
     return fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize, lineHeight: l.lineHeight, measure });
   };
   if (l.sizePx >= MIN_TEXT_PX && fitAt('9:16', l.sizePx).sizePx >= MIN_TEXT_PX) return;
@@ -456,7 +456,7 @@ function layout(recipe: Recipe, scene: Scene, si: number, opts: CheckOptions, ou
 function inkArea(v: Vis, aspect: Aspect, measure: Measure): number {
   const l = v.layer as TextLayer;
   const { w, h } = canvasSize(aspect, 1080);
-  const pad = l.background ? 32 : 0;
+  const pad = l.background && !l.pill ? 32 : 0;
   const fit = fitText({ text: l.text, width: v.box.w * w - pad, height: v.box.h * h - pad, maxSize: l.sizePx, lineHeight: l.lineHeight, measure });
   const widest = Math.max(0, ...fit.lines.map((line) => measure(line, fit.sizePx)));
   return Math.min(area(v.box), (widest * fit.lines.length * fit.sizePx * l.lineHeight) / (w * h));

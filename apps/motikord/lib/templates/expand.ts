@@ -137,13 +137,15 @@ function text(c: Ctx, def: SlotDef, value: string, order: number, boxes: Boxes, 
   const scale = opts.scale ?? def.scale ?? 'body';
   const face = c.look.face[scale];
   const font = scale === 'number' ? c.look.fonts.number : HEADING.includes(scale) ? c.look.fonts.display : c.look.fonts.text;
-  const colour = opts.colour ?? (c.overMedia ? '#FFFFFF' : def.kind === 'text' && scale === 'caption' ? (def.id === 'kicker' ? c.look.accentText : c.look.muted) : c.look.ink);
+  const pill = !opts.colour && !c.overMedia && def.kind === 'text' && scale === 'caption' && def.id !== 'kicker' ? c.look.pack.label : undefined;
+  const colour = opts.colour ?? pill?.ink ?? (c.overMedia ? '#FFFFFF' : def.kind === 'text' && scale === 'caption' ? (def.id === 'kicker' ? c.look.accentText : c.look.muted) : c.look.ink);
   return {
     ...base(c, def, order, opts.item ?? 0, opts.suffix), ...withBoxes(boxes), type: 'text', role: ROLE[scale], text: value,
     font, sizePx: opts.sizePx ?? SLOT_PX[`${c.t.id}.${def.id}`] ?? SCALE_PX[scale], weight: HEADING.includes(scale) ? c.look.headingWeight ?? face.weight : face.weight,
     colour, align: def.align ?? 'left', lineHeight: LINE_HEIGHT[scale], letterSpacing: face.tracking,
     ...(opts.stagger !== false && def.motion.stagger ? { stagger: def.motion.stagger } : {}),
     ...(c.overMedia ? { shadow: true } : {}),
+    ...(pill ? { background: pill.bg, pill: true } : {}),
   };
 }
 

@@ -311,3 +311,23 @@ export function slotWith(scene: Scene, ls: LayerSlot, text: string): SlotValue {
   list[ls.item] = text;
   return list;
 }
+
+// ---- Dev sample ----
+
+const SAMPLE: [TemplateId, Scene['slots']][] = [
+  ['title-hook', { kicker: 'Rise Bakery', headline: 'Fresh sourdough' }],
+  ['hero', { headline: 'Baked at 5am', line: 'Crackling crust and a soft, open crumb' }],
+  ['stat-reveal', { number: '1,200', label: 'loaves a week', source: 'Since 2019' }],
+  ['steps', { title: 'How we bake', steps: ['Mix the dough', 'Rest for a day', 'Bake at dawn'] }],
+  ['list', { title: 'In the case today', items: ['Classic', 'Rye', 'Seeded', 'Olive'] }],
+  ['quote', { quote: '“Best bread in town, every single morning.”', name: 'Ada Obi', role: 'Regular since 2020' }],
+  ['end-card', { cta: 'Open 7 to 3', handle: 'rise.bakery' }],
+];
+
+/** Dev only: the frames' bakery clip as a v2 recipe (seven templates, Bold, 16:9). */
+export function devSampleV2(id: string): Recipe {
+  const pack = getPack('bold')!;
+  const r: Recipe = { version: 2, id, name: 'Fresh sourdough', type: 'promo', aspect: '16:9', assets: {}, style: 'bold', pace: 'normal', mood: 'upbeat', scenes: [] };
+  r.scenes = SAMPLE.map(([template, slots], i) => expandScene({ id: `s${i + 1}`, durationMs: 3000, background: pack.palette.bg, layout: 'center', layers: [], template, slots }, pack));
+  return r;
+}

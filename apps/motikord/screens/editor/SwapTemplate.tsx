@@ -84,13 +84,13 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
     return (
       <button key={id} type="button" aria-label={t.name} aria-pressed={on} title={t.line} onClick={() => setPicked(current ? undefined : id)}
         onPointerEnter={() => setPointed(id)} onPointerLeave={() => setPointed(undefined)} onFocus={() => setPointed(id)} onBlur={() => setPointed(undefined)}
-        style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 0, border: 0, background: 'transparent', font: 'inherit', textAlign: 'left', cursor: 'pointer', opacity: muted && !on ? 0.62 : 1 }}>
+        style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 0, border: 0, background: 'transparent', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
         <span style={{ position: 'relative', width: ts.w, height: ts.h, borderRadius: 6, overflow: 'hidden', background: '#0A0A0A', display: 'flex', outline: on ? '2px solid var(--accent)' : 'none', outlineOffset: 2 }}>
           {preview && <SceneThumb recipe={preview} aspect={r.aspect} timeMs={restTime(r, si)} w={ts.w} h={ts.h} />}
           {current && <span style={{ position: 'absolute', top: 4, left: 4, height: 16, padding: '0 5px', borderRadius: 4, background: '#FFFFFF', color: 'var(--ink)', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center' }}>Current</span>}
           {on && <span style={{ position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%', background: 'var(--accent)', display: 'grid', placeItems: 'center' }}><Tick size={10} /></span>}
         </span>
-        <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.25, color: on ? 'var(--accent-hover)' : 'var(--ink)', width: ts.w + 4 }}>{t.name}</span>
+        <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.25, color: on ? 'var(--accent-hover)' : muted ? 'var(--muted)' : 'var(--ink)', width: ts.w + 4 }}>{t.name}</span>
       </button>
     );
   };
@@ -101,7 +101,7 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
   return (
     <>
       {shownName && stage && (
-        <div role="status" style={{ position: 'fixed', left: stage.left, top: stage.top, width: stage.width, height: stage.height, zIndex: 15, pointerEvents: 'none' }}>
+        <div role="status" style={{ position: 'fixed', left: stage.left, top: stage.top, width: Math.max(160, Math.min(stage.width, window.innerWidth - 308 - 474 - 8 - stage.left)), height: stage.height, zIndex: 15, pointerEvents: 'none' }}>
           <span style={{ position: 'absolute', top: 8, left: 8, height: 24, padding: '0 10px', borderRadius: 999, background: 'var(--ink)', color: '#FFFFFF', fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>Preview
           </span>

@@ -41,6 +41,7 @@ function SceneFields({ si, scene }: { si: number; scene: Scene }) {
   const [ask, setAsk] = useState('');
   const busy = remaking === scene.id;
   const thumb = thumbSize(r.aspect, r.aspect === '16:9' ? 48 : 64);
+  const { head, pair } = slotRows(t?.slots ?? []);
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
@@ -61,7 +62,12 @@ function SceneFields({ si, scene }: { si: number; scene: Scene }) {
           </span>
         </div>
       </div>
-      {t?.slots.filter((d) => d.kind === 'text' || d.kind === 'items').map((d) => <SlotField key={d.id} si={si} scene={scene} def={d} />)}
+      {head.map((d) => <SlotField key={d.id} si={si} scene={scene} def={d} />)}
+      {pair.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8 }}>
+          {pair.map((d) => <SlotField key={d.id} si={si} scene={scene} def={d} />)}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: si > 0 ? 'minmax(0, 1.4fr) minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: 8 }}>
         {si > 0 && <ComesIn si={si} />}
         <Labelled name="Length"><LengthInput si={si} /></Labelled>
@@ -76,6 +82,14 @@ function SceneFields({ si, scene }: { si: number; scene: Scene }) {
       <span style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', marginTop: -4 }}>Keeps the other scenes as they are.</span>
     </>
   );
+}
+
+/** The last two short text slots share a row (Label and Source), so the remake button stays above the fold. */
+export function slotRows(slots: SlotDef[]): { head: SlotDef[]; pair: SlotDef[] } {
+  const fields = slots.filter((d) => d.kind === 'text' || d.kind === 'items');
+  const tail = fields.slice(-2);
+  const pairs = fields.length >= 3 && tail.every((d) => d.kind === 'text');
+  return pairs ? { head: fields.slice(0, -2), pair: tail } : { head: fields, pair: [] };
 }
 
 function Labelled({ name, children }: { name: string; children: ReactNode }) {

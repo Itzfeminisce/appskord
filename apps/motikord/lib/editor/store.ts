@@ -118,17 +118,19 @@ export function findLayer(r: Recipe, sceneId: string, layerId: string | undefine
   return { si, li, scene, layer: scene.layers[li]!, path: `/scenes/${si}/layers/${li}` };
 }
 
-/** The scene's name for lists: its title text, else its first text, else nothing. */
-/** A scene's first words: its title, skipping marks such as a quote glyph; a one-word title ("1,200") takes the next line's words. */
+// Quote marks and punctuation round a word ("“Best", "town.”") are not part of a title.
+const bare = (w: string) => w.replace(/^[^\p{L}\p{N}$£€#@]+/u, '').replace(/[^\p{L}\p{N}%+)]+$/u, '');
+
+/** A scene's first words (at most four): its title, skipping marks such as a quote glyph; a one-word title ("1,200") takes the next line's words. */
 export function sceneTitle(scene: Scene): string {
   const texts = scene.layers.filter((l): l is TextLayer => l.type === 'text' && /[\p{L}\p{N}]/u.test(l.text));
   const ordered = [...texts.filter((l) => l.role === 'title'), ...texts.filter((l) => l.role !== 'title')];
   const words: string[] = [];
   for (const t of ordered) {
-    words.push(...t.text.split('\n')[0]!.trim().split(/\s+/).filter(Boolean));
+    words.push(...t.text.replace(/\s+/g, ' ').trim().split(' ').map(bare).filter((w) => /[\p{L}\p{N}]/u.test(w)));
     if (words.length > 1) break;
   }
-  return words.slice(0, 6).join(' ');
+  return words.slice(0, 4).join(' ');
 }
 
 // ---- Times as the frames show them ("0:01.8", "0:05") ----
