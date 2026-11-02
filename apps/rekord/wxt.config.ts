@@ -22,7 +22,11 @@ export default defineAppConfig({
   // Requested only when the user turns on Penv Cloud, a cloud AI key, Deepgram, Google, Notion or Ollama (lib/hosts.ts).
   optionalHostPermissions: OPTIONAL_HOSTS,
   // The search model's ONNX runtime compiles WebAssembly (lib/recall/worker.ts).
-  manifest: { content_security_policy: { extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';" } },
+  manifest: {
+    content_security_policy: { extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';" },
+    // Off the record and back during a recording (lib/live/offRecord.ts).
+    commands: { 'off-record': { suggested_key: { default: 'Alt+Shift+O' }, description: 'Off the record' } },
+  },
   wxt: {
     // WASM-only ONNX runtime (no WebGPU on the target laptop); the worker is an ES module so it can split chunks.
     vite: () => ({

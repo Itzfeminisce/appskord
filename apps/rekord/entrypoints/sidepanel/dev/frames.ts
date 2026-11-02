@@ -341,3 +341,134 @@ Object.assign(DEV_FRAMES, {
 } satisfies Record<string, DevFrame>);
 
 function redactParams() { return { atMs: REDACT_SPAN.startMs, endMs: REDACT_SPAN.endMs }; }
+
+// T10 during the meeting: the 1:1 at recording time 18:42 (10:18), staged without a recorder.
+import { liveDev } from '../screens/Live';
+import { startDev } from '../screens/Start';
+import { liveAskSession } from '../screens/Ask';
+import { recallCard } from '@/lib/live/recall';
+import { whatDidIMiss } from '@/lib/live/missed';
+import { confirmClash } from '@/lib/live/clash';
+import { listPeople } from '@/lib/memory/store';
+import { SAMPLE_ITEMS } from '@/lib/memory/sample';
+import type { RecordingState } from '@/lib/types';
+
+const ONE_ON_ONE_START = at(11, 3, 10, 0);
+const DURING = ONE_ON_ONE_START + mmss(18, 42);
+const AI = { settings: DEFAULT_SETTINGS, keys: { GROQ_API_KEY: 'gsk_test' } };
+const aiSays = (content: string) => async () => json({ choices: [{ message: { content } }] });
+
+/** What was said up to 18:42: the agenda talk (items 1 and 2 covered at 04:10 and 12:30) and the lines the frames show. */
+const DURING_LINES: [number, number, 'you' | 'Sarah', string][] = [
+  [0, 20, 'Sarah', 'Let’s start with the Q3 usage numbers.'],
+  [4, 10, 'Sarah', 'The Q3 usage numbers are in the doc I shared.'],
+  [4, 40, 'you', 'Great. Next, the revised pricing deck.'],
+  [12, 30, 'you', 'I’ll finish the pricing deck changes.'],
+  [15, 42, 'Sarah', 'Now the Northwind rollout date.'],
+  [16, 5, 'Sarah', 'Can you send the deck today?'],
+  [16, 30, 'you', 'For the rollout date, the 9th is still the plan.'],
+  [18, 14, 'you', 'The 9th still works on our side.'],
+  [18, 26, 'Sarah', 'I need to check one thing with our IT lead.'],
+  [18, 36, 'you', 'Want the seat count before or after that?'],
+];
+const duringSegment = (m: number, s: number, who: 'you' | 'Sarah', text: string, extra: Partial<Segment> = {}): Segment => ({
+  id: `s-live-${m}-${s}`, meetingId: M.sarah3, speaker: who === 'you' ? 'you' : 'others', ...(who === 'Sarah' ? { speakerLabel: 'A' } : {}),
+  startMs: mmss(m, s), endMs: mmss(m, s) + 8_000, text, chunkId: 'sample', ...extra,
+});
+
+/** The 1:1 recording at 18:42, its transcript, and the recorder state the panel would hear from the background. */
+async function duringWorld(opts: { skip?: number[]; extra?: Segment[]; offSince?: number } = {}) {
+  const db = await getDB();
+  const { endedAt: _ended, ...meeting } = SAMPLE_ONE_ON_ONE;
+  await db.put('meetings', { ...meeting, status: 'recording', speakers: { A: { name: 'Sarah' } } });
+  const lines = DURING_LINES.filter((l) => !opts.skip?.includes(l[0] * 60 + l[1])).map((l) => duringSegment(...l));
+  for (const seg of [...lines, ...(opts.extra ?? [])]) await db.put('segments', seg);
+  const rec: RecordingState = {
+    status: 'recording', meetingId: M.sarah3, startedAt: ONE_ON_ONE_START, micLevel: 0, tabLevel: 0,
+    ...(opts.offSince !== undefined ? { offRecord: { since: opts.offSince, spans: [] } } : {}),
+  };
+  Object.assign(liveDev, { rec, stream: 'live', view: 'transcript', recall: undefined, missed: undefined, clash: undefined, interim: undefined });
+  return lines;
+}
+const sarahNow = (text: string) => duringSegment(18, 40, 'Sarah', text, { id: 's-live-now', interim: true, chunkId: 'live' });
+const item = (id: string) => SAMPLE_ITEMS.find((i) => i.id === id)!;
+
+Object.assign(DEV_FRAMES, {
+  V4TellPeople: {
+    screen: 'start',
+    setup: async () => {
+      startDev.tab = { id: 1, title: '1:1 with Sarah', url: 'https://meet.google.com/xyz-abcd-efg' };
+      startDev.keysReady = true;
+    },
+  },
+  V4Live: {
+    screen: 'live', params: { meetingId: M.sarah3 }, now: DURING,
+    setup: async () => {
+      await duringWorld();
+      liveDev.interim = sarahNow('After. Let me think about the date first.');
+      liveDev.recall = recallCard([item('d-team-12'), item('i-q3')], SAMPLE_MEETINGS, await listPeople(), DURING);
+    },
+  },
+  V4LiveAgenda: {
+    screen: 'live', params: { meetingId: M.sarah3 }, now: DURING,
+    setup: async () => {
+      await duringWorld();
+      liveDev.view = 'agenda';
+    },
+  },
+  V4Missed: {
+    screen: 'live', params: { meetingId: M.sarah3 }, now: DURING,
+    // The AI's catch-up in the frame, through the real call with a fake reply.
+    setup: async () => {
+      const lines = await duringWorld();
+      liveDev.interim = sarahNow('After. Let me think about the date first.');
+      const reply = JSON.stringify({
+        lines: [
+          { atMs: mmss(18, 39), text: 'Sarah wants to settle the Northwind rollout date today.' },
+          { atMs: mmss(18, 40), text: 'She needs to check the date with her IT lead first.' },
+          { atMs: mmss(18, 41), text: 'You offered the seat count once the date is set.' },
+        ],
+        forYou: 'Sarah asked if you can join Thursday’s rollout demo.',
+      });
+      const result = await whatDidIMiss({ id: M.sarah3, speakers: { A: { name: 'Sarah' } } }, lines, 3, mmss(18, 42), { config: AI, record: noRecord, fetch: aiSays(reply) });
+      liveDev.missed = { minutes: 3, result };
+    },
+  },
+  V4OffRecord: {
+    // 11 s after going off the record at 18:42; the 18:36 line is left out, as the frame draws it.
+    screen: 'live', params: { meetingId: M.sarah3 }, now: DURING + 11_000,
+    setup: async () => { await duringWorld({ skip: [18 * 60 + 36], offSince: DURING }); },
+  },
+  V4Clash: {
+    screen: 'live', params: { meetingId: M.sarah3 }, now: DURING,
+    // Clash alerts turned on for this story; the AI confirms through the real call with a fake reply.
+    setup: async () => {
+      await setMemory({ clash: true });
+      const line = duringSegment(18, 40, 'Sarah', 'Let’s move the rollout to the 16th.', { id: 's-live-clash' });
+      await duringWorld({ extra: [line] });
+      const decision = item('d-rollout-9');
+      const found = await confirmClash(M.sarah3, { decision, segment: line }, 'Sarah', '27 Oct', {
+        config: AI, record: noRecord, fetch: aiSays(JSON.stringify({ changes: true, decision: 'Northwind rollout starts 16 Nov' })),
+      });
+      liveDev.clash = found && { clash: found, decidedAt: SAMPLE_MEETINGS.find((m) => m.id === M.sarah27)!.startedAt };
+    },
+  },
+  V4LiveAsk: {
+    screen: 'live', params: { meetingId: M.sarah3 }, now: DURING,
+    // "What did Sarah say about seats last time?" answered from the decision and the 27 Oct 1:1.
+    setup: async () => {
+      await duringWorld();
+      liveDev.view = 'ask';
+      const db = await getDB();
+      const sarah27 = SAMPLE_MEETINGS.find((m) => m.id === M.sarah27)!;
+      await db.put('meetings', { ...sarah27, speakers: { A: { name: 'Sarah' } } });
+      await db.put('segments', { id: 's-seats-27', meetingId: M.sarah27, speaker: 'others', speakerLabel: 'A', startMs: mmss(4, 12), endMs: mmss(4, 18), text: 'Ten seats to start is realistic for us.', chunkId: 'sample' });
+      const result = await askMemory('What did Sarah say about seats last time?', 'all', await listMeetings(), {
+        now: DURING, config: AI, record: noRecord,
+        search: async () => ({ mode: 'hybrid', items: [{ item: (await getItem('d-team-12'))!, score: 1 }], meetings: [{ meeting: sarah27, score: 1, atMs: mmss(4, 12), text: 'Ten seats to start is realistic for us.' }] }),
+        fetch: aiSays('On 27 Oct Sarah said ten seats to start is realistic. The team plan was set at $12 a seat on 26 Oct. [1] [2]'),
+      });
+      Object.assign(liveAskSession, { meetingId: M.sarah3, scope: 'all', turns: [result] });
+    },
+  },
+} satisfies Record<string, DevFrame>);

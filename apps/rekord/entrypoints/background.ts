@@ -13,6 +13,8 @@ import {
   type PanelRoute,
 } from '@/lib/reminders';
 import { isStreamRequest, tokenReply } from '@/lib/transcribe/stream';
+import { record as recordCall } from '@/lib/ledger';
+import { goOff, goOn, OFF_RECORD_COMMAND, OFF_RECORD_WHAT } from '@/lib/live/offRecord';
 import type { Meeting, RecordingState, TranscriberConfig } from '@/lib/types';
 import type { OffscreenReply } from './offscreen/main';
 
@@ -183,6 +185,12 @@ export default defineBackground(() => {
   // After a browser restart, finish transcribing chunks left pending by an earlier meeting.
   browser.runtime.onStartup.addListener(() => void openForCatchUp());
 
+  // Alt+Shift+O: off the record and back.
+  browser.commands.onCommand.addListener((command) => {
+    if (command !== OFF_RECORD_COMMAND) return;
+    void ready.then(() => { if (state.status === 'recording') return setOffRecord(state.offRecord?.since === undefined); });
+  });
+
   onMessage((msg) => {
     // v3 real time: a fresh short-lived Deepgram token per socket; the key itself never leaves the background.
     if (isStreamRequest(msg, 'stream/token')) return tokenReply(loadKeys);
@@ -200,6 +208,8 @@ export default defineBackground(() => {
         });
       case 'recording/stop':
         return ready.then(stopRecording);
+      case 'recording/off-record':
+        return ready.then(() => setOffRecord(msg.on));
       case 'offscreen/levels':
         void ready.then(() => {
           if (state.status === 'recording') setState({ ...state, micLevel: msg.micLevel, tabLevel: msg.tabLevel });
@@ -282,10 +292,33 @@ async function startRecording(tabId: number, sources: Sources, app = false): Pro
   return { ok: true, meetingId };
 }
 
+/**
+ * Off the record: the recorder stops capture before the state says so, and starts it again after.
+ * The ledger keeps one "nothing sent" row per span: its first and last times are when it began and ended.
+ */
+async function setOffRecord(on: boolean): Promise<{ ok: boolean }> {
+  if (state.status !== 'recording' || (state.offRecord?.since !== undefined) === on) return { ok: state.status === 'recording' };
+  const { meetingId, startedAt } = state;
+  const reply = on ? await send<{ ok?: boolean }>({ type: 'offscreen/off-record', on: true }) : undefined;
+  if (on && reply?.ok !== true) return { ok: false };
+  const now = Date.now();
+  if (state.status !== 'recording' || state.meetingId !== meetingId) return { ok: false };
+  setState({ ...state, offRecord: on ? goOff(state.offRecord, now) : goOn(state.offRecord, now, startedAt) });
+  persist();
+  await recordCall({ meetingId, service: 'off-record', what: OFF_RECORD_WHAT, at: now })
+    .catch((error) => console.error('Rekord: could not record off the record', error));
+  if (!on) await send({ type: 'offscreen/off-record', on: false });
+  return { ok: true };
+}
+
 async function stopRecording(): Promise<RecordingReply> {
   if (state.status === 'starting' && starting) await starting.catch(() => undefined); // stop as soon as start reaches 'recording' (or aborts)
   if (state.status !== 'recording') return { ok: true };
   const { meetingId } = state;
+  if (state.offRecord?.since !== undefined) {
+    await recordCall({ meetingId, service: 'off-record', what: OFF_RECORD_WHAT })
+      .catch((error) => console.error('Rekord: could not record off the record', error));
+  }
   setState({ ...state, status: 'stopping' });
   // Resolves after the last chunks (and the final continuous-recording part) are saved.
   const stopped = await send<OffscreenReply>({ type: 'offscreen/stop' });

@@ -46,6 +46,10 @@ describe('hosts', () => {
     expect((await manifest()).oauth2).toBeUndefined();
   });
 
+  it('goes off the record with Alt+Shift+O', async () => {
+    expect((await manifest()).commands).toEqual({ 'off-record': { suggested_key: { default: 'Alt+Shift+O' }, description: 'Off the record' } });
+  });
+
   it('lets the search model compile WebAssembly and nothing remote', async () => {
     expect((await manifest()).content_security_policy).toEqual({ extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';" });
   });

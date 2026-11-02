@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrandMark, Button, Spinner } from '../components';
-import { CalendarCard } from '../components/CalendarCard';
+import { CalendarCard, useCalendar } from '../components/CalendarCard';
+import { nearMeeting } from '../components/v4/recordBar';
+import { world } from '../components/v4/world';
+import { TellPeople } from './v4/TellPeople';
+import { getAgenda } from '@/lib/memory/store';
 import { attachEvent } from '@/lib/calendar';
 import { useRouter } from '../router';
 import type { RecordingReply } from '../../background';
 import { transcriptionKeyRejected } from '@/lib/connect';
 import { ensureKeys, loadKeys, reconnect, wasDisconnected } from '@/lib/penv';
 import { hostsForSettings, PENV_HOSTS, requestHosts } from '@/lib/hosts';
-import { getSettings } from '@/lib/settings';
+import { getSettings, updateSettings } from '@/lib/settings';
 import { DisconnectedPanel } from './PenvConnect';
 import { getMeeting, listMeetings, putMeeting } from '@/lib/db';
 import { dateTile, hostOf } from '@/lib/live';
@@ -18,6 +22,9 @@ import { formatDuration } from '@/lib/time';
 import type { CalendarEvent, Meeting, RecordingState } from '@/lib/types';
 
 interface TabInfo { id: number; title: string; url?: string; favIconUrl?: string }
+
+/** Dev frame routes only: the meeting tab and loaded keys, which the frame takes for granted. */
+export const startDev: { tab?: TabInfo; keysReady?: boolean } = {};
 
 function subtitle(m: Meeting): string {
   const parts: string[] = [];
@@ -46,6 +53,39 @@ export default function Start() {
   const calEvent = useRef<CalendarEvent | undefined>(undefined); // T6: event happening now, attached on start
   const providerHosts = useRef<string[]>([]); // known before the click, so Start can ask for them synchronously
   const [hostsReady, setHostsReady] = useState(false);
+  // v4: "Tell people you're taking notes" while it is on in Settings (read once, so unticking keeps this screen).
+  const [tell, setTell] = useState<boolean | undefined>(undefined);
+  const [every, setEvery] = useState(true);
+  const calendar = useCalendar();
+  const events = world.events ?? (calendar.status === 'ready' ? calendar.events : []);
+  const near = nearMeeting(events, world.now());
+  const [agendaItems, setAgendaItems] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    let alive = true;
+    getSettings().then((s) => { if (alive) { setTell(s.memory.tellPeople); setEvery(s.memory.tellPeople); } }, () => alive && setTell(false));
+    return () => { alive = false; };
+  }, []);
+
+  // The near calendar meeting names the recording and is attached on start, as the calendar card does.
+  useEffect(() => {
+    if (!tell || !near) return;
+    calEvent.current = near;
+    setName((n) => (n === autoName.current ? near.title : n));
+    let alive = true;
+    getAgenda(near.id).then((a) => alive && setAgendaItems(a?.items.filter((i) => !i.skipped).length), () => undefined);
+    return () => { alive = false; };
+  }, [tell, near?.id]);
+
+  async function showEvery(on: boolean) {
+    setEvery(on);
+    try {
+      const s = await getSettings();
+      await updateSettings({ memory: { ...s.memory, tellPeople: on } });
+    } catch (error) {
+      console.error('Rekord: could not save the setting', error);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -58,7 +98,7 @@ export default function Start() {
       .catch(() => alive && setStateChecked(true));
     // tabs.get/query only expose a tab's url once Rekord was invoked on it (activeTab), which is how we
     // detect a missing tab-capture grant. Re-check when the active tab changes and when the panel regains focus.
-    const loadTab = () => browser.tabs
+    const loadTab = () => startDev.tab ? Promise.resolve(setTab(startDev.tab)) : browser.tabs
       .query({ active: true, currentWindow: true })
       .then(([t]) => (t?.id != null ? browser.tabs.get(t.id) : undefined))
       .then((t) => {
@@ -93,7 +133,8 @@ export default function Start() {
     const loadHosts = () => Promise.all([getSettings(), loadKeys()])
       .then(([st, k]) => { providerHosts.current = hostsForSettings(st, Object.keys(k)); }, () => {})
       .finally(() => alive && setHostsReady(true));
-    ensureKeys().then((k) => (k === 'reconnect' ? needReconnect() : setKeys(k)), needReconnect).finally(loadHosts);
+    (startDev.keysReady ? Promise.resolve('ready' as const) : ensureKeys())
+      .then((k) => (k === 'reconnect' ? needReconnect() : setKeys(k)), needReconnect).finally(loadHosts);
     transcriptionKeyRejected().then((r) => alive && setKeyRejected(r), () => {});
     listMeetings()
       .then((all) => setRecent(all.filter((m) => m.status !== 'recording').sort((a, b) => b.startedAt - a.startedAt).slice(0, 3)))
@@ -185,6 +226,41 @@ export default function Start() {
 
   const host = hostOf(tab?.url);
   const canRecord = (place === 'app' || !!tab) && keys === 'ready' && stateChecked && hostsReady && !busy;
+
+  if (tell === undefined) return <main className="screen screen-center"><Spinner label="Loading" /></main>;
+  if (tell) {
+    const notices = (
+      <>
+        {place === 'tab' && tab === null && <p className="tp-warn" role="status">Rekord can’t see your current tab. Open your meeting in a tab, then reopen this panel.</p>}
+        {keys === 'reconnect' && penvGone && <DisconnectedPanel onConnect={() => navigate('penvConnect')} />}
+        {keys === 'reconnect' && !penvGone && (
+          <div className="tp-warn" role="alert">
+            <span>Reconnect to your AI service to start recording.</span>
+            <Button variant="secondary" onClick={tryReconnect} disabled={reconnecting}>{reconnecting ? 'Reconnecting…' : 'Reconnect'}</Button>
+          </div>
+        )}
+        {keys === 'ready' && keyRejected && (
+          <div className="tp-warn" role="alert">
+            <span>Your transcription key was rejected. Fix it in Settings.</span>
+            <Button variant="secondary" onClick={() => navigate('settings')}>Settings</Button>
+          </div>
+        )}
+        {!error && tab && place === 'tab' && needsTabGrant({ tabOn: true, tabUrl: tab.url }) && <p className="tp-warn" role="status">{TAB_GRANT_HINT}</p>}
+        {error && <p className="tp-warn" role="alert">{error}</p>}
+      </>
+    );
+    return (
+      <TellPeople
+        event={near} now={world.now()} agendaItems={agendaItems}
+        onAgenda={() => near && navigate('brief', { eventId: near.id })}
+        onNotNow={() => navigate('home')}
+        every={every} onEvery={(on) => void showEvery(on)}
+        place={place} onPlace={choosePlace} placeRef={(p, el) => { placeRefs.current[p] = el; }}
+        mic={mic} onMic={setMic}
+        notices={notices} canRecord={canRecord} busy={busy} onRecord={() => void record()}
+      />
+    );
+  }
 
   return (
     <main className="screen">
