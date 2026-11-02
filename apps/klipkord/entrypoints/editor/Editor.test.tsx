@@ -44,9 +44,9 @@ function fakeSession(state: SessionState): EditorSession & { taken: boolean } {
   };
 }
 
-interface Setup { media?: Partial<LoadedMedia>; session?: SessionState; draws?: boolean; strict?: boolean }
+interface Setup { media?: Partial<LoadedMedia>; session?: SessionState; draws?: boolean; strict?: boolean; loadFails?: boolean }
 
-function fakeDeps({ media = {}, session = 'editing', draws = true }: Setup = {}) {
+function fakeDeps({ media = {}, session = 'editing', draws = true, loadFails = false }: Setup = {}) {
   const rendered: number[] = [];
   const panels: string[] = [];
   const client: PreviewClient = {
@@ -60,7 +60,10 @@ function fakeDeps({ media = {}, session = 'editing', draws = true }: Setup = {})
   const listeners = new Set<(drawn: boolean) => void>();
   const sessionObj = fakeSession(session);
   const deps: EditorDeps = {
-    loadMedia: async () => ({ blobs: new Map(), missing: [], ...media }),
+    loadMedia: async () => {
+      if (loadFails) throw new Error('gone');
+      return { blobs: new Map(), missing: [], ...media };
+    },
     startPreview: vi.fn(() => client),
     mix: () => null,
     joinSession: () => sessionObj,
@@ -135,6 +138,16 @@ describe('editor tab', () => {
     expect(status(view.host)).toBe('Opening…');
     // An older recording gets its project on first open, seeded from the title.
     expect((await getProject('rec-1'))?.name).toBe('Invite your team');
+  });
+
+  it('stops saying Opening… when the files cannot be read, and shows the missing-file card', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await putRecording(rec());
+    const view = await mount('/rec-1', { draws: false, loadFails: true });
+    expect(status(view.host)).not.toBe('Opening…');
+    expect(view.host.querySelector('[data-state="media-missing"]')).toBeTruthy();
+    expect(text(view.host)).toContain("It was removed from Klipkord's storage. The rest of the project is fine.");
+    expect(text(view.host)).toContain('Find the file');
   });
 
   it('plays once the first frame shows; Space toggles, J and L move by sentence', async () => {

@@ -99,6 +99,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   const [stageCut, setStageCut] = useState<Cut | null>(null);
   const [times, setTimes] = useState<StepTimes>([]);
   const [firstFrame, setFirstFrame] = useState(false);
+  const [mediaFailed, setMediaFailed] = useState(false);
   const [slowOpen, setSlowOpen] = useState(false);
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({});
   const [previewSlow, setPreviewSlow] = useState(false);
@@ -115,13 +116,17 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   useEffect(() => {
     if (!projectReady || long || !project) return;
     let live = true;
+    setMediaFailed(false);
     const elapsed = () => performance.now() - started.current;
     deps.loadMedia(project).then((m) => {
       if (!live) return;
       const read = elapsed();
       setMedia(m);
       setTimes([read, Math.max(read, elapsed()), Math.max(read, elapsed())]);
-    }, (error: unknown) => console.error('Klipkord: could not open the recording files', error));
+    }, (error: unknown) => {
+      console.error('Klipkord: could not open the recording files', error);
+      if (live) setMediaFailed(true);
+    });
     return () => { live = false; };
   }, [projectReady, long, sourcesKey, mediaKey, deps]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -211,7 +216,9 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   const slotProps: SlotProps | null = project && cut && recording ? {
     recording, project, cut, out: playback.out, length, playing: playback.playing, ready, readOnly, seek: playback.seek, play: playback.play, pause: playback.pause, edit: api.edit,
   } : null;
-  const missing = media?.missing.find((s) => !dismissed[`missing:${s.id}`]);
+  // When the files cannot be read at all, the first source stands in as the missing one.
+  const failed = mediaFailed ? project?.sources[0] : undefined;
+  const missing = media?.missing.find((s) => !dismissed[`missing:${s.id}`]) ?? (failed && !dismissed[`missing:${failed.id}`] ? failed : undefined);
   const removeMissing = (s: Source) => {
     setDismissed((d) => ({ ...d, [`missing:${s.id}`]: true }));
     api.edit((p) => {
@@ -227,6 +234,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
     if (!file || !missing) return;
     deps.putFile(id, missing.file, file).then(() => {
       setMedia(null);
+      setMediaFailed(false);
       setMediaKey((k) => k + 1);
     }, (error: unknown) => console.error('Klipkord: could not put the file back', error));
   };
@@ -251,7 +259,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
 
   return (
     <div style={{ height: '100vh', minHeight: 600, display: 'flex', flexDirection: 'column', background: C.ground, color: C.text, overflow: 'hidden' }}>
-      <TopBar name={project?.name ?? recording?.title ?? ''} cutName={cut?.name ?? 'Full'} save={ready ? api.save : 'opening'}
+      <TopBar name={project?.name ?? recording?.title ?? ''} cutName={cut?.name ?? 'Full'} save={ready || (projectReady && mediaFailed && !firstFrame) ? api.save : 'opening'}
         canUndo={!readOnly && api.canUndo} canRedo={!readOnly && api.canRedo} onUndo={api.undo} onRedo={api.redo} onLibrary={library} {...extra} />
       <div style={{ flexGrow: 1, display: 'flex', minHeight: 0 }}>
         <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>

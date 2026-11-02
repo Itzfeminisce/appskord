@@ -20,6 +20,13 @@ const MENU: CSSProperties = {
 const typing = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 
+function scrollParent(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    if (/auto|scroll/.test(getComputedStyle(p).overflowY)) return p;
+  }
+  return null;
+}
+
 function Action({ title, icon, label, onClick }: { title: string; icon: ReactNode; label: string; onClick: () => void }) {
   return <button type="button" title={title} onClick={onClick} style={BUTTON}><Icon size={14} color={INK}>{icon}</Icon>{label}</button>;
 }
@@ -62,21 +69,37 @@ export function SelectBar({ units, range, text, cut, edit, onDone }: SelectBarPr
 
   // The bar sits in a body layer so the transcript's scroll box never clips it over the preview.
   const anchor = useRef<HTMLSpanElement>(null);
-  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const [at, setAt] = useState<{ left: number; top: number; shown: boolean } | null>(null);
   useLayoutEffect(() => {
+    const el = anchor.current;
+    if (!el) return;
+    const scroller = scrollParent(el);
     const place = () => {
-      const r = anchor.current?.getBoundingClientRect();
-      if (r) setAt((o) => (o && o.left === r.left && o.top === r.top ? o : { left: r.left, top: r.top }));
+      const r = el.getBoundingClientRect();
+      const box = scroller?.getBoundingClientRect();
+      // Hidden while the selection's line has scrolled out of the transcript.
+      const shown = !box || (r.top >= box.top && r.top <= box.bottom && r.left <= box.right && r.left >= box.left - 1);
+      setAt((o) => (o && o.left === r.left && o.top === r.top && o.shown === shown ? o : { left: r.left, top: r.top, shown }));
     };
     place();
     window.addEventListener('scroll', place, true);
     window.addEventListener('resize', place);
-    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); };
+    // Find bar, banners, the splitter and text reflow move the line without scrolling.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    if (observer) {
+      if (scroller) observer.observe(scroller);
+      if (el.parentElement) observer.observe(el.parentElement);
+    }
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+      observer?.disconnect();
+    };
   }, []);
 
   const bar = (
     <div role="toolbar" aria-label="Selected words" onMouseDown={(e) => e.stopPropagation()} style={{
-      position: 'fixed', left: at?.left ?? 0, top: at?.top ?? 0, visibility: at ? 'visible' : 'hidden', zIndex: 6, display: 'flex', alignItems: 'center', gap: 2, padding: 4,
+      position: 'fixed', left: at?.left ?? 0, top: at?.top ?? 0, visibility: at?.shown ? 'visible' : 'hidden', zIndex: 6, display: 'flex', alignItems: 'center', gap: 2, padding: 4,
       borderRadius: 10, background: '#F4F4F5', color: INK, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
     }}>
       <span style={{ fontSize: 12, fontWeight: 600, padding: '0 8px', fontFamily: MONO, whiteSpace: 'nowrap' }}>

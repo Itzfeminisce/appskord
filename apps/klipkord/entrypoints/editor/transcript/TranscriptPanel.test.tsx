@@ -91,6 +91,39 @@ describe('TranscriptPanel', () => {
     expect(lastLabel()).toBe('Brought back 1 word');
   });
 
+  it('moves the selection bar with its line on layout changes, hides it off-screen and cleans up', () => {
+    const watchers: { cb: () => void; disconnect: ReturnType<typeof vi.fn> }[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+      cb: () => void; disconnect = vi.fn(); observe = vi.fn();
+      constructor(cb: () => void) { this.cb = cb; watchers.push(this); }
+    });
+    let top = 100;
+    const real = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const rect = this.hasAttribute('aria-hidden') ? { left: 20, top } : { left: 0, top: 0, bottom: 500, right: 400 };
+      return { ...rect, x: 0, y: 0, width: 0, height: 0, toJSON() {} } as DOMRect;
+    };
+    try {
+      render();
+      act(() => { mouse(word(1), 'mousedown'); mouse(word(2), 'mouseover'); mouse(word(2), 'mouseup'); });
+      const bar = () => document.body.querySelector<HTMLElement>('[role="toolbar"]')!;
+      expect(watchers.length).toBeGreaterThan(0);
+      expect(bar().style.top).toBe('100px');
+      top = 160;
+      act(() => watchers.forEach((w) => w.cb()));
+      expect(bar().style.top).toBe('160px');
+      expect(bar().style.visibility).toBe('visible');
+      top = 900;
+      act(() => watchers.forEach((w) => w.cb()));
+      expect(bar().style.visibility).toBe('hidden');
+      act(() => button('Delete').click());
+      expect(watchers.every((w) => w.disconnect.mock.calls.length > 0)).toBe(true);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = real;
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('moves a selection by dragging it before another word', () => {
     render();
     act(() => { mouse(word(21), 'mousedown'); mouse(word(23), 'mouseover'); mouse(word(23), 'mouseup'); });
