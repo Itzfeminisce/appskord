@@ -14,6 +14,7 @@ import {
   type SceneCache,
   type SceneSpec,
   type TextLayer,
+  SceneMemo,
 } from './index';
 
 const ASPECTS: Aspect[] = ['9:16', '1:1', '16:9'];
@@ -171,10 +172,28 @@ describe('fonts', () => {
 });
 
 describe('renderer', () => {
+  // Only guarded optional reads (`document?.`) are allowed, so a worker without a DOM still runs it.
   it('has no DOM access, so it runs in a worker', () => {
     const dir = join(__dirname, 'render');
     for (const f of readdirSync(dir).filter((n) => n.endsWith('.ts') && !n.endsWith('.test.ts'))) {
-      expect(readFileSync(join(dir, f), 'utf8'), f).not.toMatch(/\b(document|window|HTML\w*Element)\b/);
+      expect(readFileSync(join(dir, f), 'utf8'), f).not.toMatch(/\b(window|HTML\w*Element)\b|\bdocument\b(?!\?[.:])/);
+    }
+  });
+});
+
+describe('SceneMemo without a host cache', () => {
+  it('reads the page font set when there is one', () => {
+    const checks: string[] = [];
+    const g = globalThis as unknown as { document?: unknown };
+    const had = 'document' in globalThis;
+    const old = g.document;
+    g.document = { fonts: { check: (f: string) => (checks.push(f), true), load: async () => [] } };
+    try {
+      expect(new SceneMemo().fontReady('Inter', 700)).toBe(true);
+      expect(checks).toEqual(['700 16px "Inter"']);
+    } finally {
+      if (had) g.document = old;
+      else delete g.document;
     }
   });
 });

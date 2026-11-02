@@ -45,7 +45,8 @@ export class SceneMemo implements RenderCache {
   fontReady(family: string, weight: number): boolean {
     if (this.host) return this.host.fontReady(family, weight);
     try {
-      const fonts = (globalThis as unknown as { fonts?: FontSet }).fonts;
+      const g = globalThis as unknown as { fonts?: FontSet; document?: { fonts?: FontSet } };
+      const fonts = g.document?.fonts ?? g.fonts;
       const name = `"${family.replace(/"/g, '')}"`;
       if (fonts?.check(`${weight} 16px ${name}`)) return true;
       // Canvas text never asks for a face, so the first draw does.
