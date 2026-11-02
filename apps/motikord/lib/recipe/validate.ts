@@ -190,6 +190,7 @@ export function validatePack(value: unknown): string[] {
   const pal = isObj(p.palette) ? p.palette : {};
   for (const k of ['bg', 'bg2', 'ink', 'muted', 'accent']) if (!isColour(pal[k])) bad(`${at} ${k} colour must be a hex colour.`);
   if (pal.accent2 !== undefined && !isColour(pal.accent2)) bad(`${at} accent2 colour must be a hex colour.`);
+  if (p.label !== undefined && !(isObj(p.label) && isColour(p.label.bg) && isColour(p.label.ink))) bad(`${at} label needs a hex bg and ink colour.`);
   checkBackground(`${at} background`, p.background, bad);
   if (!oneOf(FEELS, p.feel)) bad(`${at} feel must be one of ${FEELS.join(', ')}.`);
   if (!isNum(p.motionMs) || p.motionMs <= 0) bad(`${at} motion must last longer than 0 ms.`);
@@ -304,6 +305,7 @@ function checkLayer(
       if (!oneOf(['left', 'center', 'right'], l.align)) bad(`${where} align must be left, center or right.`);
       if (!isNum(l.lineHeight) || l.lineHeight <= 0) bad(`${where} line height must be more than 0.`);
       if (l.background !== undefined && !isColour(l.background)) bad(`${where} background must be a hex colour.`);
+      if (l.pill !== undefined && !isBool(l.pill)) bad(`${where} pill must be true or false.`);
       if (l.letterSpacing !== undefined && !isNum(l.letterSpacing)) bad(`${where} letter spacing must be a number.`);
       if (l.highlight !== undefined && !(isObj(l.highlight) && Number.isInteger(l.highlight.word) && (l.highlight.word as number) >= 0 && isColour(l.highlight.colour))) bad(`${where} highlight needs a word number and a hex colour.`);
       if (l.shadow !== undefined && !isBool(l.shadow)) bad(`${where} shadow must be true or false.`);

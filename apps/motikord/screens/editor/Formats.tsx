@@ -42,7 +42,7 @@ function SizePreview({ aspect, w, h, timeMs, safe }: { aspect: Aspect; w: number
   return (
     <div style={{ position: 'relative' }}>
       {canvas}
-      <span aria-hidden="true" style={{ position: 'absolute', left: safe.x * w, top: safe.y * h, width: safe.w * w, height: safe.h * h, border: '1px dashed color-mix(in srgb, var(--accent) 45%, transparent)', pointerEvents: 'none' }} />
+      <span aria-hidden="true" style={{ position: 'absolute', left: safe.x * w, top: safe.y * h, width: safe.w * w, height: safe.h * h, border: '1px dashed rgba(250,204,21,0.5)', pointerEvents: 'none' }} />
     </div>
   );
 }

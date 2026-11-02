@@ -47,8 +47,9 @@ export function NewLookDialog({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
-  const card = thumbSize(r.aspect, 96);
-  const big = thumbSize(r.aspect, 213);
+  // Wide clips get shorter pictures so four cards and the before/after pair still fit the dialog.
+  const card = thumbSize(r.aspect, r.aspect === '16:9' ? 54 : r.aspect === '1:1' ? 80 : 96);
+  const big = thumbSize(r.aspect, r.aspect === '16:9' ? 180 : 213);
   const before = r;
   const after = looks.get(style);
   const brandDot = brand?.colours.find((c) => c.role === 'primary')?.hex ?? brand?.colours[0]?.hex;

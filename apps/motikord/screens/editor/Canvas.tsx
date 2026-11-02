@@ -185,7 +185,7 @@ export function Canvas() {
   const safe = safeBox(r.aspect);
 
   return (
-    <div ref={wrap} style={{ flex: 1, minHeight: 0, width: '100%', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+    <div ref={wrap} style={{ flex: 1, minHeight: 0, width: '100%', display: 'grid', placeItems: 'center var(--stage-justify, center)', overflow: 'hidden' }}>
       <div style={{ position: 'relative', width: W, height: H, boxShadow: '0 6px 20px rgba(16,16,20,0.12)', background: 'var(--surface)' }}>
         <canvas ref={canvas} aria-label={r.name} style={{ display: 'block', width: W, height: H }} />
         <div

@@ -210,19 +210,34 @@ export function inkOn(colour: string): string {
 function drawText(ctx: Ctx, l: TextLayer, bw: number, bh: number, pose: Pose, alpha: number, t: number, f: Frame, cache: MediaCache) {
   const unit = f.unit;
   const typed = pose.typed;
-  const pad = l.background ? 16 * unit : 0;
-  if (l.background) {
+  const pill = !!(l.background && l.pill);
+  // A pill sits round the words, so the words keep the whole box (as the checker measures them).
+  const pad = l.background && !pill ? 16 * unit : 0;
+  if (l.background && !pill) {
     ctx.fillStyle = l.background;
     ctx.beginPath();
     ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 12 * unit);
     ctx.fill();
   }
-  if (typed <= 0) return;
+  if (typed <= 0 && !pill) return;
   // Text never spills out of its box on screen; the checker reports when it had to shrink.
   const fit = fitIn(ctx, cache, l, l.text, bw - pad * 2, bh - pad * 2, l.sizePx * unit, l.lineHeight);
   const step = fit.sizePx * l.lineHeight;
   ctx.font = fontFor(l, fit.sizePx);
   if (l.letterSpacing) ctx.letterSpacing = spacing(l.letterSpacing, fit.sizePx);
+  if (pill) {
+    // The pill hugs the words with round ends, reaching a little past the box.
+    const tw = Math.max(0, ...fit.lines.map((s) => ctx.measureText(s).width));
+    const [padX, padY] = [fit.sizePx * 0.6, fit.sizePx * 0.3];
+    const ph = fit.lines.length * step + padY * 2;
+    const pw = tw + padX * 2;
+    const px = l.align === 'left' ? -bw / 2 - padX : l.align === 'right' ? bw / 2 + padX - pw : -pw / 2;
+    ctx.fillStyle = l.background!;
+    ctx.beginPath();
+    ctx.roundRect(px, -ph / 2, pw, ph, fit.lines.length > 1 ? 12 * unit : ph / 2);
+    ctx.fill();
+    if (typed <= 0) return;
+  }
   ctx.fillStyle = l.colour;
   ctx.textAlign = l.align;
   ctx.textBaseline = 'middle';

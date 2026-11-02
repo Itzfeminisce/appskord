@@ -21,8 +21,9 @@ export function driftAt(bg: Background, localMs: number, short: number, phase = 
 }
 
 // Blob centres and radii as fractions of the canvas; fixed so every frame and machine agree.
+// ChangesV2 Playful: a peach blob off the top-right corner and a mint one off the bottom-left, on plain cream.
 const BLOBS = [
-  { x: 0.18, y: 0.2, r: 0.55 }, { x: 0.86, y: 0.42, r: 0.5 }, { x: 0.32, y: 0.88, r: 0.6 }, { x: 0.9, y: 0.95, r: 0.45 },
+  { x: 0.86, y: 0.08, r: 0.26 }, { x: 0.16, y: 0.92, r: 0.25 },
 ];
 
 /** Fills the whole canvas with a v2 scene background. `alpha` is the scene's opacity during a transition. */
@@ -58,6 +59,7 @@ export function drawBackground(ctx: Ctx, bg: Background, w: number, h: number, l
       poly.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, at(x, w, d.x), at(y, h, d.y)));
       ctx.closePath();
       ctx.fill();
+      ringOnPanel(ctx, poly, colours[0]!, w, h, d);
     }
   } else if (bg.kind === 'blocks') {
     // Full-bleed slabs: the first spans the lower third on a slant, the next caps the top corner.
@@ -79,6 +81,21 @@ export function drawBackground(ctx: Ctx, bg: Background, w: number, h: number, l
     }
   }
   if ((bg.grain ?? 0) > 0) drawGrain(ctx, cache, bg.grain!, w, h, localMs, alpha);
+}
+
+// FormatsV2 1:1: a full-height side panel carries an 8 px (at 340 px) ring in the ground colour at its centre.
+function ringOnPanel(ctx: Ctx, poly: [number, number][], colour: string, w: number, h: number, d: { x: number; y: number }) {
+  if (aspectOf(w, h) !== '1:1') return;
+  const xs = poly.map((p) => p[0]);
+  const ys = poly.map((p) => p[1]);
+  const [x0, x1] = [Math.max(0, Math.min(...xs)), Math.min(1, Math.max(...xs))];
+  if (Math.min(...ys) > 0 || Math.max(...ys) < 1 || x1 - x0 < 0.25) return;
+  const short = Math.min(w, h);
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = short * (8 / 340);
+  ctx.beginPath();
+  ctx.arc(((x0 + x1) / 2) * w + d.x, h * 0.49 + d.y, short * (25 / 340), 0, Math.PI * 2);
+  ctx.stroke();
 }
 
 const BLOB_SCALE = 0.25;
@@ -108,7 +125,8 @@ function paintBlobs(ctx: Ctx, cache: MediaCache, colours: string[], w: number, h
     const g = cache.paint(`blob|${colour}|${r}|${key}`, () => {
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
       // Stand-in contexts (tests, a headless measure pass) may return no gradient; the blob is skipped there.
-      g?.addColorStop(0, withAlpha(colour, 0.85));
+      g?.addColorStop(0, withAlpha(colour, 1));
+      g?.addColorStop(0.8, withAlpha(colour, 1));
       g?.addColorStop(1, withAlpha(colour, 0));
       return g;
     });
