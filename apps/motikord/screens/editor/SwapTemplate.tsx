@@ -81,10 +81,12 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
     const t = getSceneTemplate(id)!;
     const current = id === scene.template;
     const on = id === picked;
+    // Pointing at a tile picks it too, so "Use" still names it once the pointer moves to the button.
+    const point = () => { setPointed(id); if (!current) setPicked(id); };
     return (
       <button key={id} type="button" aria-label={t.name} aria-pressed={on} title={t.line} onClick={() => setPicked(current ? undefined : id)}
-        onPointerEnter={() => setPointed(id)} onPointerLeave={() => setPointed(undefined)} onFocus={() => setPointed(id)} onBlur={() => setPointed(undefined)}
-        style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 0, border: 0, background: 'transparent', font: 'inherit', textAlign: 'left', cursor: 'pointer', opacity: muted && !on && pointed !== id ? 0.62 : 1 }}>
+        onPointerEnter={point} onPointerLeave={() => setPointed(undefined)} onFocus={point} onBlur={() => setPointed(undefined)}
+        style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 0, border: 0, background: 'transparent', font: 'inherit', textAlign: 'left', cursor: 'pointer', opacity: muted && !on ? 0.62 : 1 }}>
         <span style={{ position: 'relative', width: ts.w, height: ts.h, borderRadius: 6, overflow: 'hidden', background: pack.palette.bg, display: 'flex', outline: on ? '2px solid var(--accent)' : 'none', outlineOffset: 2 }}>
           <TemplateMini id={id} pack={pack} w={ts.w} h={ts.h} />
           {current && <span style={{ position: 'absolute', top: 4, left: 4, height: 16, padding: '0 5px', borderRadius: 4, background: '#FFFFFF', color: 'var(--ink)', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center' }}>Current</span>}

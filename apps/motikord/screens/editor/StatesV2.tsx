@@ -91,10 +91,10 @@ export function TextShortened({ original, onUndo }: { original?: string; onUndo?
 }
 
 export function RestyleDone({ style, onUndo }: { style: string; onUndo?: () => void }) {
-  // StatesMakeV2 restyle-done: the compact dark toast.
+  // StatesMakeV2 restyle-done: the compact dark toast; a check, since the burst read as a spinner.
   return (
     <div role="status" data-state="restyle-done" style={{ padding: '10px 10px 10px 14px', borderRadius: 12, background: 'var(--ink)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 8px 24px rgba(17,17,20,0.18)' }}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F9A8D4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6" /></svg>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F9A8D4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
       <span style={{ fontSize: 13, fontWeight: 500, flexGrow: 1 }}>{`New look: ${style}. Same words.`}</span>
       <button type="button" onClick={onUndo} style={{ height: 44, padding: '0 12px', border: 0, borderRadius: 8, background: 'rgba(249,168,212,0.12)', color: '#F9A8D4', font: '600 13px/1 var(--font)', cursor: 'pointer', flexShrink: 0 }}>Undo</button>
     </div>

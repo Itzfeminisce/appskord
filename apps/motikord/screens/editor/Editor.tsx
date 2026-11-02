@@ -1,5 +1,5 @@
 import { clipDuration } from '../../lib/render/drawFrame';
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { createAutosave, type Autosave, type SaveStatus } from '../../lib/editor/autosave';
 import { splitSummary, stepsBack } from '../../lib/editor/changes';
 import { canRedo, canUndo, takeBack } from '../../lib/editor/history';
@@ -119,6 +119,22 @@ const FIRST_RUN_KEY = 'editorFirstRunSeen';
 // SceneRemaking: toasts sit at the window's bottom left (over the scenes list, 12 px in), clear of the stage and prompt.
 const corner = { position: 'absolute', left: 12 - 220, bottom: 12, width: 320, zIndex: 7 } as const;
 const GREY = '#D4D4D9';
+/** Bottom-left of the stage, just above the prompt bar, so it covers neither the scene list nor the prompt. */
+function StageToast({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [bottom, setBottom] = useState(12);
+  useLayoutEffect(() => {
+    const read = () => {
+      const main = ref.current?.closest('main');
+      const prompt = main?.querySelector('[data-prompt-box]');
+      if (main && prompt) setBottom(Math.max(12, main.getBoundingClientRect().bottom - prompt.getBoundingClientRect().top + 8));
+    };
+    read();
+    window.addEventListener('resize', read);
+    return () => window.removeEventListener('resize', read);
+  }, []);
+  return <div ref={ref} style={{ position: 'absolute', left: 12, bottom, width: 'min(320px, calc(100% - 24px))', zIndex: 7 }}>{children}</div>;
+}
 const newId = () => crypto.randomUUID();
 
 /** Stands in for a file gone from OPFS, so the preview shows a grey box (media-missing). */
@@ -536,7 +552,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
                 <Remade n={sceneIndex(state.clip.recipe, notice.sceneId) + 1} onUndo={() => undoNotice(api, notice.changeId)} onKeep={() => setNotice(undefined)} />
               </div>
             )}
-            {notice?.kind === 'restyle-done' && <div style={corner}><NoticeCard notice={notice} api={api} /></div>}
+            {notice?.kind === 'restyle-done' && <StageToast><NoticeCard notice={notice} api={api} /></StageToast>}
             {toastText && !remaking && notice?.kind !== 'restyle-done' && notice?.kind !== 'scene-remade' && <div style={corner}><UndoToast text={toastText} onUndo={api.undo} /></div>}
           </main>
           <aside style={{ width: 300, flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', alignContent: 'start', padding: '12px 16px', gap: 8, overflowY: 'auto' }}>
