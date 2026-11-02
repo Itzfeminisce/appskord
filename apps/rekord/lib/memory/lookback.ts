@@ -27,6 +27,11 @@ export function weekStart(now: number): number {
   return d.getTime();
 }
 
+/** The week a look back shows: the one just ended from Saturday to Monday, else the current one. */
+export function lookBackStart(now: number): number {
+  return weekStart(new Date(now).getDay() === 1 ? now - 2 * DAY_MS : now);
+}
+
 /** "26 to 30 Oct", or "28 Sep to 2 Oct" across months. Monday to Friday. */
 export function weekLabel(start: number): string {
   const mon = new Date(start);
@@ -47,9 +52,9 @@ export function durationLabel(minutes: number): string {
 
 const LIVE = new Set<MemoryItem['status']>(['open', 'looksDone', 'done', 'dropped', 'answered', 'replaced']);
 
-export function buildWeek(input: { meetings: Meeting[]; items: MemoryItem[]; people: Person[]; now: number }): Week {
+export function buildWeek(input: { meetings: Meeting[]; items: MemoryItem[]; people: Person[]; now: number; start?: number }): Week {
   const { meetings, items, people, now } = input;
-  const start = weekStart(now);
+  const start = input.start ?? weekStart(now);
   const end = start + 7 * DAY_MS;
   const inWeek = (t: number) => t >= start && t < end;
   const held = meetings.filter((m) => inWeek(m.startedAt) && m.status !== 'error');

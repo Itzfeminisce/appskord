@@ -94,38 +94,42 @@ function reschedule(): void {
 /** The window the person last used, so a notification click can open the panel there. */
 let lastWindowId: number | undefined;
 
-/** Opens the side panel on a screen. Runs inside the notification click (a user gesture): nothing is awaited before open(). */
-function openPanelOn(screen: string, params: PanelRoute['params'], fallback?: () => void): void {
-  const opening = browser.sidePanel.open({ windowId: lastWindowId ?? browser.windows.WINDOW_ID_CURRENT });
+/** Opens the side panel on a screen; rejects when Chrome refuses. Runs inside the notification click (a user gesture): nothing is awaited before open() when the window is known. */
+function openPanelOn(screen: string, params: PanelRoute['params']): Promise<void> {
+  const open = (windowId: number | undefined) =>
+    windowId === undefined ? Promise.reject(new Error('No window to open the side panel in')) : browser.sidePanel.open({ windowId });
+  const opening = lastWindowId !== undefined ? open(lastWindowId) : browser.windows.getLastFocused().then((w) => open(w.id));
   setPanelRoute(screen, params).catch((error) => console.error('Rekord: could not pass the screen to the side panel', error));
-  opening.catch((error) => {
+  return opening.catch((error) => {
     console.error('Rekord: could not open the side panel', error);
-    fallback?.();
+    throw error;
   });
 }
 
-function openTab(url: string): void {
-  browser.tabs.create({ url }).catch((error) => console.error('Rekord: could not open the tab', error));
+function openTab(url: string): Promise<void> {
+  return browser.tabs.create({ url }).then(() => undefined, (error) => {
+    console.error('Rekord: could not open the tab', error);
+    throw error;
+  });
 }
 
-/** Notification click or button: brief, due-day Nudge and Snooze, look back. */
+/** Notification click or button: brief, due-day Nudge and Snooze, look back. The notification stays when nothing opened. */
 function onNote(id: string, button?: number): void {
+  const clear = () => void browser.notifications.clear(id).catch(() => undefined);
+  const kept = () => undefined;
   if (id.startsWith(NOTE_BRIEF)) {
     const eventId = id.slice(NOTE_BRIEF.length);
-    openPanelOn('brief', { eventId }, () => openTab(briefTabUrl(eventId)));
+    openPanelOn('brief', { eventId }).catch(() => openTab(briefTabUrl(eventId))).then(clear, kept);
   } else if (id.startsWith(NOTE_DUE)) {
     const itemId = id.slice(NOTE_DUE.length);
     if (button === 1) {
-      snoozeFromNote(itemId).catch((error) => console.error('Rekord: could not snooze the promise', error)).finally(updateBadge);
+      snoozeFromNote(itemId).then(clear, (error) => console.error('Rekord: could not snooze the promise', error)).finally(updateBadge);
     } else {
-      openPanelOn(button === 0 ? 'nudge' : 'promise', { itemId });
+      openPanelOn(button === 0 ? 'nudge' : 'promise', { itemId }).then(clear, kept);
     }
-  } else if (id === NOTE_LOOKBACK) {
-    openTab(lookBackTabUrl());
-  } else {
-    return;
+  } else if (id.startsWith(NOTE_LOOKBACK)) {
+    openTab(lookBackTabUrl(Number(id.slice(NOTE_LOOKBACK.length)) || undefined)).then(clear, kept);
   }
-  browser.notifications.clear(id).catch(() => undefined);
 }
 
 export default defineBackground(() => {
@@ -146,6 +150,8 @@ export default defineBackground(() => {
     if (area === 'local' && (EVENTS_KEY in changes || 'settings' in changes)) reschedule();
   });
   reschedule();
+  // Seeds the window for a notification click that comes before any focus change.
+  browser.windows.getLastFocused().then((w) => { lastWindowId ??= w.id; }, () => undefined);
   browser.windows.onFocusChanged.addListener((id) => {
     if (id !== browser.windows.WINDOW_ID_NONE) lastWindowId = id;
   });

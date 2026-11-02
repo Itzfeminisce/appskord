@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { listMeetings } from '@/lib/db';
 import { saveToFolder } from '@/lib/folder';
 import { dayMonth, daysLate } from '@/lib/memory/brief';
-import { buildWeek, carriedDue, durationLabel, lookBackMarkdown, lookBackPath, openRowLabels, type Week } from '@/lib/memory/lookback';
+import { buildWeek, carriedDue, durationLabel, lookBackMarkdown, lookBackPath, lookBackStart, openRowLabels, type Week } from '@/lib/memory/lookback';
 import { transition } from '@/lib/memory/promise';
 import { listItems, listPeople, putItem } from '@/lib/memory/store';
 import type { MemoryItem, Person } from '@/lib/memory/types';
@@ -26,6 +26,11 @@ function download(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** The week the notification asked for (`?week=` Monday 00:00), if any. */
+function weekFromUrl(): number | undefined {
+  return Number(new URLSearchParams(location.search).get('week')) || undefined;
+}
+
 /** V4LookBack: the week in numbers, what was decided and kept, what carries over, and what is late. */
 export default function LookBack() {
   const [data, setData] = useState<Data | undefined>();
@@ -38,7 +43,7 @@ export default function LookBack() {
     void Promise.all([listMeetings(), listItems(), listPeople()])
       .then(([meetings, items, people]) => {
         if (!alive) return;
-        setData({ week: buildWeek({ meetings, items, people, now: world.now() }), people: new Map(people.map((p) => [p.id, p])), meetings: new Map(meetings.map((m) => [m.id, m])) });
+        setData({ week: buildWeek({ meetings, items, people, now: world.now(), start: weekFromUrl() ?? lookBackStart(world.now()) }), people: new Map(people.map((p) => [p.id, p])), meetings: new Map(meetings.map((m) => [m.id, m])) });
       })
       .catch((error) => console.error('Rekord: could not load your week', error));
     return () => { alive = false; };

@@ -5,7 +5,7 @@ import { GoogleError } from './google';
 import { record } from './ledger';
 import { chat, LLMError, type FetchLike } from './llm';
 import { buildBrief, briefNote, dueNote, dueToday, lastTimeMessages, localLastTime, parseLines, type Brief } from './memory/brief';
-import { buildWeek, lookBackNote } from './memory/lookback';
+import { buildWeek, lookBackNote, lookBackStart } from './memory/lookback';
 import { transition } from './memory/promise';
 import { getItem, listItems, listPeople, putItem } from './memory/store';
 import type { LedgerEntry, MemoryItem, MemorySettings, Person } from './memory/types';
@@ -57,7 +57,7 @@ export const LOOKBACK_ALARM = 'rekord.lookback';
 /** The due-day notification goes out at this hour. */
 export const DUE_HOUR = 9;
 
-export interface AlarmPlan { name: string; when: number; periodInMinutes?: number }
+export interface AlarmPlan { name: string; when: number }
 
 /** The next time it is `hour`:00, on `weekday` (0 Sunday … 6 Saturday) when given. */
 export function nextAt(now: number, hour: number, weekday?: number): number {
@@ -68,18 +68,32 @@ export function nextAt(now: number, hour: number, weekday?: number): number {
   return d.getTime();
 }
 
-/** Alarms for the settings: a brief before each meeting in the next 24 h, the daily due check and Friday's look back. */
-export function planAlarms(events: CalendarEvent[], memory: MemorySettings, now: number): AlarmPlan[] {
+/** Events whose brief already went out this browser session. */
+export const BRIEFED_KEY = 'rekord.briefed';
+const BRIEFED_MAX = 200;
+
+export async function briefedIds(): Promise<string[]> {
+  return ((await browser.storage.session.get(BRIEFED_KEY))[BRIEFED_KEY] as string[] | undefined) ?? [];
+}
+
+async function markBriefed(eventId: string): Promise<void> {
+  const ids = (await briefedIds()).filter((id) => id !== eventId);
+  await browser.storage.session.set({ [BRIEFED_KEY]: [...ids, eventId].slice(-BRIEFED_MAX) });
+}
+
+/** Alarms for the settings: a brief before each meeting in the next 24 h not briefed yet, the next due check and the next look back. */
+export function planAlarms(events: CalendarEvent[], memory: MemorySettings, now: number, briefed: readonly string[] = []): AlarmPlan[] {
   const plan: AlarmPlan[] = [];
   if (memory.brief.on) {
     for (const e of events) {
-      if (e.start - now < MIN || e.start > now + DAY) continue;
+      if (e.start - now < MIN || e.start > now + DAY || briefed.includes(e.id)) continue;
       // Opened the panel inside the lead time: brief right away.
       plan.push({ name: BRIEF_PREFIX + e.id, when: Math.max(now + 1000, e.start - memory.brief.minutes * MIN) });
     }
   }
-  if (memory.dueReminders) plan.push({ name: DUE_ALARM, when: nextAt(now, DUE_HOUR), periodInMinutes: 24 * 60 });
-  if (memory.lookBack.on) plan.push({ name: LOOKBACK_ALARM, when: nextAt(now, memory.lookBack.hour, memory.lookBack.day), periodInMinutes: 7 * 24 * 60 });
+  // One-shot, planned again each time they fire, so 09:00 stays 09:00 across a clock change.
+  if (memory.dueReminders) plan.push({ name: DUE_ALARM, when: nextAt(now, DUE_HOUR) });
+  if (memory.lookBack.on) plan.push({ name: LOOKBACK_ALARM, when: nextAt(now, memory.lookBack.hour, memory.lookBack.day) });
   return plan;
 }
 
@@ -87,15 +101,15 @@ const ours = (name: string) => name.startsWith(BRIEF_PREFIX) || name === DUE_ALA
 
 /** Sets alarms to the plan; leaves Rekord's other alarms (backfill, badge) alone. */
 export async function scheduleReminders(now = Date.now()): Promise<AlarmPlan[]> {
-  const [{ memory }, events, existing] = await Promise.all([getSettings(), cachedEvents(now), browser.alarms.getAll()]);
-  const plan = planAlarms(events, memory, now);
+  const [{ memory }, events, existing, briefed] = await Promise.all([getSettings(), cachedEvents(now), browser.alarms.getAll(), briefedIds()]);
+  const plan = planAlarms(events, memory, now, briefed);
   const wanted = new Map(plan.map((p) => [p.name, p]));
   for (const a of existing) if (ours(a.name) && !wanted.has(a.name)) await browser.alarms.clear(a.name);
   for (const p of plan) {
     const have = existing.find((a) => a.name === p.name);
-    // A repeating alarm already set keeps its rhythm; a brief moves when its meeting moved.
-    if (have && (p.periodInMinutes ? have.periodInMinutes === p.periodInMinutes : have.scheduledTime === p.when)) continue;
-    await browser.alarms.create(p.name, { when: p.when, ...(p.periodInMinutes ? { periodInMinutes: p.periodInMinutes } : {}) });
+    // A brief already due right away stays as it is; anything else moves only when its time moved.
+    const keep = have && !have.periodInMinutes && (have.scheduledTime === p.when || (p.name.startsWith(BRIEF_PREFIX) && p.when === now + 1000 && have.scheduledTime <= p.when));
+    if (!keep) await browser.alarms.create(p.name, { when: p.when });
   }
   return plan;
 }
@@ -104,7 +118,7 @@ export async function scheduleReminders(now = Date.now()): Promise<AlarmPlan[]> 
 
 export const NOTE_BRIEF = 'rekord.brief:';
 export const NOTE_DUE = 'rekord.due:';
-export const NOTE_LOOKBACK = 'rekord.lookback';
+export const NOTE_LOOKBACK = 'rekord.lookback:';
 const ICON = '/icon/128.png';
 
 async function memoryData(): Promise<{ people: Person[]; items: MemoryItem[]; meetings: Meeting[] }> {
@@ -126,22 +140,30 @@ function notify(id: string, content: { title: string; message: string; buttons?:
 export async function onReminderAlarm(name: string, now = Date.now()): Promise<boolean> {
   if (name.startsWith(BRIEF_PREFIX)) {
     const { memory } = await getSettings();
-    const brief = memory.brief.on ? await briefFor(name.slice(BRIEF_PREFIX.length), now) : undefined;
+    const eventId = name.slice(BRIEF_PREFIX.length);
+    const brief = memory.brief.on ? await briefFor(eventId, now) : undefined;
+    await markBriefed(eventId);
     if (brief && brief.event.start > now) await notify(NOTE_BRIEF + brief.event.id, briefNote(brief, now));
     return true;
   }
   if (name === DUE_ALARM) {
     const [{ memory }, data, events] = await Promise.all([getSettings(), memoryData(), cachedEvents(now)]);
-    if (!memory.dueReminders) return true;
-    for (const item of dueToday(data.items, now)) {
-      const owner = data.people.find((p) => p.id === item.ownerId);
-      if (owner) await notify(NOTE_DUE + item.id, dueNote(item, owner, events, now));
+    if (memory.dueReminders) {
+      for (const item of dueToday(data.items, now)) {
+        const owner = data.people.find((p) => p.id === item.ownerId);
+        if (owner) await notify(NOTE_DUE + item.id, dueNote(item, owner, events, now));
+      }
     }
+    await scheduleReminders(now);
     return true;
   }
   if (name === LOOKBACK_ALARM) {
     const { memory } = await getSettings();
-    if (memory.lookBack.on) await notify(NOTE_LOOKBACK, lookBackNote(buildWeek({ ...(await memoryData()), now })));
+    if (memory.lookBack.on) {
+      const start = lookBackStart(now);
+      await notify(NOTE_LOOKBACK + start, lookBackNote(buildWeek({ ...(await memoryData()), now, start })));
+    }
+    await scheduleReminders(now);
     return true;
   }
   return false;
@@ -166,7 +188,8 @@ export async function takePanelRoute(now = Date.now()): Promise<PanelRoute | und
 }
 
 export const briefTabUrl = (eventId: string) => `${browser.runtime.getURL('/brief.html')}?event=${encodeURIComponent(eventId)}`;
-export const lookBackTabUrl = () => browser.runtime.getURL('/lookback.html');
+/** The look back tab for the week starting `start` (Monday 00:00), else the week it picks itself. */
+export const lookBackTabUrl = (start?: number) => `${browser.runtime.getURL('/lookback.html')}${start ? `?week=${start}` : ''}`;
 
 /** Snooze from the due notification: back tomorrow at 09:00. */
 export async function snoozeFromNote(itemId: string, now = Date.now()): Promise<boolean> {
@@ -207,8 +230,11 @@ export async function lastTime(brief: Brief, deps: { fetchFn?: FetchLike } = {})
     sent = !(error instanceof LLMError && NOT_SENT.has(error.code));
     console.error('Rekord: could not write the brief', error);
   } finally {
-    if (service && sent) await record({ service, what: LAST_TIME_WHAT });
+    if (service && sent) await record({ service, what: LAST_TIME_WHAT, meetingId: last.id });
   }
-  return localLastTime(last.id, items, people);
+  // Kept for the session too, so a failed call is not asked again on every open.
+  const local = localLastTime(last.id, items, people);
+  if (local.length) await browser.storage.session.set({ [key]: local });
+  return local;
 }
 
