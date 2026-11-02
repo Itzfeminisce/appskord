@@ -75,14 +75,44 @@ describe('Text and cards panel', () => {
     expect(storyState().panel).toBe(false);
   });
 
-  it('shows cards-not-ready until Motikord\'s templates land', () => {
+  it('adds a title hook at the start with the recording\'s title, opens it and edits its slots and pack', () => {
     localBrand();
-    const { p } = props(setup());
+    const { p, edit } = props(setup(), 25_000);
     const { host, button } = render(<StoryPanel {...p} />);
-    expect(host.querySelector('[data-state="cards-not-ready"]')?.textContent)
-      .toBe("Cards are on the wayTitle, end and logo cards arrive with Motikord's templates. Text, arrows and blur work now.");
-    act(() => button('Edit').click());
+    for (const text of ['Title hook', 'Start', 'End card', 'Finish', 'Logo sting', '1.5 s']) expect(host.textContent).toContain(text);
+    act(() => button('Title hookStart').click());
+    const next = edit.mock.calls[0]![0](p.project) as Project;
+    const [card] = currentCut(next).cards;
+    expect(card).toMatchObject({ template: 'title-hook', at: 0, ms: 3000, pack: 'clean', slots: { headline: 'Demo' } });
+    expect(lastStep(next)).toBe('Added a title hook');
+    expect(timelineState().selected).toEqual({ kind: 'cards', ids: [card!.id] });
+
+    const opened = render(<StoryPanel {...props(next).p} edit={edit} />);
+    const labels = [...opened.host.querySelectorAll('label')].map((l) => l.textContent);
+    expect(labels).toEqual(['Headline · 6 words max', 'Kicker · optional']);
+    expect(opened.host.textContent).toContain('Style pack');
+    act(() => opened.button('Bold').click());
+    const bold = edit.mock.calls[1]![0](next) as Project;
+    expect(currentCut(bold).cards[0]!.pack).toBe('bold');
+    expect(lastStep(bold)).toBe('Changed the title hook at 00:00');
+    act(() => opened.button('Title hookStart').click());
+    expect(edit).toHaveBeenCalledTimes(2);
+    act(() => opened.button('Edit').click());
     expect(storyState().brandKit).toBe(true);
+  });
+
+  it('puts an end card at the finish and a logo sting at the playhead, overlaying without adding time', () => {
+    localBrand();
+    const { p, edit } = props(setup(), 25_000);
+    const { button } = render(<StoryPanel {...p} />);
+    act(() => button('End cardFinish').click());
+    act(() => button('Logo sting1.5 s').click());
+    const end = currentCut(edit.mock.calls[0]![0](p.project) as Project);
+    const sting = currentCut(edit.mock.calls[1]![0](p.project) as Project);
+    // Output 47 s is rec 57 s; output 25 s is rec 35 s.
+    expect(end.cards[0]).toMatchObject({ template: 'end-card', at: 57_000, ms: 3000, slots: {} });
+    expect(sting.cards[0]).toMatchObject({ template: 'logo-sting', at: 35_000, ms: 1500 });
+    expect(end.clips).toEqual(p.cut.clips);
   });
 });
 

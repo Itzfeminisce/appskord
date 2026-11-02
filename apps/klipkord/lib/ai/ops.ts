@@ -5,6 +5,7 @@ import { currentCut, group } from '../project/history';
 import { addChapter, addLayer, deleteWords, LABELS, MAX_SPEED, MIN_SPEED, moveRange, quote, restoreWords, setCaptions, setSpeed, split, updateChapter } from '../project/ops';
 import { cutLength, isKept, spans, toOut } from '../project/time';
 import type { AiOp, CaptionStyle, Cut, Draft, LayoutKind, Project, Shape } from '../project/types';
+import { CARD_TEMPLATES as PANEL_CARDS, capWords, cardDefaultMs, cardSlots } from '../render/layers/card';
 import { chunkTranscript, echo, editSystem, editUser, REPLY_TOKENS, repairUser, transcriptBudget, type Chunk } from './prompt';
 
 /** Why an AI request ended without a draft; each is one StatesWork state. */
@@ -22,8 +23,8 @@ export type Call = (messages: ChatMessage[], opts: { maxTokens: number }) => Pro
 /** What the validator knows: how many words there are, which the model saw, and whether cards can draw. */
 export interface OpContext { words: number; from?: number; to?: number; cards: boolean; templates?: readonly string[] }
 
-/** Card templates the AI may use; none until Motikord's templates land in packages/scenes. */
-export const CARD_TEMPLATES: readonly string[] = [];
+/** Card templates the AI may use: the ones the Text and cards panel offers. */
+export const CARD_TEMPLATES: readonly string[] = PANEL_CARDS;
 /** Labels, titles and card slot text are cut to this many characters. */
 export const MAX_TEXT = 80;
 /** `cant` when the request needed cards before they can draw; anything else the ops can't do is `other`. */
@@ -54,7 +55,7 @@ const short = (v: string, max = MAX_TEXT) => v.trim().slice(0, max);
 
 /**
  * Validates a reply into ops. Rejects unknown ops and word indexes, ranges back to front, overlapping cuts and an empty
- * result; `card` ops while cards cannot draw, or with a template not in the known list, become `cant: 'cards'`.
+ * result; `card` ops while cards cannot draw become `cant: 'cards'`; a template not in the known list is a problem.
  */
 export function checkReply(raw: unknown, ctx: OpContext): Checked {
   const out: Checked = { ops: [], labels: [], problems: [] };
@@ -114,10 +115,20 @@ export function checkReply(raw: unknown, ctx: OpContext): Checked {
         else out.problems.push(`Op ${n}: "style" must be clean, bold or word.`);
         break;
       case 'card':
-        if (!ctx.cards || !isText(o.template) || !(ctx.templates ?? CARD_TEMPLATES).includes(o.template)) { cards++; break; }
+        if (!ctx.cards) { cards++; break; }
+        if (!isText(o.template) || !(ctx.templates ?? CARD_TEMPLATES).includes(o.template)) {
+          out.problems.push(`Op ${n}: "template" must be ${(ctx.templates ?? CARD_TEMPLATES).join(', ')}.`);
+          break;
+        }
         if (word(o.at, 'at', n)) {
-          const slots = Object.fromEntries(Object.entries((o.slots ?? {}) as Record<string, unknown>).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, short(v as string)]));
-          op = { op: 'card', template: o.template, at: o.at as number, slots };
+          // Known templates keep only their text slots, each within its word limit.
+          const defs = new Map(cardSlots(o.template).map((d) => [d.id, d.words]));
+          const slots = Object.fromEntries(Object.entries((o.slots ?? {}) as Record<string, unknown>)
+            .filter(([k, v]) => typeof v === 'string' && (!defs.size || defs.has(k)))
+            .map(([k, v]) => [k, capWords(short(v as string), defs.get(k) ?? MAX_TEXT)]));
+          const missing = cardSlots(o.template).filter((d) => !d.optional && !(slots[d.id] ?? '').trim()).map((d) => d.id);
+          if (missing.length) out.problems.push(`Op ${n}: a ${o.template} card needs ${missing.map((m) => `"${m}"`).join(' and ')} text in "slots".`);
+          else op = { op: 'card', template: o.template, at: o.at as number, slots };
         }
         break;
       case 'chapter':
@@ -250,7 +261,7 @@ export function applyOp(project: Project, units: Unit[], op: AiOp): Project {
       return addLayer(project, { kind: 'zooms', items: [{ at: first.start, end: Math.max(last.end, first.start + 800), depth: op.depth, focus: 'cursor', feel: 'smooth', auto: false }] });
     }
     case 'caption': return setCaptions(project, { patch: { style: op.style, show: true } });
-    case 'card': return addLayer(project, { kind: 'cards', items: [{ template: op.template, at: units[op.at]!.start, ms: 2500, slots: op.slots, pack: 'clean' }] });
+    case 'card': return addLayer(project, { kind: 'cards', items: [{ template: op.template, at: units[op.at]!.start, ms: cardDefaultMs(op.template), slots: op.slots, pack: 'clean' }] });
     case 'chapter': {
       const u = units[op.at]!;
       const index = project.chapters.findIndex((c) => c.at >= u.start - 1 && c.at <= u.end);

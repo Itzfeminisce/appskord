@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { Caption } from '@/lib/project/captions';
 import type { Cut, EventsTrack, Project } from '@/lib/project/types';
+import { cardStarts } from '@/lib/render/layers/card';
 import { FRAME, renderPlan } from '@/lib/render/plan';
 import type { RenderSource } from '@/lib/render/render.worker';
 import { useDeps } from '../deps';
 import type { PreviewClient } from '../preview';
+import { useStoredBrand } from '../story/brand';
 import { C } from '../ui';
 
 /** Light preview draws at this share of the preview's pixels. */
@@ -115,8 +117,14 @@ export function Preview(p: PreviewProps) {
     client.current?.resize(Math.max(1, Math.round(box.w * scale)), Math.max(1, Math.round(box.h * scale)));
   }, [box.w, box.h, p.light, ready]);
 
+  const brand = useStoredBrand();
   useEffect(() => {
-    client.current?.render(renderPlan(p.project, p.cut, p.out, p.events, p.captions), p.cut.shape);
+    client.current?.brand?.(brand);
+  }, [brand, ready, deps]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const plan = renderPlan(p.project, p.cut, p.out, p.events, p.captions);
+    client.current?.render(plan, p.cut.shape, plan.cards.length ? cardStarts(p.cut, plan.cards) : undefined);
   }, [p.project, p.cut, p.out, p.events, p.captions, ready, box.w, box.h, p.light]);
 
   return (

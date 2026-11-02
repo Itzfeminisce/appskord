@@ -1,9 +1,13 @@
+import type { BrandRecord } from '@appskord/brand';
 import type { RenderPlan, Shape } from '@/lib/project/types';
 import type { RenderRequest, RenderResponse, RenderSource } from '@/lib/render/render.worker';
 
 /** The preview's line to the renderer; a fake one stands in for tests. */
 export interface PreviewClient {
-  render(plan: RenderPlan, shape: Shape): void;
+  /** cards: each planned card's start in output time. */
+  render(plan: RenderPlan, shape: Shape, cards?: Record<string, number>): void;
+  /** The brand kit cards draw with. */
+  brand?(brand: BrandRecord | null): void;
   resize(width: number, height: number): void;
   addSources(sources: RenderSource[]): void;
   /** Called after each plan: drawn is false when a newer plan replaced it first. */
@@ -32,7 +36,8 @@ export function workerPreview(worker: Worker, canvas: HTMLCanvasElement, sources
   const offscreen = canvas.transferControlToOffscreen();
   post({ type: 'init', canvas: offscreen, sources }, [offscreen]);
   return {
-    render: (plan, shape) => post({ type: 'render', id: ++id, plan, shape }),
+    render: (plan, shape, cards) => post({ type: 'render', id: ++id, plan, shape, ...(cards && { cards }) }),
+    brand: (brand) => post({ type: 'brand', brand }),
     resize: (width, height) => post({ type: 'resize', width, height }),
     addSources: (more) => post({ type: 'sources', sources: more }),
     onDrawn(listener) {

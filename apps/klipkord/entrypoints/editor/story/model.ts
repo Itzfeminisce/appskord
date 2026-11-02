@@ -1,6 +1,7 @@
 import { addLayer, newId, updateLayer } from '@/lib/project/ops';
 import { toOut, toRec } from '@/lib/project/time';
-import type { Box, Cut, Overlay, Project } from '@/lib/project/types';
+import type { Box, Card, Cut, Overlay, Project } from '@/lib/project/types';
+import { capWords, cardDefaultMs, cardSlots, LOGO_STING_MS, type CardTemplate } from '@/lib/render/layers/card';
 
 /** A new overlay shows this long from the playhead. */
 export const OVERLAY_MS = 3000;
@@ -75,3 +76,26 @@ export const toPicture = (dxFrame: number, dyFrame: number, crop: Box, dest: Box
   dx: dest.w > 0 ? (dxFrame / dest.w) * crop.w : 0,
   dy: dest.h > 0 ? (dyFrame / dest.h) * crop.h : 0,
 });
+
+export { LOGO_STING_MS };
+
+/**
+ * A new card in output time: a title hook at the start, an end card at the finish, a logo sting at the playhead.
+ * It overlays the picture for `ms`, anchored to recording time; a title hook starts with the recording's title.
+ */
+export function newCard(cut: Cut, template: CardTemplate, out: number, length: number, title: string): Card {
+  const ms = cardDefaultMs(template);
+  const start = template === 'title-hook' ? 0 : template === 'end-card' ? Math.max(0, length - ms) : out;
+  const headline = cardSlots(template).find((s) => s.id === 'headline');
+  return {
+    id: newId(), template, at: Math.max(0, Math.round(toRec(cut, start) ?? 0)), ms, pack: 'clean',
+    slots: headline && title.trim() ? { headline: capWords(title.trim(), headline.words) } : {},
+  };
+}
+
+/** Adds one card as one Undo step ("Added a title hook"). */
+export const addCard = (project: Project, card: Card): Project => addLayer(project, { kind: 'cards', items: [card] });
+
+/** One change to a card as one Undo step ("Changed the title hook at 00:00"). */
+export const changeCard = (project: Project, id: string, patch: Partial<Omit<Card, 'id'>>): Project =>
+  updateLayer(project, { kind: 'cards', id, patch });
