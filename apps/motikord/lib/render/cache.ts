@@ -1,5 +1,6 @@
 import type { Asset, Recipe } from '../types';
 import type { Fit } from './textFit';
+import { makeGrain } from '@appskord/scenes/render/cache';
 
 /** A decoded video the renderer can ask for the frame at a time; T11 backs it with WebCodecs, the preview may use a video element. */
 export interface VideoSource { frameAt(ms: number): CanvasImageSource | undefined; close?(): void }
@@ -133,30 +134,4 @@ export class MediaCache {
     for (const v of this.videos.values()) v.close?.();
     this.images.clear(); this.videos.clear(); this.audios.clear(); this.fonts.clear(); this.families.clear(); this.fits.clear(); this.paints.clear(); this.tiles.clear();
   }
-}
-
-function makeGrain(seed: number, size: number): OffscreenCanvas | null {
-  if (typeof OffscreenCanvas === 'undefined') return null;
-  const c = new OffscreenCanvas(size, size);
-  const g = c.getContext('2d');
-  if (!g) return null;
-  const img = g.createImageData(size, size);
-  let s = seed >>> 0;
-  // mulberry32, so the tile is the same on every machine.
-  const rand = () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = rand();
-    // Light and dark specks in equal measure, so grain adds texture without greying the colour.
-    const light = v >= 0.5 ? 255 : 0;
-    img.data[i] = light; img.data[i + 1] = light; img.data[i + 2] = light;
-    img.data[i + 3] = Math.round(Math.abs(v - 0.5) * 2 * 255);
-  }
-  g.putImageData(img, 0, 0);
-  return c;
 }

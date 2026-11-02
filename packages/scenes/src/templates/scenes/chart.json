@@ -39,10 +39,7 @@
       "name": "Bars",
       "kind": "chart",
       "words": 2,
-      "items": [
-        2,
-        6
-      ],
+      "items": [2, 6],
       "boxes": {
         "9:16": {
           "x": 0.07,

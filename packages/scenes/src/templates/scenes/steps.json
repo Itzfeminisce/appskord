@@ -39,10 +39,7 @@
       "name": "Steps",
       "kind": "items",
       "words": 4,
-      "items": [
-        3,
-        3
-      ],
+      "items": [3, 3],
       "scale": "body",
       "align": "left",
       "boxes": {

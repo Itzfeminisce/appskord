@@ -39,10 +39,7 @@
       "name": "Items",
       "kind": "items",
       "words": 5,
-      "items": [
-        3,
-        5
-      ],
+      "items": [3, 5],
       "scale": "body",
       "align": "left",
       "boxes": {

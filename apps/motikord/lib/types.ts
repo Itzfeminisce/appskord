@@ -1,12 +1,10 @@
 // CONTRACT.md as code (apps/motikord/v1/CONTRACT.md). Later tasks import these and never redefine them.
-export type Aspect = '9:16' | '1:1' | '16:9';
-export type ClipType = 'promo' | 'quote' | 'chart' | 'explainer' | 'logo' | 'captions' | 'social';
+import type { Aspect, ClipType, Pace, Quality, Scene, StyleId, TemplateId } from '@appskord/scenes';
+// The scene model moved to @appskord/scenes; re-exported so these paths keep working.
+export type { Aspect, ClipType, Feel, PresetSlot, Quality, StyleId, Pace, TransitionKind, TemplateId, SlotKind, TypeScale, SlotDef, SceneTemplate, Background, StylePack, SlotValue, Transition, Box, Motion, LayerBase, TextLayer, ShapeLayer, MediaLayer, ChartLayer, Layer, Scene, BrandKit } from '@appskord/scenes';
 export type AiMode = 'cloud' | 'local';                     // "Faster in the cloud" / "On this computer"
 export type Provider = 'groq' | 'openai' | 'anthropic' | 'openrouter';   // who runs the cloud AI
-export type Feel = 'smooth' | 'snappy' | 'bouncy' | 'steady';
-export type PresetSlot = 'in' | 'during' | 'out';           // "Comes in" / "While on screen" / "Goes out"
 export type FileKind = 'mp4' | 'webm' | 'gif' | 'webm-alpha';
-export type Quality = '720p' | '1080p';
 export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pexels' | 'pixabay' | 'unsplash' | 'unknown' | 'page' | 'own' | 'ai';
 // unknown: the source gives no licence ("Check you may use it"); credited like a page grab.
 export type MediaSourceId = 'openverse' | 'wikimedia' | 'nasa' | 'museums' | 'ccmixter' | 'pexels' | 'pixabay' | 'freesound' | 'jamendo' | 'unsplash';
@@ -27,82 +25,14 @@ export interface Asset {
 }
 
 // v2 (apps/motikord/v2/CONTRACT.md): scene templates, style packs and the look.
-export type StyleId = 'clean' | 'bold' | 'playful' | 'corporate';
 export type LookStyle = StyleId | 'auto';                 // "Auto": picked by clip type
-export type Pace = 'calm' | 'normal' | 'fast';
 export type Mood = 'upbeat' | 'calm' | 'warm' | 'dramatic' | 'none';   // 'none' = "No music"
-export type TransitionKind = 'cut' | 'crossfade' | 'slide' | 'push' | 'wipe' | 'zoom' | 'match';
-export type TemplateId = 'title-hook' | 'big-statement' | 'stat-reveal' | 'chart' | 'quote' | 'list'
-  | 'hero' | 'split' | 'before-after' | 'steps' | 'logo-sting' | 'end-card';
-export type SlotKind = 'text' | 'items' | 'media' | 'chart' | 'logo';
-export type TypeScale = 'display' | 'headline' | 'body' | 'caption' | 'number';
-
-export interface SlotDef {                                 // one named slot in a scene template
-  id: string; name: string; kind: SlotKind;                // name is the frame's label ("Headline")
-  words?: number;                                          // word limit (text, and each item)
-  items?: [number, number];                                // min and max items (items, chart bars)
-  scale?: TypeScale; align?: 'left' | 'center' | 'right'; optional?: boolean; valign?: 'top';
-  highlight?: boolean;                                     // one word may carry the accent highlight
-  boxes: Record<Aspect, Box>;                              // 0..1 of the frame, inside the safe area
-  motion: { in: string; stagger?: 'word' | 'line'; during?: string };   // preset ids from lib/render/presets
-}
-export interface SceneTemplate {                           // lib/templates/scenes/<id>.json
-  id: TemplateId; name: string; line: string;              // line: the one-line purpose shown on cards
-  slots: SlotDef[]; defaultMs: number; fits: string;       // fits: plain words the storyboard prompt shows
-}
-export interface Background {
-  kind: 'solid' | 'gradient' | 'blobs' | 'blocks' | 'grain';
-  colours: string[]; angle?: number; grain?: number;       // grain 0..1; any kind may add grain
-  drift?: boolean;                                         // slow background motion
-  shapes?: Partial<Record<Aspect, [number, number][]>>;    // blocks: the slab per size, placed off the text (lib/templates/blocks)
-}
-export interface StylePack {                               // lib/templates/packs/<id>.json
-  id: StyleId; name: string; description?: string;     // NewLook's line for the pack
-  fonts: { display: string; text: string; number: string };
-  palette: { bg: string; bg2: string; ink: string; muted: string; accent: string; accent2?: string };
-  label?: { bg: string; ink: string };                    // a caption slot (not the kicker) drawn as a pill
-  background: Background; feel: Feel; motionMs: number;
-  transitions: TransitionKind[]; clipTypes: ClipType[];   // clipTypes: Auto picks this pack for them
-}
-
-export type SlotValue = string | string[] | { assetId: string } | { label: string; value: number }[];
-export interface Transition { kind: TransitionKind; ms: number }   // into this scene, from the one before
 
 export interface Beat { template: TemplateId; line: string; ms: number }
 export interface Storyboard { name: string; hook: string; style: StyleId; beats: Beat[] }
 export interface CriticNote { sceneIndex: number; problem: string; fix: string }
 
-export interface Box { x: number; y: number; w: number; h: number; rotation?: number }
-export interface Motion { preset: string; feel: Feel; durationMs: number }   // preset ids from lib/render/presets
-export interface LayerBase {
-  id: string; name: string; startMs: number; endMs: number;  // relative to the scene start
-  box: Box; boxes?: Partial<Record<Aspect, Box>>;            // per-size override ("This size only")
-  opacity: number; in?: Motion; during?: Motion; out?: Motion; locked?: boolean;
-}
-export interface TextLayer extends LayerBase {
-  type: 'text'; role: 'title' | 'body' | 'caption' | 'label';
-  text: string; font: string; sizePx: number; weight: number; colour: string;   // sizePx at 1080 short side
-  align: 'left' | 'center' | 'right'; lineHeight: number; background?: string;
-  pill?: boolean;                                            // the background hugs the words as a pill instead of filling the box
-  letterSpacing?: number;                                    // em
-  highlight?: { word: number; colour: string }; shadow?: boolean; stagger?: 'word' | 'line'; slot?: string;
-  scaleAt?: Partial<Record<Aspect, number>>;                 // sizePx times this on one size (the frame's own type size per shape)
-  valign?: 'top';                                            // lines start at the top of the box instead of its middle
-}
-export interface ShapeLayer extends LayerBase { type: 'shape'; shape: 'rect' | 'circle' | 'line'; fill: string; radius?: number; slot?: string }
-export interface MediaLayer extends LayerBase {
-  type: 'image' | 'video'; assetId: string; fit: 'cover' | 'contain'; muted?: boolean;
-  radius?: number; mask?: 'rounded' | 'circle' | 'blob'; border?: string; kenBurns?: boolean; slot?: string;
-}
-export interface ChartLayer extends LayerBase { type: 'chart'; chart: 'bar' | 'line' | 'number'; values: { label: string; value: number }[]; colour: string; slot?: string }
-export type Layer = TextLayer | ShapeLayer | MediaLayer | ChartLayer;
 
-export interface Scene {
-  id: string; durationMs: number; background: string; layout: string; layers: Layer[];
-  // v2, all optional; a scene without `template` is a v1 free-layer scene.
-  template?: TemplateId; slots?: Record<string, SlotValue>; transition?: Transition; bg?: Background;
-  original?: Record<string, SlotValue>;                      // slot text before it was shortened ("Show original")
-}
 export interface MusicTrack { assetId: string; volume: number; fadeInMs: number; fadeOutMs: number }
 
 export interface Recipe {
@@ -128,10 +58,6 @@ export interface Clip {                                      // library row in I
   thumbnail?: Blob; exportedAt?: number; exports?: { file: string; bytes: number; at: number }[];
 }
 
-export interface BrandKit {
-  logoAssetId?: string; colours: { hex: string; role: 'primary' | 'accent' | 'text' | 'background' }[];
-  headingFont?: string; bodyFont?: string; useForNewClips: boolean;
-}
 
 export interface Issue {                                     // quality checker
   id: string; sceneId: string; layerId: string; aspect: Aspect;
