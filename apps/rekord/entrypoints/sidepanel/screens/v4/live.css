@@ -23,8 +23,10 @@
 .lv-tab-count { font-family: var(--mono); font-size: 11px; margin-left: 5px; }
 
 /* agenda strip */
-.lv-strip { margin: 8px 16px 0; height: 36px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #44464D; }
-.lv:has(.lv-recall) .lv-strip { height: 30.8px; }
+.lv-strip { margin: 4px 16px 0; height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #44464D; }
+.lv-strip-gap { flex-grow: 1; }
+.lv-strip-missed { height: 44px; padding: 0 12px; margin-right: -4px; flex-shrink: 0; box-sizing: border-box; border: 1px solid #C9C6F5; border-radius: 12px; background: #FFFFFF; color: #3730A3; font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; display: flex; align-items: center; cursor: pointer; }
+.lv-strip-missed:hover { background: #F4F3FF; }
 .lv-strip-now { color: #6E7079; }
 .lv-strip-item { font-size: 13px; font-weight: 600; color: #111114; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lv-strip-bar { flex-grow: 1; min-width: 12px; height: 4px; border-radius: 2px; background: #E3E3E8; position: relative; overflow: hidden; }
@@ -58,6 +60,7 @@
 .lv-recall { margin: 0 12px 8px; padding: 12px 12px 12px 14px; border-radius: 16px; background: #EEF0FF; border: 1px solid #D9D7FB; box-shadow: 0 8px 24px rgba(55,48,163,0.12); display: flex; flex-direction: column; gap: 8px; position: relative; animation: lv-in 220ms ease-out; }
 @keyframes lv-in { from { transform: translateY(12px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .lv-recall { animation: none; } }
+.st4-board-card > .lv-recall { margin: 0; animation: none; }
 .lv-recall-head { display: flex; align-items: center; gap: 8px; color: #3730A3; }
 .lv-recall-title { flex-grow: 1; font-size: 13px; font-weight: 600; }
 .lv-more { width: 44px; height: 44px; margin: -10px -6px -10px 0; border: none; border-radius: 12px; background: transparent; color: #3730A3; display: flex; align-items: center; justify-content: center; padding: 0; }
@@ -97,7 +100,11 @@
 .lv-ag-tick { width: 22px; height: 22px; border-radius: 50%; background: #1A6B40; color: #FFFFFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .lv-ag-ring { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #C9C9D0; flex-shrink: 0; box-sizing: border-box; }
 .lv-ag-text { flex-grow: 1; font-size: 14px; color: #44464D; }
-.lv-ag-row.skipped .lv-ag-text { text-decoration: line-through; color: #6E7079; }
+.lv-ag-row.skipped { box-sizing: border-box; min-height: 45px; padding: 0 6px 0 14px; gap: 8px; }
+.lv-ag-row.skipped .lv-ag-text { min-width: 0; text-decoration: line-through; color: #6E7079; }
+.lv-ag-skipped { font-family: var(--mono); font-size: 11px; color: #6E7079; white-space: nowrap; }
+.lv-bring { height: 44px; padding: 0 10px; border: none; border-radius: 12px; background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: #4F46E5; white-space: nowrap; cursor: pointer; }
+.lv-bring:hover { color: #3730A3; }
 .lv-ag-when { font-family: var(--mono); font-size: 12px; color: #6E7079; }
 .lv-ag-current { padding: 6px 14px 8px; background: #F7F7FF; border-left: 3px solid #4F46E5; }
 .lv-ag-current-row { display: flex; align-items: center; gap: 10px; min-height: 44px; }

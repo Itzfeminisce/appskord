@@ -126,10 +126,3 @@ export function lookBackMarkdown(week: Week, people: Map<string, Person>, now: n
   ].join('\n');
 }
 
-/** "Your week · 26 to 30 Oct" / "9 meetings · 6 h 40 min · 12 promises made · 8 promises kept · 5 decisions" */
-export function lookBackNote(week: Week): { title: string; message: string } {
-  return {
-    title: `Your week · ${week.label}`,
-    message: [`${week.meetings} meetings`, durationLabel(week.minutes), `${week.promisesMade} promises made`, `${week.promisesKept} promises kept`, `${week.decisions} decisions`].join(' · '),
-  };
-}

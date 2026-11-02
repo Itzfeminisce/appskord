@@ -1,4 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { listMeetings } from '@/lib/db';
+import { DECISIONS_PATH, OPEN_LOOPS_PATH, personPath, removeFiles } from '@/lib/folder';
 import { forgetAll, listItems, listLedger, listPeople, listVectors } from '@/lib/memory/store';
 import type { MemorySettings } from '@/lib/memory/types';
 import { ensureModel, modelState, removeModel, type ModelState, type Progress } from '@/lib/recall';
@@ -13,8 +15,8 @@ const DAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Frid
 const MB = 1024 * 1024;
 export const megabytes = (bytes: number) => `${bytes > 0 ? Math.max(1, Math.round(bytes / MB)) : 0} MB`;
 
-/** Dev frames show the downloaded model without writing fake weights into the real cache. */
-export const settingsDev: { model?: { state: ModelState; bytes: number } } = {};
+/** Dev frames show the downloaded model without writing fake weights into the real cache, and can open "Forget all memory?". */
+export const settingsDev: { model?: { state: ModelState; bytes: number }; forgetAll?: boolean } = {};
 
 async function modelBytes(): Promise<number> {
   if (typeof caches === 'undefined' || !(await caches.has(MODEL_CACHE))) return 0;
@@ -63,6 +65,59 @@ function LinkRow({ to, title, sub }: { to: string; title: string; sub?: string }
   );
 }
 
+interface ForgetPlan { items: number; people: number; meetings: number; folder: boolean }
+
+/** V4ForgetAll: what goes and what stays; nothing goes until "forget" is typed and "Forget all memory" pressed. */
+function ForgetAllSheet({ plan, onForget, onKeep }: { plan: ForgetPlan; onForget: () => Promise<void>; onKeep: () => void }) {
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ready = typed.trim().toLowerCase() === 'forget';
+  const focusSheet = useCallback((el: HTMLElement | null) => el?.focus(), []);
+  useEffect(() => {
+    const close = (e: KeyboardEvent) => { if (e.key === 'Escape') onKeep(); };
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [onKeep]);
+  const forget = async () => {
+    if (!ready || busy) return;
+    setBusy(true);
+    await onForget();
+  };
+  return (
+    <>
+      <div className="fa-scrim" onClick={onKeep} aria-hidden="true" />
+      <section role="dialog" aria-modal="true" aria-labelledby="fa-title" className="fa-sheet" tabIndex={-1} ref={focusSheet}>
+        <span className="fa-grip" aria-hidden="true" />
+        <h1 id="fa-title">Forget all memory?</h1>
+        <div className="fa-lists">
+          <div className="fa-box fa-goes">
+            <span>Goes</span>
+            <ul>
+              <li><span className="fa-dot" /><span><span className="fa-mono">{plan.items}</span> items</span></li>
+              <li><span className="fa-dot" /><span><span className="fa-mono">{plan.people}</span> people</span></li>
+              <li><span className="fa-dot" /><span>Search entries</span></li>
+              {plan.folder && <li><span className="fa-dot" /><span>The memory files in the Rekord folder</span></li>}
+            </ul>
+          </div>
+          <div className="fa-box fa-stays">
+            <span>Stays</span>
+            <ul><li><span className="fa-dot" /><span>Your <span className="fa-mono">{plan.meetings}</span> meetings, transcripts, audio and summaries</span></li></ul>
+          </div>
+        </div>
+        <p className="fa-note">Rekord can build memory again from your meetings later.</p>
+        <div className="fa-field">
+          <label htmlFor="fa-confirm">Type forget to confirm</label>
+          <input id="fa-confirm" type="text" autoComplete="off" spellCheck={false} value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void forget(); }} />
+        </div>
+        <div className="fa-actions">
+          <button type="button" className="fa-forget" disabled={!ready || busy} onClick={() => void forget()}>Forget all memory</button>
+          <button type="button" className="fa-keep" onClick={onKeep}>Keep</button>
+        </div>
+      </section>
+    </>
+  );
+}
+
 const Row = ({ title, sub, children }: { title: string; sub: string; children: ReactNode }) => (
   <div className="sm-row"><Text title={title} sub={sub} />{children}</div>
 );
@@ -73,6 +128,7 @@ export default function SettingsMemory() {
   const [model, setModel] = useState<{ state: ModelState; bytes: number }>({ state: 'none', bytes: 0 });
   const [progress, setProgress] = useState<Progress>({ loaded: 0, total: 0 });
   const [size, setSize] = useState<{ items: number; bytes: number } | null>(null);
+  const [plan, setPlan] = useState<ForgetPlan | null>(null);
 
   const loadSize = () => memorySize().then(setSize).catch((error) => console.error('Rekord: could not measure memory', error));
   const loadModel = async () => {
@@ -85,6 +141,7 @@ export default function SettingsMemory() {
     getSettings().then((s) => setMemory(s.memory)).catch((error) => console.error('Rekord: could not load your settings', error));
     loadModel().catch((error) => console.error('Rekord: could not check the search model', error));
     void loadSize();
+    if (settingsDev.forgetAll) void askForget();
   }, []);
 
   async function save(partial: Partial<MemorySettings>) {
@@ -111,15 +168,29 @@ export default function SettingsMemory() {
     await loadModel();
   }
 
+  async function askForget() {
+    try {
+      const [items, people, meetings, settings] = await Promise.all([listItems(), listPeople(), listMeetings(), getSettings()]);
+      setPlan({ items: items.length, people: people.length, meetings: meetings.length, folder: settings.memory.folder });
+    } catch (error) {
+      console.error('Rekord: could not count your memory', error);
+    }
+  }
+
   async function forget() {
     try {
+      const people = plan?.folder ? await listPeople() : [];
       await forgetAll();
+      if (plan?.folder) await removeFiles([...people.map(personPath), OPEN_LOOPS_PATH, DECISIONS_PATH]);
       browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
     } catch (error) {
       console.error('Rekord: could not forget memory', error);
     }
+    settingsDev.forgetAll = false;
+    setPlan(null);
     await loadSize();
   }
+  const keep = useCallback(() => { settingsDev.forgetAll = false; setPlan(null); }, []);
 
   const m = memory;
   return (
@@ -156,13 +227,14 @@ export default function SettingsMemory() {
         </section>
         <section aria-label="Danger zone" className="sm-danger">
           <Text title="Forget all memory" sub="Keeps your meetings and transcripts" />
-          <button type="button" className="sm-forget" onClick={() => void forget()}>Forget all</button>
+          <button type="button" className="sm-forget" onClick={() => void askForget()}>Forget all</button>
         </section>
         <h2 className="sm-heading">AI</h2>
         <section aria-label="AI" className="sm-card" style={{ marginBottom: 24 }}>
           <LinkRow to="settings" title="Settings" />
         </section>
       </div>
+      {plan && <ForgetAllSheet plan={plan} onForget={forget} onKeep={keep} />}
     </main>
   );
 }

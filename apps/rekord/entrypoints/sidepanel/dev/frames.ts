@@ -19,7 +19,8 @@ import type { RouteParams, ScreenName } from '../router';
 import { BACKFILL_KEY, type BackfillMeeting, type BackfillProgress } from '@/lib/memory/backfill';
 import { personView } from '../screens/v4/Person';
 import { draftKey } from '../screens/v4/Nudge';
-import { putVectors } from '@/lib/memory/store';
+import { putLedgerEntry, putVectors } from '@/lib/memory/store';
+import type { LedgerEntry } from '@/lib/memory/types';
 import { putRecordingPart } from '@/lib/db';
 import { settingsDev } from '../screens/v4/SettingsMemory';
 import { folderDev } from '../screens/v4/Folder';
@@ -83,6 +84,21 @@ async function weekWorld() {
   await db.put('items', item('i-pricing-copy', 'promise', 'open', 'Update the pricing page copy', 'm-sync-10-12', at(10, 12, 10, 20), { ownerId: 'p-priya', toId: 'me', personIds: ['p-priya'], due: '2026-10-22' }));
 }
 
+/** V4LedgerAll's period: Groq for 9 meetings (214 requests), 11 events read, 5 tasks, 2 Notion pages, the search model once on 29 Oct. */
+async function ledgerWeek() {
+  const entry = (id: string, service: LedgerEntry['service'], what: string, count: number, firstAt: number, meetingId?: string): LedgerEntry =>
+    ({ id, service, what, count, firstAt, lastAt: firstAt + 60_000, ...(meetingId ? { meetingId } : {}) });
+  const groq: [string, number, number][] = [
+    [M.review, at(10, 26, 11, 0), 24], [M.sync26, at(10, 26, 15, 0), 18], ['m-lb-design', at(10, 26, 16, 0), 20], [M.sarah27, at(10, 27, 10, 0), 19],
+    ['m-lb-roadmap', at(10, 27, 14, 0), 22], [M.lumen, at(10, 29, 15, 0), 16], ['m-lb-launch', at(10, 29, 10, 0), 14], [M.sync2, at(10, 30, 10, 0), 16],
+  ];
+  for (const [n, [meetingId, when, count]] of groq.entries()) await putLedgerEntry(entry(`l-week-groq-${n}`, 'groq', 'Audio for transcription', count, when, meetingId));
+  for (let n = 0; n < 10; n++) await putLedgerEntry(entry(`l-week-cal-${n}`, 'google-calendar', 'Read this event', 1, at(10, 26 + (n % 5), 11, 30)));
+  await putLedgerEntry(entry('l-week-tasks', 'google-tasks', 'Tasks', 3, at(10, 26, 12, 0), M.review));
+  await putLedgerEntry(entry('l-week-notion', 'notion', 'Action items', 2, at(10, 26, 13, 0), M.review));
+  await putLedgerEntry(entry('l-week-model', 'huggingface', 'Search model download', 1, at(10, 29, 9, 12)));
+}
+
 /** Search windows for every sample meeting, so "Memory size" reads about 3 MB as in the frames. */
 async function seedVectors() {
   const text = 'We agreed to send the revised pricing deck to Northwind before the next sync.';
@@ -93,8 +109,8 @@ async function seedVectors() {
   }
 }
 import { followUpDeps } from '../screens/v4/FollowUp';
-import { sendTasksSession } from '../screens/v4/SendTasks';
-import { linearConnectDeps } from '../screens/v4/LinearConnect';
+import { sendTasksDeps, sendTasksSession } from '../screens/v4/SendTasks';
+import { linearConnectDeps, linearConnectDev } from '../screens/v4/LinearConnect';
 import { putItem } from '@/lib/memory/store';
 import { TASKS_ON_KEY } from '@/lib/services/gtasks';
 
@@ -277,11 +293,22 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
     },
   },
   V4Ledger: { screen: 'ledger', moment: 'after', params: { meetingId: M.sarah3 } },
+  // Row 7: 26 Oct to 3 Nov, the 1:1's ledger plus the rest of the period.
+  V4LedgerAll: { screen: 'ledger', moment: 'after', now: at(11, 3, 10, 40), setup: ledgerWeek },
   V4SettingsMemory: {
     screen: 'settingsMemory',
     setup: async () => {
       settingsDev.model = { state: 'ready', bytes: 22 * MB };
       await seedVectors();
+    },
+  },
+  // Row 7: "Forget all memory?" over Settings, with the Rekord folder on.
+  V4ForgetAll: {
+    screen: 'settingsMemory',
+    setup: async () => {
+      settingsDev.model = { state: 'ready', bytes: 22 * MB };
+      settingsDev.forgetAll = true;
+      await setMemory({ folder: true });
     },
   },
   V4Folder: {
@@ -290,7 +317,7 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
     setup: async () => {
       folderDev.board = {
         label: 'On, and after Chrome restarts',
-        on: { state: 'needsPermission', name: 'C:\\Users\\Alex\\Documents\\Rekord', lastWrittenAt: new Date(2026, 10, 3, 10, 49).getTime(), queued: 0, past: 24 },
+        on: { state: 'needsPermission', name: 'Rekord notes', lastWrittenAt: new Date(2026, 10, 3, 10, 49).getTime(), queued: 0, past: 24 },
       };
     },
   },
@@ -312,6 +339,33 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
     setup: async () => { await afterOneOnOne(); await browser.storage.local.remove(TASKS_ON_KEY); },
   },
   V4SendTasksDone: { screen: 'sendTasks', params: { meetingId: M.sarah3 }, moment: 'after', setup: sentTwo },
+  // Row 7: the Notion and Linear tabs, connected as Alex, through the real calls with fake replies.
+  V4SendTasksNotion: {
+    screen: 'sendTasks', params: { meetingId: M.sarah3 }, moment: 'after',
+    setup: async () => {
+      await afterOneOnOne();
+      sendTasksSession.tab = 'notion';
+      sendTasksDeps.current = {
+        loadKeys: async () => ({ NOTION_TOKEN: 'ntn_test' }), record: noRecord,
+        notion: {
+          fetch: async (url) => String(url).endsWith('/users/me')
+            ? json({ object: 'user', name: 'Rekord', bot: { workspace_name: 'Rekord team', owner: { type: 'user', user: { id: 'u-alex', person: { email: 'alex@rekord-team.com' } } } } })
+            : json({ results: [{ id: 'db-northwind', title: [{ plain_text: 'Northwind tasks' }], properties: { Name: { type: 'title' }, Assignee: { type: 'people' }, Date: { type: 'date' } } }] }),
+        },
+      };
+    },
+  },
+  V4SendTasksLinear: {
+    screen: 'sendTasks', params: { meetingId: M.sarah3 }, moment: 'after',
+    setup: async () => {
+      await afterOneOnOne();
+      sendTasksSession.tab = 'linear';
+      sendTasksDeps.current = {
+        loadKeys: async () => ({ LINEAR_API_KEY: 'lin_api_test' }), hasHosts: async () => true, record: noRecord,
+        linear: { fetch: async () => json({ data: { viewer: { id: 'u-alex', email: 'alex@rekord-team.com' }, teams: { nodes: [{ id: 't-product', name: 'Product' }] } } }) },
+      };
+    },
+  },
   V4LinearConnect: {
     screen: 'linearConnect',
     // LINEAR_API_KEY found in Penv Cloud, Linear already allowed: its one team, Product.
@@ -322,6 +376,11 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
         hasHosts: async () => true,
         record: noRecord,
         fetch: async () => json({ data: { teams: { nodes: [{ id: 't-product', name: 'Product' }] } } }),
+      };
+      // Below: no key in Penv Cloud, a pasted key Linear turned down.
+      linearConnectDev.board = {
+        label: 'Pasted key, rejected', pasted: 'lin_api_8Hk2xQ9mT4vB7nLd',
+        deps: { loadKeys: async () => ({}), penvKeys: async () => false, hasHosts: async () => false, record: noRecord, fetch: async () => json({}) },
       };
     },
   },
@@ -339,6 +398,16 @@ Object.assign(DEV_FRAMES, {
   },
   V4BriefTab: { screen: 'brief', setup: briefWorld, page: async () => (await import('../../brief/BriefTab')).default },
   V4Notification: { screen: 'brief', setup: briefWorld, page: async () => (await import('./NotificationPreview')).default },
+  // Row 7: Thursday's note for "Join Thursday’s rollout demo" (accepted in the review), and Friday's look back on the V4LookBack week.
+  V4NotificationMore: {
+    screen: 'home', moment: 'after', now: at(10, 30, 16, 0),
+    setup: async () => {
+      await weekWorld();
+      const demo = await getItem('n-demo');
+      if (demo) await putItem({ ...demo, status: 'open' });
+    },
+    page: async () => (await import('./NotificationPreview')).NotificationMore,
+  },
   V4LookBack: { screen: 'home', now: at(10, 30, 16, 0), setup: weekWorld, page: async () => (await import('../../lookback/LookBack')).default },
   // T14: every V4States card stacked on one 400-wide board.
   V4States: {
@@ -360,6 +429,8 @@ import { liveDev } from '../screens/Live';
 import { startDev } from '../screens/Start';
 import { liveAskSession } from '../screens/Ask';
 import { recallCard } from '@/lib/live/recall';
+import { skipItem } from '@/lib/live/agenda';
+import { SAMPLE_AGENDA } from '@/lib/memory/sample';
 import { whatDidIMiss } from '@/lib/live/missed';
 import { confirmClash } from '@/lib/live/clash';
 import { listPeople } from '@/lib/memory/store';
@@ -426,6 +497,8 @@ Object.assign(DEV_FRAMES, {
     screen: 'live', params: { meetingId: M.sarah3 }, now: DURING,
     setup: async () => {
       await duringWorld();
+      // Row 7: "Seat count for the rollout" skipped, with "Bring back".
+      await putAgenda(skipItem(SAMPLE_AGENDA, 'a-seats'));
       liveDev.view = 'agenda';
     },
   },

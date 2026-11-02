@@ -19,7 +19,7 @@ import { inviteCandidates, liveLineName, type Invitee } from '@/lib/speakers';
 import { LIVE_CHUNK_ID, supersede, type StreamRequest, type StreamState } from '@/lib/transcribe/stream';
 import { getMeeting, listMeetings, listMarkers, listNotes, listSegments, pendingChunks, putMarker, putNote } from '@/lib/db';
 import { buildTimeline, elapsedMs, mergeSegment, nearBottom, newMarker, newNote, waitingSpan } from '@/lib/live';
-import { skipItem, trackAgenda } from '@/lib/live/agenda';
+import { bringBack, skipItem, trackAgenda } from '@/lib/live/agenda';
 import { clashCandidates, confirmClash, replacingDecision, type Clash } from '@/lib/live/clash';
 import { whatDidIMiss, type MissedMinutes, type MissedResult } from '@/lib/live/missed';
 import { spanLabel } from '@/lib/live/offRecord';
@@ -403,6 +403,13 @@ export default function Live() {
     await putAgenda(next).catch((error) => console.error('Rekord: could not save the agenda', error));
   }
 
+  async function restore(id: string) {
+    if (!agenda) return;
+    const next = bringBack(agenda, id);
+    setAgenda(next);
+    await putAgenda(next).catch((error) => console.error('Rekord: could not save the agenda', error));
+  }
+
   function muteRecall() {
     recallGate.current.muted = true;
     setRecall(undefined);
@@ -519,12 +526,12 @@ export default function Live() {
         ))}
       </nav>
 
-      {marksOn && track && <AgendaStrip track={track} />}
+      {marksOn && <AgendaStrip track={track} onMissed={() => void openMissed(3)} />}
 
       {view === 'ask' && askOn && meetingId ? (
-        <AskPanel meetingId={meetingId} nowMs={ms} live onOpenMoment={(atMs) => navigate('transcript', { meetingId, atMs })} onMissed={() => void openMissed(3)} />
+        <AskPanel meetingId={meetingId} nowMs={ms} live onOpenMoment={(atMs) => navigate('transcript', { meetingId, atMs })} />
       ) : view === 'agenda' && track ? (
-        <LiveAgenda track={track} questions={questions} onSkip={(id) => void skip(id)} onPromise={(q) => void addPromise(q)} onAnswered={handle} />
+        <LiveAgenda track={track} questions={questions} onSkip={(id) => void skip(id)} onBringBack={(id) => void restore(id)} onPromise={(q) => void addPromise(q)} onAnswered={handle} />
       ) : (
         <div className="lv-tx">
           <section

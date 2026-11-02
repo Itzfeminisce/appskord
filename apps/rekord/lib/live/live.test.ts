@@ -3,7 +3,7 @@ import { M, SAMPLE_AGENDA, SAMPLE_ITEMS, SAMPLE_MEETINGS, SAMPLE_PEOPLE } from '
 import type { SearchResult } from '../recall';
 import { DEFAULT_SETTINGS } from '../settings';
 import type { Segment } from '../types';
-import { mentions, minutesLeft, skipItem, trackAgenda } from './agenda';
+import { bringBack, mentions, minutesLeft, skipItem, trackAgenda } from './agenda';
 import { clashCandidates, confirmClash, parseClash, replacingDecision } from './clash';
 import { missedWindow, parseMissed, whatDidIMiss, MISSED_LEDGER_WHAT } from './missed';
 import { gatedChunks, goOff, goOn, inOffSpan, OffRecordGate, spanLabel, offClock } from './offRecord';
@@ -45,6 +45,8 @@ describe('recall cards', () => {
   it('words the card from stored text: one decision and one promise', () => {
     const card = recallCard([item('d-team-12'), item('i-q3')], SAMPLE_MEETINGS, SAMPLE_PEOPLE, NOW)!;
     expect(card.text).toBe('On 26 Oct you decided $12 a seat. Sarah owed the Q3 usage numbers, due today.');
+    const owed = recallCard([item('i-deck')], SAMPLE_MEETINGS, SAMPLE_PEOPLE, NOW)!;
+    expect(owed.text).toBe('You owe Sarah the revised pricing deck, 4 days late. You promised it in Pricing review on 26 Oct.');
     expect(card).toMatchObject({ itemIds: ['d-team-12', 'i-q3'], meetingId: M.review, atMs: mmss(31, 4) });
   });
 
@@ -100,6 +102,13 @@ describe('agenda tracking', () => {
     const skipped = trackAgenda(skipItem(SAMPLE_AGENDA, 'a-q3'), [], 60_000);
     expect(skipped.rows[0]!.state).toBe('skipped');
     expect(skipped.current?.text).toBe('Revised pricing deck');
+  });
+
+  it('brings a skipped item back, and only that one', () => {
+    const both = skipItem(skipItem(SAMPLE_AGENDA, 'a-q3'), 'a-seats');
+    const back = bringBack(both, 'a-q3');
+    expect(back.items.map((i) => !!i.skipped)).toEqual([false, false, false, true]);
+    expect(trackAgenda(back, [], 60_000).current?.text).toBe('Q3 usage numbers');
   });
 });
 

@@ -136,7 +136,7 @@ function MemoryAnswer({ turn }: { turn: AskMemoryResult }) {
 }
 
 /** V4LiveAsk: scope "This meeting" / "All meetings" (All by default); citations open in a new tab. */
-function LiveAsk({ meetingId, nowMs, onOpenMoment, onMissed }: { meetingId: string; nowMs: number; onOpenMoment: (atMs: number) => void; onMissed?: () => void }) {
+function LiveAsk({ meetingId, nowMs, onOpenMoment }: { meetingId: string; nowMs: number; onOpenMoment: (atMs: number) => void }) {
   if (liveAskSession.meetingId !== meetingId) Object.assign(liveAskSession, { meetingId, scope: 'all', turns: [] });
   const [scope, setScope] = useState<LiveScope>(liveAskSession.scope);
   const [turns, setTurns] = useState<AskMemoryResult[]>(liveAskSession.turns);
@@ -172,9 +172,6 @@ function LiveAsk({ meetingId, nowMs, onOpenMoment, onMissed }: { meetingId: stri
     <>
       <section ref={scroller} className="lv-ask" aria-label="Ask" aria-live="polite" tabIndex={-1}>
         {chips}
-        {turns.length === 0 && !pending && onMissed && (
-          <button type="button" className="lv-chip" style={{ alignSelf: 'flex-start' }} onClick={onMissed}>What did I miss?</button>
-        )}
         {turns.map((t, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="lv-q">{t.question}</div>
@@ -198,12 +195,12 @@ function LiveAsk({ meetingId, nowMs, onOpenMoment, onMissed }: { meetingId: stri
 }
 
 /** The conversation + composer. Renders a scroll area and a footer; the parent supplies a flex-column container. */
-export function AskPanel({ meetingId, nowMs, onOpenMoment, live, onMissed, top }: {
+export function AskPanel({ meetingId, nowMs, onOpenMoment, live, top }: {
   meetingId: string; nowMs: number; onOpenMoment: (atMs: number) => void;
   /** In a meeting: the v4 scope chips, All meetings first. */
-  live?: boolean; onMissed?: () => void; top?: ReactNode;
+  live?: boolean; top?: ReactNode;
 }) {
-  if (live) return <LiveAsk meetingId={meetingId} nowMs={nowMs} onOpenMoment={onOpenMoment} onMissed={onMissed} />;
+  if (live) return <LiveAsk meetingId={meetingId} nowMs={nowMs} onOpenMoment={onOpenMoment} />;
   return <MeetingAsk meetingId={meetingId} nowMs={nowMs} onOpenMoment={onOpenMoment} top={top} />;
 }
 

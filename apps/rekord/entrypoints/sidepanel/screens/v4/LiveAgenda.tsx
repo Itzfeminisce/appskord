@@ -5,15 +5,20 @@ import { ActionMark, SkipIcon, TickIcon, TimerIcon } from './liveIcons';
 
 const clock = citationClock;
 
-/** "Now · Northwind rollout date · ▬▬ · 2 min left", under the tabs. */
-export function AgendaStrip({ track }: { track: AgendaTrack }) {
-  if (!track.current || track.leftMs === undefined) return null;
+/** "Now · Northwind rollout date · ▬▬ · 2 min left", under the tabs, with "What did I miss?" at its right end. */
+export function AgendaStrip({ track, onMissed }: { track?: AgendaTrack; onMissed: () => void }) {
+  const now = track?.current && track.leftMs !== undefined ? { text: track.current.text, used: track.used ?? 0, leftMs: track.leftMs } : undefined;
   return (
     <div className="lv-strip">
-      <span className="lv-strip-now">Now</span>
-      <span className="lv-strip-item">{track.current.text}</span>
-      <span className="lv-strip-bar" aria-hidden="true"><span style={{ width: `${Math.round((track.used ?? 0) * 100)}%` }} /></span>
-      <span className="lv-strip-left">{minutesLeft(track.leftMs)}</span>
+      {now ? (
+        <>
+          <span className="lv-strip-now">Now</span>
+          <span className="lv-strip-item">{now.text}</span>
+          <span className="lv-strip-bar" aria-hidden="true"><span style={{ width: `${Math.round(now.used * 100)}%` }} /></span>
+          <span className="lv-strip-left">{minutesLeft(now.leftMs)}</span>
+        </>
+      ) : <span className="lv-strip-gap" />}
+      <button type="button" className="lv-strip-missed" onClick={onMissed}>What did I miss?</button>
     </div>
   );
 }
@@ -33,8 +38,8 @@ function Asked({ q, onPromise, onAnswered }: { q: AskedYou; onPromise: () => voi
 }
 
 /** V4LiveAgenda: items ticked live with the time covered, the current one with its time left and a skip. */
-export function LiveAgenda({ track, questions, onSkip, onPromise, onAnswered }: {
-  track: AgendaTrack; questions: AskedYou[]; onSkip: (id: string) => void; onPromise: (q: AskedYou) => void; onAnswered: (q: AskedYou) => void;
+export function LiveAgenda({ track, questions, onSkip, onBringBack, onPromise, onAnswered }: {
+  track: AgendaTrack; questions: AskedYou[]; onSkip: (id: string) => void; onBringBack: (id: string) => void; onPromise: (q: AskedYou) => void; onAnswered: (q: AskedYou) => void;
 }) {
   return (
     <section aria-label="Agenda" className="lv-agenda">
@@ -54,6 +59,10 @@ export function LiveAgenda({ track, questions, onSkip, onPromise, onAnswered }: 
             <span className="lv-ag-text">{item.text}</span>
             {state === 'covered' && coveredAtMs !== undefined && <span className="lv-ag-when">covered {clock(coveredAtMs)}</span>}
             {state === 'next' && <span className="lv-ag-when">next</span>}
+            {state === 'skipped' && <>
+              <span className="lv-ag-skipped">Skipped</span>
+              <button type="button" className="lv-bring" aria-label={`Bring back ${item.text}`} onClick={() => onBringBack(item.id)}>Bring back</button>
+            </>}
           </li>
         ))}
       </ul>

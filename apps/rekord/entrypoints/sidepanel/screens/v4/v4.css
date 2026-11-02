@@ -79,6 +79,15 @@
 .lg-dark .lg-icon { background: #3a3b42; color: #ffffff; }
 .lg-dark .lg-detail, .lg-dark .lg-time { color: #d4d5da; }
 .lg-dark .lg-time { max-width: 92px; }
+.lg-periods { margin: -4px 0 0 -2px; display: flex; gap: 6px; }
+.lg-periods button { min-height: 44px; min-width: 44px; padding: 6px 0; border: none; background: transparent; font: inherit; cursor: pointer; }
+.lg-periods span { height: 32px; padding: 0 13px; border-radius: 999px; background: #ebebee; color: #2a2b31; font-weight: 500; font-size: 12px; display: flex; align-items: center; }
+.lg-periods button[aria-pressed='true'] span { background: #111114; color: #ffffff; font-weight: 600; }
+.lg-item { display: flex; flex-direction: column; }
+.lg-link { width: 100%; min-height: 56px; box-sizing: border-box; font: inherit; text-align: left; cursor: pointer; }
+.lg-link:hover { border-color: #d4d5da; }
+.lg-none { color: #6e7079; }
+.lg-chev { flex-shrink: 0; }
 .lg-foot { margin: 0; font-size: 13px; line-height: 1.45; font-weight: 500; color: #111114; }
 .lg-all { align-self: flex-start; min-height: 44px; padding: 0; border: 0; background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: #4f46e5; display: flex; align-items: center; cursor: pointer; }
 .lg-all:hover { color: #3730a3; }

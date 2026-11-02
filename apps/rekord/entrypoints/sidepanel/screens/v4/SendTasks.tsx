@@ -6,9 +6,9 @@ import type { MemoryItem, Person } from '@/lib/memory/types';
 import { LINEAR_HOSTS } from '@/lib/hosts';
 import { loadKeys } from '@/lib/penv';
 import { DEFAULT_LIST, listTaskLists, tasksTurnedOn, turnOnTasks, type TaskList } from '@/lib/services/gtasks';
-import { LINEAR_KEY, LinearError, listTeams, savedTeam, type LinearTeam } from '@/lib/services/linear';
-import { notionDatabases, sendable, sendItems, sentTo, SERVICE_NAMES, type SendDeps, type SendService, type SendTarget } from '@/lib/services/send';
-import type { NotionDatabase } from '@/lib/share/notion';
+import { LINEAR_KEY, LinearError, linearWorkspace, savedTeam, type LinearTeam, type LinearViewer } from '@/lib/services/linear';
+import { notionAccountFor, notionDatabases, sendable, sendItems, sentTo, SERVICE_NAMES, type SendDeps, type SendService, type SendTarget } from '@/lib/services/send';
+import type { NotionAccount, NotionDatabase } from '@/lib/share/notion';
 import type { Meeting } from '@/lib/types';
 import { Spinner } from '../../components';
 import { BackIcon } from '../../components/v4/icons';
@@ -41,6 +41,30 @@ export function rowMeta(item: MemoryItem, people: Person[], now: number): string
 }
 
 const TABS: SendService[] = ['gtasks', 'notion', 'linear'];
+
+/** "● Connected as alex@rekord-team.com" with "Change". */
+function Account({ who, onChange }: { who?: string; onChange: () => void }) {
+  if (!who) return null;
+  return (
+    <div className="st-account">
+      <span className="st-account-who"><span aria-hidden="true" className="st-account-dot" /><span>Connected as <strong>{who}</strong></span></span>
+      <button type="button" className="st-change" onClick={onChange}>Change</button>
+    </div>
+  );
+}
+
+/** "Owner → Assignee  Due → Date": where each promise's details land. */
+function Mapping({ rows }: { rows: [string, string][] }) {
+  if (!rows.length) return null;
+  return (
+    <div className="st-map">
+      {rows.map(([from, to]) => <span key={from}><strong>{from}</strong><ArrowRight />{to}</span>)}
+    </div>
+  );
+}
+const ArrowRight = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+);
 const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : 'Something went wrong. Try again in a moment.');
 
 /** V4SendTasks: send this meeting's promises to Google Tasks, Notion or Linear, then show where each went. */
@@ -57,9 +81,9 @@ export default function SendTasks() {
   const [tasksOn, setTasksOn] = useState(false);
   const [lists, setLists] = useState<TaskList[]>([DEFAULT_LIST]);
   const [listId, setListId] = useState(DEFAULT_LIST.id);
-  const [notion, setNotion] = useState<{ token?: string; dbs: NotionDatabase[] }>();
+  const [notion, setNotion] = useState<{ token?: string; dbs: NotionDatabase[]; account?: NotionAccount }>();
   const [dbId, setDbId] = useState('');
-  const [linear, setLinear] = useState<{ key?: string; teams: LinearTeam[] }>();
+  const [linear, setLinear] = useState<{ key?: string; teams: LinearTeam[]; me?: LinearViewer }>();
   const [teamId, setTeamId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -105,17 +129,22 @@ export default function SendTasks() {
     } else if (tab === 'notion' && !notion) {
       void keys().then(async (k) => {
         const token = k.NOTION_TOKEN?.trim();
-        const dbs = token ? await notionDatabases(token, meetingId, deps.notion).catch((e) => { fail(e); return []; }) : [];
-        if (alive) { setNotion({ token, dbs }); setDbId(dbs[0]?.id ?? ''); }
+        const [dbs, account] = token
+          ? await Promise.all([
+            notionDatabases(token, meetingId, deps.notion).catch((e) => { fail(e); return []; }),
+            notionAccountFor(token, meetingId, deps.notion).catch((e) => { console.error('Rekord: could not read the Notion account', e); return undefined; }),
+          ])
+          : [[], undefined];
+        if (alive) { setNotion({ token, dbs, account }); setDbId(dbs[0]?.id ?? ''); }
       });
     } else if (tab === 'linear' && !linear) {
       void keys().then(async (k) => {
         // Without Chrome's permission for Linear the picker offers Connect Linear instead.
         const allowed = await (deps.hasHosts ?? (() => browser.permissions.contains({ origins: LINEAR_HOSTS })))().catch(() => false);
         const key = allowed ? k[LINEAR_KEY]?.trim() : undefined;
-        const teams = key ? await listTeams(key, deps.linear, meetingId).catch((e) => { fail(e); return []; }) : [];
+        const { teams, me } = key ? await linearWorkspace(key, deps.linear, meetingId).catch((e) => { fail(e); return { teams: [], me: undefined }; }) : { teams: [], me: undefined };
         const saved = await savedTeam().catch(() => undefined);
-        if (alive) { setLinear({ key, teams }); setTeamId(teams.find((t) => t.id === saved?.id)?.id ?? teams[0]?.id ?? ''); }
+        if (alive) { setLinear({ key, teams, me }); setTeamId(teams.find((t) => t.id === saved?.id)?.id ?? teams[0]?.id ?? ''); }
       });
     }
     return () => { alive = false; };
@@ -156,12 +185,12 @@ export default function SendTasks() {
     } else if (tab === 'notion') {
       const database = notion?.dbs.find((d) => d.id === dbId);
       if (!notion?.token || !database) return;
-      target = { service: 'notion', token: notion.token, database };
+      target = { service: 'notion', token: notion.token, database, ...(notion.account?.userId ? { me: notion.account.userId } : {}) };
       label = database.title;
     } else {
       const team = linear?.teams.find((t) => t.id === teamId);
       if (!linear?.key || !team) return;
-      target = { service: 'linear', key: linear.key, teamId: team.id };
+      target = { service: 'linear', key: linear.key, teamId: team.id, ...(linear.me ? { me: linear.me.id } : {}) };
       label = team.name;
     }
     setBusy(true);
@@ -242,6 +271,8 @@ export default function SendTasks() {
             </select>
           </div>
         )}
+        {tab === 'notion' && notion?.token && <Account who={notion.account?.label} onChange={() => navigate('notionConnect')} />}
+        {tab === 'linear' && linear?.key && <Account who={linear.me?.email} onChange={() => navigate('linearConnect')} />}
         {tab === 'notion' && notion?.token && (
           <div className="st-pick">
             <label htmlFor="st-db" className="af-label">Database</label>
@@ -275,6 +306,14 @@ export default function SendTasks() {
             );
           })}
         </ul>
+        {tab === 'notion' && notion?.token && (() => {
+          const db = notion.dbs.find((d) => d.id === dbId);
+          const rows: [string, string][] = [];
+          if (db?.peopleProp && notion.account?.userId) rows.push(['Owner', db.peopleProp]);
+          if (db?.dateProp) rows.push(['Due', db.dateProp]);
+          return <Mapping rows={rows} />;
+        })()}
+        {tab === 'linear' && linear?.key && <Mapping rows={[...(linear.me ? [['Your promises', 'Assign to me'] as [string, string]] : []), ['Due', 'Issue due date']]} />}
         {tab === 'gtasks' && !tasksOn && (
           <p className="st-info">The first time, Google asks you for one more permission. Rekord asks Google to add tasks. It can’t read your other tasks.</p>
         )}

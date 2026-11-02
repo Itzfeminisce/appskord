@@ -9,13 +9,17 @@ import { getSettings } from '@/lib/settings';
 import { BoardCard, EmptyCard, ModelDownloadCard, ModelFailedBanner, QuoteMissingCard, StateBanner } from '../components/v4/states';
 import { meetingLine, quoteClock, weekdayDate, type Meetings } from '../screens/v4/loops';
 import { ToastBar } from '../screens/v4/parts';
+import { RecallCard } from '../screens/v4/Recall';
+import { recallCard, type RecallCard as Recall } from '@/lib/live/recall';
+import { world } from '../components/v4/world';
+import '../screens/v4/live.css';
 
 const MB = 1024 * 1024;
 const noop = () => undefined;
 
 interface Board {
   provider: string; waiting: string; failed: string; q3: MemoryItem; meetings: Meetings; deck: MemoryItem; checklist: MemoryItem; launch: MemoryItem;
-  totals: { promises: number; decisions: number; people: number }; lumen: { title: string; items: number };
+  totals: { promises: number; decisions: number; people: number }; lumen: { title: string; items: number }; owed?: Recall;
 }
 
 async function load(): Promise<Board> {
@@ -28,6 +32,7 @@ async function load(): Promise<Board> {
     deck: (await getItem('i-deck'))!, checklist: (await getItem('i-checklist'))!, launch: (await getItem('i-launch-copy'))!,
     totals: { promises: live.filter((i) => i.kind === 'promise').length, decisions: live.filter((i) => i.kind === 'decision').length, people: people.length },
     lumen: { title: title(M.lumen), items: lumenItems.length },
+    owed: recallCard([(await getItem('i-deck'))!], list, people, world.now()),
   };
 }
 
@@ -81,6 +86,7 @@ export default function StatesBoard() {
       <BoardCard label="Meeting deleted">
         <StateBanner tone="plain" icon="done" title={`“${b.lumen.title}” was deleted`} body={`Its ${b.lumen.items} memory items are gone too.`} action={{ label: 'Undo', kind: 'light', onClick: noop }} />
       </BoardCard>
+      {b.owed && <BoardCard label="Recall card · a promise you owe"><RecallCard card={b.owed} onNotNow={noop} onMute={noop} /></BoardCard>}
     </div>
   );
 }

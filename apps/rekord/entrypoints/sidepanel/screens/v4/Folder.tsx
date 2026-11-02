@@ -27,7 +27,7 @@ function useTree(): string[] {
         const person = people.find((p) => (p.email && emails.has(p.email)) || (latest && p.meetingIds.includes(latest.id)))
           ?? [...people].sort((a, b) => b.meetingIds.length - a.meetingIds.length)[0];
         setTree([latest && meetingPath(latest), person && personPath(person), OPEN_LOOPS_PATH, DECISIONS_PATH]
-          .filter((p): p is string => !!p).map((p) => `Rekord/${p}`));
+          .filter((p): p is string => !!p));
       })
       .catch((error) => console.error('Rekord: could not load your meetings', error));
   }, []);
@@ -81,7 +81,7 @@ function On({ status, tree, allow, all, change, stop, busy }: OnProps) {
         <div className="fo-where">
           <span className="fo-icon"><FolderIcon /></span>
           <span className="fo-where-text">
-            <span className="fo-path">{status.name}</span>
+            <span className="fo-path">Folder: {status.name}</span>
             {status.lastWrittenAt !== undefined && <span className="fo-status">Writing here · Last written <span className="fo-mono">{time(status.lastWrittenAt)}</span></span>}
           </span>
         </div>
