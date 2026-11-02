@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { captionLines } from '@/lib/project/captions';
 import { currentCut } from '@/lib/project/history';
 import { removeLayer } from '@/lib/project/ops';
@@ -33,6 +33,8 @@ export interface EditorSlots {
   aside?: ComponentType<SlotProps>;
   inspector?: (props: SlotProps) => Pick<InspectorProps, 'panels' | 'selection'>;
   topBar?: (props: SlotProps) => Partial<Pick<TopBarProps, 'onName' | 'onCuts' | 'onHistory' | 'onShortcuts' | 'onAskAI' | 'onExport'>>;
+  /** Slots whose inspector or top bar read their own state call `onChange` so the shell draws them again. */
+  subscribe?: (onChange: () => void) => () => void;
 }
 
 const PREVIEW_SLOW_SEEN = 'klipkord.previewSlowSeen';
@@ -61,6 +63,8 @@ function stops(project: Project, segments: { start: number }[]): number[] {
 export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) {
   const deps = useDeps();
   const size = useWindowSize();
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => slots.subscribe?.(redraw), [slots]);
   const [session, setSession] = useState<SessionState>('checking');
   const sessionRef = useRef<ReturnType<typeof deps.joinSession> | null>(null);
   const api = useProject(id, session !== 'editing');

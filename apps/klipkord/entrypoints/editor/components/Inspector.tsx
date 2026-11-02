@@ -11,6 +11,8 @@ export interface Selection {
   /** "2 of 6": this item's place among its kind. */
   index: number;
   count: number;
+  /** Replaces "2 of 6" when the header says something else, e.g. "3 selected". */
+  place?: string;
   onBack(): void;
   onDelete(): void;
   body: ReactNode;
@@ -57,7 +59,7 @@ export function Inspector({ panels = {}, selection, tab: controlled, onTab, noti
             </button>
             {selection.icon && <span style={{ color: C.accentText, display: 'flex' }}>{selection.icon}</span>}
             <span style={{ fontSize: 13, fontWeight: 600 }}>{selection.name}</span>
-            <span style={{ fontSize: 12, color: C.muted, flexGrow: 1 }}>{selection.index} of {selection.count}</span>
+            <span style={{ fontSize: 12, color: C.muted, flexGrow: 1 }}>{selection.place ?? `${selection.index} of ${selection.count}`}</span>
             <button type="button" aria-label="Delete (Del)" title="Delete (Del)" onClick={selection.onDelete} style={iconButton(28)}>
               <Icon>{ICONS.trash}</Icon>
             </button>
