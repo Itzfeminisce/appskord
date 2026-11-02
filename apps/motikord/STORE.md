@@ -1,6 +1,6 @@
 # Chrome Web Store listing
 
-Build the zip with `npm run zip`. For the first upload only, add the private key as `key.pem` at the zip root so the store keeps the id `pppjklpibpnndjfddhcedbdicfdalchl`; never commit it. The file is `.output/motikord-<version>-chrome.zip`. Raise `version` in `package.json` for every upload.
+Build the store zip with `pnpm zip:store`; it leaves `key` out of the manifest, which the store rejects. Test zips (`pnpm zip`) keep it so unpacked ids stay fixed. For the first upload only, add the private key as `key.pem` at the zip root so the store keeps the id `pppjklpibpnndjfddhcedbdicfdalchl`; never commit it. The file is `.output/motikord-<version>-chrome.zip`. Raise `version` in `package.json` for every upload.
 
 ## Listing text
 - **Name:** Motikord
@@ -17,7 +17,7 @@ Build the zip with `npm run zip`. For the first upload only, add the private key
   - Optional: Groq writes the clips, with a key from Penv Cloud (https://penv.cloud) or your own. Keys stay on the computer and are cleared when Chrome closes.
   - Open source.
 - **Category:** Productivity. **Language:** English.
-- **Privacy policy URL:** the public URL of `docs/privacy.md`.
+- **Privacy policy URL:** https://github.com/Itzfeminisce/appskord/blob/main/apps/motikord/docs/privacy.md
 
 ## Single purpose
 Make short animated clips from a prompt, a page or your own media.
@@ -36,10 +36,25 @@ Make short animated clips from a prompt, a page or your own media.
 - Remote code: none is loaded.
 - Data use: disclose prompts, clip text and search words, sent only to the service the user turns on; none sold; none used for unrelated purposes.
 
-## Assets to prepare
-- Icons: `public/icon/` (16, 48, 128).
-- Screenshots 1280x800, at least one. Frames to capture: Home (prompt box), Making, the editor, Quality check, Free media search, Export, Library, Brand kit, Privacy (Where your data goes).
-- Small promo tile 440x280.
+## Store assets
+All in `store/` (not `public/`, which would ship inside the extension). 24-bit PNG, no alpha.
+- **Icon:** `public/icon/128.png`.
+- **Global promo video:** leave blank.
+- **Screenshots (1280x800), upload in this order:**
+  1. `store/screenshot-1.png`: Describe the clip you want.
+  2. `store/screenshot-2.png`: Edit every scene.
+  3. `store/screenshot-3.png`: One clip in every size.
+  4. `store/screenshot-4.png`: Swap a scene’s template in one click.
+  5. `store/screenshot-5.png`: A quality check before you export.
+- **Small promo tile (440x280):** `store/small-promo-tile.png`.
+- **Marquee promo tile (1400x560):** `store/marquee-promo-tile.png`.
+
+## Additional fields
+- **Official URL:** None (no site of ours is verified in Search Console).
+- **Homepage URL:** https://github.com/Itzfeminisce/appskord/tree/main/apps/motikord
+- **Support URL:** https://github.com/Itzfeminisce/appskord/issues
+- **Mature content:** No.
+- **Item support:** On.
 
 ## Release steps
 - Bump `version` in `apps/motikord/package.json`, merge to `main`, then tag from `main`: `git tag motikord@x.y.z && git push origin motikord@x.y.z`.

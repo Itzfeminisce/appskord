@@ -28,6 +28,11 @@ describe('defineAppConfig', () => {
     expect(manifestOf(defineAppConfig(base)).key).toBe('test-public-key');
   });
 
+  it('leaves the key out of a store build', () => {
+    vi.stubEnv('APPSKORD_STORE', '1');
+    expect('key' in manifestOf(defineAppConfig(base))).toBe(false);
+  });
+
   it('keeps extra manifest fields but never lets them replace the shared ones', () => {
     const m = manifestOf(defineAppConfig({ ...base, manifest: { commands: { go: {} }, key: 'other', name: 'Other' } }));
     expect(m.commands).toEqual({ go: {} });

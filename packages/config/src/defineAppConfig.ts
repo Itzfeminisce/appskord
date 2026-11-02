@@ -30,6 +30,11 @@ export function isRelease(argv: string[] = process.argv): boolean {
   return argv.includes('zip') || argv.includes('release');
 }
 
+/** Store build = `APPSKORD_STORE=1`. The Web Store rejects `manifest.key`; it keeps the id from `key.pem` in the first upload. */
+export function isStoreBuild(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.APPSKORD_STORE === '1';
+}
+
 /** The WXT config of one app. `WXT_EXTENSION_KEY` overrides the key (CI and tests only). */
 export function defineAppConfig(options: AppConfigOptions): UserConfig {
   const { name, description, publicKey, icons, permissions, optionalHostPermissions, hostPermissions } = options;
@@ -55,7 +60,7 @@ export function defineAppConfig(options: AppConfigOptions): UserConfig {
     },
     manifest: {
       ...options.manifest,
-      key: process.env.WXT_EXTENSION_KEY || publicKey,
+      ...(isStoreBuild() ? {} : { key: process.env.WXT_EXTENSION_KEY || publicKey }),
       name,
       description,
       icons,
