@@ -244,7 +244,7 @@ export default function Home({ preview }: { preview?: { settled: string; interim
       <span style={{ margin: '6px 20px 0', fontSize: 12, color: 'var(--faint)' }}>Every clip comes in all three sizes. This is the one you see first.</span>
 
       <div style={{ padding: '14px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <Button block disabled={!ready} aria-disabled={!ready} onClick={make} style={{ height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}>
+        <Button block className="btn-with-icon" disabled={!ready} aria-disabled={!ready} onClick={make} style={{ height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>Make clip
         </Button>
         {listening
@@ -276,6 +276,7 @@ export default function Home({ preview }: { preview?: { settled: string; interim
                 <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.recipe.name}</span>
                 <span style={{ fontSize: 12, color: 'var(--muted)' }}>{TYPE_NAMES[c.recipe.type]} · {formatLength(c.recipe.scenes.reduce((s, x) => s + x.durationMs, 0))} · {when(c.updatedAt)}</span>
               </span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: 4, flexShrink: 0 }}><path d="M9 6l6 6-6 6" /></svg>
             </button>
           ))}
         </div>

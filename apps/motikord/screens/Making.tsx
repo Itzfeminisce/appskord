@@ -7,7 +7,7 @@ import { send } from '../lib/messages';
 import { CheckerLeftIssues, CriticNotAvailable, CriticUnreachable, MakeFooter, MakingSlow, ProviderBusy, SceneRetrying, StoryboardFailed, TooLong } from './StatesCreate';
 import { getPack, getSceneTemplate } from '../lib/templates/scenes';
 import { lookLine } from './LookSheet';
-import { beatPreview, PackSwatch, SceneThumb } from './makeParts';
+import { beatPreview, PackSwatch, ScenePreview } from './makeParts';
 
 const check = (size = 18) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--success-ink)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>;
 const spinner = <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0, animation: 'spin 0.9s linear infinite' }}><path d="M12 3a9 9 0 1 0 9 9" /></svg>;
@@ -135,10 +135,13 @@ export default function Making() {
   else if (failed === 'provider-busy' && autoRetry) card = <ProviderBusy provider={provider} seconds={Math.ceil((waitMs ?? 20_000) / 1000)} onTryNow={again} />;
   else if (run.notices.includes('too-long')) card = <TooLong />;
   else if (run.retrying !== undefined && run.status === 'running') card = <SceneRetrying n={run.retrying + 1} />;
-  else if (slow) card = <MakingSlow provider={provider === 'groq' || by === 'builtin' ? provider : by} />;
   else if (run.criticSkipped === 'critic-not-available') card = <CriticNotAvailable model={run.criticModel} onChangeModel={() => navigate('SettingsModel')} />;
   else if (run.criticSkipped === 'critic-unreachable' && !dismissed) card = <CriticUnreachable provider={provider} onDismiss={() => setDismissed(true)} />;
   else if (run.issuesLeft.length > 0 && done) card = <CheckerLeftIssues n={run.issuesLeft.length} onOpen={() => { if (run.clipId) void send({ type: 'editor/open', clipId: run.clipId }); }} />;
+
+  // A slow AI is a small grey line under the step that is running, not a card.
+  const slowLine = slow && !card ? <MakingSlow provider={provider === 'groq' || by === 'builtin' ? provider : by} /> : null;
+  const withSlow = (i: number, detail: ReactNode) => (slowLine && state(i) === 'active' ? <>{detail}{slowLine}</> : detail);
 
   const planCard = sb && (
     <div style={{ ...inset, overflow: 'hidden' }}>
@@ -180,7 +183,7 @@ export default function Making() {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           <div role="img" aria-label={caption ? `${caption} preview` : 'Preview'} style={{ width: 96, height: 170, borderRadius: 10, background: pack?.palette.bg ?? 'var(--tint-strong)', position: 'relative', overflow: 'hidden', boxShadow: '0 10px 28px -6px rgba(16,16,20,0.28), 0 0 0 1px rgba(16,16,20,0.06)' }}>
-            {preview && <SceneThumb recipe={preview} index={previewIndex} width={96} height={170} />}
+            {preview && <ScenePreview recipe={preview} index={previewIndex} width={96} height={170} />}
             {at === 1 && total > 0 && <span style={{ position: 'absolute', left: 0, bottom: 0, height: 3, width: `${(run.filled / total) * 100}%`, background: pack?.palette.accent ?? 'var(--accent)', transition: 'width 300ms' }} />}
           </div>
           {caption && <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{caption}</span>}
@@ -192,33 +195,33 @@ export default function Making() {
       <ol style={{ listStyle: 'none', margin: '20px 16px 0', padding: '6px 16px', borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }}>
         <Step state={state(0)} label="Planning the story"
           side={sb && at > 1 ? `${sb.beats.length} scenes · ${lengthS} s · ${pack?.name ?? sb.style}` : undefined}
-          detail={at === 1 ? planCard : undefined} />
+          detail={withSlow(0, at === 1 ? planCard : undefined)} />
         <Step state={state(1)}
           label={at > 1 ? `Filling ${total} scenes` : total > 0 ? `Filling scene ${Math.min(n, total)} of ${total}` : 'Filling scenes'}
           side={at === 1 && total > 0 ? `${run.filled} of ${total} done` : undefined}
-          detail={at === 1 && total > 0 ? (
+          detail={withSlow(1, at === 1 && total > 0 ? (
             <div role="progressbar" aria-label="Filling scenes" aria-valuemin={0} aria-valuemax={total} aria-valuenow={run.filled} style={{ marginLeft: 30, height: 3, borderRadius: 2, background: '#F1F1F3', overflow: 'hidden' }}>
               <span style={{ display: 'block', width: `${((run.filled + 0.5) / total) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: 2, transition: 'width 300ms' }} />
             </div>
-          ) : undefined} />
+          ) : undefined)} />
         <Step state={state(2)} label="Checking the layout"
-          detail={run.fixes.length > 0 ? (
+          detail={withSlow(2, run.fixes.length > 0 ? (
             <div style={{ ...inset, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{`Fixed ${run.fixes.length} ${run.fixes.length === 1 ? 'thing' : 'things'}`}</span>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {run.fixes.map((f) => <FixLine key={f} line={f} />)}
               </ul>
             </div>
-          ) : undefined} />
+          ) : undefined)} />
         {criticSteps && (
           <Step state={state(3)} label="Looking at a few frames"
-            detail={run.critic ? (
+            detail={withSlow(3, run.critic ? (
               <div style={{ marginLeft: 30, display: 'flex', alignItems: 'center', gap: 10 }}>
                 {run.recipe && run.critic.scenes.map((i, k) => {
                   const last = k === run.critic!.scenes.length - 1 && at === 3;
                   return (
                     <span key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <SceneThumb recipe={run.recipe!} index={i} width={44} height={78} style={tile(last)} />
+                      <ScenePreview recipe={run.recipe!} index={i} width={44} height={78} style={tile(last)} />
                       <span className="mono" style={{ fontSize: 10, color: last ? 'var(--accent-hover)' : 'var(--muted)', textAlign: 'center' }}>{i + 1}</span>
                     </span>
                   );
@@ -228,9 +231,9 @@ export default function Making() {
                   <span className="mono" style={{ fontSize: 11 }}>{sceneList(run.critic.scenes)}</span>
                 </span>
               </div>
-            ) : undefined} />
+            ) : undefined)} />
         )}
-        <Step state={state(4)} label="Opening the editor" last />
+        <Step state={state(4)} label="Opening the editor" detail={withSlow(4, undefined)} last />
       </ol>
 
       <div style={{ flexGrow: 1 }} />

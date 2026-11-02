@@ -6,7 +6,7 @@ import { actionStyle, PenvDisconnected, ProviderAccess } from './StatesSetup';
 const label = (p: Provider) => PROVIDERS[p].label;
 
 type Tone = 'plain' | 'warning' | 'error';
-type Glyph = 'cross' | 'clock' | 'warn' | 'wifi-off' | 'info';
+type Glyph = 'cross' | 'clock' | 'warn' | 'wifi-off' | 'no-wifi' | 'info';
 
 const TONE: Record<Tone, { bg: string; line: string }> = {
   plain: { bg: 'var(--surface)', line: 'var(--line)' },
@@ -20,6 +20,7 @@ function Icon({ glyph }: { glyph: Glyph }) {
   if (glyph === 'clock') return <svg {...p} stroke="#B45309"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>;
   if (glyph === 'warn') return <svg {...p} stroke="#B45309"><path d="M12 3.5l9.5 16.5h-19z" /><path d="M12 10v4.5M12 17.5v.01" /></svg>;
   if (glyph === 'wifi-off') return <svg {...p} stroke="var(--muted)"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0M12 19v.01M3 3l18 18" /></svg>;
+  if (glyph === 'no-wifi') return <svg {...p} stroke="var(--faint)"><path d="M3 3l18 18" /><path d="M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 4.2-2.4M19 12.9a10 10 0 0 0-2.5-1.8M12 20v.01" /></svg>;
   return <svg {...p} stroke="var(--muted)"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.01" /></svg>;
 }
 
@@ -167,12 +168,22 @@ export function CriticNotAvailable({ model = 'openai/gpt-oss-120b', onChangeMode
     </Notice>
   );
 }
-export function CriticUnreachable({ provider = 'groq', onDismiss }: { provider?: Provider; onDismiss?: () => void }) {
+/** A one-line message card: regular body text, no title, and an optional borderless dismiss at the top right. */
+function Message({ glyph, children, onDismiss }: { glyph: Glyph; children: ReactNode; onDismiss?: () => void }) {
   return (
-    <Notice glyph="info" role="status" title={`Couldn't reach ${label(provider)} for the visual check. Your clip is ready without it.`}
-      actions={<button type="button" aria-label="Dismiss" onClick={onDismiss} style={{ ...secondary, width: 32, padding: 0 }}>×</button>}>{null}
-    </Notice>
+    <div role="status" style={{ padding: 14, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <Icon glyph={glyph} />
+      <span style={{ flexGrow: 1, minWidth: 0, fontSize: 13, lineHeight: 1.45, color: 'var(--ink)' }}>{children}</span>
+      {onDismiss && (
+        <button type="button" aria-label="Dismiss" onClick={onDismiss} style={{ width: 32, height: 32, margin: '-6px -6px 0 0', border: 'none', borderRadius: 8, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, padding: 0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      )}
+    </div>
   );
+}
+export function CriticUnreachable({ provider = 'groq', onDismiss }: { provider?: Provider; onDismiss?: () => void }) {
+  return <Message glyph="no-wifi" onDismiss={onDismiss ?? (() => {})}>{`Couldn't reach ${label(provider)} for the visual check. Your clip is ready without it.`}</Message>;
 }
 export function CheckerLeftIssues({ n = 2, onOpen }: { n?: number; onOpen?: () => void }) {
   return (
@@ -181,11 +192,25 @@ export function CheckerLeftIssues({ n = 2, onOpen }: { n?: number; onOpen?: () =
     </Notice>
   );
 }
+/** The small grey line under the active Making step when the AI is slow. */
 export function MakingSlow({ provider = 'groq' }: { provider?: Provider }) {
-  return <Notice tone="warning" role="status" glyph="clock" title={`Still working. ${label(provider)} is slower than usual today.`}>{null}</Notice>;
+  return (
+    <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '2px 0 2px 30px' }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8v.01" /></svg>
+      <span style={{ fontSize: 12, lineHeight: 1.4, color: 'var(--muted)' }}>{`Still working. ${label(provider)} is slower than usual today.`}</span>
+    </div>
+  );
 }
 export function CriticOff() {
-  return <Notice glyph="info" role="status" title="Visual critic is off. The layout check still runs.">{null}</Notice>;
+  return (
+    <div style={{ padding: 14, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, flexGrow: 1 }}>Visual critic</span>
+        <span aria-hidden="true" style={{ width: 40, height: 24, borderRadius: 12, background: '#D4D4D8', position: 'relative', flexShrink: 0 }}><span style={{ position: 'absolute', top: 3, left: 3, width: 18, height: 18, borderRadius: 9, background: '#FFFFFF' }} /></span>
+      </span>
+      <span role="status" style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>Visual critic is off. The layout check still runs.</span>
+    </div>
+  );
 }
 /** The footer under v2 Making; after the critic looked at frames it says what else left. */
 export function MakeFooter({ by, frames }: { by: Provider | 'builtin'; frames?: number }) {
