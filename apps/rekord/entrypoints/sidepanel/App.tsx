@@ -27,6 +27,8 @@ import People from './screens/v4/People';
 import Person from './screens/v4/Person';
 import PersonMerge from './screens/v4/PersonMerge';
 import Forget from './screens/v4/Forget';
+import Review from './screens/v4/Review';
+import ReviewEdit from './screens/v4/ReviewEdit';
 import { Shell } from './components/v4/Shell';
 import Connections from './screens/Connections';
 import Share from './screens/Share';
@@ -78,6 +80,8 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   person: Person,
   personMerge: PersonMerge,
   forget: Forget,
+  review: Review,
+  reviewEdit: ReviewEdit,
 };
 
 /** First screen: onboarding until the user has finished it, then Open loops. */

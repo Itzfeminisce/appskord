@@ -25,10 +25,11 @@ export type ScreenName =
   | 'nosound' // v3: desktop-app capture hears nothing
   | 'notionConnect' | 'notionPage'
   | 'home' | 'backfill' // v4: Open loops is home
-  | 'people' | 'person' | 'personMerge' | 'forget';
+  | 'people' | 'person' | 'personMerge' | 'forget'
+  | 'review' | 'reviewEdit';
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
-export interface RouteParams { meetingId?: string; message?: string; atMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string }
+export interface RouteParams { meetingId?: string; itemId?: string; message?: string; atMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string }
 export interface Route { screen: ScreenName; params: RouteParams }
 
 export interface Router {
@@ -52,8 +53,8 @@ export interface SurfaceOptions {
 }
 
 // Survives Back and reload in the URL hash (`#/transcript?meeting=…&at=…`); ids, times and app copy only.
-const validateSearch = searchParams({ meeting: 'string', at: 'number', message: 'string', section: 'string', person: 'string', other: 'string' });
-const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, at: p.atMs, message: p.message, section: p.section, person: p.personId, other: p.otherId });
+const validateSearch = searchParams({ meeting: 'string', item: 'string', at: 'number', message: 'string', section: 'string', person: 'string', other: 'string' });
+const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, item: p.itemId, at: p.atMs, message: p.message, section: p.section, person: p.personId, other: p.otherId });
 // Redirects name screens built from data, which TanStack's typed `to` cannot check.
 const redirectTo = (route: Route, state?: object) =>
   redirect({ to: `/${route.screen}`, search: toSearch(route.params), replace: true, state } as unknown as Parameters<typeof redirect>[0]);
@@ -61,6 +62,7 @@ function toParams(search: Record<string, unknown>): RouteParams {
   const s = validateSearch(search);
   const params: RouteParams = {};
   if (s.meeting) params.meetingId = s.meeting;
+  if (s.item) params.itemId = s.item;
   if (s.message) params.message = s.message;
   if (s.at !== undefined) params.atMs = s.at;
   if (s.person) params.personId = s.person;

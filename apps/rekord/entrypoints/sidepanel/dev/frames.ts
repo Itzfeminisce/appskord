@@ -4,7 +4,7 @@ import { getDB, listMeetings } from '@/lib/db';
 import { getItem } from '@/lib/memory/store';
 import { DEFAULT_SETTINGS } from '@/lib/settings';
 import { world } from '../components/v4/world';
-import { M, SAMPLE_MEETINGS } from '@/lib/memory/sample';
+import { M, SAMPLE_AFTER, SAMPLE_MEETINGS, SAMPLE_ONE_ON_ONE, SAMPLE_PERSON_SUGGESTION } from '@/lib/memory/sample';
 import { getSettings, updateSettings } from '@/lib/settings';
 import type { RouteParams, ScreenName } from '../router';
 import { BACKFILL_KEY, type BackfillMeeting, type BackfillProgress } from '@/lib/memory/backfill';
@@ -44,6 +44,25 @@ function backfillState(): BackfillProgress {
   };
 }
 
+/** After the 1:1: its summary, and "Tom" heard in the call beside Tom Becker from the invite. */
+async function afterOneOnOne() {
+  const db = await getDB();
+  const { name } = SAMPLE_PERSON_SUGGESTION;
+  const email = SAMPLE_PERSON_SUGGESTION.email!;
+  const event = SAMPLE_ONE_ON_ONE.event!;
+  await db.put('meetings', {
+    ...SAMPLE_ONE_ON_ONE,
+    event: { ...event, attendees: [...event.attendees, { name, email }] },
+    summary: {
+      overview: 'The Northwind rollout moves from 9 Nov to 16 Nov. You send Sarah the revised pricing deck today; Sarah sends the seat count by Fri 6 Nov. Northwind asked whether it can pay yearly.',
+      decisions: [], actions: [], questions: [], generatedAt: SAMPLE_AFTER, model: 'sample',
+    },
+  });
+  const base = { meetingIds: [M.sarah3], createdAt: SAMPLE_AFTER, updatedAt: SAMPLE_AFTER };
+  await db.put('people', { id: 'p-tom', name, email, aliases: [], ...base });
+  await db.put('people', { id: 'p-tom-heard', name: SAMPLE_PERSON_SUGGESTION.aliases[0]!, aliases: [], ...base });
+}
+
 export const DEV_FRAMES: Record<string, DevFrame> = {
   V4Home: { screen: 'home' },
   V4WhatsNew: {
@@ -54,6 +73,9 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
       await setMemory({ backfill: 'ask' });
     },
   },
+  V4Review: { screen: 'review', params: { meetingId: M.sarah3 }, moment: 'after', setup: afterOneOnOne },
+  V4ReviewEdit: { screen: 'reviewEdit', params: { meetingId: M.sarah3, itemId: 'n-intro' }, moment: 'after', setup: afterOneOnOne },
+  V4Summary: { screen: 'summary', params: { meetingId: M.sarah3 }, moment: 'after', setup: afterOneOnOne },
   V4Backfill: {
     screen: 'backfill',
     setup: async () => {
