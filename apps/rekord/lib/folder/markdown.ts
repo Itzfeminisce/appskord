@@ -49,7 +49,8 @@ function frontMatter(fields: Record<string, string | number | string[] | undefin
 type People = Map<string, Person>;
 const nameOf = (people: People, id?: string) => (id === 'me' ? 'You' : id ? people.get(id)?.name : undefined);
 
-function itemLine(item: MemoryItem, people: People, meetings?: Map<string, Meeting>): string {
+/** `own`: the meeting whose page this is, when the item came from it; a catch-up quote has no clock. */
+function itemLine(item: MemoryItem, people: People, meetings?: Map<string, Meeting>, own?: Meeting): string {
   const done = item.status === 'done' || item.status === 'answered';
   const box = item.kind === 'decision' ? '' : done ? '[x] ' : '[ ] ';
   const text = item.status === 'replaced' ? `~~${item.text}~~ (replaced)` : item.text;
@@ -60,7 +61,9 @@ function itemLine(item: MemoryItem, people: People, meetings?: Map<string, Meeti
   if (item.due) parts.push(`due ${item.due}`);
   const source = meetings?.get(item.meetingId);
   if (source) parts.push(link(meetingPath(source)));
-  const quote = `  > “${item.quote.text}” (${item.quote.speaker}, ${clock(item.quote.atMs)})`;
+  const from = source ?? (own?.id === item.meetingId ? own : undefined);
+  const when = isCatchup(from) ? FROM_CATCHUP : clock(item.quote.atMs);
+  const quote = `  > “${item.quote.text}” (${item.quote.speaker}, ${when})`;
   return `- ${parts.join(' · ')}\n${quote}`;
 }
 
@@ -89,9 +92,9 @@ export function meetingMarkdown({ meeting, segments, notes, markers, items }: Me
     `\n# ${meeting.title}\n`,
     catchupHeader(meeting),
     section('Summary', summary?.overview ? [summary.overview] : []),
-    section('Promises', kept.filter((i) => i.kind === 'promise').map((i) => itemLine(i, people))),
-    section('Decisions', kept.filter((i) => i.kind === 'decision').map((i) => itemLine(i, people))),
-    section('Questions', kept.filter((i) => i.kind === 'question').map((i) => itemLine(i, people))),
+    section('Promises', kept.filter((i) => i.kind === 'promise').map((i) => itemLine(i, people, undefined, meeting))),
+    section('Decisions', kept.filter((i) => i.kind === 'decision').map((i) => itemLine(i, people, undefined, meeting))),
+    section('Questions', kept.filter((i) => i.kind === 'question').map((i) => itemLine(i, people, undefined, meeting))),
     section('Notes', [...notes.map((n) => ({ atMs: n.atMs, text: n.text })), ...markers.filter((m) => m.label).map((m) => ({ atMs: m.atMs, text: m.label! }))]
       .sort((a, b) => a.atMs - b.atMs).map((n) => `- ${clock(n.atMs)} ${n.text}`)),
     section('Transcript', segments.filter((s) => !s.interim).map((s) => `**${speaker(s)}** ${clock(s.startMs)} ${s.text}`)),

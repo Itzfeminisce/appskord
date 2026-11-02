@@ -1,8 +1,10 @@
 // Redaction: removes a span of a meeting for good (audio, transcript, summary lines, items, search entries).
 import {
   deleteAsk, deleteChunk, deleteMarker, deleteNote, deleteSegment, getMeeting, getRecordingMeta, listAsks, listChunks, listMarkers,
-  listMeetings, listNotes, listRecordingParts, listSegments, putChunk, putMeeting, replaceRecordingParts,
+  listMeetings, listNotes, listRecordingParts, listSegments, listTellingAudio, putChunk, putMeeting, replaceRecordingParts,
 } from './db';
+import { isCatchup } from './catchup/label';
+import { partOfSeq, tellSeqBase } from './catchup/session';
 import { record } from './ledger';
 import { refreshBadge, send } from './messages';
 import { addTombstones, deleteItem, getPerson, listItems, putItem, replaceVectors, vectorsForMeeting } from './memory/store';
@@ -337,15 +339,33 @@ export const browserDecode: Decode = async (blob) => {
  * one compressed file, so they cannot be cut as they are: the file is decoded once, the spans set to silence and
  * encoded again as one part. When it cannot be decoded this throws, and the redaction stops before any change.
  */
-async function silencedRecording(meetingId: string, spans: Span[], decode: Decode, encode: Encode): Promise<RecordingPart | undefined> {
+async function silencedRecording(meetingId: string, spans: Span[], decode: Decode, encode: Encode): Promise<RecordingPart[] | undefined> {
   const parts = await listRecordingParts(meetingId);
   if (!parts.length) return undefined;
+  if (isCatchup(await getMeeting(meetingId))) return silencedTelling(meetingId, spans, parts, decode, encode);
   const meta = (await getRecordingMeta(meetingId)) ?? { meetingId, pauses: [] };
   const pcm = await decode(new Blob(parts.map((p) => p.blob), { type: parts[0]!.mimeType }));
   if (!pcm) throw new Error('Rekord: this browser cannot decode the recording, so it cannot be redacted');
   for (const s of spans) silence(pcm, toRecordingMs(s.startMs, meta.pauses), toRecordingMs(s.endMs, meta.pauses));
   const blob = await encode(pcm);
-  return { id: `${meetingId}-redacted-0`, meetingId, seq: 0, blob, mimeType: blob.type };
+  return [{ id: `${meetingId}-redacted-0`, meetingId, seq: 0, blob, mimeType: blob.type }];
+}
+
+/** A catch-up keeps one file per voice part (T2): each part a span touches is decoded and encoded on its own; the rest stay as they are. */
+async function silencedTelling(meetingId: string, spans: Span[], parts: RecordingPart[], decode: Decode, encode: Encode): Promise<RecordingPart[] | undefined> {
+  const redone = new Map<number, RecordingPart>();
+  for (const audio of await listTellingAudio(meetingId)) {
+    const end = audio.offsetMs + audio.ms;
+    const inside = spans.filter((s) => s.startMs < end && s.endMs > audio.offsetMs);
+    if (!inside.length) continue;
+    const pcm = await decode(audio.blob);
+    if (!pcm) throw new Error('Rekord: this browser cannot decode the recording, so it cannot be redacted');
+    for (const s of inside) silence(pcm, s.startMs - audio.offsetMs, s.endMs - audio.offsetMs);
+    const blob = await encode(pcm);
+    redone.set(audio.part, { id: `${meetingId}-redacted-${audio.part}`, meetingId, seq: tellSeqBase(audio.part), blob, mimeType: blob.type });
+  }
+  if (!redone.size) return undefined;
+  return [...parts.filter((p) => !redone.has(partOfSeq(p.seq))), ...redone.values()];
 }
 
 // Reading and redacting
@@ -398,7 +418,7 @@ export async function redactSpans(meetingId: string, spans: Span[], opts: Redact
   const plan = planSpans({ meetingId, summary: g.meeting.summary, ...g }, spans, now);
   const recording = await silencedRecording(meetingId, spans, opts.decode ?? browserDecode, opts.encode ?? browserEncode);
 
-  if (recording) await replaceRecordingParts(meetingId, [recording]);
+  if (recording) await replaceRecordingParts(meetingId, recording);
   await Promise.all([
     ...plan.segmentIds.map(deleteSegment), ...plan.markerIds.map(deleteMarker), ...plan.chunkIds.map(deleteChunk),
     ...plan.noteIds.map(deleteNote), ...plan.askIds.map(deleteAsk), ...plan.trimmedChunks.map(putChunk),

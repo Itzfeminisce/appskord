@@ -130,6 +130,11 @@ export type Message =
   | { type: 'recording/pause'; on: boolean }           // side panel → background: pause or resume a catch-up telling
   | { type: 'offscreen/pause'; on: boolean; at: number } // background → offscreen; at: the click (epoch ms)
   | { type: 'catchup/typed'; catchup: CatchupStart; text: string } // side panel → background: typed or pasted telling; reply RecordingReply
+  | { type: 'catchup/questions'; meetingId: string }   // pages → background: reply QuestionsState | undefined (lib/catchup/pipeline.ts)
+  | { type: 'catchup/ask-again'; meetingId: string }   // pages → background: retry the follow-up questions; reply QuestionsState
+  | { type: 'catchup/skip'; meetingId: string; questionId: string } // pages → background: "Skip"; reply CatchupStatus
+  | { type: 'catchup/finish'; meetingId: string }      // pages → background: "Finish" (summary, then extraction); reply FinishReply
+  | { type: 'catchup/progress'; meetingId: string }    // pages → background: reply CatchupStatus
   | { type: 'offscreen/stop' }
   | { type: 'recording/off-record'; on: boolean }      // side panel → background (also Alt+Shift+O)
   | { type: 'offscreen/off-record'; on: boolean; at: number } // background → offscreen; at: the click (epoch ms)

@@ -3,12 +3,12 @@ import { getMeeting, pendingChunks, putMeeting } from '../db';
 import { record } from '../ledger';
 import { chat, LLMError, type FetchLike } from '../llm';
 import { readQueue } from '../memory/backfill';
-import { draftExtraction, isExtracted, LEDGER_SERVICE, NOT_SENT, type ExtractDeps } from '../memory/extract';
+import { draftExtraction, extractAgain, isExtracted, LEDGER_SERVICE, NOT_SENT, type ExtractDeps } from '../memory/extract';
 import { isoDay } from '../memory/rank';
 import { itemsForMeeting } from '../memory/store';
 import { getSettings } from '../settings';
 import { summarize, SummarizeError } from '../summarize';
-import type { Meeting } from '../types';
+import type { CatchupStart, Meeting } from '../types';
 import { isCatchup } from './label';
 import { buildQuestionsPrompt, parseQuestions, QUESTIONS_REPLY_TOKENS, QUESTIONS_SYSTEM } from './questions';
 import { addPart } from './session';
@@ -18,7 +18,8 @@ export const QUESTIONS_LEDGER_WHAT = 'Telling text for follow-up questions';
 /** How long the questions step waits for the last of the telling to become text. */
 export const TEXT_WAIT_MS = 120_000;
 const TEXT_POLL_MS = 1_000;
-const STALE_MS = TEXT_WAIT_MS + 3 * 60_000;
+/** A 'waiting' older than this was left by a stopped worker: it reads as failed so the page can offer "Try again". */
+export const STALE_MS = TEXT_WAIT_MS + 3 * 60_000;
 
 export interface QuestionsState {
   status: 'waiting' | 'ready' | 'failed';
@@ -32,15 +33,26 @@ export interface QuestionsState {
 
 export const questionsKey = (meetingId: string) => `catchup.questions.${meetingId}`;
 export const failedKey = (meetingId: string) => `catchup.failed.${meetingId}`;
+/** Set when the telling grew after its summary: the summary step shows as not done until "Finish" runs again. */
+export const summaryStaleKey = (meetingId: string) => `catchup.summaryStale.${meetingId}`;
 
 export interface PipelineDeps extends ExtractDeps {
   wait?: (ms: number) => Promise<void>;
 }
 
 /** The follow-up questions of a catch-up (V41Questions), undefined before the questions step starts. */
-export async function readQuestions(meetingId: string): Promise<QuestionsState | undefined> {
-  return (await browser.storage.local.get(questionsKey(meetingId)))[questionsKey(meetingId)] as QuestionsState | undefined;
+export async function readQuestions(meetingId: string, now: () => number = Date.now): Promise<QuestionsState | undefined> {
+  const kept = await keptQuestions(meetingId);
+  if (kept?.status === 'waiting' && !inFlight.has(meetingId) && isStale(kept, now)) {
+    return { status: 'failed', questions: [], failed: 'ai', error: 'The questions step stopped. Try again.' };
+  }
+  return kept;
 }
+
+const keptQuestions = async (meetingId: string) =>
+  (await browser.storage.local.get(questionsKey(meetingId)))[questionsKey(meetingId)] as QuestionsState | undefined;
+const isStale = (state: QuestionsState, now: () => number) => now() - (state.since ?? 0) >= STALE_MS;
+const inFlight = new Map<string, Promise<QuestionsState>>();
 
 const saveQuestions = (meetingId: string, state: QuestionsState) => browser.storage.local.set({ [questionsKey(meetingId)]: state });
 
@@ -72,12 +84,10 @@ export async function askQuestions(meetingId: string, deps: PipelineDeps = {}): 
   return run;
 }
 
-const inFlight = new Map<string, Promise<QuestionsState>>();
-
 async function askOnceKept(meetingId: string, deps: PipelineDeps): Promise<QuestionsState> {
   const now = deps.now ?? Date.now;
-  const kept = await readQuestions(meetingId);
-  if (kept?.status === 'ready' || (kept?.status === 'waiting' && now() - (kept.since ?? 0) < STALE_MS)) return kept;
+  const kept = await keptQuestions(meetingId);
+  if (kept?.status === 'ready' || (kept?.status === 'waiting' && !isStale(kept, now))) return kept;
   const meeting = await getMeeting(meetingId);
   if (!isCatchup(meeting) || !meeting) return { status: 'ready', questions: [] };
   await saveQuestions(meetingId, { status: 'waiting', questions: [], since: now() });
@@ -113,6 +123,26 @@ async function askOnce(meetingId: string, prompt: string, fetchFn?: FetchLike): 
   }
 }
 
+/**
+ * A telling stopped (voice or typed). A part added after processing re-runs summary and extraction on "Finish".
+ * Questions are asked after a telling, never after a voice answer; with no start (a worker restart lost it) they are
+ * asked only if they never were, since the lost start may have been an answer.
+ */
+export async function afterTelling(meetingId: string, start: CatchupStart | null, deps: PipelineDeps = {}): Promise<void> {
+  await reopenCatchup(meetingId);
+  if (start?.questionId) return;
+  if (!start && (await keptQuestions(meetingId))) return;
+  await askQuestions(meetingId, deps);
+}
+
+/** "Add more" on a processed catch-up: clears the extraction marker and marks the summary out of date. */
+export async function reopenCatchup(meetingId: string): Promise<void> {
+  const meeting = await getMeeting(meetingId);
+  if (!isCatchup(meeting)) return;
+  if (await isExtracted(meetingId)) await extractAgain(meetingId);
+  if (meeting?.summary) await browser.storage.local.set({ [summaryStaleKey(meetingId)]: true });
+}
+
 /** "Skip": the question stays open. A voice or typed answer is saved by the telling itself (`questionId`). */
 export async function skipQuestion(meetingId: string, questionId: string): Promise<void> {
   const meeting = await getMeeting(meetingId);
@@ -127,21 +157,26 @@ export async function skipQuestion(meetingId: string, questionId: string): Promi
 export async function finishCatchup(meetingId: string, deps: { fetchFn?: FetchLike } = {}): Promise<Meeting> {
   await browser.storage.local.remove(failedKey(meetingId));
   try {
-    return await summarize(meetingId, deps.fetchFn);
+    const meeting = await summarize(meetingId, deps.fetchFn);
+    await browser.storage.local.remove(summaryStaleKey(meetingId));
+    return meeting;
   } catch (error) {
     await browser.storage.local.set({ [failedKey(meetingId)]: error instanceof SummarizeError ? error.message : 'Something went wrong.' });
     throw error;
   }
 }
 
-export interface CatchupStatus { steps: CatchupProgress[]; decisions: number; promises: number }
+export type QuestionState = CatchupQuestion & { state: 'open' | 'answered' | 'skipped' };
+export interface CatchupStatus { steps: CatchupProgress[]; decisions: number; promises: number; questions: QuestionState[] }
 
 /** V41Processing: each step's state, read from what is saved, so any page (or a reopened panel) can show it. */
-export async function catchupProgress(meetingId: string): Promise<CatchupStatus> {
-  const [meeting, pending, questions, extracted, items, queue, failedSummary] = await Promise.all([
-    getMeeting(meetingId), pendingChunks(meetingId), readQuestions(meetingId), isExtracted(meetingId), itemsForMeeting(meetingId), readQueue(),
+export async function catchupProgress(meetingId: string, now: () => number = Date.now): Promise<CatchupStatus> {
+  const [meeting, pending, questions, extracted, items, queue, failedSummary, stale] = await Promise.all([
+    getMeeting(meetingId), pendingChunks(meetingId), readQuestions(meetingId, now), isExtracted(meetingId), itemsForMeeting(meetingId), readQueue(),
     browser.storage.local.get(failedKey(meetingId)).then((r) => r[failedKey(meetingId)] as string | undefined),
+    browser.storage.local.get(summaryStaleKey(meetingId)).then((r) => !!r[summaryStaleKey(meetingId)]),
   ]);
+  const answers = new Map((meeting?.told?.answers ?? []).map((a) => [a.questionId, a]));
   const limited = extracted ? {} : queue.resumeAt && queue.ids.includes(meetingId) ? { failed: 'limit' as const, resumesAt: queue.resumeAt } : queue.failed?.includes(meetingId) ? { failed: 'ai' as const } : {};
   const kept = items.filter((i) => !i.leftOut);
   return {
@@ -150,9 +185,13 @@ export async function catchupProgress(meetingId: string): Promise<CatchupStatus>
       { step: 'questions', done: questions?.status === 'ready', ...(questions?.failed && questions.failed !== 'transcribe' && { failed: questions.failed, ...(questions.resumesAt && { resumesAt: questions.resumesAt }) }) },
       { step: 'decisions', done: extracted, ...limited },
       { step: 'promises', done: extracted, ...limited },
-      { step: 'summary', done: !!meeting?.summary, ...(failedSummary && { failed: 'ai' as const }) },
+      { step: 'summary', done: !!meeting?.summary && !stale, ...(failedSummary && { failed: 'ai' as const }) },
     ],
     decisions: kept.filter((i) => i.kind === 'decision').length,
     promises: kept.filter((i) => i.kind === 'promise').length,
+    questions: (questions?.questions ?? []).map((q) => {
+      const a = answers.get(q.id);
+      return { ...q, state: !a ? 'open' : a.skipped ? 'skipped' : 'answered' };
+    }),
   };
 }

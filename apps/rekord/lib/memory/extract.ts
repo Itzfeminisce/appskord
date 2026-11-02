@@ -240,6 +240,19 @@ export async function partsSaved(meetingId: string): Promise<number> {
   return Object.keys(await readParts(meetingId)).length;
 }
 
+export const againKey = (meetingId: string) => `rekord.extract.again.${meetingId}`;
+
+/** A catch-up told more after it was processed: extraction runs again over the whole telling, adding only new items. */
+export async function extractAgain(meetingId: string): Promise<void> {
+  await browser.storage.local.remove(extractedKey(meetingId));
+  await browser.storage.local.set({ [againKey(meetingId)]: true });
+}
+
+/** An item this meeting already holds, in any status (a dismissed one stays dismissed): same quote or same words. */
+const alreadyHeld = (item: MemoryItem, own: MemoryItem[]) => own.some((o) =>
+  [o.quote, ...o.history].some((q) => q.meetingId === item.quote.meetingId && q.text === item.quote.text)
+  || (o.kind === item.kind && normalise(o.text).join(' ') === normalise(item.text).join(' ')));
+
 export async function isExtracted(meetingId: string): Promise<boolean> {
   return !!(await browser.storage.local.get(extractedKey(meetingId)))[extractedKey(meetingId)];
 }
@@ -275,6 +288,7 @@ async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<Extrac
   const run = await readAll(meetingId, deps);
   if (!run) return EMPTY;
   const { meeting, items, people, ask, found, done } = run;
+  const own = items.filter((i) => i.meetingId === meetingId);
 
   const at = now();
   const attendees = (meeting.event?.attendees ?? []).filter((a) => !a.self).map((a) => ({ name: a.name, email: a.email }));
@@ -301,6 +315,7 @@ async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<Extrac
   const updated = new Map<string, MemoryItem>();
   const keep: MemoryItem[] = [];
   for (const item of fresh) {
+    if (alreadyHeld(item, own)) continue;
     if (item.leftOut) { keep.push(item); continue; }
     const candidates: ItemCandidate[] = earlier.map((e) => ({ item: updated.get(e.id) ?? e, score: similarity(item.text, e.text) }));
     const relations = new Map<string, Relation>();
@@ -331,7 +346,7 @@ async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<Extrac
   await browser.storage.local.set({ [extractedKey(meetingId)]: at });
   for (const p of plan.changed) await putPerson(p);
   for (const i of [...keep, ...updated.values()]) await putItem(i);
-  await browser.storage.local.remove(partsKey(meetingId));
+  await browser.storage.local.remove([partsKey(meetingId), againKey(meetingId)]);
   const kept = keep.filter((i) => !i.leftOut);
   const count = (k: ItemKind) => kept.filter((i) => i.kind === k).length;
   return {
@@ -344,7 +359,9 @@ async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<Extrac
 async function readAll(meetingId: string, deps: ExtractDeps) {
   const [meeting, segments, settings] = await Promise.all([getMeeting(meetingId), listSegments(meetingId), getSettings()]);
   if (!meeting) return undefined;
-  if ((await isExtracted(meetingId)) || (await itemsForMeeting(meetingId)).length) return undefined;
+  if (await isExtracted(meetingId)) return undefined;
+  const again = !!(await browser.storage.local.get(againKey(meetingId)))[againKey(meetingId)];
+  if (!again && (await itemsForMeeting(meetingId)).length) return undefined;
   const parts = splitParts(onRecord(segments, meeting.offSpans), meeting.speakers);
   if (!parts.length) return undefined;
   const instructions = extractSystem(meeting);

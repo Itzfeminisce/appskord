@@ -16,7 +16,8 @@ import { CATCHUP_EMAIL_LINE, followUpFacts, plainDraft, withCatchupLine } from '
 import { SYSTEM as SUMMARY_SYSTEM } from '../summarize';
 import type { Meeting, Segment } from '../types';
 import { catchupPreamble } from './preamble';
-import { askQuestions, catchupProgress, finishCatchup, QUESTIONS_LEDGER_WHAT, readQuestions, skipQuestion } from './pipeline';
+import { afterTelling, askQuestions, catchupProgress, finishCatchup, questionsKey, QUESTIONS_LEDGER_WHAT, readQuestions, skipQuestion, STALE_MS } from './pipeline';
+import { catchupRoute } from './routes';
 import { QUESTIONS_SYSTEM } from './questions';
 
 const START = new Date(2026, 10, 2, 13, 0).getTime();
@@ -192,7 +193,95 @@ describe('follow-up questions', () => {
         { step: 'promises', done: true }, { step: 'summary', done: true },
       ],
       decisions: 0, promises: 1,
+      questions: [{ id: 'q1', text: 'You will send the Q4 plan draft. By when?', about: 'due', state: 'open' }],
     });
+  });
+});
+
+describe('pipeline after a stop, a restart or "Add more"', () => {
+  it('reads a waiting step left by a stopped worker as failed, so it can be asked again', async () => {
+    await meeting('c', 'catchup');
+    const now = Date.now();
+    await fakeBrowser.storage.local.set({ [questionsKey('c')]: { status: 'waiting', questions: [], since: now - 60_000 } });
+    expect(await readQuestions('c')).toMatchObject({ status: 'waiting' });
+    await fakeBrowser.storage.local.set({ [questionsKey('c')]: { status: 'waiting', questions: [], since: now - STALE_MS - 1 } });
+    expect(await readQuestions('c')).toMatchObject({ status: 'failed', failed: 'ai' });
+    expect((await catchupProgress('c')).steps[1]).toMatchObject({ step: 'questions', done: false, failed: 'ai' });
+    const ai = fakeAI();
+    expect(await askQuestions('c', { fetchFn: ai.f })).toMatchObject({ status: 'ready', questions: [{ id: 'q1' }] });
+  });
+
+  it('asks no questions when a restart lost the start of what may be a voice answer', async () => {
+    await meeting('c', 'catchup');
+    const ai = fakeAI();
+    await askQuestions('c', { fetchFn: ai.f });
+    await fakeBrowser.storage.local.set({ [questionsKey('c')]: { status: 'failed', questions: [], failed: 'ai' } });
+    await afterTelling('c', null, { fetchFn: ai.f });
+    await afterTelling('c', { meetingId: 'c', picked: { kind: 'event', event: EVENT }, append: true, questionId: 'q1' }, { fetchFn: ai.f });
+    expect(ai.calls(QUESTIONS_SYSTEM)).toHaveLength(1);
+    expect(await readQuestions('c')).toMatchObject({ status: 'failed' });
+
+    await meeting('d', 'catchup');
+    await afterTelling('d', null, { fetchFn: ai.f }); // nothing asked yet: a first telling
+    expect(ai.calls(QUESTIONS_SYSTEM)).toHaveLength(2);
+  });
+
+  it('shows a skipped question in the progress', async () => {
+    await meeting('c', 'catchup');
+    await askQuestions('c', { fetchFn: fakeAI().f });
+    await skipQuestion('c', 'q1');
+    expect((await catchupProgress('c')).questions).toEqual([expect.objectContaining({ id: 'q1', state: 'skipped' })]);
+  });
+
+  it('runs summary and extraction again after "Add more", without saving an item twice', async () => {
+    await meeting('c', 'catchup');
+    const ai = fakeAI();
+    const venue = { kind: 'promise', text: 'Book the venue', quote: 'Sarah will book the venue', speaker: 'You', atMs: 0, owner: 'Sarah Chen' };
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      const body = JSON.parse(init!.body as string) as Body;
+      if (body.messages[0]!.content.includes(EXTRACT_SYSTEM) && body.messages[1]!.content.includes('book the venue')) {
+        ai.bodies.push(body);
+        return reply({ items: [
+          { kind: 'promise', text: 'Send the Q4 plan draft', quote: 'I will send Sarah the Q4 plan draft', speaker: 'You', atMs: 0, owner: 'You', to: 'Sarah Chen' },
+          { kind: 'decision', text: 'Invented', quote: 'words nobody said', speaker: 'You', atMs: 0 }, venue,
+        ], done: [] });
+      }
+      return ai.f(url, init);
+    });
+    await askQuestions('c', { fetchFn: f });
+    await finishCatchup('c', { fetchFn: f });
+    await extractMeeting('c', { fetchFn: f });
+    const before = await itemsForMeeting('c');
+    expect((await catchupProgress('c')).steps.every((s) => s.done)).toBe(true);
+
+    const start = { meetingId: 'c', picked: { kind: 'event' as const, event: EVENT }, append: true };
+    await saveTypedPart(start, 'Sarah will book the venue.', 'en', TOLD_AT + 60_000, () => crypto.randomUUID());
+    await afterTelling('c', start, { fetchFn: f });
+    expect((await catchupProgress('c')).steps.map((s) => s.done)).toEqual([true, true, false, false, false]);
+
+    await finishCatchup('c', { fetchFn: f });
+    await extractMeeting('c', { fetchFn: f });
+    const after = await itemsForMeeting('c');
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.filter((i) => i.text === 'Send the Q4 plan draft')).toHaveLength(1);
+    expect(after.some((i) => i.text === 'Book the venue')).toBe(true);
+    expect((await catchupProgress('c')).steps.every((s) => s.done)).toBe(true);
+  });
+});
+
+describe('catch-up background routes', () => {
+  it('reads, asks again, skips, finishes and reports progress with no AI call from the page', async () => {
+    await meeting('c', 'catchup');
+    const ai = fakeAI();
+    const deps = { fetchFn: ai.f };
+    expect(catchupRoute({ type: 'recording/get-state' })).toBeUndefined();
+    expect(await catchupRoute({ type: 'catchup/questions', meetingId: 'c' })).toBeUndefined();
+    expect(await catchupRoute({ type: 'catchup/ask-again', meetingId: 'c' }, deps)).toMatchObject({ status: 'ready', questions: [{ id: 'q1' }] });
+    expect(await catchupRoute({ type: 'catchup/questions', meetingId: 'c' })).toMatchObject({ status: 'ready' });
+    expect(await catchupRoute({ type: 'catchup/skip', meetingId: 'c', questionId: 'q1' })).toMatchObject({ questions: [{ id: 'q1', state: 'skipped' }] });
+    expect(await catchupRoute({ type: 'catchup/finish', meetingId: 'c' }, deps)).toMatchObject({ ok: true, meeting: { id: 'c', summary: { overview: 'Q4 planning.' } } });
+    expect(await catchupRoute({ type: 'catchup/progress', meetingId: 'c' })).toMatchObject({ steps: expect.arrayContaining([{ step: 'summary', done: true }]) });
+    expect(await catchupRoute({ type: 'catchup/finish', meetingId: 'gone' }, deps)).toEqual({ ok: false, error: 'This meeting could not be found.' });
   });
 });
 
