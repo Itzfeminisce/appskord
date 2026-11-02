@@ -3,6 +3,7 @@ import type { Unit } from '../wordCuts';
 import { currentCut } from '../project/history';
 import { isKept } from '../project/time';
 import type { Project } from '../project/types';
+import { cardSlots } from '../render/layers/card';
 
 /** PLAN "Performance budget": every AI call, prompt and reply together, stays under this. */
 export const MAX_CALL_TOKENS = 8_000;
@@ -127,7 +128,7 @@ export function editSystem(templates: readonly string[]): string {
     '{"op":"move","from":i,"to":j,"after":k} moves words i..j to play after word k.',
     '{"op":"speed","from":i,"to":j,"rate":0.5-4} changes speed. {"op":"zoom","from":i,"to":j,"depth":1.25-2} zooms on the cursor.',
     '{"op":"caption","style":"clean"|"bold"|"word"} turns captions on.',
-    templates.length ? `{"op":"card","template":${templates.map((t) => JSON.stringify(t)).join('|')},"at":i,"slots":{"title":"..."}} adds a card at word i.` : '',
+    templates.length ? `{"op":"card","template":${templates.map((t) => JSON.stringify(t)).join('|')},"at":i,"slots":{"<slot>":"..."}} adds a card at word i. Slots: ${templates.map((t) => `${t}: ${cardSlots(t).map((d) => `${d.id} (${d.words} words)`).join(', ')}`).join('; ')}.` : '',
     '{"op":"chapter","at":i,"title":"..."} adds a chapter at word i, or renames the chapter that starts there.',
     '{"op":"layout","at":i,"layout":"bubble"|"side"|"camera"|"screen"} switches the camera layout at word i.',
     '{"op":"newCut","name":"...","shape":"16:9"|"9:16"|"1:1"|"4:5","keep":[{"from":i,"to":j}]} makes a new cut of only those words, for highlights.',

@@ -3,7 +3,6 @@ import { AiError, askOps, type Checked } from '@/lib/ai/ops';
 import { discardHighlight, makeHighlight, newCutOf } from '@/lib/ai/highlight';
 import { aiWins } from '@/lib/ai/suggest';
 import { LLMError } from '@/lib/llm';
-import { cardsReady } from '@/lib/render/layers/card';
 import type { Project } from '@/lib/project/types';
 import type { Unit } from '@/lib/wordCuts';
 import { aiDeps, callWith, header, setup } from './deps';
@@ -52,7 +51,7 @@ export async function ask(request: string, { project, units, edit }: { project: 
   setAi({ status: 'thinking', request: text, planned: 0, provider: header(s.provider) });
   try {
     const checked = await askOps({
-      request: text, project: project(), units, cards: cardsReady(), call: callWith(s.keys, controller.signal),
+      request: text, project: project(), units, cards: true, call: callWith(s.keys, controller.signal),
       onPart: (_done, _of, n) => { if (running === controller) setAi({ planned: n }); },
     });
     if (running !== controller) return;

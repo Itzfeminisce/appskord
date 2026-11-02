@@ -42,11 +42,11 @@ describe('checkReply', () => {
     expect(checkReply({ ops: [{ op: 'cut', from: 1, to: 1 }] }, { ...ctx, from: 3, to: 6 }).problems).toHaveLength(1);
   });
 
-  it('turns card ops into ai-cant cards unless cards draw and the template is known; never keeps the model\'s words', () => {
+  it('turns card ops into ai-cant cards unless cards draw, checks the template; never keeps the model\'s words', () => {
     const card = { ops: [{ op: 'card', template: 'title-hook', at: 0, slots: {} }] };
     expect(checkReply(card, ctx).cant).toBe('cards');
-    expect(checkReply(card, { ...ctx, cards: true }).cant).toBe('cards');
-    expect(checkReply(card, { ...ctx, cards: true, templates: ['title-hook'] }).ops).toHaveLength(1);
+    expect(checkReply(card, { ...ctx, cards: true }).ops).toHaveLength(1);
+    expect(checkReply({ ops: [{ op: 'card', template: 'big-statement', at: 0, slots: {} }] }, { ...ctx, cards: true }).problems).toEqual(['Op 0: "template" must be title-hook, end-card, logo-sting.']);
     expect(checkReply({ ops: [], cant: 'add sound effects' }, ctx).cant).toBe('other');
   });
 
@@ -59,6 +59,11 @@ describe('checkReply', () => {
     expect(c.labels[0]).toHaveLength(MAX_TEXT);
     expect(c.ops[0]).toMatchObject({ title: 'x'.repeat(MAX_TEXT) });
     expect(c.ops[1]).toMatchObject({ slots: { title: 'x'.repeat(MAX_TEXT) } });
+  });
+
+  it('keeps a scenes card\'s own text slots within their word limits', () => {
+    const c = checkReply({ ops: [{ op: 'card', template: 'title-hook', at: 0, slots: { headline: 'one two three four five six seven eight', kicker: 'New', title: 'gone', x: 3 } }] }, { ...ctx, cards: true });
+    expect(c.ops[0]).toEqual({ op: 'card', template: 'title-hook', at: 0, slots: { headline: 'one two three four five six', kicker: 'New' } });
   });
 
   it('repairs with the first 5 problems, values cut to 40 characters', () => {

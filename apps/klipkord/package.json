@@ -31,6 +31,7 @@
     "@appskord/media": "workspace:*",
     "@appskord/penv": "workspace:*",
     "@appskord/platform": "workspace:*",
+    "@appskord/scenes": "workspace:*",
     "@appskord/ui": "workspace:*",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",

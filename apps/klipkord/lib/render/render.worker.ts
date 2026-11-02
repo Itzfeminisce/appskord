@@ -1,8 +1,10 @@
 import { framesClient, type FramesClient } from '@appskord/media';
 import FramesWorker from '@appskord/media/frames.worker?worker';
+import type { BrandRecord } from '@appskord/brand';
 import geistUrl from '@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?url';
 import type { RenderPlan, Shape } from '../project/types';
-import { createRenderer, type FrameProvider, type Picture, type Renderer } from './renderer';
+import { cardAssets, drawCard, type CardAssets } from './layers/card';
+import { createRenderer, type DrawCard, type FrameProvider, type Picture, type Renderer } from './renderer';
 import { cameraMasks, PREVIEW_SEGMENT, workerSegmenter, type CameraMasks } from './segment';
 import SegmentWorker from './segment.worker?worker';
 
@@ -14,7 +16,10 @@ export interface RenderSource { id: string; blob: Blob; image: boolean }
 export type RenderRequest =
   | { type: 'init'; canvas: OffscreenCanvas; sources: RenderSource[]; backend?: Renderer['backend'] }
   | { type: 'sources'; sources: RenderSource[] }
-  | { type: 'render'; id: number; plan: RenderPlan; shape: Shape }
+  /** cards: each planned card's start in output time, which the plan alone does not carry. */
+  | { type: 'render'; id: number; plan: RenderPlan; shape: Shape; cards?: Record<string, number> }
+  /** The brand kit cards draw with; null when there is none. */
+  | { type: 'brand'; brand: BrandRecord | null }
   | { type: 'resize'; width: number; height: number }
   | { type: 'close' };
 
@@ -67,10 +72,26 @@ const frames: FrameProvider = {
   },
 };
 
+const fontSet = () => (self as unknown as { fonts: FontFaceSet }).fonts;
+
+// Cards load their fonts and the brand logo on the first card drawn, then draw the frame again.
+let cards: { assets: CardAssets; hook: DrawCard } | null = null;
+let starts: Record<string, number> = {};
+let brand: BrandRecord | null = null;
+function cardHook(): { assets: CardAssets; hook: DrawCard } {
+  if (cards) return cards;
+  const assets = cardAssets(fontSet(), self.location.href);
+  cards = { assets, hook: drawCard((c) => starts[c.id] ?? null, assets.brand, assets.cache) };
+  void assets.fonts().then(redraw);
+  void assets.setBrand(brand).then(redraw);
+  return cards;
+}
+const drawCardHook: DrawCard = (ctx, card, info) => cardHook().hook(ctx, card, info);
+
 async function loadFont(): Promise<void> {
   try {
     const face = new FontFace('Geist', `url(${geistUrl})`, { weight: '100 900' });
-    (self as unknown as { fonts: FontFaceSet }).fonts.add(await face.load());
+    fontSet().add(await face.load());
   } catch (error) {
     console.error('Klipkord: could not load font', error);
   }
@@ -98,6 +119,7 @@ async function draw(r: Renderer, request: Extract<RenderRequest, { type: 'render
   busy = true;
   again = false;
   last = request;
+  starts = request.cards ?? {};
   const camera = request.plan.camera;
   // The segmentation worker holds the model in memory; let it go once the camera is shown without blur.
   if (camera && !camera.blur.on && blurring) masks?.release();
@@ -140,13 +162,17 @@ self.addEventListener('message', (event: MessageEvent<RenderRequest>) => {
         addSources(request.sources);
         // The segmentation worker starts on the first frame drawn with "Blur behind you" on.
         masks = cameraMasks(workerSegmenter(() => new SegmentWorker()), { ...PREVIEW_SEGMENT, onMask: redraw });
-        renderer = createRenderer(request.canvas, frames, { backend: request.backend, hooks: { cameraMask: masks.cameraMask } });
+        renderer = createRenderer(request.canvas, frames, { backend: request.backend, hooks: { cameraMask: masks.cameraMask, drawCard: drawCardHook } });
         reply({ type: 'ready', backend: renderer.backend });
       } catch (error) {
         reply({ type: 'error', message: describe(error) });
       }
       break;
     case 'sources': addSources(request.sources); break;
+    case 'brand':
+      brand = request.brand;
+      if (cards) void cards.assets.setBrand(brand).then(redraw);
+      break;
     case 'render': render(request); break;
     case 'resize': renderer?.resize(request.width, request.height); break;
     case 'close':

@@ -8,6 +8,7 @@ import { ThumbnailPicker } from '../dialogs/ThumbnailPicker';
 import { clock } from '../format';
 import { loadMedia } from '../media';
 import { StateCard } from '../states/StateCard';
+import { loadBrand } from '../story/brand';
 import { Btn } from '../timeline/controls';
 import { actionButton, C, MONO } from '../ui';
 import type { SlotProps } from './slots';
@@ -194,7 +195,7 @@ export async function renderStill(p: Pick<SlotProps, 'project' | 'recording'>, j
   const { renderSources } = await import('../media');
   const m = media ?? (await exportDeps.loadMedia(p.project));
   const r = runJob({ ...job, kind: 'still', project: p.project, sources: renderSources(p.project, m.blobs), events: m.events,
-    captions: job.burn ? captionsOf(p.recording, p.project) : undefined }, { worker: exportDeps.worker() });
+    captions: job.burn ? captionsOf(p.recording, p.project) : undefined, brand: await loadBrand(job.cut) }, { worker: exportDeps.worker() });
   return (await r.done)?.file ?? null;
 }
 
@@ -252,7 +253,7 @@ async function runExport(p: SlotProps, plan: ExportPlan, dir: FileSystemDirector
     const job: Job = {
       kind: 'video', project, cut, captions: plan.burn ? captionsOf(recording, project) : undefined, events: media.events,
       sources: renderSources(project, media.blobs), width: plan.width, height: plan.height, fps: plan.fps, container: plan.container,
-      bitrate: plan.bitrate, hardware: plan.hardware, audio: !!audio, target: main.target, audioOnly: audioOnly?.target,
+      bitrate: plan.bitrate, hardware: plan.hardware, audio: !!audio, target: main.target, audioOnly: audioOnly?.target, brand: await loadBrand(cut),
     };
     const started = performance.now();
     r = runJob(job, {
@@ -315,7 +316,7 @@ export function startGif(p: SlotProps, plan: GifPlan, dir: FileSystemDirectoryHa
     try {
     r = runJob({
       kind: 'gif', project: p.project, cut, captions: captionsOf(p.recording, p.project), events: media.events, sources: renderSources(p.project, media.blobs),
-      width: plan.width, height: plan.height, fps: plan.fps, from: plan.from, to: plan.to, target: main.target,
+      width: plan.width, height: plan.height, fps: plan.fps, from: plan.from, to: plan.to, target: main.target, brand: await loadBrand(cut),
     }, { worker: exportDeps.worker(), onProgress: (done, total) => { if (state.running) setExport({ running: { ...state.running, done, total } }); } });
     setExport({ running: { title: plan.title, done: 0, total: 1, lengthMs: plan.to - plan.from, started: performance.now(), cancel: r.cancel } });
     } catch (error) {

@@ -7,9 +7,10 @@ import {
   AudioSample, AudioSampleSource, EncodedPacket, Mp4OutputFormat, Output, StreamTarget, VideoSample, canEncodeAudio,
 } from 'mediabunny';
 import type { MixChunk } from '../audio/export';
-import { cutLength } from '../project/time';
+import { cutLength, toOut } from '../project/time';
+import { cardAssets, drawCard, type CardAssets } from '../render/layers/card';
 import { renderPlan } from '../render/plan';
-import { createRenderer, type CameraMask, type FrameProvider, type Picture, type Renderer } from '../render/renderer';
+import { createRenderer, type CameraMask, type DrawCard, type FrameProvider, type Picture, type Renderer } from '../render/renderer';
 import type { RenderSource } from '../render/render.worker';
 import { exportCameraMasks } from '../render/segment';
 import SegmentWorker from '../render/segment.worker?worker';
@@ -26,6 +27,9 @@ class Cancelled extends Error {}
 const videos = new Map<string, Promise<{ source: OpenedSource; cache: FrameCache<VideoFrame, EncodedPacket> } | null>>();
 const images = new Map<string, Promise<ImageBitmap | null>>();
 let fontReady: Promise<void> | null = null;
+// Card fonts load on the first export with cards and stay for the next; the hook is this job's.
+let cards: CardAssets | null = null;
+let jobCards: DrawCard | undefined;
 let current: { id: number; cancelled: boolean } | null = null;
 let audioWaiter: ((chunk: MixChunk | null) => void) | null = null;
 
@@ -87,6 +91,14 @@ function loadFont(): Promise<void> {
   return fontReady;
 }
 
+/** The job's cards drawn with @appskord/scenes, once their fonts and the brand logo are ready. */
+async function cardHook(job: Job): Promise<DrawCard | undefined> {
+  if (!job.cut.cards.length) return undefined;
+  cards ??= cardAssets((self as unknown as { fonts: FontFaceSet }).fonts, self.location.href);
+  await Promise.all([cards.fonts(), cards.setBrand(job.brand ?? null)]);
+  return drawCard((c) => toOut(job.cut, c.at), cards.brand, cards.cache);
+}
+
 async function open(target: Target): Promise<{ stream: FileSystemWritableFileStream; handle: FileSystemFileHandle }> {
   let handle: FileSystemFileHandle;
   if (target.kind === 'handle') handle = target.handle;
@@ -112,7 +124,7 @@ function setup(job: Job): { canvas: OffscreenCanvas; renderer: Renderer } {
   addSources(job.sources);
   const canvas = new OffscreenCanvas(job.width, job.height);
   const masks = cameraMasks(job);
-  const renderer = createRenderer(canvas, frames, { hooks: masks ? { cameraMask: masks.cameraMask } : {} });
+  const renderer = createRenderer(canvas, frames, { hooks: { ...(masks && { cameraMask: masks.cameraMask }), ...(jobCards && { drawCard: jobCards }) } });
   if (!masks) return { canvas, renderer };
   // The masks go with the renderer.
   const dispose = renderer.dispose.bind(renderer);
@@ -266,6 +278,7 @@ async function runStill(id: number, job: StillJob): Promise<void> {
 async function run(id: number, job: Job): Promise<void> {
   current = { id, cancelled: false };
   try {
+    jobCards = await cardHook(job);
     if (job.kind === 'video') await runVideo(id, job);
     else if (job.kind === 'gif') await runGif(id, job);
     else await runStill(id, job);

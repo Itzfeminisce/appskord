@@ -1,10 +1,9 @@
-import { cardsReady } from '@/lib/render/layers/card';
 import type { SlotProps } from '../components/slots';
-import { StateCard } from '../states/StateCard';
 import { Heading } from '../timeline/controls';
-import { select } from '../timeline/store';
+import { select, useTimeline } from '../timeline/store';
 import { C, Icon, ICONS, iconButton } from '../ui';
 import { useBrand } from './brand';
+import { CardFields, CardPicker } from './CardPanel';
 import { addOverlay, newOverlay } from './model';
 import { OVERLAY_ICONS, OVERLAY_KINDS, OVERLAY_NAMES, setStory } from './store';
 
@@ -28,8 +27,10 @@ function BrandRow() {
   );
 }
 
-/** The Text and cards panel (Cards frame): adds overlays at the playhead; cards wait for Motikord's templates. */
+/** The Text and cards panel (Cards frame): adds overlays at the playhead, and Motikord's cards with their slots. */
 export function StoryPanel(p: SlotProps) {
+  const { selected } = useTimeline();
+  const active = selected?.kind === 'cards' && selected.ids.length === 1 ? p.cut.cards.find((c) => c.id === selected.ids[0]) : undefined;
   const add = (kind: (typeof OVERLAY_KINDS)[number]) => {
     if (p.readOnly) return;
     const overlay = newOverlay(p.cut, kind, p.out, p.recording.duration);
@@ -52,11 +53,8 @@ export function StoryPanel(p: SlotProps) {
       </div>
       <div style={{ flexGrow: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Heading aside={<span style={{ fontWeight: 400, color: C.muted }}>from Motikord</span>}>Cards</Heading>
-        {/* Title hook, End card and Logo sting draw through packages/scenes, which has not landed yet. */}
-        {!cardsReady() && (
-          <StateCard state="cards-not-ready" title="Cards are on the way"
-            body="Title, end and logo cards arrive with Motikord's templates. Text, arrows and blur work now." style={{ minHeight: 120 }} />
-        )}
+        <CardPicker p={p} active={active} />
+        {active && <CardFields key={active.id} p={p} card={active} />}
         <BrandRow />
       </div>
     </div>

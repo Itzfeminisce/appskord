@@ -87,12 +87,20 @@ describe('Ask AI', () => {
     expect(cutLength(currentCut(latest))).toBe(10_000);
   });
 
-  it('says ai-cant for card ops while cards are not ready, and ai-failed after a failed repair', async () => {
-    useAi(key, { ops: [{ op: 'card', template: 'title-hook', at: 0, slots: {} }] });
+  it('adds a card from the scenes templates the Cards panel offers', async () => {
+    useAi(key, { ops: [{ op: 'card', template: 'title-hook', at: 0, slots: { headline: 'Invite your team' }, label: 'Add a title hook' }] });
     act(() => { openAsk(); root.render(<Harness />); });
     await send('Add a title card');
+    expect(text()).toContain('Add a title hook');
+    act(() => button('Apply 1').click());
+    expect(currentCut(latest).cards).toEqual([expect.objectContaining({ template: 'title-hook', ms: 3000, slots: { headline: 'Invite your team' }, pack: 'clean' })]);
+  });
+
+  it('says ai-cant, then ai-failed after a failed repair', async () => {
+    useAi(key, { ops: [], cant: 'add sound effects' });
+    act(() => { openAsk(); root.render(<Harness />); });
+    await send('Add a whoosh');
     expect(text()).toContain("The AI can't do that yet");
-    expect(text()).toContain("Cards aren't ready yet. Text, arrows and blur work now.");
     useAi(key, { ops: [] }, { ops: [] });
     act(() => button('Try something else').click());
     await send('Do it');

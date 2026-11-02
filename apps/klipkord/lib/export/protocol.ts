@@ -1,4 +1,5 @@
 // Messages between the editor page (run.ts) and the export worker. The page keeps the sound (Web Audio is page-only).
+import type { BrandRecord } from '@appskord/brand';
 import type { MixChunk } from '../audio/export';
 import type { Caption } from '../project/captions';
 import type { Cut, EventsTrack, Project } from '../project/types';
@@ -17,6 +18,8 @@ interface Common {
   sources: RenderSource[];
   width: number;
   height: number;
+  /** The brand kit cards draw with. */
+  brand?: BrandRecord | null;
 }
 
 export interface VideoJob extends Common {
