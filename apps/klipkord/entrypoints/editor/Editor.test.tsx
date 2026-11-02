@@ -44,9 +44,9 @@ function fakeSession(state: SessionState): EditorSession & { taken: boolean } {
   };
 }
 
-interface Setup { media?: Partial<LoadedMedia>; session?: SessionState; draws?: boolean; strict?: boolean }
+interface Setup { media?: Partial<LoadedMedia>; session?: SessionState; draws?: boolean; strict?: boolean; loadFails?: boolean }
 
-function fakeDeps({ media = {}, session = 'editing', draws = true }: Setup = {}) {
+function fakeDeps({ media = {}, session = 'editing', draws = true, loadFails = false }: Setup = {}) {
   const rendered: number[] = [];
   const panels: string[] = [];
   const client: PreviewClient = {
@@ -60,7 +60,10 @@ function fakeDeps({ media = {}, session = 'editing', draws = true }: Setup = {})
   const listeners = new Set<(drawn: boolean) => void>();
   const sessionObj = fakeSession(session);
   const deps: EditorDeps = {
-    loadMedia: async () => ({ blobs: new Map(), missing: [], ...media }),
+    loadMedia: async () => {
+      if (loadFails) throw new Error('gone');
+      return { blobs: new Map(), missing: [], ...media };
+    },
     startPreview: vi.fn(() => client),
     mix: () => null,
     joinSession: () => sessionObj,
@@ -120,7 +123,7 @@ function MuteButton(p: SlotProps) {
 }
 
 describe('editor tab', () => {
-  it('opens with the steps, then shows the project name, Saved and a playable preview', async () => {
+  it('opens with the steps, Opening… and the project name before the first frame', async () => {
     await putRecording(rec());
     const view = await mount('/rec-1', { draws: false });
     expect(text(view.host)).toContain('Getting your recording ready');
@@ -128,12 +131,23 @@ describe('editor tab', () => {
     expect(text(view.host)).toContain('The transcript appears here in a moment.');
     expect(button(view.host, 'Play (Space)').disabled).toBe(true);
     expect(text(view.host)).toContain('Invite your team');
-    expect(status(view.host)).toBe('Saving…');
+    // Until the first frame shows, the top bar says Opening… as EditorOpening draws it.
+    expect(status(view.host)).toBe('Opening…');
     await act(async () => { await new Promise((r) => setTimeout(r, SAVE_DEBOUNCE_MS + 50)); });
     await settle();
-    expect(status(view.host)).toBe('Saved');
+    expect(status(view.host)).toBe('Opening…');
     // An older recording gets its project on first open, seeded from the title.
     expect((await getProject('rec-1'))?.name).toBe('Invite your team');
+  });
+
+  it('stops saying Opening… when the files cannot be read, and shows the missing-file card', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await putRecording(rec());
+    const view = await mount('/rec-1', { draws: false, loadFails: true });
+    expect(status(view.host)).not.toBe('Opening…');
+    expect(view.host.querySelector('[data-state="media-missing"]')).toBeTruthy();
+    expect(text(view.host)).toContain("It was removed from Klipkord's storage. The rest of the project is fine.");
+    expect(text(view.host)).toContain('Find the file');
   });
 
   it('plays once the first frame shows; Space toggles, J and L move by sentence', async () => {

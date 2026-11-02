@@ -45,8 +45,9 @@ function Harness({ start }: { start: Project }) {
 const seen = (): Project => ({ ...fromRecording(recording), quickWins: 'seen', chapters: [{ at: 0, title: 'Intro' }] });
 const render = (p: Project = seen()) => act(() => root.render(<Harness start={p} />));
 const word = (i: number) => host.querySelector(`[data-i="${i}"]`)!;
-const text = () => host.textContent ?? '';
-const button = (name: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === name || b.title === name || b.getAttribute('aria-label') === name)!;
+// The selection bar renders in a body layer, so read the whole page.
+const text = () => document.body.textContent ?? '';
+const button = (name: string) => [...document.body.querySelectorAll('button')].find((b) => b.textContent === name || b.title === name || b.getAttribute('aria-label') === name)!;
 const mouse = (el: Element, type: string, init: MouseEventInit = {}) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, ...init }));
 const lastLabel = () => steps(latest).steps.at(-1)?.label;
 
@@ -88,6 +89,39 @@ describe('TranscriptPanel', () => {
     expect((word(1) as HTMLElement).style.textDecoration).toBe('line-through');
     act(() => { mouse(word(1), 'mousedown'); mouse(word(1), 'mouseup'); });
     expect(lastLabel()).toBe('Brought back 1 word');
+  });
+
+  it('moves the selection bar with its line on layout changes, hides it off-screen and cleans up', () => {
+    const watchers: { cb: () => void; disconnect: ReturnType<typeof vi.fn> }[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+      cb: () => void; disconnect = vi.fn(); observe = vi.fn();
+      constructor(cb: () => void) { this.cb = cb; watchers.push(this); }
+    });
+    let top = 100;
+    const real = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const rect = this.hasAttribute('aria-hidden') ? { left: 20, top } : { left: 0, top: 0, bottom: 500, right: 400 };
+      return { ...rect, x: 0, y: 0, width: 0, height: 0, toJSON() {} } as DOMRect;
+    };
+    try {
+      render();
+      act(() => { mouse(word(1), 'mousedown'); mouse(word(2), 'mouseover'); mouse(word(2), 'mouseup'); });
+      const bar = () => document.body.querySelector<HTMLElement>('[role="toolbar"]')!;
+      expect(watchers.length).toBeGreaterThan(0);
+      expect(bar().style.top).toBe('100px');
+      top = 160;
+      act(() => watchers.forEach((w) => w.cb()));
+      expect(bar().style.top).toBe('160px');
+      expect(bar().style.visibility).toBe('visible');
+      top = 900;
+      act(() => watchers.forEach((w) => w.cb()));
+      expect(bar().style.visibility).toBe('hidden');
+      act(() => button('Delete').click());
+      expect(watchers.every((w) => w.disconnect.mock.calls.length > 0)).toBe(true);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = real;
+      vi.unstubAllGlobals();
+    }
   });
 
   it('moves a selection by dragging it before another word', () => {

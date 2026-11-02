@@ -258,7 +258,7 @@ export function TranscriptPanel(p: TranscriptSlotProps) {
           onClose={() => { setSearch(false); setMatches({ list: [], current: -1 }); }} />
       )}
       <div ref={scroller} onMouseDown={onMouseDown} onMouseOver={onMouseOver}
-        style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, position: 'relative', paddingBottom: 48 }}>
+        style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', gap: 2, position: 'relative', paddingBottom: 48 }}>
         {lines.map((view, k) => (
           <div key={view.line} style={{ position: 'relative' }}>
             <Line view={view} texts={lineTexts[k]!} flags={lineFlags[k]!}

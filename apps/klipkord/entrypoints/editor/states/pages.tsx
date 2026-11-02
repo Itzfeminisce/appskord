@@ -10,7 +10,7 @@ export function WindowSmall({ width, height }: { width: number; height: number }
   return (
     <FullPage>
       <StateCard state="window-small" role="alert" title="Make this window wider"
-        body={`The editor needs at least ${MIN_WIDTH} by ${MIN_HEIGHT}. Yours is ${width} by ${height}.`} />
+        body={`The editor needs at least ${MIN_WIDTH} by ${MIN_HEIGHT}. Yours is ${width} by ${height}.`} style={{ minHeight: 120 }} />
     </FullPage>
   );
 }
@@ -20,7 +20,7 @@ export function NoProject({ onLibrary }: { onLibrary: () => void }) {
     <FullPage>
       <StateCard state="no-project" title="Pick a recording to edit"
         body="This tab was opened without a recording. Your recordings are in the library."
-        actions={[{ label: 'Open the library', tone: 'primary', onClick: onLibrary }]} />
+        actions={[{ label: 'Open the library', tone: 'primary', onClick: onLibrary }]} style={{ minHeight: 120 }} />
     </FullPage>
   );
 }

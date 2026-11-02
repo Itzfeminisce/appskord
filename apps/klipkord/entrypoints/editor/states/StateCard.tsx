@@ -40,7 +40,7 @@ export function Dialog({ children }: { children: ReactNode }) {
 export function FullPage({ children }: { children: ReactNode }) {
   return (
     <main style={{ height: '100%', background: C.ground, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, boxSizing: 'border-box' }}>
-      <div style={{ width: 380 }}>{children}</div>
+      <div style={{ width: 412, maxWidth: '100%' }}>{children}</div>
     </main>
   );
 }

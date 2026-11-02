@@ -42,13 +42,20 @@ export function FirstRunTour({ onDone }: { onDone: () => void }) {
   const card = tip.place === 'right'
     ? { left: rect.right + 10, top: rect.top + 62 }
     : tip.place === 'above'
-      ? { left: rect.left + 338, bottom: window.innerHeight - rect.top + 18 }
+      ? { left: Math.max(rect.left + 8, Math.min(rect.left + 470, rect.right - 290)), bottom: window.innerHeight - rect.top + 18 }
       : { left: Math.max(8, rect.right - 280), top: rect.bottom + 12 };
+  // The 12 px pointer from the frame: left edge for the side tip, under or over the card for the others.
+  const caret = tip.place === 'right'
+    ? { left: -6, top: 24 }
+    : tip.place === 'above'
+      ? { left: 40, bottom: -6 }
+      : { left: Math.min(262, Math.max(14, rect.left + rect.width / 2 - card.left - 6)), top: -6 };
   return (
     <>
       <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 18, background: 'rgba(5,5,7,0.45)', pointerEvents: 'none' }} />
       <div aria-hidden="true" style={{ position: 'fixed', zIndex: 18, left: rect.left, top: rect.top, width: rect.width, height: rect.height, boxShadow: `0 0 0 2px ${C.accentText} inset`, pointerEvents: 'none' }} />
       <div role="dialog" aria-label={tip.title} style={{ position: 'fixed', zIndex: 19, width: tip.place === 'right' ? 250 : 280, borderRadius: 12, background: C.text, color: C.ground, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6, boxShadow: '0 18px 44px rgba(0,0,0,0.55)', ...card }}>
+        <span aria-hidden="true" style={{ position: 'absolute', width: 12, height: 12, background: C.text, transform: 'rotate(45deg)', ...caret }} />
         <span style={{ fontFamily: MONO, fontSize: 11, color: '#52525B' }}>{`${step + 1} of ${tips.length}`}</span>
         <span style={{ fontSize: 14, fontWeight: 600 }}>{tip.title}</span>
         <span style={{ fontSize: 12.5, lineHeight: 1.45, color: '#3F3F46' }}>{tip.body}</span>
