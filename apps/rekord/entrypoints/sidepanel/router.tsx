@@ -23,7 +23,8 @@ export type ScreenName =
   // v3 setup: 'connect' is the Setup screen, 'settings' is the AI settings, 'settingsMore' is Recording, language and data
   | 'setupCustom' | 'penvConnect' | 'howItWorks' | 'settingsMore'
   | 'nosound' // v3: desktop-app capture hears nothing
-  | 'notionConnect' | 'notionPage';
+  | 'notionConnect' | 'notionPage'
+  | 'home' | 'backfill'; // v4: Open loops is home
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
 export interface RouteParams { meetingId?: string; message?: string; atMs?: number; section?: 'transcription' | 'assistant' }
@@ -37,6 +38,8 @@ export interface Router {
   replace: (screen: ScreenName, params?: RouteParams) => void;
   back: () => void;
   canGoBack: boolean;
+  /** Whether a screen is registered, so links to screens later tasks add can wait for them. */
+  has: (screen: string) => screen is ScreenName;
 }
 
 /** How the side panel treats some screens. */
@@ -126,7 +129,7 @@ export function createRouter(screens: Partial<Record<ScreenName, ComponentType>>
       const location = router.state.location;
       const name = location.pathname.slice(1);
       if (!isScreen(name)) return null;
-      return { ...stable, route: { screen: name, params: toParams(location.search as Record<string, unknown>) }, canGoBack: canGoBack(location) };
+      return { ...stable, route: { screen: name, params: toParams(location.search as Record<string, unknown>) }, canGoBack: canGoBack(location), has: isScreen };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router, stable, href, index]);
     const holding = value !== null && hold.includes(value.route.screen);

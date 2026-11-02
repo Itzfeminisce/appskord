@@ -6,6 +6,8 @@ import { onMessage, send, type MessageOf } from '@/lib/messages';
 import { getSettings } from '@/lib/settings';
 import { handleInstalled } from '@/lib/whatsNew';
 import { BACKFILL_ALARM, runBackfill } from '@/lib/memory/backfill';
+import { rankOpenLoops } from '@/lib/memory/rank';
+import { openLoops } from '@/lib/memory/store';
 import { isStreamRequest, tokenReply } from '@/lib/transcribe/stream';
 import type { Meeting, RecordingState, TranscriberConfig } from '@/lib/types';
 import type { OffscreenReply } from './offscreen/main';
@@ -62,9 +64,33 @@ function setCloseAfterDrain(meetingId: string | null): void {
   persist();
 }
 
+/** Badge colour from V4Notification. */
+export const BADGE_COLOR = '#D92D20';
+
+/** The toolbar badge: overdue promises, empty when none. */
+export const badgeText = (overdue: number) => (overdue > 0 ? String(overdue) : '');
+
+/** Sets the toolbar badge to the overdue count from Open loops. */
+export async function refreshBadge(now = Date.now(), setText = (text: string) => browser.action.setBadgeText({ text })): Promise<string> {
+  const text = badgeText(rankOpenLoops(await openLoops(now), now).overdue);
+  await setText(text);
+  return text;
+}
+
+function updateBadge(): void {
+  refreshBadge().catch((error) => console.error('Rekord: could not update the badge', error));
+}
+
 export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(({ reason }) => {
     handleInstalled(reason, browser.runtime.getManifest().version).catch((error) => console.error('Rekord: could not record the update', error));
+  });
+  browser.action.setBadgeBackgroundColor({ color: BADGE_COLOR }).catch((error) => console.error('Rekord: could not colour the badge', error));
+  // Each wake of the worker and each change the panel reports recounts overdue promises.
+  updateBadge();
+  browser.runtime.onMessage.addListener((msg: { type?: string }) => {
+    if (msg?.type === 'rekord.badge.refresh') updateBadge();
+    return undefined;
   });
   // We open the panel ourselves from action.onClicked: with openPanelOnActionClick the click never reaches
   // the extension, so the meeting tab is not granted (activeTab) and tab capture is refused.

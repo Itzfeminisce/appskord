@@ -21,7 +21,9 @@ import Transcript from './screens/Transcript';
 import Export from './screens/Export';
 import Settings from './screens/Settings';
 import ErrorScreen from './screens/Error';
-import WhatsNew from './screens/WhatsNew';
+import WhatsNew from './screens/v4/WhatsNew';
+import Backfill from './screens/v4/Backfill';
+import { Shell } from './components/v4/Shell';
 import Connections from './screens/Connections';
 import Share from './screens/Share';
 import NotionConnect from './screens/NotionConnect';
@@ -29,6 +31,15 @@ import NotionPage from './screens/NotionPage';
 import GoogleConnect from './screens/GoogleConnect';
 import { shouldShowWhatsNew } from '@/lib/whatsNew';
 import NoSound from './screens/NoSound';
+
+declare global {
+  /** True outside the release zip (wxt.config.ts): dev frame routes are built in. */
+  const __REKORD_DEV_FRAMES__: boolean;
+}
+const devFrames = typeof __REKORD_DEV_FRAMES__ !== 'undefined' && __REKORD_DEV_FRAMES__;
+
+// Open loops' body arrives with its own task; the shell is the home screen meanwhile.
+const Home = () => <Shell tab="loops" />;
 
 export const SCREENS: Record<ScreenName, ComponentType> = {
   welcome: Welcome,
@@ -57,16 +68,18 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   share: Share,
   notionConnect: NotionConnect,
   notionPage: NotionPage,
+  home: Home,
+  backfill: Backfill,
 };
 
-/** First screen: onboarding until the user has finished it, then Start. */
+/** First screen: onboarding until the user has finished it, then Open loops. */
 export async function initialRoute(): Promise<Route> {
   try {
     const settings = await getSettings();
     if (settings.onboarded && (await shouldShowWhatsNew(browser.runtime.getManifest().version))) {
       return { screen: 'whatsnew', params: {} };
     }
-    return { screen: settings.onboarded ? 'start' : 'welcome', params: {} };
+    return { screen: settings.onboarded ? 'home' : 'welcome', params: {} };
   } catch {
     return { screen: 'error', params: { message: 'Rekord couldn’t load your settings. Try reopening the side panel.' } };
   }
@@ -76,16 +89,37 @@ export async function initialRoute(): Promise<Route> {
 export const sidepanel = createRouter(SCREENS, { fresh: ['googleConnect', 'notionPage'], hold: ['live', 'nosound'] });
 const { RouterProvider } = sidepanel;
 
+/** Dev builds: `#/dev/<Frame>` opens that frame's screen in the sample world; a frame not built yet shows its name. */
+async function devRoute(): Promise<Route | string | undefined> {
+  if (!devFrames) return undefined;
+  const dev = await import('./dev/open');
+  const name = dev.frameInHash(location.hash);
+  if (!name) {
+    dev.resumeDevFrame();
+    return undefined;
+  }
+  return (await dev.openDevFrame(name)) ?? name;
+}
+
 export default function App() {
-  const [initial, setInitial] = useState<Route | null>(null);
+  const [initial, setInitial] = useState<Route | string | null>(null);
   useEffect(() => {
-    void initialRoute().then(setInitial);
+    void devRoute()
+      .catch((error) => console.error('Rekord: could not open the dev frame', error))
+      .then(async (dev) => setInitial(dev ?? (await initialRoute())));
   }, []);
 
   if (!initial) {
     return (
       <main className="screen screen-center">
         <Spinner label="Opening Rekord" />
+      </main>
+    );
+  }
+  if (typeof initial === 'string') {
+    return (
+      <main className="screen screen-center">
+        <h1>{initial}</h1>
       </main>
     );
   }

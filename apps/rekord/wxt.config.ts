@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { defineAppConfig } from '@appskord/config';
+import { defineAppConfig, isRelease } from '@appskord/config';
 import { OPTIONAL_HOSTS } from './lib/hosts';
 
 // Rekord's public key fixes the extension id (flkicdahoghegnlgpkmdcemlooblblcd) for Penv Cloud, Google and the Web Store.
@@ -26,6 +26,8 @@ export default defineAppConfig({
     vite: () => ({
       resolve: { alias: [{ find: /^onnxruntime-web$/, replacement: 'onnxruntime-web/wasm' }] },
       worker: { format: 'es' },
+      // Dev frame routes (`#/dev/<Frame>`) are left out of the release zip.
+      define: { __REKORD_DEV_FRAMES__: JSON.stringify(!isRelease()) },
     }),
     hooks: {
       // MV3 forbids remote code, so the runtime's loader and .wasm ship in the extension under ort/.
