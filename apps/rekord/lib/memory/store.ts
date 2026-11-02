@@ -57,10 +57,16 @@ export async function decisionsChain(id: string): Promise<MemoryItem[]> {
 }
 
 // Vectors, ledger, agendas
+let vectorWrites = 0;
+/** Bumps on every vector write in this page, so an in-memory index knows to rebuild. */
+export const vectorVersion = (): number => vectorWrites;
 export async function putVectors(rows: VectorRow[]): Promise<void> {
   const tx = (await getDB()).transaction('vectors', 'readwrite');
   await Promise.all([...rows.map((r) => tx.store.put(r)), tx.done]);
+  vectorWrites++;
 }
+export async function getVector(id: string): Promise<VectorRow | undefined> { return (await getDB()).get('vectors', id); }
+export async function countVectors(): Promise<number> { return (await getDB()).count('vectors'); }
 export async function vectorsForMeeting(meetingId: string): Promise<VectorRow[]> {
   return (await getDB()).getAllFromIndex('vectors', 'meetingId', meetingId);
 }
@@ -70,6 +76,7 @@ export async function replaceVectors(meetingId: string, rows: VectorRow[]): Prom
   const tx = (await getDB()).transaction('vectors', 'readwrite');
   const old = await tx.store.index('meetingId').getAllKeys(meetingId);
   await Promise.all([...old.map((k) => tx.store.delete(k)), ...rows.map((r) => tx.store.put(r)), tx.done]);
+  vectorWrites++;
 }
 
 export async function putLedgerEntry(e: LedgerEntry): Promise<void> { await (await getDB()).put('ledger', e); }

@@ -18,6 +18,8 @@ const OPTIONAL_HOSTS = [
   'https://cdn-lfs.huggingface.co/*',
   'https://cdn-lfs-us-1.hf.co/*',
   'https://cas-bridge.xethub.hf.co/*',
+  'https://cdn-lfs.hf.co/*',
+  'https://cdn-lfs-eu-1.hf.co/*',
 ];
 
 manifestChecks({

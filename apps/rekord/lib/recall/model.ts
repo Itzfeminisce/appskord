@@ -27,6 +27,28 @@ let nextId = 1;
 const pending = new Map<number, Pending>();
 let state: ModelState = 'none';
 let loading: Promise<boolean> | undefined;
+let download: Promise<boolean> | undefined;
+const listeners = new Set<(p: Progress) => void>();
+const broadcast = (p: Progress) => listeners.forEach((f) => f(p));
+
+/** An idle worker is stopped after this long; the next search reloads the weights from the cache. */
+export const IDLE_MS = 5 * 60_000;
+let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+function stopWorker(): void {
+  clearTimeout(idleTimer);
+  idleTimer = undefined;
+  worker?.terminate();
+  worker = undefined;
+  loading = undefined;
+}
+
+function armIdle(): void {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (!pending.size) stopWorker();
+  }, IDLE_MS);
+}
 
 function failAll(message: string): void {
   for (const p of pending.values()) p.reject(new Error(message));
@@ -41,6 +63,7 @@ function getWorker(): WorkerLike {
     if (!p) return;
     if (data.type === 'progress') return p.onProgress?.({ loaded: data.loaded, total: data.total });
     pending.delete(data.id);
+    if (!pending.size) armIdle();
     if (data.type === 'error') p.reject(new Error(data.message));
     else p.resolve(data);
   };
@@ -107,10 +130,24 @@ export async function ensureModel(onProgress?: (p: Progress) => void): Promise<b
   const asked = requestHosts(HUGGINGFACE_HOSTS);
   if (!(await asked)) return false;
   if (state === 'ready' && loading) return true;
+  if (onProgress) listeners.add(onProgress);
+  // A second click while downloading joins the same download and gets its progress.
+  download ??= startDownload().finally(() => {
+    download = undefined;
+    listeners.clear();
+  });
+  try {
+    return await download;
+  } finally {
+    if (onProgress) listeners.delete(onProgress);
+  }
+}
+
+async function startDownload(): Promise<boolean> {
   const cached = await hasCachedModel();
   state = 'downloading';
   loading = undefined;
-  const ok = await load(cached, onProgress);
+  const ok = await load(cached, broadcast);
   if (ok && !cached) await record({ service: 'huggingface', what: 'Search model download' }).catch((e) => console.error('Rekord: could not record the model download', e));
   if (!ok && cached) state = 'failed';
   return ok;
@@ -126,15 +163,17 @@ export async function loadCachedModel(): Promise<boolean> {
 /** Normalized 384-number vectors for each text. The model must be loaded. */
 export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
   if (!texts.length) return [];
+  // The idle timer may have stopped the worker since the caller loaded the model.
+  if (!loading && !(await loadCachedModel())) return [];
   const reply = await call({ type: 'embed', texts });
   return reply.type === 'embedded' ? reply.vectors : [];
 }
 
 function resetModel(): void {
   failAll('The search model was removed.');
-  worker?.terminate();
-  worker = undefined;
-  loading = undefined;
+  stopWorker();
+  download = undefined;
+  listeners.clear();
   state = 'none';
 }
 

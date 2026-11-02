@@ -5,10 +5,11 @@ import { listLedger, putItem, vectorsForMeeting } from '../memory/store';
 import type { MemoryItem } from '../memory/types';
 import type { Meeting, Segment } from '../types';
 import { embedMeeting, ensureModel, modelState, removeModel, search } from './index';
-import { setWorkerFactory, type WorkerLike } from './model';
+import { IDLE_MS, setWorkerFactory, type WorkerLike } from './model';
 import type { FromWorker, ToWorker } from './protocol';
 import { cosine, dequantize, quantize } from './quantize';
-import { fuse, rankWindows } from './search';
+import { fuse, itemsByWindows, rankWindows } from './search';
+import { buildIndex, rankIndex, timeSyntheticSearch } from './vectorIndex';
 import { windowsOf } from './windows';
 
 vi.mock('../hosts', async (orig) => ({ ...(await orig<typeof import('../hosts')>()), requestHosts: vi.fn(async () => true) }));
@@ -49,6 +50,32 @@ describe('cosine on int8', () => {
     const row = (id: string, v: number[]) => ({ id, meetingId: id, atMs: 0, endMs: 1, text: id, ...quantize(v) });
     const hits = rankWindows([1, 0, 0], [row('far', [0, 1, 0]), row('near', [0.9, 0.3, 0]), row('same', [1, 0, 0])]);
     expect(hits.map((h) => h.row.id)).toEqual(['same', 'near']);
+  });
+});
+
+describe('vector index', () => {
+  const rows = [0.7, 2.1, 0.71, 5].map((seed, i) => ({ id: `r${i}`, meetingId: i < 2 ? 'a' : 'b', atMs: i, endMs: i + 1, text: 't', ...quantize(fakeVector(seed)) }));
+
+  it('ranks like rankWindows, keeps only meetings in scope and caps the hits', () => {
+    const index = buildIndex(rows);
+    const q = fakeVector(0.7);
+    const strip = (h: { row: { id: string }; score: number }) => [h.row.id, h.score.toFixed(5)];
+    expect(rankIndex(index, q, undefined, -1).map(strip)).toEqual(rankWindows(q, rows, -1).map(strip));
+    expect(rankIndex(index, q, new Set(['b']), -1).every((h) => h.row.meetingId === 'b')).toBe(true);
+    expect(rankIndex(index, q, undefined, -1, 2)).toHaveLength(2);
+  });
+
+  it('searches 500 meetings x 120 windows quickly', () => {
+    const { searchMs, rows: n } = timeSyntheticSearch();
+    expect(n).toBe(60_000);
+    console.info(`Rekord recall: synthetic search ${searchMs.toFixed(1)} ms`);
+    expect(searchMs).toBeLessThan(2_000);
+  });
+
+  it('matches items to windows of their own meeting only', () => {
+    const item = (id: string, meetingId: string, atMs: number) => ({ id, quote: { meetingId, atMs } }) as MemoryItem;
+    const hits = [{ row: { id: 'w', meetingId: 'a', atMs: 0, endMs: 10 }, score: 1 }];
+    expect(itemsByWindows([item('x', 'a', 5), item('y', 'b', 5), item('z', 'a', 20)], hits)).toEqual(['x']);
   });
 });
 
@@ -155,6 +182,32 @@ describe('recall search', () => {
     expect(r.items.map((h) => h.item.id)).toEqual(['i-spend']);
     expect(r.meetings.map((h) => [h.meeting.id, h.atMs])).toEqual([['m-sync', 0]]);
     expect((await search('budget engineers')).meetings.map((h) => h.meeting.id).sort()).toEqual(['m-hire', 'm-sync']);
+  });
+
+  it('a second download click joins the first and both get progress', async () => {
+    const a = vi.fn();
+    const b = vi.fn();
+    const [ra, rb] = await Promise.all([ensureModel(a), ensureModel(b)]);
+    expect([ra, rb]).toEqual([true, true]);
+    expect(a).toHaveBeenCalledWith({ loaded: 11, total: 22 });
+    expect(b).toHaveBeenCalledWith({ loaded: 11, total: 22 });
+    expect(FakeWorker.made).toBe(1);
+    expect(await listLedger()).toHaveLength(1);
+  });
+
+  it('stops an idle worker and reloads from the cache without a new ledger entry', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await ensureModel();
+      cached = true;
+      await embedMeeting('m-sync');
+      vi.advanceTimersByTime(IDLE_MS + 1);
+      expect((await search('money')).mode).toBe('hybrid');
+      expect(FakeWorker.made).toBe(2);
+      expect(await listLedger()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('remove model deletes the weights and goes back to keywords', async () => {

@@ -13,6 +13,8 @@ env.backends.onnx.wasm!.wasmPaths = new URL('/ort/', scope.location.href).href;
 env.backends.onnx.wasm!.numThreads = 1;
 
 let extractor: Promise<FeatureExtractionPipeline> | undefined;
+// One ONNX session runs one call at a time; later calls wait their turn.
+let queue: Promise<unknown> = Promise.resolve();
 
 function load(id: number, localOnly: boolean): Promise<FeatureExtractionPipeline> {
   const files = new Map<string, { loaded: number; total: number }>();
@@ -44,7 +46,10 @@ scope.onmessage = async ({ data }: MessageEvent<ToWorker>) => {
       return;
     }
     if (!extractor) throw new Error('The search model is not loaded.');
-    const out = await (await extractor)(data.texts, { pooling: 'mean', normalize: true });
+    const model = await extractor;
+    const run = queue.then(() => model(data.texts, { pooling: 'mean', normalize: true }));
+    queue = run.catch(() => undefined);
+    const out = await run;
     const [n, dims] = out.dims as [number, number];
     const flat = out.data as Float32Array;
     const vectors = Array.from({ length: n }, (_, i) => flat.slice(i * dims, (i + 1) * dims));
