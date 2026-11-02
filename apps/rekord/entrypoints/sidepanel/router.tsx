@@ -24,7 +24,8 @@ export type ScreenName =
   | 'setupCustom' | 'penvConnect' | 'howItWorks' | 'settingsMore'
   | 'nosound' // v3: desktop-app capture hears nothing
   | 'notionConnect' | 'notionPage'
-  | 'home' | 'backfill'; // v4: Open loops is home
+  | 'home' | 'backfill' // v4: Open loops is home
+  | 'settingsMemory' | 'folder' | 'move'; // v4 settings: memory, Rekord folder, moving computers
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
 export interface RouteParams { meetingId?: string; message?: string; atMs?: number; section?: 'transcription' | 'assistant' }

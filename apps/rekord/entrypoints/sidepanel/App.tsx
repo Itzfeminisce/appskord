@@ -23,6 +23,10 @@ import Settings from './screens/Settings';
 import ErrorScreen from './screens/Error';
 import WhatsNew from './screens/v4/WhatsNew';
 import Backfill from './screens/v4/Backfill';
+import SettingsMemory from './screens/v4/SettingsMemory';
+import Folder from './screens/v4/Folder';
+import Move from './screens/v4/Move';
+import { flushFolder } from '@/lib/folder';
 import { Shell } from './components/v4/Shell';
 import Connections from './screens/Connections';
 import Share from './screens/Share';
@@ -70,6 +74,9 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   notionPage: NotionPage,
   home: Home,
   backfill: Backfill,
+  settingsMemory: SettingsMemory,
+  folder: Folder,
+  move: Move,
 };
 
 /** First screen: onboarding until the user has finished it, then Open loops. */
@@ -104,6 +111,8 @@ async function devRoute(): Promise<Route | string | undefined> {
 export default function App() {
   const [initial, setInitial] = useState<Route | string | null>(null);
   useEffect(() => {
+    // Rekord folder writes queue while the panel is closed; they go out each time it opens (never from a dev frame's sample world).
+    if (!devFrames || !(location.hash.startsWith('#/dev/') || sessionStorage.getItem('rekord.devFrame'))) void flushFolder();
     void devRoute()
       .catch((error) => console.error('Rekord: could not open the dev frame', error))
       .then(async (dev) => setInitial(dev ?? (await initialRoute())));

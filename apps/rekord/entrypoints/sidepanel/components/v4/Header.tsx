@@ -13,7 +13,7 @@ export function Header({ loose = false }: { loose?: boolean }) {
       </div>
       <div className="v4-head-icons">
         <button type="button" className="v4-icon" aria-label="Ask all meetings" onClick={() => navigate('askall')}><SearchIcon /></button>
-        <button type="button" className="v4-icon" aria-label="Settings" onClick={() => navigate('settings')}><SlidersIcon /></button>
+        <button type="button" className="v4-icon" aria-label="Settings" onClick={() => navigate('settingsMemory')}><SlidersIcon /></button>
       </div>
     </header>
   );

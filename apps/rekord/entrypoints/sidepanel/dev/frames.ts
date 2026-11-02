@@ -4,6 +4,23 @@ import { M, SAMPLE_MEETINGS } from '@/lib/memory/sample';
 import { getSettings, updateSettings } from '@/lib/settings';
 import type { RouteParams, ScreenName } from '../router';
 import { BACKFILL_KEY, type BackfillMeeting, type BackfillProgress } from '@/lib/memory/backfill';
+import { putVectors } from '@/lib/memory/store';
+import { putRecordingPart } from '@/lib/db';
+import { settingsDev } from '../screens/v4/SettingsMemory';
+import { folderDev } from '../screens/v4/Folder';
+import { moveDev } from '../screens/v4/Move';
+
+const MB = 1024 * 1024;
+
+/** Search windows for every sample meeting, so "Memory size" reads about 3 MB as in the frames. */
+async function seedVectors() {
+  const text = 'We agreed to send the revised pricing deck to Northwind before the next sync.';
+  for (const m of SAMPLE_MEETINGS) {
+    await putVectors(Array.from({ length: 250 }, (_, i) => ({
+      id: `${m.id}-v${i}`, meetingId: m.id, atMs: i * 10_000, endMs: i * 10_000 + 30_000, text, v: new Int8Array(384).fill(i % 100), scale: 0.01,
+    })));
+  }
+}
 
 export interface DevFrame {
   screen: ScreenName;
@@ -54,6 +71,31 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
     setup: async () => {
       await setMemory({ backfill: 'running' });
       await browser.storage.local.set({ [BACKFILL_KEY]: backfillState() });
+    },
+  },
+  V4SettingsMemory: {
+    screen: 'settingsMemory',
+    setup: async () => {
+      settingsDev.model = { state: 'ready', bytes: 22 * MB };
+      await seedVectors();
+    },
+  },
+  V4Folder: {
+    screen: 'folder',
+    moment: 'after',
+    setup: async () => {
+      folderDev.board = {
+        label: 'On, and after Chrome restarts',
+        on: { state: 'needsPermission', name: 'C:\\Users\\Alex\\Documents\\Rekord', lastWrittenAt: new Date(2026, 10, 3, 10, 49).getTime(), queued: 0, past: 24 },
+      };
+    },
+  },
+  V4Move: {
+    screen: 'move',
+    setup: async () => {
+      // A kept recording, so the file reads "with audio" at about the frame's size.
+      await putRecordingPart({ id: 'rec-sample', meetingId: M.sync2, seq: 0, mimeType: 'audio/webm', blob: new Blob([new Uint8Array(30.5 * MB)], { type: 'audio/webm' }) });
+      moveDev.chosen = { name: 'rekord-2026-10-30.rekord', preview: { meetings: 312, people: 48, already: 6 } };
     },
   },
 };
