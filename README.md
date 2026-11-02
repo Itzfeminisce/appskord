@@ -32,9 +32,25 @@ app calls from its `wxt.config.test.ts`, and the test setup. It ships as TypeScr
 
 ## Releases
 
-Each app ships on its own. Bump the app's `package.json` version, merge to `main`, then push a tag `<app>@<version>`, for example `motikord@1.2.0`.
-CI tests and builds that app, checks the tag matches the manifest version, and makes a GitHub release with the zip. It uploads to the Chrome Web Store when the store secrets exist; otherwise upload the zip by hand.
-A tag ending in `-test` is a dry run: a prerelease, no store upload. The workflow can also be run by hand with an app name to get the zip as an artifact.
+Each app ships on its own. Bump the app's `package.json` version and merge to `main`.
+The Store workflow tests and builds that app, checks the zip has no manifest `key` and no `.pem`, tags `<app>@<version>`,
+and makes a GitHub release with the zip. Merges that do not change a version publish nothing, since every upload starts a new store review.
+It submits the zip to the Chrome Web Store only for apps listed in the repository variable `CWS_AUTO_PUBLISH`
+(for example `rekord klipkord`). Leave an app out while its last version is still in review; upload its zip by hand instead.
+
+A tag pushed by hand, `<app>@<version>`, still runs the Release workflow and uploads when the store secrets exist.
+A tag ending in `-test` is a dry run: a prerelease, no store upload. The Release workflow can also be run by hand with an app name to get the zip as an artifact.
+
+### Store setup (once)
+
+1. In Google Cloud Console, make a project and enable the Chrome Web Store API.
+2. Set up the OAuth consent screen as External, add your email as a test user, then press Publish app so tokens do not expire after 7 days.
+3. Make an OAuth client ID of type Web application, with redirect URI `https://developers.google.com/oauthplayground`.
+4. In the OAuth 2.0 Playground, tick "Use your own OAuth credentials" and enter the client ID and secret.
+5. Authorize the scope `https://www.googleapis.com/auth/chromewebstore`, then exchange the code for tokens.
+6. In the Chrome Web Store dashboard, copy your publisher ID from Publisher, Settings.
+7. In this repo's Settings, Secrets and variables, Actions, add secrets `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN` and `CWS_PUBLISHER_ID`.
+8. When ready, add the variable `CWS_AUTO_PUBLISH` with the apps to publish, separated by spaces.
 
 ## Privacy
 

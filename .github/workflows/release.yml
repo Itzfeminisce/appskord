@@ -104,26 +104,10 @@ jobs:
           CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-          CWS_ID_REKORD: ${{ secrets.CWS_EXTENSION_ID_REKORD }}
-          CWS_ID_KLIPKORD: ${{ secrets.CWS_EXTENSION_ID_KLIPKORD }}
-          CWS_ID_MOTIKORD: ${{ secrets.CWS_EXTENSION_ID_MOTIKORD }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
         run: |
-          case "$APP" in
-            rekord) ext="$CWS_ID_REKORD" ;;
-            klipkord) ext="$CWS_ID_KLIPKORD" ;;
-            motikord) ext="$CWS_ID_MOTIKORD" ;;
-            *) ext="" ;;
-          esac
-          if [ -z "$CWS_CLIENT_ID" ] || [ -z "$CWS_CLIENT_SECRET" ] || [ -z "$CWS_REFRESH_TOKEN" ] || [ -z "$ext" ]; then
+          if [ -z "$CWS_CLIENT_ID" ] || [ -z "$CWS_CLIENT_SECRET" ] || [ -z "$CWS_REFRESH_TOKEN" ] || [ -z "$CWS_PUBLISHER_ID" ]; then
             echo "Store secrets are not all set. Upload the zip by hand."
             exit 0
           fi
-          token=$(curl -fsS https://oauth2.googleapis.com/token \
-            -d client_id="$CWS_CLIENT_ID" -d client_secret="$CWS_CLIENT_SECRET" \
-            -d refresh_token="$CWS_REFRESH_TOKEN" -d grant_type=refresh_token | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).access_token")
-          echo "::add-mask::$token"
-          api="https://www.googleapis.com"
-          curl -fsS -X PUT -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
-            -T "$ZIP" "$api/upload/chromewebstore/v1.1/items/$ext" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log('Upload state:',r.uploadState);if(r.uploadState!=='SUCCESS'){process.exit(1)}"
-          curl -fsS -X POST -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" -H "Content-Length: 0" \
-            "$api/chromewebstore/v1.1/items/$ext/publish" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8'));const s=r.status||[];console.log('Publish status:',JSON.stringify(s));if(!s.every(x=>x==='OK'||x==='ITEM_PENDING_REVIEW')||!s.length){process.exit(1)}"
+          .github/scripts/cws-publish.sh "$APP" "$ZIP"
