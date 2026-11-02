@@ -56,6 +56,9 @@ import { shouldShowWhatsNew } from '@/lib/whatsNew';
 import NoSound from './screens/NoSound';
 import Brief from './screens/v4/Brief';
 import AgendaEdit from './screens/v4/AgendaEdit';
+import Pick from './screens/v41/Pick';
+import PickOther from './screens/v41/PickOther';
+import Tell from './screens/v41/Tell';
 import { PanelGo, useEventCache } from './components/v4/panelGo';
 
 declare global {
@@ -116,6 +119,9 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   sendTasks: SendTasks,
   linearConnect: LinearConnect,
   brief: Brief,
+  catchupPick: Pick,
+  catchupPickOther: PickOther,
+  catchupTell: Tell,
   agendaEdit: AgendaEdit,
 };
 

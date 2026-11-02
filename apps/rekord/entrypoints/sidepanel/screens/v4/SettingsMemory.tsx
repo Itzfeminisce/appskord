@@ -130,6 +130,7 @@ export default function SettingsMemory() {
   const [progress, setProgress] = useState<Progress>({ loaded: 0, total: 0 });
   const [size, setSize] = useState<{ items: number; bytes: number } | null>(null);
   const [plan, setPlan] = useState<ForgetPlan | null>(null);
+  const [missedCard, setMissedCard] = useState(true);
 
   const loadSize = () => memorySize().then(setSize).catch((error) => console.error('Rekord: could not measure memory', error));
   const loadModel = async () => {
@@ -139,7 +140,7 @@ export default function SettingsMemory() {
   };
 
   useEffect(() => {
-    getSettings().then((s) => setMemory(s.memory)).catch((error) => console.error('Rekord: could not load your settings', error));
+    getSettings().then((s) => { setMemory(s.memory); setMissedCard(s.missedMeetingCard); }).catch((error) => console.error('Rekord: could not load your settings', error));
     loadModel().catch((error) => console.error('Rekord: could not check the search model', error));
     void loadSize();
     if (settingsDev.forgetAll) void askForget();
@@ -149,6 +150,15 @@ export default function SettingsMemory() {
     try {
       const s = await getSettings();
       setMemory((await updateSettings({ memory: { ...s.memory, ...partial } })).memory);
+    } catch (error) {
+      console.error('Rekord: could not save your settings', error);
+    }
+  }
+
+  async function saveMissedCard(on: boolean) {
+    setMissedCard(on);
+    try {
+      await updateSettings({ missedMeetingCard: on });
     } catch (error) {
       console.error('Rekord: could not save your settings', error);
     }
@@ -209,6 +219,7 @@ export default function SettingsMemory() {
             {m && <span className="sm-value">{m.brief.minutes} min</span>}
           </Row>
           <Toggle id="r4" title="Due-day reminders" sub="A nudge on the day a promise is due" on={m?.dueReminders ?? false} set={(dueReminders) => void save({ dueReminders })} />
+          <Toggle id="r9" title="Missed-meeting card" sub="Offers a catch up when Rekord missed a calendar meeting" on={missedCard} set={(on) => void saveMissedCard(on)} />
           <Row title="Weekly look back" sub="What was kept and what slipped">
             {m && <span className="sm-value">{DAYS[m.lookBack.day]} {String(m.lookBack.hour).padStart(2, '0')}:00</span>}
           </Row>

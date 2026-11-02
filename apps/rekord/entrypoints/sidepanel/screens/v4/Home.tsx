@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { clock } from '@/lib/calendar';
+import type { CalendarEvent } from '@/lib/types';
 import { transition } from '@/lib/memory/promise';
 import { rankOpenLoops, type LoopSection, type LoopTab } from '@/lib/memory/rank';
 import { putItem } from '@/lib/memory/store';
@@ -14,6 +15,7 @@ import { useRouter } from '../../router';
 import { appLabel, counterpartId, dueChip, meetingLine, setPendingToast, takePendingToast, weekdayShort, type Toast } from './loops';
 import { Avatar, BigCheck, ChevronIcon, DecisionIcon, DueChip, refreshBadge, ToastBar, useMemoryView, type MemoryView } from './parts';
 import { QuestionsList } from './Questions';
+import { MissedStart, restoreMissed } from '../v41/MissedCard';
 
 const SECTION: Record<LoopSection, string> = { overdue: 'Overdue', today: 'Today', thisWeek: 'This week', noDate: 'No date' };
 const TABS: { id: LoopTab; label: string }[] = [
@@ -76,6 +78,7 @@ export function LoopsHome({ tab: forced, sheet = false, children }: { tab?: Loop
   const [view, reload] = useMemoryView();
   const [chosen, setChosen] = useState<LoopTab>(lastTab);
   const [toast, setToast] = useState<Toast | undefined>(() => (sheet ? undefined : takePendingToast()));
+  const [wont, setWont] = useState<CalendarEvent | undefined>();
   const tab = forced ?? chosen;
   const now = world.now();
   const loops = rankOpenLoops(view.items, now, tab);
@@ -87,6 +90,12 @@ export function LoopsHome({ tab: forced, sheet = false, children }: { tab?: Loop
     const timer = setTimeout(() => setToast(undefined), TOAST_MS);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (!wont) return;
+    const timer = setTimeout(() => setWont(undefined), TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [wont]);
 
   const choose = (t: LoopTab) => { lastTab = t; setChosen(t); };
   const check = async (item: MemoryItem) => {
@@ -106,9 +115,10 @@ export function LoopsHome({ tab: forced, sheet = false, children }: { tab?: Loop
 
   return (
     <div className="lp-stack">
-      <Shell tab="loops">
+      <Shell tab="loops" catchUp={!sheet}>
         <div className="lp-home">
           <BriefCard />
+          {!sheet && <MissedStart onDismissed={setWont} />}
           <HomeStates />
           {looksDone.length > 0 && tab !== 'questions' && (
             <button type="button" className="lp-looks" onClick={() => navigate('looksDone', { itemId: looksDone[0]!.id })}>
@@ -145,6 +155,11 @@ export function LoopsHome({ tab: forced, sheet = false, children }: { tab?: Loop
         </div>
       </Shell>
       {toast && <div className="lp-toast-wrap"><ToastBar text={toast.text} onUndo={() => void undo(toast)} /></div>}
+      {!toast && wont && (
+        <div className="lp-toast-wrap">
+          <ToastBar text={`Won’t ask about “${wont.title}” again`} onUndo={() => { setWont(undefined); void restoreMissed(wont.id); }} />
+        </div>
+      )}
       {children}
     </div>
   );
