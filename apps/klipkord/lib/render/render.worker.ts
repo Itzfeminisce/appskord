@@ -3,6 +3,8 @@ import FramesWorker from '@appskord/media/frames.worker?worker';
 import geistUrl from '@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?url';
 import type { RenderPlan, Shape } from '../project/types';
 import { createRenderer, type FrameProvider, type Picture, type Renderer } from './renderer';
+import { cameraMasks, PREVIEW_SEGMENT, workerSegmenter, type CameraMasks } from './segment';
+import SegmentWorker from './segment.worker?worker';
 
 // Preview worker: the editor transfers an OffscreenCanvas and posts a plan per frame. Export (T9) uses createRenderer.
 
@@ -30,6 +32,8 @@ const describe = (error: unknown) => (error instanceof Error ? error.message : S
 const videos = new Map<string, Promise<FramesClient | null>>();
 const images = new Map<string, Promise<ImageBitmap | null>>();
 let renderer: Renderer | null = null;
+let masks: CameraMasks | null = null;
+let last: Extract<RenderRequest, { type: 'render' }> | null = null;
 let busy = false;
 let waiting: Extract<RenderRequest, { type: 'render' }> | null = null;
 
@@ -79,6 +83,7 @@ async function render(request: Extract<RenderRequest, { type: 'render' }>): Prom
   }
   if (!renderer) return reply({ type: 'error', id: request.id, message: 'Renderer not started' });
   busy = true;
+  last = request;
   try {
     await renderer.render(request.plan, request.shape);
     reply({ type: 'rendered', id: request.id, drawn: true });
@@ -93,9 +98,18 @@ async function render(request: Extract<RenderRequest, { type: 'render' }>): Prom
   }
 }
 
+// A blur mask made in the background: draw the shown frame again when nothing newer is on its way.
+function redraw(): void {
+  if (busy || waiting || !last || !renderer) return;
+  void renderer.render(last.plan, last.shape).catch((error: unknown) => console.error('Klipkord: could not draw frame', error));
+}
+
 function close(): void {
   renderer?.dispose();
   renderer = null;
+  masks?.dispose();
+  masks = null;
+  last = null;
   for (const client of videos.values()) void client.then((c) => c?.close());
   for (const image of images.values()) void image.then((b) => b?.close());
   videos.clear();
@@ -110,7 +124,9 @@ self.addEventListener('message', (event: MessageEvent<RenderRequest>) => {
       try {
         close();
         addSources(request.sources);
-        renderer = createRenderer(request.canvas, frames, { backend: request.backend });
+        // The segmentation worker starts on the first frame drawn with "Blur behind you" on.
+        masks = cameraMasks(workerSegmenter(() => new SegmentWorker()), { ...PREVIEW_SEGMENT, onMask: redraw });
+        renderer = createRenderer(request.canvas, frames, { backend: request.backend, hooks: { cameraMask: masks.cameraMask } });
         reply({ type: 'ready', backend: renderer.backend });
       } catch (error) {
         reply({ type: 'error', message: describe(error) });

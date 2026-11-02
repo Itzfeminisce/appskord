@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeVerdict, drawVerdict, encodeVerdict, fpsOf, keyframeBefore, memoryLine, resultsText, seekPoints, summaryRow } from './v3';
+import { decodeVerdict, drawVerdict, segmentVerdict, encodeVerdict, fpsOf, keyframeBefore, memoryLine, resultsText, seekPoints, summaryRow } from './v3';
 
 describe('fpsOf', () => {
   it('turns frames and ms into fps', () => {
@@ -69,5 +69,13 @@ describe('resultsText', () => {
   it('lists each measure and shows Not measured yet rows as not measured', () => {
     const text = resultsText([summaryRow('Draw', 'pass', '31 fps'), summaryRow('Segmentation', null, '')], { cores: 4, chrome: '156' });
     expect(text).toBe('Klipkord v3 machine check, Chrome 156, 4 cores\nDraw: pass (31 fps)\nSegmentation: not measured');
+  });
+});
+
+describe('segmentVerdict', () => {
+  it('needs 10 fps at preview size and 30 at export size', () => {
+    expect(segmentVerdict({ frames: 20, ms: 2000 }, { frames: 60, ms: 2000 })).toEqual({ previewFps: 10, exportFps: 30, verdict: 'pass' });
+    expect(segmentVerdict({ frames: 20, ms: 2000 }, { frames: 50, ms: 2000 }).verdict).toBe('miss');
+    expect(segmentVerdict({ frames: 0, ms: 0 }, { frames: 60, ms: 2000 }).verdict).toBe('miss');
   });
 });

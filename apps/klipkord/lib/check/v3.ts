@@ -8,6 +8,8 @@ export const BUDGET = {
   firstFrameMs: 3000,
   seekMs: 300,
   memoryMb: 1500,
+  // Camera blur: the light preview mask a few times a second; export with blur in up to 2x the plain time needs ~encode fps.
+  segment: { preview: 10, export: 30 },
 } as const;
 
 export type Verdict = 'pass' | 'miss';
@@ -53,6 +55,16 @@ export function decodeVerdict(firstFrameMs: number, seekMs: number[]): DecodeVer
 export function drawVerdict(frames: number, ms: number): { fps: number; verdict: Verdict } {
   const fps = fpsOf(frames, ms);
   return { fps, verdict: fps >= BUDGET.previewFps ? 'pass' : 'miss' };
+}
+
+export interface SegmentVerdict { previewFps: number; exportFps: number; verdict: Verdict }
+
+/** Person masks per second at preview and export size, round trip to the worker included. */
+export function segmentVerdict(preview: { frames: number; ms: number }, exp: { frames: number; ms: number }): SegmentVerdict {
+  const previewFps = fpsOf(preview.frames, preview.ms);
+  const exportFps = fpsOf(exp.frames, exp.ms);
+  const ok = previewFps >= BUDGET.segment.preview && exportFps >= BUDGET.segment.export;
+  return { previewFps, exportFps, verdict: ok ? 'pass' : 'miss' };
 }
 
 // Timestamp (us) of the last key frame at or before `target`; decoding a seek starts there.

@@ -198,7 +198,9 @@ export function renderPlan(project: Project, cut: Cut, out: number, events?: Eve
     const camBox = a.camera && b.camera ? lerpBox(a.camera, b.camera, progress) : (b.camera ?? a.camera);
     const alpha = a.camera && b.camera ? 1 : b.camera ? progress : 1 - progress;
     if (camBox && alpha > 0) {
-      const { shape, mirror, blur } = cut.camera;
+      const { mirror, blur } = cut.camera;
+      // Round or rounded is the bubble's setting; the camera beside or behind the screen keeps rounded corners.
+      const shape = (progress < 0.5 ? from : to) === 'bubble' ? cut.camera.shape : 'rounded';
       plan.camera = { source: camSrc.id, t: sourceTime(camSrc, rec), dest: camBox, shape, mirror, blur, alpha };
     }
   }

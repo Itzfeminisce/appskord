@@ -107,7 +107,7 @@ export function deleteClips(project: Project, ids: readonly string[], leaveGap: 
   return group(project, LABELS.removed(ids.length, CLIP_NOUNS), (p) => ids.reduce((q, id) => deleteClip(q, { id, leaveGap }), p));
 }
 
-export const LAYERS: Partial<Record<Selected['kind'], LayerKind>> = { zooms: 'zooms', overlays: 'overlays', cards: 'cards', media: 'media', voiceovers: 'voiceovers' };
+export const LAYERS: Partial<Record<Selected['kind'], LayerKind>> = { zooms: 'zooms', layouts: 'layouts', overlays: 'overlays', cards: 'cards', media: 'media', voiceovers: 'voiceovers' };
 
 /** Del: deletes whatever is selected. Clips close the gap unless `leaveGap` (Shift+Del). */
 export function deleteSelected(project: Project, selected: Selected, leaveGap = false): Project {
