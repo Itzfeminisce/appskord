@@ -3,6 +3,7 @@ import { transition } from '@/lib/memory/promise';
 import type { MemoryItem } from '@/lib/memory/types';
 import { BackIcon } from '../../components/v4/icons';
 import { dayLabel, DUE_LABEL, dueFor, initials, meetingPeople, quoteMeta, type DueChoice } from '../../components/v4/review';
+import { dayMonth } from './loops';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
 import { loadReview, saveItem, type ReviewData } from './Review';
@@ -12,28 +13,55 @@ import './review.css';
 const QUICK: DueChoice[] = ['today', 'tomorrow', 'friday', 'nextWeek'];
 const TITLE: Record<MemoryItem['kind'], string> = { promise: 'Edit promise', decision: 'Edit decision', question: 'Edit question' };
 
-interface Draft { text: string; ownerId?: string; toId?: string; due?: string }
+interface Draft { text: string; ownerId?: string; toId?: string; due?: string; replacesId?: string; personIds: string[] }
+const LABEL: Record<MemoryItem['kind'], string> = { promise: 'What', decision: 'What was decided', question: 'Question' };
+
+/** Who asked a question: its asker, else the person whose name the quote's speaker matches. */
+function askerOf(item: MemoryItem, people: { id: string; name: string; aliases: string[] }[]): string | undefined {
+  if (item.toId) return item.toId;
+  const speaker = item.quote.speaker.toLowerCase();
+  return people.find((p) => [p.name, ...p.aliases].some((n) => n.toLowerCase() === speaker || n.toLowerCase().split(' ')[0] === speaker))?.id ?? item.personIds[0];
+}
+
+function draftOf(item: MemoryItem, data: ReviewData): Draft {
+  if (item.kind === 'question') return { text: item.text, toId: askerOf(item, data.people), ownerId: item.ownerId ?? 'me', personIds: item.personIds };
+  return { text: item.text, ownerId: item.ownerId, toId: item.toId, due: item.due, replacesId: item.replacesId, personIds: item.personIds };
+}
+
+/** The edit's changes: a question's people are its asker and who should answer. */
+export function editChanges(item: MemoryItem, draft: Draft): Parameters<typeof transition>[1] & { type: 'edit' } {
+  const text = draft.text.trim() || item.text;
+  if (item.kind === 'promise') return { type: 'edit', changes: { text, ownerId: draft.ownerId, toId: draft.toId, due: draft.due } };
+  // 'me' goes last, so the first person is still the one the decision is with.
+  if (item.kind === 'decision') return { type: 'edit', changes: { text, replacesId: draft.replacesId, personIds: [...draft.personIds.filter((id) => id !== 'me'), ...draft.personIds.filter((id) => id === 'me')] } };
+  const personIds = [...new Set([draft.toId, draft.ownerId].filter((id): id is string => !!id && id !== 'me'))];
+  return { type: 'edit', changes: { text, toId: draft.toId, ownerId: draft.ownerId, personIds } };
+}
 
 export default function ReviewEdit() {
   const { route, back, canGoBack, replace } = useRouter();
   const meetingId = route.params.meetingId ?? '';
+  return <ReviewEditForm meetingId={meetingId} itemId={route.params.itemId} onLeave={() => (canGoBack ? back() : replace('review', { meetingId }))} />;
+}
+
+/** V4ReviewEdit and V4ReviewEditMore: edit a promise, a decision or a question before it is kept. */
+export function ReviewEditForm({ meetingId, itemId, onLeave: leave }: { meetingId: string; itemId?: string; onLeave: () => void }) {
   const [data, setData] = useState<ReviewData | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [picking, setPicking] = useState(false);
-  const item = data?.items.find((i) => i.id === route.params.itemId);
+  const item = data?.items.find((i) => i.id === itemId);
 
   useEffect(() => {
     loadReview(meetingId)
       .then((d) => {
         if (!d) return;
         setData(d);
-        const i = d.items.find((x) => x.id === route.params.itemId);
-        if (i) setDraft({ text: i.text, ownerId: i.ownerId, toId: i.toId, due: i.due });
+        const i = d.items.find((x) => x.id === itemId);
+        if (i) setDraft(draftOf(i, d));
       })
       .catch((error) => console.error('Rekord: could not load the promise', error));
-  }, [meetingId, route.params.itemId]);
+  }, [meetingId, itemId]);
 
-  const leave = () => (canGoBack ? back() : replace('review', { meetingId }));
   if (!data || !item || !draft) return <div className="v4-shell" />;
 
   const now = world.now();
@@ -42,22 +70,25 @@ export default function ReviewEdit() {
   const quick = QUICK.find((c) => draft.due === dueFor(c, now));
   const picked = !!draft.due && !quick;
 
+  // The chosen one leads, then You, then the meeting's people.
+  const chosenFirst = (ids: (string | undefined)[]) => [...pickers].sort((a, b) => Number(ids.includes(b.id)) - Number(ids.includes(a.id)));
+  const replaced = item.replacesId ? data.all.find((i) => i.id === item.replacesId) : undefined;
+  const replacedOn = replaced && (replaced.meetingId === data.meeting.id ? data.meeting.startedAt : replaced.createdAt);
+
   const save = async () => {
-    const text = draft.text.trim() || item.text;
-    const changes = item.kind === 'promise' ? { text, ownerId: draft.ownerId, toId: draft.toId, due: draft.due } : { text };
     try {
-      await saveItem(transition(item, { type: 'edit', changes }, now));
+      await saveItem(transition(item, editChanges(item, draft), now));
       leave();
     } catch (error) {
       console.error('Rekord: could not save the promise', error);
     }
   };
 
-  const people = (label: string, id: string, value: string | undefined, onPick: (v: string) => void) => (
+  const people = (label: string, id: string, value: string | undefined, onPick: (v: string) => void, list = pickers) => (
     <div className="re-field">
       <span id={id} className="re-label">{label}</span>
       <div role="radiogroup" aria-labelledby={id} className="re-radios">
-        {pickers.map((p) => (
+        {list.map((p) => (
           <button key={p.id} type="button" role="radio" aria-checked={value === p.id} className="re-radio re-person" onClick={() => onPick(p.id)}>
             <span><span className="re-avatar">{p.mark}</span>{p.name}</span>
           </button>
@@ -65,6 +96,8 @@ export default function ReviewEdit() {
       </div>
     </div>
   );
+  const decided = (id: string) => draft.personIds.includes(id);
+  const toggleDecided = (id: string) => set({ personIds: draft.personIds.includes(id) ? draft.personIds.filter((p) => p !== id) : [...draft.personIds, id] });
 
   return (
     <div className="v4-shell">
@@ -75,7 +108,7 @@ export default function ReviewEdit() {
       <div className="re-body">
         <section className="re-card">
           <div className="re-field re-what">
-            <label htmlFor="re-what" className="re-label">What</label>
+            <label htmlFor="re-what" className="re-label">{LABEL[item.kind]}</label>
             <input id="re-what" type="text" className="re-input" value={draft.text} onChange={(e) => set({ text: e.target.value })} />
           </div>
           {item.kind === 'promise' && (
@@ -103,6 +136,49 @@ export default function ReviewEdit() {
                   </button>
                 </div>
                 {!draft.due && <span className="re-hint">Promises with a date get done far more often.</span>}
+              </div>
+            </>
+          )}
+          {item.kind === 'decision' && (
+            <>
+              <div className="re-field">
+                <span id="re-replaces" className="re-label">Replaces</span>
+                <div role="radiogroup" aria-labelledby="re-replaces" className="re-radios">
+                  {replaced && (
+                    <button type="button" role="radio" aria-checked={draft.replacesId === replaced.id} className="re-radio" onClick={() => set({ replacesId: replaced.id })}>
+                      <span>{`${replaced.text} · ${dayMonth(replacedOn!)}`}</span>
+                    </button>
+                  )}
+                  <button type="button" role="radio" aria-checked={!draft.replacesId} className="re-radio" onClick={() => set({ replacesId: undefined })}>
+                    <span>Nothing, it’s new</span>
+                  </button>
+                </div>
+              </div>
+              <div className="re-field">
+                <span id="re-decided" className="re-label">Who decided</span>
+                <div role="group" aria-labelledby="re-decided" className="re-radios">
+                  {chosenFirst(item.personIds).map((p) => (
+                    <button key={p.id} type="button" role="checkbox" aria-checked={decided(p.id)} className="re-radio re-person" onClick={() => toggleDecided(p.id)}>
+                      <span><span className="re-avatar">{p.mark}</span>{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+          {item.kind === 'question' && (
+            <>
+              {people('Who asked', 're-asked', draft.toId, (toId) => set({ toId }), chosenFirst([askerOf(item, data.people)]))}
+              <div className="re-field">
+                <span id="re-answer" className="re-label">Who should answer</span>
+                <div role="radiogroup" aria-labelledby="re-answer" className="re-radios">
+                  {chosenFirst([item.ownerId ?? 'me']).map((p) => (
+                    <button key={p.id} type="button" role="radio" aria-checked={draft.ownerId === p.id} className="re-radio re-person" onClick={() => set({ ownerId: p.id })}>
+                      <span><span className="re-avatar">{p.mark}</span>{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <span className="re-hint">You is the default.</span>
               </div>
             </>
           )}

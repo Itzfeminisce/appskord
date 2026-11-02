@@ -28,7 +28,7 @@
 
 .lp-list { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
 .lp-section { display: contents; }
-.lp-section h2 { margin: 0; padding: 0 4px; font-size: 12px; font-weight: 600; color: #44464d; letter-spacing: 0.02em; }
+.lp-section h2, .lp-list-head { margin: 0; padding: 0 4px; font-size: 12px; font-weight: 600; color: #44464d; letter-spacing: 0.02em; }
 .lp-row { display: flex; align-items: center; background: #ffffff; border: 1px solid #e8e8eb; border-radius: 16px; padding: 0 12px 0 4px; min-height: 70px; }
 .lp-check { width: 44px; height: 44px; border: none; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .lp-check span { width: 24px; height: 24px; box-sizing: border-box; border-radius: 50%; border: 2px solid #6e7079; }
@@ -85,6 +85,12 @@
 .lp-quote-log { padding: 8px 4px 8px 14px; }
 .lp-quote-log .lp-quote-text { gap: 4px; }
 .lp-quote-log blockquote { line-height: 1.45; }
+.lp-quote-question { border-radius: 12px; padding: 6px 2px 6px 12px; gap: 4px; }
+.lp-quote-question .lp-quote-text { gap: 3px; }
+.lp-quote-question blockquote { font-size: 13px; line-height: 1.4; }
+.lp-quote-question figcaption { line-height: 1.3; }
+.lp-quote-question .lp-play span { width: 30px; height: 30px; }
+.lp-quote-question .lp-play svg { width: 12px; height: 12px; }
 .lp-play { width: 44px; height: 44px; border: 0; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .lp-play span { width: 34px; height: 34px; border-radius: 50%; background: #111114; color: #ffffff; display: flex; align-items: center; justify-content: center; }
 
@@ -111,6 +117,22 @@
 .lp-drop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .lp-drop-link { min-height: 44px; border: 0; background: transparent; padding: 0; display: flex; align-items: center; font-size: 13px; font-weight: 600; color: #8a1c14; }
 .lp-drop-hint { font-size: 12px; color: #6e7079; }
+.lp-actions-even { grid-template-columns: 1fr 1fr; }
+.lp-sheet-form { padding: 10px 20px 20px; box-shadow: 0 -12px 40px rgba(16, 16, 20, 0.2); }
+.lp-sheet-form .lp-grab { background: #dcdce0; }
+.lp-drop-title { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.lp-drop-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #eef0ff; }
+.lp-drop-avatar { width: 28px; height: 28px; background: #ffffff; color: #3730a3; }
+.lp-drop-item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lp-drop-item-title { font-size: 14px; font-weight: 600; color: #1e1b5c; }
+.lp-drop-item-line { font-size: 12px; color: #3730a3; }
+.lp-reasons { display: flex; flex-direction: column; gap: 6px; }
+.lp-reason { min-height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 4px 14px 4px 12px; border-radius: 14px; border: 1px solid #e8e8eb; background: #ffffff; font-size: 14px; font-weight: 500; cursor: pointer; }
+.lp-reason-on { border: 2px solid #4f46e5; background: #f4f4ff; }
+.lp-reason input { width: 20px; height: 20px; margin: 0; flex-shrink: 0; accent-color: #4f46e5; }
+.lp-drop-note { margin: 0; font-size: 13px; line-height: 1.4; color: #44464d; }
+.lp-danger { height: 52px; border: 0; border-radius: 14px; background: #b3261e; color: #ffffff; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.lp-sheet-form .lp-secondary { font-size: 15px; }
 
 .lp-card { border-radius: 16px; border: 1px solid #e8e8eb; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .lp-card-title { font-size: 16px; font-weight: 600; line-height: 1.3; }
@@ -153,3 +175,17 @@
 .dc-chain-text .dc-now { color: #1a6b40; }
 .dc-undo { min-height: 44px; padding: 0 4px; border: 0; background: transparent; display: flex; align-items: center; font: inherit; font-size: 13px; font-weight: 600; color: #4f46e5; flex-shrink: 0; cursor: pointer; }
 .dc-page button:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+.lp-list-head { margin: 0; padding: 0 4px; font-size: 12px; font-weight: 600; color: #44464d; letter-spacing: 0.02em; }
+.lp-question { background: #ffffff; border: 1px solid #e8e8eb; border-radius: 16px; padding: 12px 12px 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.lp-question h3 { margin: 0; flex: 1; font-size: 14px; font-weight: 600; line-height: 1.25; }
+.lp-question-head { display: flex; align-items: center; gap: 8px; }
+.lp-question-icon { width: 28px; height: 28px; border-radius: 9px; background: #fff4e5; color: #8a4b00; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.lp-question-who { font-size: 12px; color: #44464d; }
+.lp-question-actions { display: grid; grid-template-columns: 1fr 1.2fr; gap: 8px; }
+.lp-question-answer, .lp-question-agenda { height: 44px; box-sizing: border-box; border-radius: 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.lp-question-answer { background: #111114; color: #ffffff; border: none; }
+.lp-question-agenda { background: #ffffff; border: 1px solid #dcdce0; color: #111114; }
+.lp-answered-toggle { height: 44px; box-sizing: border-box; padding: 0 12px 0 4px; border: none; background: transparent; font: inherit; display: flex; align-items: center; gap: 8px; color: #44464d; cursor: pointer; }
+.lp-answered-toggle > span:first-of-type { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+.lp-answered-count { font-family: var(--mono); font-size: 11px; font-weight: 500; }
+.lp-question-answer:focus-visible, .lp-question-agenda:focus-visible, .lp-answered-toggle:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }

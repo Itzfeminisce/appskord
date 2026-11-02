@@ -28,7 +28,7 @@ export type ScreenName =
   | 'people' | 'person' | 'personMerge' | 'forget'
   | 'review' | 'reviewEdit'
   | 'redact' | 'ledger'
-  | 'promise' | 'looksDone' | 'nudge' | 'decisions'
+  | 'promise' | 'promiseDrop' | 'looksDone' | 'nudge' | 'decisions'
   | 'settingsMemory' | 'folder' | 'move' // v4 settings: memory, Rekord folder, moving computers
   | 'followUp' | 'sendTasks' | 'linearConnect' // v4: after the meeting
   | 'brief' | 'agendaEdit'; // v4 before the meeting: brief (or first-meeting brief) and its agenda

@@ -82,6 +82,39 @@ describe('review card and summary strip', () => {
     expect((await getItem('n-intro'))?.status).toBe('suggested');
   });
 
+  it('edit decision: what was decided, what it replaces and who decided', async () => {
+    const view = await mount(sidepanel, 'reviewEdit', `/reviewEdit?meeting=${M.sarah3}&item=n-rollout-16`);
+    await settle();
+    expect(view.host.querySelector('h1')?.textContent).toBe('Edit decision');
+    expect(view.host.querySelector('label[for="re-what"]')?.textContent).toBe('What was decided');
+    const replaces = [...view.host.querySelectorAll('[aria-labelledby="re-replaces"] [role=radio]')];
+    expect(replaces.map((r) => `${r.textContent}:${r.getAttribute('aria-checked')}`)).toEqual(['Northwind rollout starts 9 Nov · 27 Oct:true', 'Nothing, it’s new:false']);
+    const decided = [...view.host.querySelectorAll('[aria-labelledby="re-decided"] [role=checkbox]')];
+    expect(decided.map((r) => `${r.textContent}:${r.getAttribute('aria-checked')}`)).toEqual(['SCSarah Chen:true', 'AYou:false', 'TBTom Becker:false']);
+    click(button(view.host, 'Nothing, it’s new'));
+    click(button(view.host, 'TBTom Becker'));
+    click(button(view.host, 'Save'));
+    await settle();
+    const saved = await getItem('n-rollout-16');
+    expect(saved).toMatchObject({ replacesId: undefined, status: 'suggested' });
+    expect(saved?.personIds).toEqual(['p-sarah', 'p-tom']);
+  });
+
+  it('edit question: who asked and who should answer, You by default', async () => {
+    const view = await mount(sidepanel, 'reviewEdit', `/reviewEdit?meeting=${M.sarah3}&item=n-yearly`);
+    await settle();
+    expect(view.host.querySelector('h1')?.textContent).toBe('Edit question');
+    expect(view.host.querySelector('label[for="re-what"]')?.textContent).toBe('Question');
+    const checked = (id: string) => [...view.host.querySelectorAll(`[aria-labelledby="${id}"] [role=radio]`)].map((r) => `${r.textContent}:${r.getAttribute('aria-checked')}`);
+    expect(checked('re-asked')).toEqual(['SCSarah Chen:true', 'AYou:false', 'TBTom Becker:false']);
+    expect(checked('re-answer')).toEqual(['AYou:true', 'SCSarah Chen:false', 'TBTom Becker:false']);
+    expect(view.host.textContent).toContain('You is the default.');
+    click([...view.host.querySelectorAll('[aria-labelledby="re-answer"] [role=radio]')][1]);
+    click(button(view.host, 'Save'));
+    await settle();
+    expect(await getItem('n-yearly')).toMatchObject({ toId: 'p-sarah', ownerId: 'p-sarah', personIds: ['p-sarah'] });
+  });
+
   it('dismiss asks nothing and saves the reason chip', async () => {
     const view = await mount(sidepanel, 'review', `/review?meeting=${M.sarah3}`);
     click(button(card(view.host, 'Join Thursday’s rollout demo'), 'Dismiss'));

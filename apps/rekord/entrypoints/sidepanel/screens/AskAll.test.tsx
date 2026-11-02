@@ -10,6 +10,9 @@ import { mount, settle } from '../../../test/mountRouter';
 import { sidepanel } from '../App';
 import { world } from '../components/v4/world';
 import { DEV_FRAMES } from '../dev/frames';
+import { createRoot } from 'react-dom/client';
+import { MemoryCard } from './AskAll';
+import type { MemoryItem } from '@/lib/memory/types';
 
 const ensureModel = vi.fn(async (_p?: (x: { loaded: number; total: number }) => void) => true);
 vi.mock('@/lib/recall', async (orig) => ({ ...(await orig<typeof import('@/lib/recall')>()), ensureModel: (p?: never) => ensureModel(p), embedPending: async () => 0 }));
@@ -54,14 +57,38 @@ describe('Ask all by meaning', () => {
     expect(view.host.textContent).not.toContain('Search by meaning?');
   });
 
-  it('a failed download leaves the choice open', async () => {
-    ensureModel.mockResolvedValueOnce(false);
+  it('shows the download progress, and a failed download says keyword search still works with Try again', async () => {
+    let finish: (ok: boolean) => void = () => undefined;
+    ensureModel.mockImplementationOnce((p) => { p?.({ loaded: 9 * 1024 * 1024, total: 22 * 1024 * 1024 }); return new Promise((r) => { finish = r; }); });
     const view = await mount(sidepanel, 'askall');
     await settle();
     act(() => button(view.host, 'Download (22 MB)').click());
     await settle();
+    expect(view.host.querySelector('[role="status"]')?.textContent).toBe('Downloading the search model9 of 22 MBKeyword search works meanwhile.');
+    expect(view.host.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('9');
+    await act(async () => finish(false));
+    await settle();
     expect((await getSettings()).memory.searchModel).toBe('none');
-    expect(view.host.textContent).toContain('Search by meaning?');
+    expect(view.host.querySelector('[role="alert"]')?.textContent).toBe('The search model didn’t downloadKeyword search still works.Try again');
+    act(() => button(view.host, 'Try again').click());
+    await settle();
+    expect(ensureModel).toHaveBeenCalledTimes(2);
+    expect((await getSettings()).memory.searchModel).toBe('ready');
+  });
+
+  it('a question card says who asked and whether it is still open or answered', () => {
+    const meeting = { id: 'm-sync', title: 'Weekly product sync', startedAt: new Date(2026, 10, 2, 10, 0).getTime() };
+    const q: MemoryItem = { id: 'q1', kind: 'question', status: 'open', text: 'Who writes the launch email copy?', meetingId: meeting.id, personIds: [], history: [], createdAt: 0, updatedAt: 0,
+      quote: { speaker: 'Sam', text: 'Who’s writing the launch email copy?', meetingId: meeting.id, atMs: 535_000 } };
+    const card = (item: MemoryItem) => {
+      const host = document.createElement('div');
+      const root = createRoot(host);
+      act(() => root.render(<MemoryCard s={{ n: 1, kind: 'item', meetingId: meeting.id, title: meeting.title, startedAt: meeting.startedAt, atMs: item.quote.atMs, item }} onOpen={() => undefined} meetings={[meeting]} />));
+      return host.textContent;
+    };
+    expect(card(q)).toBe('Open question · asked by SamStill openWho writes the launch email copy?Sam: “Who’s writing the launch email copy?”Weekly product sync · 2 Nov · 08:55');
+    const answer = { speaker: 'Priya', text: 'I’ll write it, you’ll have it by Thursday.', meetingId: meeting.id, atMs: 570_000 };
+    expect(card({ ...q, status: 'answered', history: [answer] })).toBe('Question · asked by SamAnswered 2 NovWho writes the launch email copy?Sam: “Who’s writing the launch email copy?”Weekly product sync · 2 Nov · 08:55Priya: “I’ll write it, you’ll have it by Thursday.”Weekly product sync · 2 Nov · 09:30');
   });
 
   it('Keep keyword search brings back the v3 screen and remembers it', async () => {

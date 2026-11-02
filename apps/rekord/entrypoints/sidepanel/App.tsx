@@ -40,7 +40,7 @@ import SendTasks from './screens/v4/SendTasks';
 import LinearConnect from './screens/v4/LinearConnect';
 import { Shell } from './components/v4/Shell';
 import Home from './screens/v4/Home';
-import PromiseScreen from './screens/v4/Promise';
+import PromiseScreen, { PromiseDrop } from './screens/v4/Promise';
 import LooksDone from './screens/v4/LooksDone';
 import Nudge from './screens/v4/Nudge';
 import Decisions from './screens/v4/Decisions';
@@ -102,6 +102,7 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   redact: Redact,
   ledger: Ledger,
   promise: PromiseScreen,
+  promiseDrop: PromiseDrop,
   looksDone: LooksDone,
   nudge: Nudge,
   decisions: Decisions,
