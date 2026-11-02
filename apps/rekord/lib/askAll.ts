@@ -1,3 +1,4 @@
+import { FROM_CATCHUP, isCatchup } from './catchup/label';
 import { listNotes, listSegments } from './db';
 import { record as recordCall } from './ledger';
 import type { LedgerEntry, MemoryItem } from './memory/types';
@@ -103,10 +104,17 @@ export function citationClock(ms: number): string {
   return c.length === 4 ? `0${c}` : c;
 }
 
+/** A citation's caption: its clock, or "From your catch-up" for a meeting told afterwards (FRAMES V41Items). */
+export function citationCaption(s: { atMs: number; catchup?: boolean }): string {
+  return s.catchup ? FROM_CATCHUP : citationClock(s.atMs);
+}
+
+const catchupFlag = (m: Pick<Meeting, 'source'> | undefined) => (isCatchup(m) ? { catchup: true as const } : {});
+
 function block(c: Candidate, query: string, withExcerpts: boolean): string {
   const m = c.meeting;
   const words = queryWords(query);
-  const lines = [`## Meeting ${m.id}: ${m.title || 'Untitled meeting'} (${new Date(m.startedAt).toISOString().slice(0, 10)})`];
+  const lines = [`## Meeting ${m.id}: ${m.title || 'Untitled meeting'} (${new Date(m.startedAt).toISOString().slice(0, 10)}${isCatchup(m) ? `, ${CATCHUP_SOURCE}` : ''})`];
   const s = m.summary;
   if (s) {
     lines.push(`Summary: ${s.overview}`);
@@ -169,12 +177,12 @@ export function buildAskAllMessages(context: string, question: string): ChatMess
   ];
 }
 
-export interface Source { meetingId: string; title: string; startedAt: number; atMs: number }
+export interface Source { meetingId: string; title: string; startedAt: number; atMs: number; catchup?: true }
 
 const CITE = /\[([^\]@\s]+)@(\d{1,3}):(\d{2})(?::(\d{2}))?\]/g;
 
 /** One source per cited meeting, with its first cited moment, in order of first mention. Unknown ids are ignored. */
-export function parseSources(answer: string, meetings: Pick<Meeting, 'id' | 'title' | 'startedAt'>[]): Source[] {
+export function parseSources(answer: string, meetings: Pick<Meeting, 'id' | 'title' | 'startedAt' | 'source'>[]): Source[] {
   const byId = new Map(meetings.map((m) => [m.id, m]));
   const out: Source[] = [];
   for (const m of answer.matchAll(CITE)) {
@@ -183,7 +191,7 @@ export function parseSources(answer: string, meetings: Pick<Meeting, 'id' | 'tit
     const [a, b, c] = [Number(m[2]), Number(m[3]), m[4] !== undefined ? Number(m[4]) : undefined];
     if (c !== undefined ? b >= 60 || c >= 60 : b >= 60) continue;
     const sec = c !== undefined ? a * 3600 + b * 60 + c : a * 60 + b;
-    out.push({ meetingId: meeting.id, title: meeting.title || 'Untitled meeting', startedAt: meeting.startedAt, atMs: sec * 1000 });
+    out.push({ meetingId: meeting.id, title: meeting.title || 'Untitled meeting', startedAt: meeting.startedAt, atMs: sec * 1000, ...catchupFlag(meeting) });
   }
   return out;
 }
@@ -290,6 +298,8 @@ export interface MemorySource {
   /** The decision this one replaced. */
   replaces?: { text: string; at: number };
   overdue?: number;
+  /** From a catch-up: the caption reads "From your catch-up", not a clock. */
+  catchup?: true;
 }
 
 export interface AskMemoryResult {
@@ -314,6 +324,9 @@ const MAX_ITEMS = 3;
 const MAX_MEETINGS = 3;
 
 const clock = (ms: number): string => citationClock(ms);
+// What the AI reads for a catch-up source in place of its clock, so its answer can say where a fact came from.
+const CATCHUP_SOURCE = 'from your catch-up, told after the meeting';
+const CATCHUP_RULE = 'A source marked "from your catch-up" is the user’s own account, told after the meeting; when you use one, say it comes from their catch-up.';
 
 /** Best matching moment of a meeting when the search found no window (keyword mode). */
 function bestMoment(d: MeetingData, query: string): { atMs: number; text: string } | undefined {
@@ -327,9 +340,9 @@ function bestMoment(d: MeetingData, query: string): { atMs: number; text: string
   return best && { atMs: best.atMs, text: best.text };
 }
 
-export function buildMemoryMessages(sources: { n: number; text: string }[], question: string): ChatMessage[] {
+export function buildMemoryMessages(sources: { n: number; text: string }[], question: string, catchup = false): ChatMessage[] {
   return [
-    { role: 'system', content: MEMORY_SYSTEM_PROMPT },
+    { role: 'system', content: catchup ? `${MEMORY_SYSTEM_PROMPT} ${CATCHUP_RULE}` : MEMORY_SYSTEM_PROMPT },
     { role: 'user', content: `Sources:\n\n${sources.map((s) => `[${s.n}] ${s.text}`).join('\n\n')}` },
     { role: 'user', content: question },
   ];
@@ -406,7 +419,7 @@ export async function askMemory(question: string, scope: Scope, all: Meeting[], 
         n: sources.length + 1, kind: 'item', meetingId: item.quote.meetingId, title: meeting?.title || 'Untitled meeting',
         startedAt: meeting?.startedAt ?? item.createdAt, atMs: item.quote.atMs, item,
         ...(old && oldAt !== undefined ? { replaces: { text: old.text, at: oldAt } } : {}),
-        overdue: overdueDays(item, now),
+        overdue: overdueDays(item, now), ...catchupFlag(meeting),
       };
       sources.push(source);
       const facts = [
@@ -415,7 +428,7 @@ export async function askMemory(question: string, scope: Scope, all: Meeting[], 
         source.overdue ? `overdue ${source.overdue} ${source.overdue === 1 ? 'day' : 'days'}` : item.due ? `due ${item.due}` : '',
         source.replaces ? `replaces “${source.replaces.text}” (${shortDate(source.replaces.at)})` : '',
       ].filter(Boolean).join(', ');
-      texts.push(`${item.text} (${facts}). ${item.quote.speaker}: “${item.quote.text}” (${source.title}, ${shortDate(source.startedAt)}, ${clock(item.quote.atMs)})`);
+      texts.push(`${item.text} (${facts}). ${item.quote.speaker}: “${item.quote.text}” (${source.title}, ${shortDate(source.startedAt)}, ${source.catchup ? CATCHUP_SOURCE : clock(item.quote.atMs)})`);
     }
     for (const hit of found.meetings.slice(0, MAX_MEETINGS)) {
       const moment = hit.text !== undefined && hit.atMs !== undefined
@@ -424,8 +437,9 @@ export async function askMemory(question: string, scope: Scope, all: Meeting[], 
       const m = hit.meeting;
       const overview = m.summary?.overview ? ` Summary: ${m.summary.overview.slice(0, EXCERPT_CHARS)}` : '';
       if (!moment && !overview) continue;
-      sources.push({ n: sources.length + 1, kind: 'meeting', meetingId: m.id, title: m.title || 'Untitled meeting', startedAt: m.startedAt, atMs: moment?.atMs ?? 0 });
-      texts.push(`Meeting “${m.title || 'Untitled meeting'}” (${shortDate(m.startedAt)})${moment ? ` at ${clock(moment.atMs)}: ${moment.text}` : ':'}${overview}`);
+      sources.push({ n: sources.length + 1, kind: 'meeting', meetingId: m.id, title: m.title || 'Untitled meeting', startedAt: m.startedAt, atMs: moment?.atMs ?? 0, ...catchupFlag(m) });
+      const at = isCatchup(m) ? `, ${CATCHUP_SOURCE}` : '';
+      texts.push(`Meeting “${m.title || 'Untitled meeting'}” (${shortDate(m.startedAt)}${at})${moment ? `${at ? '' : ` at ${clock(moment.atMs)}`}: ${moment.text}` : ':'}${overview}`);
     }
     if (!sources.length) return { question: q, scope, mode, status: 'none' };
 
@@ -434,7 +448,7 @@ export async function askMemory(question: string, scope: Scope, all: Meeting[], 
     let reply = '';
     try {
       reply = (await chat(
-        buildMemoryMessages(sources.map((s, i) => ({ n: s.n, text: texts[i] ?? '' })), q),
+        buildMemoryMessages(sources.map((s, i) => ({ n: s.n, text: texts[i] ?? '' })), q, sources.some((s) => s.catchup)),
         { temperature: 0.2, maxTokens: 400, signal: deps.signal, config: deps.config },
         deps.fetch,
       )).trim();

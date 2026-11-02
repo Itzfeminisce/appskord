@@ -14,7 +14,7 @@ export interface Brief {
   who: BriefPerson[];
   /** Nobody on the invite has met you in a recorded meeting. */
   firstMeeting: boolean;
-  last?: Pick<Meeting, 'id' | 'title' | 'startedAt'>;
+  last?: Pick<Meeting, 'id' | 'title' | 'startedAt' | 'source'>;
   /** "You owe Sarah", "Sarah owes you", "Still open", in that order. */
   rows: BriefRow[];
 }
@@ -44,7 +44,7 @@ function lastMeeting(event: CalendarEvent, who: BriefPerson[], meetings: Meeting
   const ids = new Set(who.flatMap((w) => w.person?.meetingIds ?? []));
   const past = meetings.filter((m) => ids.has(m.id) && m.startedAt < Math.min(now, event.start)).sort((a, b) => b.startedAt - a.startedAt);
   const m = past.find((p) => p.title === event.title) ?? past[0];
-  return m ? { id: m.id, title: m.title, startedAt: m.startedAt } : undefined;
+  return m ? { id: m.id, title: m.title, startedAt: m.startedAt, ...(m.source && { source: m.source }) } : undefined;
 }
 
 /** Promises between you and a guest due by the meeting day (or with no date), and open questions they touch. */
@@ -158,6 +158,9 @@ export function dueToday(items: MemoryItem[], now: number): MemoryItem[] {
 
 // "Last time" in three lines: the brief's one AI call.
 
+// A catch-up was told by the user afterwards, so the brief says whose account it is (FRAMES V41Items).
+const CATCHUP_NOTE = 'It was not recorded: these facts are from your catch-up, which you told Rekord after the meeting.';
+
 /** What the AI gets: the last meeting's title, date, summary and remembered items. No transcript. */
 export function lastTimeMessages(last: NonNullable<Brief['last']>, overview: string | undefined, items: MemoryItem[], people: Person[]): { role: 'system' | 'user'; content: string }[] {
   const name = (id?: string) => (id === 'me' ? 'you' : people.find((p) => p.id === id)?.name ?? 'someone');
@@ -168,7 +171,7 @@ export function lastTimeMessages(last: NonNullable<Brief['last']>, overview: str
   const said = items.flatMap((i) => i.history.filter((q) => q.meetingId === last.id).map((q) => `- ${q.speaker} said: "${q.text}"`));
   return [
     { role: 'system', content: 'You write a meeting brief. Reply with exactly three short lines, one fact each, plain sentences under 12 words, no bullets or numbers. Address the reader as "you". Use only the facts given.' },
-    { role: 'user', content: [`Last meeting: ${last.title} on ${dayMonth(last.startedAt)}.`, overview ? `Summary: ${overview}` : '', 'Remembered:', ...lines, ...said].filter(Boolean).join('\n').slice(0, 12_000) },
+    { role: 'user', content: [`Last meeting: ${last.title} on ${dayMonth(last.startedAt)}.`, last.source === 'catchup' ? CATCHUP_NOTE : '', overview ? `Summary: ${overview}` : '', 'Remembered:', ...lines, ...said].filter(Boolean).join('\n').slice(0, 12_000) },
   ];
 }
 

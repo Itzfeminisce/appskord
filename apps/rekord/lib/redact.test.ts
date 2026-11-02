@@ -8,6 +8,7 @@ import {
   canRedactPerson, encodeWav, markFolderWritten, meetingsNeedingFolderWrite, needsFolderWrite, planSpan, redactPerson,
   oggOpus, redactSpan, redactionsOf, silence, summaryWithout, toRecordingMs,
 } from './redact';
+import { tellSeqBase } from './catchup/session';
 import type { Segment } from './types';
 
 const mmss = (m: number, s: number) => (m * 60 + s) * 1000;
@@ -125,6 +126,39 @@ describe('redactSpan', () => {
     expect(left).toEqual(expect.arrayContaining(['Okay, the new date works for me.', 'Let me think about that and come back to you.']));
     expect(left).not.toContain('Okay. Back to the seat count.');
     expect(await getItem('i-q3')).toBeUndefined();
+  });
+});
+
+describe('redacting a catch-up', () => {
+  beforeEach(world);
+
+  it('silences only the voice part a span falls in, at its own time, and keeps the other parts as they are', async () => {
+    const told = { at: NOW, ms: mmss(30, 0), parts: [
+      { at: NOW, ms: mmss(20, 0), kind: 'voice' as const }, { at: NOW, ms: mmss(1, 0), kind: 'typed' as const }, { at: NOW, ms: mmss(9, 0), kind: 'voice' as const },
+    ] };
+    await putMeeting({ ...(await getMeeting(M.sarah3))!, source: 'catchup', told });
+    const db = await getDB();
+    await db.delete('recordings', 'r0');
+    await db.put('recordings', { id: 'p0', meetingId: M.sarah3, seq: tellSeqBase(0), blob: new Blob(['first']), mimeType: 'audio/webm' });
+    await db.put('recordings', { id: 'p2', meetingId: M.sarah3, seq: tellSeqBase(2), blob: new Blob(['third']), mimeType: 'audio/webm' });
+    const decoded: string[] = [];
+    let silenced: number[] = [];
+    const decode = async (blob: Blob) => {
+      decoded.push(await blob.text());
+      const pcm = { sampleRate: 10, samples: new Float32Array(mmss(9, 0) / 100).fill(0.5) };
+      return pcm;
+    };
+    const encode = async (pcm: { samples: Float32Array }) => {
+      silenced = [pcm.samples.indexOf(0), pcm.samples.lastIndexOf(0)];
+      return new Blob(['re'], { type: 'audio/wav' });
+    };
+    // The span is 21:10-21:52 of the joined telling: part 2 starts at 21:00, so 0:10-0:52 into its own file.
+    const out = await redactSpan(M.sarah3, SPAN, { ...quiet, now: NOW, decode, encode });
+    expect(out.audio).toBe('silenced');
+    expect(decoded).toEqual(['third']);
+    expect(silenced).toEqual([100, 520 - 1]);
+    const parts = (await listRecordingParts(M.sarah3)).sort((a, b) => a.seq - b.seq);
+    expect(parts.map((p) => [p.id, p.seq])).toEqual([['p0', tellSeqBase(0)], [`${M.sarah3}-redacted-2`, tellSeqBase(2)]]);
   });
 });
 

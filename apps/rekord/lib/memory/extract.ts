@@ -2,6 +2,7 @@ import { getMeeting, listMeetings, listSegments } from '../db';
 import { record } from '../ledger';
 import { onRecord } from '../live/offRecord';
 import { chat, displayName, LLMError, transcriptLines, type FetchLike } from '../llm';
+import { preambleFor } from '../catchup/preamble';
 import { getSettings } from '../settings';
 import type { Meeting, Segment } from '../types';
 import { normalise, quoteFound } from './check';
@@ -89,6 +90,12 @@ export function buildExtractPrompt(p: PromptInput): string {
   }
   out.push('', 'Transcript part:', ...p.lines);
   return out.join('\n');
+}
+
+/** The extraction instructions; a catch-up gets the catch-up preamble first (CONTRACT "Where a catch-up differs"). */
+export function extractSystem(meeting: Pick<Meeting, 'source' | 'startedAt'>): string {
+  const preamble = preambleFor(meeting);
+  return preamble ? `${preamble}\n${EXTRACT_SYSTEM}` : EXTRACT_SYSTEM;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
@@ -219,7 +226,10 @@ export const NOT_SENT = new Set(['no-key', 'offline', 'local-unavailable', 'canc
 export const extractedKey = (meetingId: string) => `rekord.extracted.${meetingId}`;
 export const partsKey = (meetingId: string) => `rekord.extract.parts.${meetingId}`;
 /** A part's parsed reply, with the open promises its "done" refs point at. */
-interface SavedPart { extraction: Extraction; openIds: string[] }
+interface SavedPart { extraction: Extraction; openIds: string[]; sig?: string }
+
+// A catch-up's answers join the telling after its draft was read, so a kept reply is reused only for the same lines.
+const partSig = (part: Part) => `${part.segments.length}:${part.segments[0]?.id ?? ''}:${part.segments.at(-1)?.id ?? ''}`;
 
 async function readParts(meetingId: string): Promise<Record<string, SavedPart>> {
   return ((await browser.storage.local.get(partsKey(meetingId)))[partsKey(meetingId)] as Record<string, SavedPart> | undefined) ?? {};
@@ -229,6 +239,19 @@ async function readParts(meetingId: string): Promise<Record<string, SavedPart>> 
 export async function partsSaved(meetingId: string): Promise<number> {
   return Object.keys(await readParts(meetingId)).length;
 }
+
+export const againKey = (meetingId: string) => `rekord.extract.again.${meetingId}`;
+
+/** A catch-up told more after it was processed: extraction runs again over the whole telling, adding only new items. */
+export async function extractAgain(meetingId: string): Promise<void> {
+  await browser.storage.local.remove(extractedKey(meetingId));
+  await browser.storage.local.set({ [againKey(meetingId)]: true });
+}
+
+/** An item this meeting already holds, in any status (a dismissed one stays dismissed): same quote or same words. */
+const alreadyHeld = (item: MemoryItem, own: MemoryItem[]) => own.some((o) =>
+  [o.quote, ...o.history].some((q) => q.meetingId === item.quote.meetingId && q.text === item.quote.text)
+  || (o.kind === item.kind && normalise(o.text).join(' ') === normalise(item.text).join(' ')));
 
 export async function isExtracted(meetingId: string): Promise<boolean> {
   return !!(await browser.storage.local.get(extractedKey(meetingId)))[extractedKey(meetingId)];
@@ -250,14 +273,98 @@ export function extractMeeting(meetingId: string, deps: ExtractDeps = {}): Promi
   return run;
 }
 
+/**
+ * The part replies of a catch-up before its follow-up questions: the same calls, kept as extraction keeps them, so
+ * extraction later asks again only for parts the answers changed. Saves no items. Throws LLMError.
+ */
+export async function draftExtraction(meetingId: string, deps: ExtractDeps = {}): Promise<RawItem[]> {
+  const run = await readAll(meetingId, deps);
+  return run ? run.found.map(({ raw }) => raw) : [];
+}
+
 async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<ExtractResult> {
   const now = deps.now ?? Date.now;
   const newId = deps.newId ?? (() => crypto.randomUUID());
+  const run = await readAll(meetingId, deps);
+  if (!run) return EMPTY;
+  const { meeting, items, people, ask, found, done } = run;
+  const own = items.filter((i) => i.meetingId === meetingId);
+
+  const at = now();
+  const attendees = (meeting.event?.attendees ?? []).filter((a) => !a.self).map((a) => ({ name: a.name, email: a.email }));
+  const heard = Object.keys(meeting.speakers ?? {}).map((label) => displayName({ speaker: 'others', speakerLabel: label }, meeting.speakers));
+  const named = found.flatMap(({ raw }) => [raw.owner, raw.to, raw.speaker]).filter(isPersonName);
+  const plan = resolvePeople(attendees, [...heard, ...named], people, meetingId, at, newId);
+  const idOf = (name?: string) => (isMe(name) ? 'me' : name ? plan.byName.get(name.trim().toLowerCase()) : undefined);
+
+  const fresh: MemoryItem[] = found.map(({ raw, part }) => {
+    const check = checkQuote(raw.quote, raw.atMs, part);
+    const quote: Quote = { speaker: raw.speaker, text: raw.quote, meetingId, atMs: check.atMs };
+    const ownerId = raw.kind === 'promise' ? idOf(raw.owner) : undefined;
+    const toId = raw.kind === 'promise' ? idOf(raw.to) : undefined;
+    const personIds = [...new Set([ownerId, toId, idOf(raw.speaker)].filter((id): id is string => !!id && id !== 'me'))];
+    return {
+      id: newId(), kind: raw.kind, status: 'suggested', text: raw.text, quote, meetingId, personIds, history: [],
+      ...(ownerId ? { ownerId } : {}), ...(toId ? { toId } : {}), ...(raw.due ? { due: raw.due } : {}),
+      ...(check.found ? {} : { leftOut: true }), createdAt: at, updatedAt: at,
+    };
+  });
+
+  // Earlier items: a repeat adds to the earlier item's history; a changed decision is saved as replacing it.
+  const earlier = items.filter((i) => i.meetingId !== meetingId && ['open', 'looksDone', 'suggested'].includes(i.status));
+  const updated = new Map<string, MemoryItem>();
+  const keep: MemoryItem[] = [];
+  for (const item of fresh) {
+    if (alreadyHeld(item, own)) continue;
+    if (item.leftOut) { keep.push(item); continue; }
+    const candidates: ItemCandidate[] = earlier.map((e) => ({ item: updated.get(e.id) ?? e, score: similarity(item.text, e.text) }));
+    const relations = new Map<string, Relation>();
+    const link = await linkItem(item, candidates, async (f, e) => {
+      const r = parseRelation(await ask(SAME_SYSTEM, `Kind: ${f.kind}\nEarlier: ${e.text}\nNew: ${f.text}`, 50));
+      relations.set(e.id, r);
+      return r !== 'different';
+    }, LINK_MIN_SCORE);
+    if (!link) { keep.push(item); continue; }
+    if (item.kind === 'decision' && relations.get(link.id) === 'replaces') { keep.push({ ...item, replacesId: link.id }); continue; }
+    const repeat = [link.quote, ...link.history].some((q) => q.meetingId === item.quote.meetingId && q.text === item.quote.text);
+    if (!repeat) updated.set(link.id, { ...link, history: [...link.history, item.quote], updatedAt: at });
+  }
+
+  // A later meeting can only say a promise looks done; the user closes it.
+  let looksDone = 0;
+  for (const { raw, part, target } of done) {
+    if (!target || target.status !== 'open') continue;
+    const check = checkQuote(raw.quote, raw.atMs, part);
+    if (!check.found) continue;
+    const current = updated.get(target.id) ?? target;
+    const next = transition(current, { type: 'looksDone', evidence: { speaker: raw.speaker, text: raw.quote, meetingId, atMs: check.atMs } }, at);
+    if (next !== current) { updated.set(target.id, next); looksDone++; }
+  }
+
+  // The marker goes first so no other path saves this meeting twice.
+  if (await isExtracted(meetingId)) return EMPTY;
+  await browser.storage.local.set({ [extractedKey(meetingId)]: at });
+  for (const p of plan.changed) await putPerson(p);
+  for (const i of [...keep, ...updated.values()]) await putItem(i);
+  await browser.storage.local.remove([partsKey(meetingId), againKey(meetingId)]);
+  const kept = keep.filter((i) => !i.leftOut);
+  const count = (k: ItemKind) => kept.filter((i) => i.kind === k).length;
+  return {
+    found: kept.length, promises: count('promise'), decisions: count('decision'), questions: count('question'),
+    people: plan.created, leftOut: keep.length - kept.length, looksDone,
+  };
+}
+
+/** Everything both extraction and the catch-up draft need, with every part's reply. Undefined: nothing to read. */
+async function readAll(meetingId: string, deps: ExtractDeps) {
   const [meeting, segments, settings] = await Promise.all([getMeeting(meetingId), listSegments(meetingId), getSettings()]);
-  if (!meeting) return EMPTY;
-  if ((await isExtracted(meetingId)) || (await itemsForMeeting(meetingId)).length) return EMPTY;
+  if (!meeting) return undefined;
+  if (await isExtracted(meetingId)) return undefined;
+  const again = !!(await browser.storage.local.get(againKey(meetingId)))[againKey(meetingId)];
+  if (!again && (await itemsForMeeting(meetingId)).length) return undefined;
   const parts = splitParts(onRecord(segments, meeting.offSpans), meeting.speakers);
-  if (!parts.length) return EMPTY;
+  if (!parts.length) return undefined;
+  const instructions = extractSystem(meeting);
 
   const [items, people, meetings] = await Promise.all([listItems(), listPeople(), listMeetings()]);
   const startedAt = new Map(meetings.map((m) => [m.id, m.startedAt]));
@@ -290,11 +397,12 @@ async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<Extrac
   const done: { raw: RawDone; part: Part; target?: MemoryItem }[] = [];
   for (const [index, part] of parts.entries()) {
     let kept = saved[index];
+    if (kept?.sig && kept.sig !== partSig(part)) kept = undefined;
     if (!kept) {
       const user = buildExtractPrompt({
         title: meeting.title, date: isoDay(meeting.startedAt), lines: transcriptLines(part.segments, meeting.speakers), open, notPromises,
       });
-      kept = { extraction: parseExtraction(await ask(EXTRACT_SYSTEM, user, REPLY_TOKENS)), openIds: open.map((o) => o.id) };
+      kept = { extraction: parseExtraction(await ask(instructions, user, REPLY_TOKENS)), openIds: open.map((o) => o.id), sig: partSig(part) };
       saved[index] = kept;
       await browser.storage.local.set({ [partsKey(meetingId)]: saved });
     }
@@ -303,66 +411,5 @@ async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<Extrac
     done.push(...extraction.done.map((raw) => ({ raw, part, target: byId.get(openIds[raw.ref - 1] ?? '') })));
   }
 
-  const at = now();
-  const attendees = (meeting.event?.attendees ?? []).filter((a) => !a.self).map((a) => ({ name: a.name, email: a.email }));
-  const heard = Object.keys(meeting.speakers ?? {}).map((label) => displayName({ speaker: 'others', speakerLabel: label }, meeting.speakers));
-  const named = found.flatMap(({ raw }) => [raw.owner, raw.to, raw.speaker]).filter(isPersonName);
-  const plan = resolvePeople(attendees, [...heard, ...named], people, meetingId, at, newId);
-  const idOf = (name?: string) => (isMe(name) ? 'me' : name ? plan.byName.get(name.trim().toLowerCase()) : undefined);
-
-  const fresh: MemoryItem[] = found.map(({ raw, part }) => {
-    const check = checkQuote(raw.quote, raw.atMs, part);
-    const quote: Quote = { speaker: raw.speaker, text: raw.quote, meetingId, atMs: check.atMs };
-    const ownerId = raw.kind === 'promise' ? idOf(raw.owner) : undefined;
-    const toId = raw.kind === 'promise' ? idOf(raw.to) : undefined;
-    const personIds = [...new Set([ownerId, toId, idOf(raw.speaker)].filter((id): id is string => !!id && id !== 'me'))];
-    return {
-      id: newId(), kind: raw.kind, status: 'suggested', text: raw.text, quote, meetingId, personIds, history: [],
-      ...(ownerId ? { ownerId } : {}), ...(toId ? { toId } : {}), ...(raw.due ? { due: raw.due } : {}),
-      ...(check.found ? {} : { leftOut: true }), createdAt: at, updatedAt: at,
-    };
-  });
-
-  // Earlier items: a repeat adds to the earlier item's history; a changed decision is saved as replacing it.
-  const earlier = items.filter((i) => i.meetingId !== meetingId && ['open', 'looksDone', 'suggested'].includes(i.status));
-  const updated = new Map<string, MemoryItem>();
-  const keep: MemoryItem[] = [];
-  for (const item of fresh) {
-    if (item.leftOut) { keep.push(item); continue; }
-    const candidates: ItemCandidate[] = earlier.map((e) => ({ item: updated.get(e.id) ?? e, score: similarity(item.text, e.text) }));
-    const relations = new Map<string, Relation>();
-    const link = await linkItem(item, candidates, async (f, e) => {
-      const r = parseRelation(await ask(SAME_SYSTEM, `Kind: ${f.kind}\nEarlier: ${e.text}\nNew: ${f.text}`, 50));
-      relations.set(e.id, r);
-      return r !== 'different';
-    }, LINK_MIN_SCORE);
-    if (!link) { keep.push(item); continue; }
-    if (item.kind === 'decision' && relations.get(link.id) === 'replaces') { keep.push({ ...item, replacesId: link.id }); continue; }
-    const repeat = [link.quote, ...link.history].some((q) => q.meetingId === item.quote.meetingId && q.text === item.quote.text);
-    if (!repeat) updated.set(link.id, { ...link, history: [...link.history, item.quote], updatedAt: at });
-  }
-
-  // A later meeting can only say a promise looks done; the user closes it.
-  let looksDone = 0;
-  for (const { raw, part, target } of done) {
-    if (!target || target.status !== 'open') continue;
-    const check = checkQuote(raw.quote, raw.atMs, part);
-    if (!check.found) continue;
-    const current = updated.get(target.id) ?? target;
-    const next = transition(current, { type: 'looksDone', evidence: { speaker: raw.speaker, text: raw.quote, meetingId, atMs: check.atMs } }, at);
-    if (next !== current) { updated.set(target.id, next); looksDone++; }
-  }
-
-  // The marker goes first so no other path saves this meeting twice.
-  if (await isExtracted(meetingId)) return EMPTY;
-  await browser.storage.local.set({ [extractedKey(meetingId)]: at });
-  for (const p of plan.changed) await putPerson(p);
-  for (const i of [...keep, ...updated.values()]) await putItem(i);
-  await browser.storage.local.remove(partsKey(meetingId));
-  const kept = keep.filter((i) => !i.leftOut);
-  const count = (k: ItemKind) => kept.filter((i) => i.kind === k).length;
-  return {
-    found: kept.length, promises: count('promise'), decisions: count('decision'), questions: count('question'),
-    people: plan.created, leftOut: keep.length - kept.length, looksDone,
-  };
+  return { meeting, items, people, ask, found, done };
 }

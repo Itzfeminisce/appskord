@@ -1,4 +1,6 @@
 import { appSources, CATCHUP_SOURCES, MIC_BLOCKED, micBlockedReply, tabRefusedReply, type AppFlag } from '@/lib/capture';
+import { afterTelling as questionsAfterTelling } from '@/lib/catchup/pipeline';
+import { catchupRoute } from '@/lib/catchup/routes';
 import { cappedPartMs, isPaused, pauseClock, resumeClock, startClock, TELL_PORT, type TellClock } from '@/lib/catchup/session';
 import { resolveSources, type Sources } from '@/lib/sources';
 import { addCatchupPart, beginCatchup, endCatchupPart, getMeeting, pendingChunks, putMeeting, saveTypedPart, undoCatchup } from '@/lib/db';
@@ -205,6 +207,8 @@ export default defineBackground(() => {
   onMessage((msg) => {
     // v3 real time: a fresh short-lived Deepgram token per socket; the key itself never leaves the background.
     if (isStreamRequest(msg, 'stream/token')) return tokenReply(loadKeys);
+    const catchupReply = catchupRoute(msg);
+    if (catchupReply) return catchupReply;
     switch (msg.type) {
       case 'recording/get-state':
         return ready.then(() => state);
@@ -445,6 +449,7 @@ async function stopCatchup(): Promise<RecordingReply> {
   else setCloseAfterDrain(meetingId);
   setState({ status: 'idle' });
   await closeOffscreen();
+  afterTelling(meetingId, start);
   return { ok: true, meetingId };
 }
 
@@ -456,12 +461,18 @@ async function fallbackPart(meetingId: string, tell: TellClock, startedAt: numbe
   return { at: tell.since ?? startedAt, ms: Math.max(0, cappedPartMs(tell, now) - saved), kind: 'voice' };
 }
 
+/** A telling stopped: its follow-up questions are asked here, so they are ready even if the panel closed. */
+function afterTelling(meetingId: string, start: CatchupStart | null): void {
+  void questionsAfterTelling(meetingId, start).catch((error) => console.error('Rekord: could not ask the follow-up questions', error));
+}
+
 /** Typed or pasted text: saved as one typed part, then processed like a telling. */
 async function typeCatchup(start: CatchupStart, text: string): Promise<RecordingReply> {
   if (state.status !== 'idle') return { ok: false, error: 'Rekord is already recording.' };
   try {
     const settings = await getSettings();
     if (!(await saveTypedPart(start, text, settings.language, Date.now(), () => crypto.randomUUID()))) return { ok: false, error: 'Nothing to save.' };
+    afterTelling(start.meetingId, start);
     return { ok: true, meetingId: start.meetingId };
   } catch (error) {
     console.error('Rekord: could not save the typed catch-up', error);
