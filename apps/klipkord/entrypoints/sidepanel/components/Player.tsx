@@ -7,7 +7,7 @@ import { playable } from '@/lib/editList';
 import { MARKER_LABEL } from '@/lib/markers';
 import { IDLE_MS, controlsVisible, currentCaption, currentChapterTitle, hideDelay, nextSpeed, timeLabel } from '@/lib/player';
 import { formatClock } from '@/lib/time';
-import { videoStore } from '@/lib/videoStore';
+import { readPlayable } from '@/lib/export/playable';
 import type { Comment, Recording } from '@/lib/types';
 import { dayAndTime } from '../screens/Home';
 import { useRouter, type ScreenName } from '../router';
@@ -114,7 +114,7 @@ export function ReviewShell({ tab, window: own = false, children }: { tab: Revie
     if (!id || !rec) return;
     let url: string | undefined;
     let gone = false;
-    videoStore.read(id, 'video', rec.mime).then((blob) => {
+    readPlayable(rec).then((blob) => {
       if (gone || blob.size === 0) return;
       url = URL.createObjectURL(blob);
       setSrc(url);

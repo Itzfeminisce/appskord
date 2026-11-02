@@ -35,9 +35,11 @@ export interface EditorSlots {
   /** A tool panel (T6's Clean up) that covers the inspector while it is open; it renders null when closed. */
   aside?: ComponentType<SlotProps>;
   inspector?: (props: SlotProps) => Pick<InspectorProps, 'panels' | 'selection'>;
-  topBar?: (props: SlotProps) => Partial<Pick<TopBarProps, 'onName' | 'onCuts' | 'onHistory' | 'onShortcuts' | 'onAskAI' | 'onExport'>>;
+  topBar?: (props: SlotProps) => Partial<Pick<TopBarProps, 'onName' | 'onCuts' | 'onHistory' | 'onShortcuts' | 'onAskAI' | 'onExport' | 'status'>>;
   /** Drawn over the preview picture (T10's zoom focus ring); `preview` shows a cut live without an edit, null ends it. */
   stage?: ComponentType<StageProps>;
+  /** Dialogs and cards over the whole editor (T9's export). */
+  overlay?: ComponentType<SlotProps>;
   /** Slots whose inspector or top bar read their own state call `onChange` so the shell draws them again. */
   subscribe?: (onChange: () => void) => () => void;
 }
@@ -244,6 +246,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   const extra = slotProps ? slots.topBar?.(slotProps) : undefined;
   const inspector = slotProps ? slots.inspector?.(slotProps) : undefined;
   const Aside = slots.aside;
+  const Overlay = slots.overlay;
 
   return (
     <div style={{ height: '100vh', minHeight: 600, display: 'flex', flexDirection: 'column', background: C.ground, color: C.text, overflow: 'hidden' }}>
@@ -281,6 +284,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
         <Inspector panels={ready ? inspector?.panels : undefined} selection={ready ? inspector?.selection : undefined} notices={banners}
           cover={ready && slotProps && Aside ? <Aside {...slotProps} /> : undefined} />
       </div>
+      {slotProps && Overlay && <Overlay {...slotProps} />}
       <input ref={fileInput} type="file" hidden onChange={(e) => onPicked(e.target.files?.[0])} />
       {session === 'elsewhere' && (
         <OpenElsewhere onClose={deps.closeTab} onEditHere={() => {

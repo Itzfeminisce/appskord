@@ -4,6 +4,7 @@ import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import './style.css';
 import { browserDeps } from './browserDeps';
+import { exportSlots } from './components/Exporting';
 import type { EditorSlots } from './Editor';
 import { LayoutPanel } from './inspector/Layout';
 import { EditorApp } from './router';
@@ -19,6 +20,8 @@ const Aside = transcriptSlots.aside;
 const slots = {
   ...transcriptSlots,
   ...timelineSlots,
+  ...exportSlots,
+  topBar: (p) => ({ ...timelineSlots.topBar?.(p), ...exportSlots.topBar?.(p) }),
   inspector: (p) => ({ ...timelineSlots.inspector?.(p), panels: { ...timelineSlots.inspector?.(p).panels, ...captionsSlots.inspector?.(p).panels, ...lookSlots.inspector?.(p).panels, Layout: <LayoutPanel {...p} /> } }),
   // Add media and Voiceover live beside the timeline (with T10's first-open autoZoom); a take's panel shares the inspector cover with Clean up.
   timeline: (p) => <><Timeline {...p} /><mediaSlots.Host {...p} /><AutoZoomOnOpen {...p} /></>,

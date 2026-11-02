@@ -1,0 +1,72 @@
+// ShareLink: v2's Drive flow (lib/drive.ts) for any finished export, into a "Klipkord" folder in the user's Drive.
+import { DriveError, shareAnyone, stopSharing, uploadChunks, type DriveFile, type Fetch } from '../drive';
+
+const API = 'https://www.googleapis.com/drive/v3';
+const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+export const DRIVE_FOLDER = 'Klipkord';
+
+const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+async function ok(res: Response, what: string): Promise<Response> {
+  if (!res.ok) throw new DriveError(res.status, `${what} failed with ${res.status}`);
+  return res;
+}
+
+/** The Klipkord folder; drive.file only lists folders Klipkord made, so a missing one is created. */
+export async function driveFolder(fetchFn: Fetch, token: string): Promise<string> {
+  const q = `name = '${DRIVE_FOLDER}' and mimeType = '${FOLDER_MIME}' and trashed = false`;
+  const found = await ok(await fetchFn(`${API}/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive`, { headers: auth(token) }), 'Finding the folder');
+  const id = ((await found.json()) as { files?: { id?: string }[] }).files?.[0]?.id;
+  if (id) return id;
+  const made = await ok(await fetchFn(`${API}/files?fields=id`, {
+    method: 'POST',
+    headers: { ...auth(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: DRIVE_FOLDER, mimeType: FOLDER_MIME }),
+  }), 'Making the folder');
+  const body = (await made.json()) as { id?: string };
+  if (!body.id) throw new Error('Drive returned no folder');
+  return body.id;
+}
+
+/** Opens a resumable upload into `folder`; Drive answers with the session URL in Location. */
+export async function startFolderUpload(fetchFn: Fetch, token: string, folder: string, meta: { name: string; mimeType: string; size: number }): Promise<string> {
+  const res = await ok(await fetchFn(`${UPLOAD}?uploadType=resumable&fields=id,webViewLink`, {
+    method: 'POST',
+    headers: { ...auth(token), 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': meta.mimeType, 'X-Upload-Content-Length': String(meta.size) },
+    body: JSON.stringify({ name: meta.name, mimeType: meta.mimeType, parents: [folder] }),
+  }), 'Starting the upload');
+  const session = res.headers.get('Location');
+  if (!session) throw new Error('Drive returned no upload session');
+  return session;
+}
+
+export interface DriveShare { fileId: string; link: string; permissionId: string | null }
+
+export interface ShareDeps { fetch: Fetch; sleep?: (ms: number) => Promise<void> }
+
+/** Uploads one finished export and turns on "Anyone with the link". */
+export async function shareExport(deps: ShareDeps, token: string, file: Blob, name: string, onProgress: (sent: number) => void, signal?: AbortSignal): Promise<DriveShare> {
+  const folder = await driveFolder(deps.fetch, token);
+  const session = await startFolderUpload(deps.fetch, token, folder, { name, mimeType: file.type || 'application/octet-stream', size: file.size });
+  const uploaded: DriveFile = await uploadChunks(deps, token, session, file, onProgress, signal);
+  const permissionId = await shareAnyone(deps.fetch, token, uploaded.id);
+  return { fileId: uploaded.id, link: uploaded.webViewLink, permissionId };
+}
+
+/** "Who can watch": Anyone with the link turns the permission on; Only people I add removes it. */
+export async function setAnyone(fetchFn: Fetch, token: string, share: DriveShare, anyone: boolean): Promise<DriveShare> {
+  if (anyone) return share.permissionId ? share : { ...share, permissionId: await shareAnyone(fetchFn, token, share.fileId) };
+  if (share.permissionId) await stopSharing(fetchFn, token, share.fileId, share.permissionId);
+  return { ...share, permissionId: null };
+}
+
+/** The reason Google gave, for drive-failed's "Google said: quota exceeded." */
+export function googleSaid(error: unknown): string {
+  if (error instanceof DriveError) {
+    if (error.status === 403) return 'quota exceeded';
+    if (error.status === 401) return 'sign in again';
+  }
+  const m = error instanceof Error ? error.message : String(error);
+  return m.replace(/\.$/, '').toLowerCase();
+}
