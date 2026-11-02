@@ -45,8 +45,9 @@ function Harness({ start }: { start: Project }) {
 const seen = (): Project => ({ ...fromRecording(recording), quickWins: 'seen', chapters: [{ at: 0, title: 'Intro' }] });
 const render = (p: Project = seen()) => act(() => root.render(<Harness start={p} />));
 const word = (i: number) => host.querySelector(`[data-i="${i}"]`)!;
-const text = () => host.textContent ?? '';
-const button = (name: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === name || b.title === name || b.getAttribute('aria-label') === name)!;
+// The selection bar renders in a body layer, so read the whole page.
+const text = () => document.body.textContent ?? '';
+const button = (name: string) => [...document.body.querySelectorAll('button')].find((b) => b.textContent === name || b.title === name || b.getAttribute('aria-label') === name)!;
 const mouse = (el: Element, type: string, init: MouseEventInit = {}) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, ...init }));
 const lastLabel = () => steps(latest).steps.at(-1)?.label;
 

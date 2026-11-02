@@ -120,7 +120,7 @@ function MuteButton(p: SlotProps) {
 }
 
 describe('editor tab', () => {
-  it('opens with the steps, then shows the project name, Saved and a playable preview', async () => {
+  it('opens with the steps, Opening… and the project name before the first frame', async () => {
     await putRecording(rec());
     const view = await mount('/rec-1', { draws: false });
     expect(text(view.host)).toContain('Getting your recording ready');
@@ -128,10 +128,11 @@ describe('editor tab', () => {
     expect(text(view.host)).toContain('The transcript appears here in a moment.');
     expect(button(view.host, 'Play (Space)').disabled).toBe(true);
     expect(text(view.host)).toContain('Invite your team');
-    expect(status(view.host)).toBe('Saving…');
+    // Until the first frame shows, the top bar says Opening… as EditorOpening draws it.
+    expect(status(view.host)).toBe('Opening…');
     await act(async () => { await new Promise((r) => setTimeout(r, SAVE_DEBOUNCE_MS + 50)); });
     await settle();
-    expect(status(view.host)).toBe('Saved');
+    expect(status(view.host)).toBe('Opening…');
     // An older recording gets its project on first open, seeded from the title.
     expect((await getProject('rec-1'))?.name).toBe('Invite your team');
   });

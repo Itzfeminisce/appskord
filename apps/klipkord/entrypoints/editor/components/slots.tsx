@@ -1,8 +1,10 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { Cut, Project } from '@/lib/project/types';
 import type { Recording } from '@/lib/types';
+import { TimelineOpeningBody } from '../timeline/Opening';
 import { NoVoice, TranscriptFailed, WordsPending } from '../states/transcript';
-import { Bone, C } from '../ui';
+import { ICON } from '../transcript/icons';
+import { Bone, C, Icon, iconButton } from '../ui';
 
 /** What every editor panel gets: T6 (transcript), T7 (timeline) and T10 to T13 (inspector tabs) build on it. */
 export interface SlotProps {
@@ -40,7 +42,7 @@ export interface TranscriptSlotProps extends SlotProps {
   onRetry?: () => void;
 }
 
-const LINES = [78, 64, 82, 55, 70, 60, 74, 66, 80, 58, 72, 62];
+const LINES = [78, 64, 82, 55, 70, 60, 74, 48, 66];
 
 function TranscriptSkeleton() {
   return (
@@ -67,8 +69,21 @@ export function TranscriptFrame({ children, opening = false, tools, footer }: { 
   );
 }
 
+/** The opening header tools: Find shows, Clean up waits for the words. */
+const OPENING_TOOLS = (
+  <>
+    <button type="button" aria-label="Find in transcript (Ctrl+F)" title="Find in transcript (Ctrl+F)" disabled style={{ ...iconButton(28), cursor: 'default' }}>
+      <Icon>{ICON.search}</Icon>
+    </button>
+    <button type="button" disabled style={{
+      height: 28, padding: '0 12px', borderRadius: 8, background: C.raised, color: C.text, border: `1px solid ${C.line}`, fontFamily: 'inherit', fontSize: 13,
+      fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'default', whiteSpace: 'nowrap', boxSizing: 'border-box', opacity: 0.45,
+    }}><Icon size={15}>{ICON.wand}</Icon><span>Clean up</span></button>
+  </>
+);
+
 /** The transcript column while the editor opens. */
-export const TranscriptOpening = () => <TranscriptFrame opening><TranscriptSkeleton /></TranscriptFrame>;
+export const TranscriptOpening = () => <TranscriptFrame opening tools={OPENING_TOOLS}><TranscriptSkeleton /></TranscriptFrame>;
 
 /** The transcript column (left, 320 px). T6 fills it through `body`. */
 export function TranscriptColumn({ body: Body, ...p }: TranscriptSlotProps & { body?: ComponentType<TranscriptSlotProps> }) {
@@ -82,34 +97,19 @@ export function TranscriptColumn({ body: Body, ...p }: TranscriptSlotProps & { b
   return <TranscriptFrame opening={false}>{content}</TranscriptFrame>;
 }
 
-const TRACK_ROWS = [100, 100, 62, 0, 0, 0];
-
 function TimelineFrame({ children }: { children: ReactNode }) {
   return (
     <section aria-label="Timeline" style={{ height: 232, flexShrink: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.line}`, background: C.ground }}>{children}</section>
   );
 }
 
-/** The timeline's empty look: toolbar, ruler and six track rows. */
-export function TimelineOpening() {
-  return (
-    <TimelineFrame>
-      <div style={{ height: 36, flexShrink: 0, background: C.panel, borderBottom: `1px solid ${C.line}` }} />
-      <div style={{ height: 22, flexShrink: 0, display: 'flex', borderBottom: `1px solid ${C.line}` }}><div style={{ width: 132, background: C.panel }} /></div>
-      {TRACK_ROWS.map((w, i) => (
-        <div key={i} style={{ display: 'flex', height: 26, borderBottom: `1px solid ${C.ground}` }}>
-          <div style={{ width: 132, flexShrink: 0, background: C.panel }} />
-          <div style={{ flexGrow: 1, position: 'relative' }}>
-            {w > 0 && <Bone style={{ position: 'absolute', left: 0, width: `${w}%`, top: 2, bottom: 2, borderRadius: 5 }} />}
-          </div>
-        </div>
-      ))}
-    </TimelineFrame>
-  );
+/** The timeline's opening look: toolbar, ruler and six named track rows. */
+export function TimelineOpening(p: { project?: Project; cut?: Cut; length?: number }) {
+  return <TimelineFrame><TimelineOpeningBody {...p} /></TimelineFrame>;
 }
 
 /** The timeline (bottom, 232 px, under transcript and preview). T7 fills it through `body`. */
 export function TimelineSlot({ body: Body, ...p }: SlotProps & { body?: ComponentType<SlotProps> }) {
-  if (!Body || !p.ready) return <TimelineOpening />;
+  if (!Body || !p.ready) return <TimelineOpening project={p.project} cut={p.cut} length={p.length} />;
   return <TimelineFrame><Body {...p} /></TimelineFrame>;
 }

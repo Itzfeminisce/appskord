@@ -119,6 +119,10 @@ function Strip({ kind, blocks, clipSpans, view, width, film, offset = 0, words =
           const img = film.at(recAt(x + tile / 2) - offset);
           if (img) g.drawImage(img, x, 4, tile, ROW_PX - 8);
         }
+        // Real frames are bright; the frame's tiles are dark so the white clip name stays readable.
+        g.globalAlpha = 1;
+        g.fillStyle = 'rgba(14,14,17,0.68)';
+        g.fillRect(x0, 4, x1 - x0, ROW_PX - 8);
       } else if (kind === 'wave') {
         g.fillStyle = C.secondary;
         let w = 0;
@@ -164,7 +168,7 @@ export function Track({ row, cut, view, width, selected, moved, strip, ...on }: 
   const hidden = row.tracks.every((t) => !!cut.tracks[t]?.hidden);
   const showHint = row.blocks.length === 0 && (row.noClicks || row.hint);
   return (
-    <div data-track={row.key} style={{ display: 'flex', height: ROW_PX, borderBottom: `1px solid ${C.ground}` }}>
+    <div data-track={row.key} style={{ display: 'flex', height: ROW_PX, boxSizing: 'content-box', borderBottom: `1px solid ${C.ground}` }}>
       <TrackHead row={row} cut={cut} onToggle={on.onToggle} />
       <div style={{ flexGrow: 1, position: 'relative', opacity: hidden ? 0.4 : 1, overflow: 'hidden' }} onPointerDown={(e) => { if (e.target === e.currentTarget) on.onEmptyDown(e, row); }}>
         {showHint && (row.noClicks && row.key === 'zoom'
@@ -175,7 +179,8 @@ export function Track({ row, cut, view, width, selected, moved, strip, ...on }: 
           const left = xOf(place.start, view, width);
           const right = xOf(place.end, view, width);
           const look = LOOKS[b.look];
-          const isOn = selected.has(b.id);
+          // A clip shows selected on the Screen row only; Camera and Voice follow it unmarked, as the frame shows.
+          const isOn = selected.has(b.id) && (b.kind !== 'clips' || b.look === 'screen');
           return (
             <span key={b.key} data-block={b.kind} data-id={b.id} role="button" tabIndex={-1} aria-label={b.label || row.name} aria-pressed={isOn}
               onPointerDown={(e) => {

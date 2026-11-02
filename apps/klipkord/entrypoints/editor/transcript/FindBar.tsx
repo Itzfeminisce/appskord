@@ -45,10 +45,10 @@ export function FindBar({ units, project, cut, readOnly, edit, onMatches, onClos
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, margin: '0 0 6px', borderRadius: 10, background: C.raised, border: `1px solid ${C.line}`, flexShrink: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, margin: '0 8px 6px', borderRadius: 10, background: C.raised, border: `1px solid ${C.line}`, flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <input ref={input} aria-label="Find" value={query} onChange={(e) => { setQuery(e.target.value); setCurrent(0); }} onKeyDown={(e) => onKey(e, next)}
-          style={{ ...FIELD, border: `1px solid ${C.accentText}` }} />
+          style={{ ...FIELD, border: `1px solid ${C.accentText}`, outline: 'none' }} />
         <span style={{ fontFamily: MONO, fontSize: 11, color: C.secondary, padding: '0 4px', whiteSpace: 'nowrap' }}>{query ? `${at + 1} of ${n}` : ''}</span>
         <button type="button" aria-label="Next (Enter)" title="Next (Enter)" onClick={next} style={iconButton(28)}><Icon>{ICON.next}</Icon></button>
         <button type="button" aria-label="Close (Esc)" title="Close (Esc)" onClick={onClose} style={iconButton(28)}><Icon>{ICON.close}</Icon></button>

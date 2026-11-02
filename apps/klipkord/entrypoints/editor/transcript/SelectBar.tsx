@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { Cut, Project } from '@/lib/project/types';
 import { wordCount, type Unit } from '@/lib/wordCuts';
 import { clock } from '../format';
@@ -59,9 +60,23 @@ export function SelectBar({ units, range, text, cut, edit, onDone }: SelectBarPr
     onDone();
   };
 
-  return (
+  // The bar sits in a body layer so the transcript's scroll box never clips it over the preview.
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const place = () => {
+      const r = anchor.current?.getBoundingClientRect();
+      if (r) setAt((o) => (o && o.left === r.left && o.top === r.top ? o : { left: r.left, top: r.top }));
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); };
+  }, []);
+
+  const bar = (
     <div role="toolbar" aria-label="Selected words" onMouseDown={(e) => e.stopPropagation()} style={{
-      position: 'absolute', left: 16, top: 'calc(100% + 2px)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 2, padding: 4,
+      position: 'fixed', left: at?.left ?? 0, top: at?.top ?? 0, visibility: at ? 'visible' : 'hidden', zIndex: 6, display: 'flex', alignItems: 'center', gap: 2, padding: 4,
       borderRadius: 10, background: '#F4F4F5', color: INK, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
     }}>
       <span style={{ fontSize: 12, fontWeight: 600, padding: '0 8px', fontFamily: MONO, whiteSpace: 'nowrap' }}>
@@ -90,5 +105,11 @@ export function SelectBar({ units, range, text, cut, edit, onDone }: SelectBarPr
         )}
       </span>
     </div>
+  );
+  return (
+    <>
+      <span ref={anchor} aria-hidden="true" style={{ position: 'absolute', left: 16, top: 'calc(100% + 2px)', width: 0, height: 0 }} />
+      {createPortal(bar, document.body)}
+    </>
   );
 }

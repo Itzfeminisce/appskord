@@ -251,7 +251,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
 
   return (
     <div style={{ height: '100vh', minHeight: 600, display: 'flex', flexDirection: 'column', background: C.ground, color: C.text, overflow: 'hidden' }}>
-      <TopBar name={project?.name ?? recording?.title ?? ''} cutName={cut?.name ?? 'Full'} save={projectReady ? api.save : 'opening'}
+      <TopBar name={project?.name ?? recording?.title ?? ''} cutName={cut?.name ?? 'Full'} save={ready ? api.save : 'opening'}
         canUndo={!readOnly && api.canUndo} canRedo={!readOnly && api.canRedo} onUndo={api.undo} onRedo={api.redo} onLibrary={library} {...extra} />
       <div style={{ flexGrow: 1, display: 'flex', minHeight: 0 }}>
         <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -280,7 +280,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
               <PreviewFullscreen active={full} playing={playback.playing} out={playback.out} length={length || (recording?.duration ?? 0)} onToggle={playback.toggle} seek={playback.seek} onExit={exitFull} />
             </section>
           </div>
-          {slotProps ? <TimelineSlot {...slotProps} body={slots.timeline} /> : <TimelineOpening />}
+          {slotProps ? <TimelineSlot {...slotProps} body={slots.timeline} /> : <TimelineOpening length={recording?.duration} />}
         </div>
         <Inspector panels={ready ? inspector?.panels : undefined} selection={ready ? inspector?.selection : undefined} notices={banners}
           cover={ready && slotProps && Aside ? <Aside {...slotProps} /> : undefined} />
