@@ -1,4 +1,4 @@
-import { defineAppConfig } from '@appskord/config';
+import { defineAppConfig, isRelease } from '@appskord/config';
 import { OPTIONAL_HOSTS } from './lib/hosts';
 
 // Rekord's public key fixes the extension id (flkicdahoghegnlgpkmdcemlooblblcd) for Penv Cloud, Google and the Web Store.
@@ -13,4 +13,6 @@ export default defineAppConfig({
   permissions: ['sidePanel', 'storage', 'tabCapture', 'offscreen', 'activeTab', 'identity'],
   // Requested only when the user turns on Penv Cloud, a cloud AI key, Deepgram, Google, Notion or Ollama (lib/hosts.ts).
   optionalHostPermissions: OPTIONAL_HOSTS,
+  // Dev frame routes (`#/dev/<Frame>`) are left out of the release zip.
+  wxt: { vite: () => ({ define: { __REKORD_DEV_FRAMES__: JSON.stringify(!isRelease()) } }) },
 });
