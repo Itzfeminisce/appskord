@@ -60,8 +60,9 @@ describe('v4 screens', () => {
     act(() => view.host.querySelector<HTMLButtonElement>('.wn-build')!.click());
     await settle();
     expect(view.router.route.screen).toBe('backfill');
-    expect((await getSettings()).memory.backfill).toBe('running');
-    expect(await browser.alarms.get(BACKFILL_ALARM)).toBeDefined();
+    // Starting writes settings after the route change; under a loaded CI runner one settle is not enough.
+    await vi.waitFor(async () => expect((await getSettings()).memory.backfill).toBe('running'));
+    await vi.waitFor(async () => expect(await browser.alarms.get(BACKFILL_ALARM)).toBeDefined());
     expect(((await browser.storage.local.get(BACKFILL_KEY))[BACKFILL_KEY] as { total: number }).total).toBe(20);
   });
 
