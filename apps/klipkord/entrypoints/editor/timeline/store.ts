@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Clip } from '@/lib/project/types';
 
 /** What can be selected on the timeline; one kind at a time. Chapters are selected by index, the rest by id. */
-export type SelectKind = 'clips' | 'zooms' | 'overlays' | 'cards' | 'music' | 'media' | 'voiceovers' | 'chapters';
+export type SelectKind = 'clips' | 'zooms' | 'layouts' | 'overlays' | 'cards' | 'music' | 'media' | 'voiceovers' | 'chapters';
 export interface Selected { kind: SelectKind; ids: string[] }
 
 export type Dialog = 'cuts' | 'history' | 'shortcuts' | 'settings' | null;

@@ -2,7 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { group } from '@/lib/project/history';
 import { LABELS, removeChapter, setTransition, split, updateLayer } from '@/lib/project/ops';
 import { spans } from '@/lib/project/time';
-import type { Clip, Feel, Project, Zoom } from '@/lib/project/types';
+import type { Clip, Feel, LayoutSwitch, Project, Zoom } from '@/lib/project/types';
 import type { InspectorProps, Selection } from '../components/Inspector';
 import type { SlotProps } from '../components/slots';
 import { clock, seconds } from '../format';
@@ -11,7 +11,7 @@ import { ChaptersEdit } from '../dialogs/ChaptersEdit';
 import { deleteSelected } from './actions';
 import { chaptersInCut } from './chapters';
 import { Btn, Heading, Help, Seg, Slider, TL_ICONS } from './controls';
-import { itemsOf, selectedHeader, times } from './rows';
+import { itemsOf, LAYOUT_NAMES, selectedHeader, times } from './rows';
 import { PlacedPanel, takeLabel } from '../voiceover/TakePanel';
 import { select, setTimeline, timelineState, type SelectKind, type Selected } from './store';
 
@@ -64,6 +64,18 @@ function ClipPanel({ p, clips }: { p: SlotProps; clips: Clip[] }) {
   );
 }
 
+/** A layout switch selected on the Camera track: how it switches (frame CameraLayout). */
+function SwitchPanel({ p, layout }: { p: SlotProps; layout: LayoutSwitch }) {
+  return (
+    <>
+      <Heading>Switch</Heading>
+      <Seg label="Switch" options={SWITCH_KINDS} value={layout.switch}
+        onChange={(v) => p.edit((project) => updateLayer(project, { kind: 'layouts', id: layout.id, patch: { switch: v } }))} />
+    </>
+  );
+}
+const SWITCH_KINDS = [{ value: 'cut', label: 'Cut' }, { value: 'smooth', label: 'Smooth' }] as const;
+
 /** Zooms selected on the timeline: depth and feel for all of them at once. */
 function ZoomsPanel({ p, zooms }: { p: SlotProps; zooms: Zoom[] }) {
   const [depth, setDepth] = useState<number | null>(null);
@@ -92,10 +104,11 @@ function ZoomsPanel({ p, zooms }: { p: SlotProps; zooms: Zoom[] }) {
 const NAMES: Record<Selected['kind'], [string, string]> = {
   clips: ['Clip', 'Clips'], zooms: ['Zoom', 'Zooms'], overlays: ['Text', 'Text'], cards: ['Card', 'Cards'],
   music: ['Music', 'Music'], media: ['Media', 'Media'], voiceovers: ['Voiceover', 'Voiceover'], chapters: ['Chapters', 'Chapters'],
+  layouts: ['Camera', 'Camera'],
 };
 const KIND_ICONS: Record<Selected['kind'], ReactElement> = {
   clips: TL_ICONS.screen, zooms: TL_ICONS.zoom, overlays: TL_ICONS.text, cards: TL_ICONS.text, music: TL_ICONS.music,
-  media: TL_ICONS.screen, voiceovers: TL_ICONS.mic, chapters: TL_ICONS.flag,
+  media: TL_ICONS.screen, voiceovers: TL_ICONS.mic, chapters: TL_ICONS.flag, layouts: TL_ICONS.camera,
 };
 
 /** The selection still in the cut (an undo can take items away); null when nothing is left. */
@@ -142,8 +155,10 @@ export function timelineInspector(p: SlotProps): Pick<InspectorProps, 'selection
     const item = (selected.kind === 'media' ? p.cut.media : p.cut.voiceovers).find((x) => x.id === selected.ids[0]);
     if (item) body = <PlacedPanel p={p} kind={selected.kind} item={item} />;
   }
+  const layout = selected.kind === 'layouts' && n === 1 ? p.cut.layouts.find((s) => s.id === selected.ids[0]) : undefined;
+  if (layout) body = <SwitchPanel p={p} layout={layout} />;
   const selection: Selection = {
-    name: n > 1 ? many : one, icon: <Icon>{KIND_ICONS[selected.kind]}</Icon>, index: first + 1, count: all.length,
+    name: layout ? LAYOUT_NAMES[layout.layout] : n > 1 ? many : one, icon: <Icon>{KIND_ICONS[selected.kind]}</Icon>, index: first + 1, count: all.length,
     ...(n > 1 && { place: selectedHeader(selectedKinds(p.cut, selected)) }),
     ...(n === 1 && selected.kind === 'voiceovers' && { place: takeLabel(p, selected.ids[0]!) }),
     onBack,

@@ -170,7 +170,7 @@ export function canvas2dBackend(ctx: Ctx2D, makeCanvas: MakeCanvas = offscreen):
     if (!cam) return;
     toCanvas(c.dest, scene.scale, dest);
     const k = scene.scale.x;
-    const r = cameraRadius(c.shape, dest);
+    const r = cameraRadius(c.shape, dest, c.round);
     const ring = cameraRing(c.dest) * k;
     ctx.save();
     ctx.globalAlpha = c.alpha;

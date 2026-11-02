@@ -1,6 +1,6 @@
 import { takeEnd } from '@/lib/project/media';
 import { cutLength, type Span } from '@/lib/project/time';
-import type { Card, Cut, Overlay, Placed, Project, Source } from '@/lib/project/types';
+import type { Card, Cut, LayoutKind, Overlay, Placed, Project, Source } from '@/lib/project/types';
 import { CLIP_NAME } from './actions';
 import { inView, pieces, type View } from './geometry';
 import type { SelectKind } from './store';
@@ -64,6 +64,21 @@ function layerBlocks(clipSpans: readonly Span[], view: View, items: { id: string
   return out;
 }
 
+/** The Layout tab's tile names. */
+export const LAYOUT_NAMES: Record<LayoutKind, string> = { bubble: 'Bubble', side: 'Side by side', camera: 'Camera full', screen: 'Screen only' };
+
+/** T11: with layout switches, the Camera track shows each layout's stretch; a switch's block drags to move it. */
+function cameraBlocks(cut: Cut, clipSpans: readonly Span[], view: View, plain: Block[]): Block[] {
+  if (cut.layouts.length === 0) return plain;
+  const list = [...cut.layouts].sort((a, b) => a.at - b.at);
+  const end = Math.max(0, ...cut.clips.map((c) => c.out));
+  const first = { key: 'layout-start', label: LAYOUT_NAMES.bubble, look: 'camera' as const, resizable: false, movable: false };
+  const out: Block[] = pieces(clipSpans, Number.NEGATIVE_INFINITY, list[0]!.at).filter((x) => inView(x.start, x.end, view))
+    .map((x, i) => ({ ...first, key: `${first.key}:${i}`, id: '', kind: 'layouts', start: x.start, end: x.end, label: i === 0 ? first.label : '' }));
+  out.push(...layerBlocks(clipSpans, view, list.map((s, i) => ({ id: s.id, at: s.at, end: list[i + 1]?.at ?? end, label: LAYOUT_NAMES[s.layout] })), 'layouts', 'camera', false));
+  return out;
+}
+
 const placedEnd = (p: Placed) => p.at + (p.trim[1] - p.trim[0]);
 const sourceName = (project: Project, id: string) => project.sources.find((s) => s.id === id)?.name ?? '';
 
@@ -79,7 +94,7 @@ export function buildRows(project: Project, cut: Cut, clipSpans: readonly Span[]
   const voice = hasVoice(sources);
   const rows: Row[] = [
     { key: 'screen', name: 'Screen', tracks: ['screen'], mute: false, blocks: visible.map(clipBlock('screen', (s) => (s.clip.speed !== 1 ? `${CLIP_NAME} · ${times(s.clip.speed)}` : CLIP_NAME))) },
-    { key: 'camera', name: 'Camera', tracks: ['camera'], mute: true, blocks: camera ? visible.filter((s) => !s.clip.gap).map(clipBlock('camera', () => 'Camera')) : [], ...(!camera && { hint: { text: HINTS.noCamera } }) },
+    { key: 'camera', name: 'Camera', tracks: ['camera'], mute: true, blocks: camera ? cameraBlocks(cut, clipSpans, view, visible.filter((s) => !s.clip.gap).map(clipBlock('camera', () => 'Camera'))) : [], ...(!camera && { hint: { text: HINTS.noCamera } }) },
     { key: 'voice', name: 'Voice', tracks: ['voice'], mute: true, blocks: voice ? visible.filter((s) => !s.clip.gap).map(clipBlock('voice', () => '')) : [], ...(!voice && { hint: { text: HINTS.noVoice } }) },
   ];
   if (cut.voiceovers.length > 0 || cut.tracks.voiceovers) {
@@ -123,6 +138,7 @@ export function itemsOf(cut: Cut, kind: SelectKind): { id: string }[] {
   switch (kind) {
     case 'clips': return cut.clips;
     case 'zooms': return cut.zooms;
+    case 'layouts': return cut.layouts;
     case 'overlays': return cut.overlays;
     case 'cards': return cut.cards;
     case 'media': return cut.media;

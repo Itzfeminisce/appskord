@@ -1,5 +1,7 @@
 import { errorText } from '@/lib/check/results';
-import { decodeVerdict, drawVerdict, encodeVerdict, keyframeBefore, memoryLine, resultsText, seekPoints, summaryRow } from '@/lib/check/v3';
+import { decodeVerdict, drawVerdict, encodeVerdict, keyframeBefore, memoryLine, resultsText, seekPoints, segmentVerdict, summaryRow } from '@/lib/check/v3';
+import { EXPORT_SEGMENT, PREVIEW_SEGMENT, workerSegmenter, type Delegate } from '@/lib/render/segment';
+import SegmentWorker from '@/lib/render/segment.worker?worker';
 import type { Size, V3Row, Verdict } from '@/lib/check/v3';
 
 const SIZES: Record<Size, { w: number; h: number; codec: string }> = {
@@ -184,6 +186,53 @@ async function measureDraw(layers: VideoFrame[]): Promise<V3Row> {
   return summaryRow(label, v.verdict, `${v.fps} fps over ${frames} frames; target 30 fps`);
 }
 
+const SEGMENT_FRAMES = 40;
+
+// A stand-in camera picture: a head and shoulders on a busy background, so the model has a person to find.
+function cameraPicture(): OffscreenCanvas {
+  const canvas = new OffscreenCanvas(640, 360);
+  const ctx = canvas.getContext('2d')!;
+  for (let i = 0; i < 24; i++) {
+    ctx.fillStyle = `hsl(${i * 15} 40% ${30 + (i % 4) * 10}%)`;
+    ctx.fillRect((i % 6) * 107, Math.floor(i / 6) * 90, 107, 90);
+  }
+  ctx.fillStyle = '#E0AC88';
+  ctx.beginPath();
+  ctx.ellipse(320, 150, 60, 75, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#334155';
+  ctx.beginPath();
+  ctx.ellipse(320, 380, 170, 140, 0, Math.PI, 0);
+  ctx.fill();
+  return canvas;
+}
+
+async function measureSegment(): Promise<V3Row> {
+  const label = 'Segmentation';
+  const segmenter = workerSegmenter(() => new SegmentWorker());
+  const picture = cameraPicture();
+  let delegate: Delegate | null = null;
+  const run = async (width: number) => {
+    const height = Math.round((width * picture.height) / picture.width);
+    const once = async () => {
+      const small = await createImageBitmap(picture, { resizeWidth: width, resizeHeight: height });
+      const done = await segmenter.segment(small);
+      delegate = done.delegate;
+      done.mask.close();
+    };
+    await once(); // the first one loads the model
+    const start = performance.now();
+    for (let i = 0; i < SEGMENT_FRAMES; i++) await once();
+    return { frames: SEGMENT_FRAMES, ms: performance.now() - start };
+  };
+  try {
+    const v = segmentVerdict(await run(PREVIEW_SEGMENT.width), await run(EXPORT_SEGMENT.width));
+    return summaryRow(label, v.verdict, `preview ${v.previewFps} fps at ${PREVIEW_SEGMENT.width} px (target 10); export ${v.exportFps} fps at ${EXPORT_SEGMENT.width} px (target 30); ${delegate ?? '?'}`);
+  } finally {
+    segmenter.close();
+  }
+}
+
 function memoryRow(): V3Row {
   const mem = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
   const m = memoryLine(mem ? mem.usedJSHeapSize : null);
@@ -262,7 +311,8 @@ export function mountV3(host: HTMLElement): V3Handle {
       layers.forEach((f) => f.close());
     }
     add(memoryRow());
-    add(summaryRow('Segmentation', null, 'Not measured yet'));
+    const seg = await attempt('measure segmentation', 'Segmentation', measureSegment);
+    if (seg) add(seg);
     status.textContent = 'Done.';
     run.disabled = false;
   }
