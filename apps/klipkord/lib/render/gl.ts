@@ -245,6 +245,9 @@ export function webgl2Backend(canvas: OffscreenCanvas | HTMLCanvasElement, makeC
     Object.assign(P.uv, { x: 0, y: 0, w: 1, h: 1 });
   };
   const setView = (fb: WebGLFramebuffer | null, w: number, h: number, blend: boolean) => {
+    // A texture left on unit 1 or 2 may be this target; that feedback loop drops the draw.
+    unbindUnit(1);
+    unbindUnit(2);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.viewport(0, 0, w, h);
     view.w = w;
@@ -274,6 +277,11 @@ export function webgl2Backend(canvas: OffscreenCanvas | HTMLCanvasElement, makeC
     if (P.back) bindUnit(1, P.back);
     if (P.mask) bindUnit(2, P.mask);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
+  const unbindUnit = (unit: number) => {
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
   };
   const bindUnit = (unit: number, tex: WebGLTexture) => {
     gl.activeTexture(gl.TEXTURE0 + unit);
@@ -436,7 +444,7 @@ export function webgl2Backend(canvas: OffscreenCanvas | HTMLCanvasElement, makeC
     if (!scene.camera) return;
     const k = scene.scale.x;
     toCanvas(c.dest, scene.scale, dest);
-    const r = cameraRadius(c.shape, dest);
+    const r = cameraRadius(c.shape, dest, c.round);
     const ring = cameraRing(c.dest) * k;
     Object.assign(area, { x: dest.x - ring, y: dest.y - ring, w: dest.w + 2 * ring, h: dest.h + 2 * ring });
     shadowed(area, r + ring, Math.min(60, Math.min(c.dest.w, c.dest.h) * 0.28), k, c.alpha);

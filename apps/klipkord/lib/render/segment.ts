@@ -96,6 +96,8 @@ export interface CameraMasks {
   cameraMask: CameraMask;
   /** Masks made so far and how fast the model ran on them. */
   stats(): MaskStats;
+  /** Closes the masks it holds and the segmenter's worker; the next blurred frame starts it again. */
+  release(): void;
   /** Closes the masks it holds and the segmenter. */
   dispose(): void;
 }
@@ -118,20 +120,19 @@ export function cameraMasks(segmenter: Segmenter, options: MaskOptions): CameraM
   let delegate: Delegate | null = null;
   let disposed = false;
 
-  const run = (h: Held, camera: Picture, t: number): Promise<void> => {
+  const run = (h: Held, source: string, camera: Picture, t: number): Promise<void> => {
     // The renderer may close its frame before the copy is scaled; a clone keeps it alive until then.
     const own = isVideoFrame(camera) ? camera.clone() : camera;
     const size = pictureSize(own, { w: 0, h: 0 });
     const width = Math.max(1, Math.min(options.width, size.w));
     const height = Math.max(1, Math.round((width * size.h) / Math.max(1, size.w)));
-    h.t = t;
     const job = scale(own, width, height)
       .finally(() => {
         if (own !== camera && isVideoFrame(own)) own.close();
       })
       .then((small) => segmenter.segment(small))
       .then((done) => {
-        if (disposed) {
+        if (disposed || held.get(source) !== h) {
           done.mask.close();
           return;
         }
@@ -142,6 +143,8 @@ export function cameraMasks(segmenter: Segmenter, options: MaskOptions): CameraM
         h.old?.close();
         h.old = h.mask;
         h.mask = done.mask;
+        // The mask is of the frame at `t`, not of whatever frame is asked for while it is made.
+        h.t = t;
       })
       .finally(() => {
         if (h.running === job) h.running = null;
@@ -161,28 +164,34 @@ export function cameraMasks(segmenter: Segmenter, options: MaskOptions): CameraM
     if (h.mask && (every === 0 ? off === 0 : off < every)) return h.mask;
     if (every > 0 && h.mask && off <= jump) {
       if (!h.running) {
-        void run(h, camera, t).then(() => options.onMask?.(), (error: unknown) => {
+        void run(h, source, camera, t).then(() => options.onMask?.(), (error: unknown) => {
+          if (held.get(source) !== h) return;
           console.error('Klipkord: could not find the person for camera blur', error);
         });
       }
       return h.mask;
     }
     if (h.running) await h.running.catch(() => {});
-    if (!h.mask || Math.abs(t - h.t) > (every || 0)) await run(h, camera, t);
+    if (!h.mask || Math.abs(t - h.t) > (every || 0)) await run(h, source, camera, t);
     return h.mask;
+  };
+
+  const release = () => {
+    for (const h of held.values()) {
+      h.mask?.close();
+      h.old?.close();
+    }
+    held.clear();
+    segmenter.close();
   };
 
   return {
     cameraMask,
     stats: () => ({ frames, fps: modelMs > 0 ? Math.round((frames / modelMs) * 10_000) / 10 : 0, delegate }),
+    release,
     dispose() {
       disposed = true;
-      for (const h of held.values()) {
-        h.mask?.close();
-        h.old?.close();
-      }
-      held.clear();
-      segmenter.close();
+      release();
     },
   };
 }

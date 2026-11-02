@@ -119,6 +119,17 @@ describe('renderPlan', () => {
     expect(cam.camera!.dest).toEqual({ x: 0, y: 0, w: 1920, h: 1080 });
   });
 
+  it('blends the round bubble into rounded corners during a smooth switch', () => {
+    const { project, cut } = setup({
+      layouts: [{ id: 'b', at: 0, layout: 'bubble', switch: 'cut' }, { id: 's', at: 2000, layout: 'side', switch: 'smooth' }],
+    });
+    expect(renderPlan(project, cut, 1000).camera!.round).toBeUndefined();
+    expect(renderPlan(project, cut, 2200).camera!.round).toBeCloseTo(1 - ease(0.5));
+    const after = renderPlan(project, cut, 3500).camera!;
+    expect(after.shape).toBe('rounded');
+    expect(after.round).toBeUndefined();
+  });
+
   it('places the cursor through the crop and rings clicks', () => {
     const events: EventsTrack = { version: 1, viewport: { w: 1920, h: 1080 }, events: [
       { t: 0, type: 'move', x: 0.5, y: 0.5 }, { t: 1000, type: 'click', x: 0.75, y: 0.5 }, { t: 1100, type: 'key', key: 'typing' },

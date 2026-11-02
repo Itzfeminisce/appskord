@@ -57,6 +57,40 @@ describe('cameraMasks in preview', () => {
     expect(await masks.cameraMask(camera, 'cam', 160)).not.toBe(old);
   });
 
+  it('dates a mask by the frame it was made from, not the frames asked for meanwhile', async () => {
+    const f = fakeSegmenter();
+    const masks = cameraMasks(f.segmenter, { ...PREVIEW_SEGMENT, scale });
+    const a = masks.cameraMask(camera, 'cam', 0);
+    await vi.waitFor(() => expect(f.pending).toHaveLength(1));
+    await f.finish();
+    const old = await a;
+    expect(await masks.cameraMask(camera, 'cam', 150)).toBe(old);
+    await vi.waitFor(() => expect(f.pending).toHaveLength(1));
+    // The shown mask is still of frame 0, so frame 1050 is past the jump and waits for its own mask.
+    const far = masks.cameraMask(camera, 'cam', 1050);
+    await f.finish();
+    await vi.waitFor(() => expect(f.pending).toHaveLength(1));
+    await f.finish();
+    expect(await far).not.toBe(old);
+    expect(f.segmenter.segment).toHaveBeenCalledTimes(3);
+  });
+
+  it('lets the segmenter go on release and starts again on the next blurred frame', async () => {
+    const f = fakeSegmenter();
+    const masks = cameraMasks(f.segmenter, { ...PREVIEW_SEGMENT, scale });
+    const a = masks.cameraMask(camera, 'cam', 0);
+    await vi.waitFor(() => expect(f.pending).toHaveLength(1));
+    await f.finish();
+    const old = (await a) as ReturnType<typeof bitmap>;
+    masks.release();
+    expect(f.close).toHaveBeenCalledTimes(1);
+    expect(old.close).toHaveBeenCalled();
+    const b = masks.cameraMask(camera, 'cam', 50);
+    await vi.waitFor(() => expect(f.pending).toHaveLength(1));
+    await f.finish();
+    expect(await b).toBeTruthy();
+  });
+
   it('waits for a fresh mask after a seek', async () => {
     const f = fakeSegmenter();
     const masks = cameraMasks(f.segmenter, { ...PREVIEW_SEGMENT, scale });

@@ -36,6 +36,8 @@ let masks: CameraMasks | null = null;
 let last: Extract<RenderRequest, { type: 'render' }> | null = null;
 let busy = false;
 let waiting: Extract<RenderRequest, { type: 'render' }> | null = null;
+let again = false;
+let blurring = false;
 
 function addSources(sources: RenderSource[]): void {
   for (const s of sources) {
@@ -75,33 +77,44 @@ async function loadFont(): Promise<void> {
 }
 
 // Only the newest plan matters while playing or scrubbing; older ones are answered as not drawn.
-async function render(request: Extract<RenderRequest, { type: 'render' }>): Promise<void> {
+function render(request: Extract<RenderRequest, { type: 'render' }>): void {
   if (busy) {
     if (waiting) reply({ type: 'rendered', id: waiting.id, drawn: false });
     waiting = request;
     return;
   }
   if (!renderer) return reply({ type: 'error', id: request.id, message: 'Renderer not started' });
+  void draw(renderer, request, true);
+}
+
+// A blur mask made in the background: draw the shown frame again, after the draw running now, unless a newer one waits.
+function redraw(): void {
+  if (!last || !renderer) return;
+  if (busy) again = true;
+  else if (!waiting) void draw(renderer, last, false);
+}
+
+async function draw(r: Renderer, request: Extract<RenderRequest, { type: 'render' }>, answer: boolean): Promise<void> {
   busy = true;
+  again = false;
   last = request;
+  const camera = request.plan.camera;
+  // The segmentation worker holds the model in memory; let it go once the camera is shown without blur.
+  if (camera && !camera.blur.on && blurring) masks?.release();
+  if (camera) blurring = camera.blur.on;
   try {
-    await renderer.render(request.plan, request.shape);
-    reply({ type: 'rendered', id: request.id, drawn: true });
+    await r.render(request.plan, request.shape);
+    if (answer) reply({ type: 'rendered', id: request.id, drawn: true });
   } catch (error) {
     console.error('Klipkord: could not draw frame', error);
-    reply({ type: 'error', id: request.id, message: describe(error) });
+    if (answer) reply({ type: 'error', id: request.id, message: describe(error) });
   } finally {
     busy = false;
     const next = waiting;
     waiting = null;
-    if (next) void render(next);
+    if (next) render(next);
+    else if (again) redraw();
   }
-}
-
-// A blur mask made in the background: draw the shown frame again when nothing newer is on its way.
-function redraw(): void {
-  if (busy || waiting || !last || !renderer) return;
-  void renderer.render(last.plan, last.shape).catch((error: unknown) => console.error('Klipkord: could not draw frame', error));
 }
 
 function close(): void {
@@ -110,6 +123,7 @@ function close(): void {
   masks?.dispose();
   masks = null;
   last = null;
+  blurring = false;
   for (const client of videos.values()) void client.then((c) => c?.close());
   for (const image of images.values()) void image.then((b) => b?.close());
   videos.clear();
@@ -133,7 +147,7 @@ self.addEventListener('message', (event: MessageEvent<RenderRequest>) => {
       }
       break;
     case 'sources': addSources(request.sources); break;
-    case 'render': void render(request); break;
+    case 'render': render(request); break;
     case 'resize': renderer?.resize(request.width, request.height); break;
     case 'close':
       close();

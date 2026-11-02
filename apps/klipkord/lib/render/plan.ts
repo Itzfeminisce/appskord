@@ -200,8 +200,11 @@ export function renderPlan(project: Project, cut: Cut, out: number, events?: Eve
     if (camBox && alpha > 0) {
       const { mirror, blur } = cut.camera;
       // Round or rounded is the bubble's setting; the camera beside or behind the screen keeps rounded corners.
+      const roundOf = (l: LayoutKind) => (l === 'bubble' && cut.camera.shape === 'round' ? 1 : 0);
+      const round = roundOf(from) + (roundOf(to) - roundOf(from)) * progress;
       const shape = (progress < 0.5 ? from : to) === 'bubble' ? cut.camera.shape : 'rounded';
       plan.camera = { source: camSrc.id, t: sourceTime(camSrc, rec), dest: camBox, shape, mirror, blur, alpha };
+      if (round > 0 && round < 1) plan.camera.round = round;
     }
   }
 
