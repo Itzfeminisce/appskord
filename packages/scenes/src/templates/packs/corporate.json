@@ -17,21 +17,11 @@
   },
   "background": {
     "kind": "grain",
-    "colours": [
-      "#17406B",
-      "#0F2A4A",
-      "#0B2038"
-    ],
+    "colours": ["#17406B", "#0F2A4A", "#0B2038"],
     "grain": 0.08
   },
   "feel": "steady",
   "motionMs": 500,
-  "transitions": [
-    "crossfade",
-    "wipe"
-  ],
-  "clipTypes": [
-    "chart",
-    "quote"
-  ]
+  "transitions": ["crossfade", "wipe"],
+  "clipTypes": ["chart", "quote"]
 }

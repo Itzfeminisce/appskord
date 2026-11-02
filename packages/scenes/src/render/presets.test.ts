@@ -18,7 +18,17 @@ describe('presets', () => {
   });
 
   it('the "Comes in" set is the Presets frame tiles, in order', () => {
-    expect(presetsFor('in').map((p) => p.label)).toEqual(['Fade', 'Rise', 'Pop', 'Slide', 'Wipe', 'Type on', 'Grow', 'Blur in', 'Drop']);
+    expect(presetsFor('in').map((p) => p.label)).toEqual([
+      'Fade',
+      'Rise',
+      'Pop',
+      'Slide',
+      'Wipe',
+      'Type on',
+      'Grow',
+      'Blur in',
+      'Drop',
+    ]);
   });
 
   it('every preset has a default duration inside the "How long" range', () => {
@@ -44,7 +54,8 @@ describe('presets', () => {
 
 describe('layerPose', () => {
   const layer = {
-    startMs: 0, endMs: 3000,
+    startMs: 0,
+    endMs: 3000,
     in: { preset: 'fade-in', feel: 'steady' as Feel, durationMs: 600 },
     out: { preset: 'fade-out', feel: 'steady' as Feel, durationMs: 400 },
   };
@@ -58,8 +69,12 @@ describe('layerPose', () => {
   });
 
   it('ignores unknown presets and presets in the wrong slot', () => {
-    expect(layerPose({ ...layer, in: { preset: 'nope', feel: 'smooth', durationMs: 500 }, out: undefined }, 0)).toEqual(REST);
-    expect(layerPose({ ...layer, in: { preset: 'fade-out', feel: 'smooth', durationMs: 500 }, out: undefined }, 0)).toEqual(REST);
+    expect(layerPose({ ...layer, in: { preset: 'nope', feel: 'smooth', durationMs: 500 }, out: undefined }, 0)).toEqual(
+      REST,
+    );
+    expect(
+      layerPose({ ...layer, in: { preset: 'fade-out', feel: 'smooth', durationMs: 500 }, out: undefined }, 0),
+    ).toEqual(REST);
   });
 
   it('during repeats every cycle', () => {
@@ -70,7 +85,12 @@ describe('layerPose', () => {
   });
 
   it('scales in and out down so a short layer still reaches full pose', () => {
-    const l = { startMs: 0, endMs: 600, in: { preset: 'fade-in', feel: 'steady' as Feel, durationMs: 600 }, out: { preset: 'fade-out', feel: 'steady' as Feel, durationMs: 600 } };
+    const l = {
+      startMs: 0,
+      endMs: 600,
+      in: { preset: 'fade-in', feel: 'steady' as Feel, durationMs: 600 },
+      out: { preset: 'fade-out', feel: 'steady' as Feel, durationMs: 600 },
+    };
     expect(layerPose(l, 300).alpha).toBeCloseTo(1);
     expect(layerPose(l, 150).alpha).toBeCloseTo(0.5);
   });
@@ -93,7 +113,14 @@ describe('while on screen presets', () => {
   };
 
   it('the "While on screen" set is the frame tiles, in order', () => {
-    expect(presetsFor('during').map((p) => p.label)).toEqual(['Bounce', 'Pulse', 'Float', 'Shake', 'Slow zoom', 'Glow']);
+    expect(presetsFor('during').map((p) => p.label)).toEqual([
+      'Bounce',
+      'Pulse',
+      'Float',
+      'Shake',
+      'Slow zoom',
+      'Glow',
+    ]);
     for (const id of DURING) expect(isPresetId(id)).toBe(true);
   });
 
@@ -123,6 +150,8 @@ describe('while on screen presets', () => {
   });
 
   it('Feels change amplitude', () => {
-    expect(Math.abs(layerPose(mk('float', 'bouncy'), 2250).dy)).toBeGreaterThan(Math.abs(layerPose(mk('float', 'steady'), 2250).dy));
+    expect(Math.abs(layerPose(mk('float', 'bouncy'), 2250).dy)).toBeGreaterThan(
+      Math.abs(layerPose(mk('float', 'steady'), 2250).dy),
+    );
   });
 });

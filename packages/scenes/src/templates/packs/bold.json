@@ -16,20 +16,10 @@
   },
   "background": {
     "kind": "blocks",
-    "colours": [
-      "#0A0A0A",
-      "#FACC15"
-    ]
+    "colours": ["#0A0A0A", "#FACC15"]
   },
   "feel": "snappy",
   "motionMs": 250,
-  "transitions": [
-    "push",
-    "wipe",
-    "zoom"
-  ],
-  "clipTypes": [
-    "promo",
-    "social"
-  ]
+  "transitions": ["push", "wipe", "zoom"],
+  "clipTypes": ["promo", "social"]
 }

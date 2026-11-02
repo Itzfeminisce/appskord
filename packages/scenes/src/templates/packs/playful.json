@@ -21,21 +21,11 @@
   },
   "background": {
     "kind": "blobs",
-    "colours": [
-      "#FFF7ED",
-      "#FED7AA",
-      "#99F6E4"
-    ],
+    "colours": ["#FFF7ED", "#FED7AA", "#99F6E4"],
     "drift": true
   },
   "feel": "bouncy",
   "motionMs": 450,
-  "transitions": [
-    "slide",
-    "zoom",
-    "match"
-  ],
-  "clipTypes": [
-    "logo"
-  ]
+  "transitions": ["slide", "zoom", "match"],
+  "clipTypes": ["logo"]
 }

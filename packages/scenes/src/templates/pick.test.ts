@@ -12,7 +12,11 @@ describe('pace and transitions', () => {
   it("cycles the pack's transitions", () => {
     const bold = getPack('bold')!;
     expect([0, 1, 2, 3].map((i) => transitionFor(bold, i, 'fast'))).toEqual([
-      { kind: 'push', ms: 250 }, { kind: 'wipe', ms: 250 }, { kind: 'zoom', ms: 250 }, { kind: 'push', ms: 250 }]);
+      { kind: 'push', ms: 250 },
+      { kind: 'wipe', ms: 250 },
+      { kind: 'zoom', ms: 250 },
+      { kind: 'push', ms: 250 },
+    ]);
     expect(transitionFor(getPack('playful')!, 2)).toEqual({ kind: 'match', ms: 0 });
     expect(transitionFor(getPack('clean')!, 1)).toEqual({ kind: 'slide', ms: 400 });
   });

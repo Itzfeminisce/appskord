@@ -1,0 +1,23 @@
+{
+  "name": "@appskord/scenes",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Motikord's scene templates, style packs and renderer, shared so Klipkord can draw Motikord's cards. TypeScript source, no build step.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./templates/*": "./src/templates/*.ts",
+    "./render/*": "./src/render/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "compile": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@appskord/config": "workspace:*",
+    "@types/chrome": "^0.1.0",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

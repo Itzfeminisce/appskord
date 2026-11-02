@@ -19,7 +19,15 @@ describe('textFit', () => {
     expect(f.fits).toBe(true);
     expect(f.lines.length * f.sizePx).toBeLessThanOrEqual(100);
     for (const l of f.lines) expect(measure(l, f.sizePx)).toBeLessThanOrEqual(300);
-    const bigger = fitText({ text: 'Spring sale now on', width: 300, height: 100, maxSize: f.sizePx + 1, minSize: f.sizePx + 1, lineHeight: 1, measure });
+    const bigger = fitText({
+      text: 'Spring sale now on',
+      width: 300,
+      height: 100,
+      maxSize: f.sizePx + 1,
+      minSize: f.sizePx + 1,
+      lineHeight: 1,
+      measure,
+    });
     expect(bigger.fits).toBe(false);
   });
 
@@ -33,12 +41,28 @@ describe('textFit', () => {
     const f = fitText({ text: 'sourdough', width: 400, height: 400, maxSize: 100, lineHeight: 1, measure });
     expect(f.lines).toEqual(['sourdough']);
     expect(f.sizePx).toBeLessThan(100);
-    const miss = fitText({ text: 'sourdough', width: 400, height: 400, maxSize: 100, minSize: 100, lineHeight: 1, measure });
+    const miss = fitText({
+      text: 'sourdough',
+      width: 400,
+      height: 400,
+      maxSize: 100,
+      minSize: 100,
+      lineHeight: 1,
+      measure,
+    });
     expect(miss).toEqual({ sizePx: 100, lines: ['sourdough'], fits: false });
   });
 
   it('reports a miss at the smallest size when nothing fits', () => {
-    const f = fitText({ text: 'Too much text for a tiny box', width: 20, height: 5, maxSize: 60, minSize: 10, lineHeight: 1.2, measure });
+    const f = fitText({
+      text: 'Too much text for a tiny box',
+      width: 20,
+      height: 5,
+      maxSize: 60,
+      minSize: 10,
+      lineHeight: 1.2,
+      measure,
+    });
     expect(f.fits).toBe(false);
     expect(f.sizePx).toBe(10);
   });

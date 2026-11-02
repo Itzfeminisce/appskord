@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Aspect, Box } from '../types';
-import { LAYOUTS, boxFor, canvasSize, clampToSafe, insideSafe, isLayoutId, reflowBox, safeBox } from './reflow';
+import { LAYOUTS, boxFor, canvasSize, clampToSafe, insideSafe, isLayoutId, reflowBox } from './reflow';
 
 const ASPECTS: Aspect[] = ['9:16', '1:1', '16:9'];
 const pairs = ASPECTS.flatMap((a) => ASPECTS.filter((b) => b !== a).map((b) => [a, b] as const));
@@ -24,13 +24,17 @@ describe('reflow', () => {
     const row = [0, 1, 2, 3].map((i) => ({ x: 0.1 + i * 0.2, y: 0.1 + i * 0.2, w: 0.18, h: 0.18 }));
     for (const keepShape of [false, true]) {
       const out = row.map((b) => reflowBox(b, from, to, { keepShape }));
-      for (let i = 1; i < out.length; i++) expect(out[i]!.x).toBeGreaterThanOrEqual(out[i - 1]!.x + out[i - 1]!.w - 1e-3);
+      for (let i = 1; i < out.length; i++)
+        expect(out[i]!.x).toBeGreaterThanOrEqual(out[i - 1]!.x + out[i - 1]!.w - 1e-3);
     }
   });
 
   it.each(pairs)('%s to %s keeps a circle or picture the same shape on screen', (from, to) => {
     const r = reflowBox(badge, from, to, { keepShape: true });
-    const px = (b: Box, a: Aspect) => { const s = canvasSize(a, 1080); return (b.w * s.w) / (b.h * s.h); };
+    const px = (b: Box, a: Aspect) => {
+      const s = canvasSize(a, 1080);
+      return (b.w * s.w) / (b.h * s.h);
+    };
     expect(px(r, to)).toBeCloseTo(px(badge, from), 2);
   });
 
@@ -58,7 +62,9 @@ describe('reflow', () => {
     expect(boxFor(layer, '9:16', '16:9')).toBe(own);
     expect(boxFor(layer, '16:9', '16:9')).toBe(badge);
     expect(boxFor(layer, '1:1', '16:9')).toEqual(reflowBox(badge, '16:9', '1:1'));
-    expect(boxFor({ ...layer, type: 'image' }, '1:1', '16:9')).toEqual(reflowBox(badge, '16:9', '1:1', { keepShape: true }));
+    expect(boxFor({ ...layer, type: 'image' }, '1:1', '16:9')).toEqual(
+      reflowBox(badge, '16:9', '1:1', { keepShape: true }),
+    );
   });
 
   it('layout ids are a small fixed set', () => {
