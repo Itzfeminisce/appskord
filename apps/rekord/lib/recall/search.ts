@@ -14,10 +14,12 @@ export function fuse(lists: string[][], k: number = RRF_K): { id: string; score:
   return [...scores].map(([id, score]) => ({ id, score })).sort((a, b) => b.score - a.score);
 }
 
-export interface WindowHit { row: VectorRow; score: number }
+/** A window without its text or vector; the text is fetched only for the hits shown. */
+export type WindowRef = Pick<VectorRow, 'id' | 'meetingId' | 'atMs' | 'endMs'>;
+export interface WindowHit { row: WindowRef; score: number }
 
 /** Windows at or above `min` cosine to the query, best first. */
-export function rankWindows(query: ArrayLike<number>, rows: VectorRow[], min: number = MIN_COSINE): WindowHit[] {
+export function rankWindows<R extends WindowRef & Pick<VectorRow, 'v'>>(query: ArrayLike<number>, rows: R[], min: number = MIN_COSINE): { row: R; score: number }[] {
   return rows
     .map((row) => ({ row, score: cosine(query, row.v) }))
     .filter((h) => h.score >= min)
@@ -40,13 +42,17 @@ export function scoreItem(item: Pick<MemoryItem, 'text' | 'quote'>, query: strin
 
 /** Items whose quote falls inside a matching window, in window order. */
 export function itemsByWindows(items: MemoryItem[], hits: WindowHit[]): string[] {
-  const ids: string[] = [];
-  for (const { row } of hits) {
-    for (const i of items) {
-      if (i.quote.meetingId === row.meetingId && i.quote.atMs >= row.atMs && i.quote.atMs <= row.endMs) ids.push(i.id);
-    }
+  const byMeeting = new Map<string, MemoryItem[]>();
+  for (const i of items) {
+    const list = byMeeting.get(i.quote.meetingId);
+    if (list) list.push(i);
+    else byMeeting.set(i.quote.meetingId, [i]);
   }
-  return [...new Set(ids)];
+  const ids = new Set<string>();
+  for (const { row } of hits) {
+    for (const i of byMeeting.get(row.meetingId) ?? []) if (i.quote.atMs >= row.atMs && i.quote.atMs <= row.endMs) ids.add(i.id);
+  }
+  return [...ids];
 }
 
 /** Items search can show: not dismissed and with a quote the checker found. */

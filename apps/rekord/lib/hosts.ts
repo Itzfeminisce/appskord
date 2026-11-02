@@ -9,7 +9,7 @@ export const GOOGLE_HOSTS = ['https://www.googleapis.com/*', 'https://oauth2.goo
 export const NOTION_HOSTS = ['https://api.notion.com/*'];
 export const OLLAMA_HOSTS = ['http://localhost:11434/*'];
 // Search model weights: huggingface.co redirects the files to its CDNs.
-export const HUGGINGFACE_HOSTS = ['https://huggingface.co/*', 'https://cdn-lfs.huggingface.co/*', 'https://cdn-lfs-us-1.hf.co/*', 'https://cas-bridge.xethub.hf.co/*'];
+export const HUGGINGFACE_HOSTS = ['https://huggingface.co/*', 'https://cdn-lfs.huggingface.co/*', 'https://cdn-lfs-us-1.hf.co/*', 'https://cas-bridge.xethub.hf.co/*', 'https://cdn-lfs.hf.co/*', 'https://cdn-lfs-eu-1.hf.co/*'];
 
 const KEY_HOSTS: Record<string, string[]> = {
   GROQ_API_KEY: ['https://api.groq.com/*'],

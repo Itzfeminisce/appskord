@@ -1,15 +1,17 @@
 /** Recall: local embeddings of transcript windows and hybrid search. The only entry point the UI uses. */
 import { rankCandidates, type MeetingData } from '../askAll';
 import { listMeetings, listNotes, listSegments } from '../db';
-import { listItems, listVectors, replaceVectors, vectorsForMeeting } from '../memory/store';
+import { countVectors, getVector, listItems, listVectors, replaceVectors, vectorsForMeeting, vectorVersion } from '../memory/store';
 import type { MemoryItem, VectorRow } from '../memory/types';
 import type { Meeting } from '../types';
 import { embedTexts, loadCachedModel } from './model';
 import { quantize } from './quantize';
-import { fuse, itemsByWindows, meetingsByWindows, rankWindows, scoreItem, searchable, type WindowHit } from './search';
+import { fuse, itemsByWindows, meetingsByWindows, scoreItem, searchable, type WindowHit } from './search';
+import { buildIndex, rankIndex, type VectorIndex } from './vectorIndex';
 import { windowsOf } from './windows';
 
 export { ensureModel, modelState, removeModel, type ModelState, type Progress } from './model';
+export { timeSyntheticSearch } from './vectorIndex';
 
 const BATCH = 16;
 
@@ -62,12 +64,22 @@ const loadFromDb = async (meeting: Meeting): Promise<MeetingData> => ({
   meeting, segments: await listSegments(meeting.id), notes: await listNotes(meeting.id),
 });
 
+let cache: { index: VectorIndex; version: number; count: number } | undefined;
+/** Built once per page and rebuilt after a vector write here, or when another page changed the row count. */
+async function vectorIndex(): Promise<VectorIndex> {
+  const [version, count] = [vectorVersion(), await countVectors()];
+  if (cache?.version === version && cache.count === count) return cache.index;
+  const index = buildIndex(await listVectors());
+  cache = { index, version, count: index.size };
+  return index;
+}
+
 async function vectorHits(query: string, inScope: Set<string>): Promise<WindowHit[] | undefined> {
   try {
     if (!(await loadCachedModel())) return undefined;
     const [q] = await embedTexts([query]);
     if (!q) return undefined;
-    return rankWindows(q, (await listVectors()).filter((r) => inScope.has(r.meetingId)));
+    return rankIndex(await vectorIndex(), q, inScope);
   } catch (e) {
     console.error('Rekord: could not search by meaning', e);
     return undefined;
@@ -94,13 +106,17 @@ export async function search(query: string, opts: SearchOptions = {}): Promise<S
   const best = new Map<string, WindowHit>();
   for (const h of hits ?? []) if (!best.has(h.row.meetingId)) best.set(h.row.meetingId, h);
 
+  const topMeetings = fuse(hits ? [meetingKeyword, meetingsByWindows(hits)] : [meetingKeyword]).slice(0, limit);
+  // Window text is read only for the best window of each meeting shown.
+  const texts = await Promise.all(topMeetings.map(({ id }) => {
+    const hit = best.get(id);
+    return hit ? getVector(hit.row.id).then((r) => r?.text, () => undefined) : undefined;
+  }));
   return {
     mode: hits ? 'hybrid' : 'keyword',
     items: fuse(hits ? [itemKeyword, itemsByWindows(items, hits)] : [itemKeyword])
       .slice(0, limit)
       .map(({ id, score }) => ({ item: itemById.get(id)!, score })),
-    meetings: fuse(hits ? [meetingKeyword, meetingsByWindows(hits)] : [meetingKeyword])
-      .slice(0, limit)
-      .map(({ id, score }) => ({ meeting: byId.get(id)!, score, atMs: best.get(id)?.row.atMs, text: best.get(id)?.row.text })),
+    meetings: topMeetings.map(({ id, score }, i) => ({ meeting: byId.get(id)!, score, atMs: best.get(id)?.row.atMs, text: texts[i] })),
   };
 }
