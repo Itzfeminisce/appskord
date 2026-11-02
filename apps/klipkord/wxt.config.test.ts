@@ -30,4 +30,8 @@ describe('hosts and shortcuts', () => {
     expect(commands['toggle-draw']?.suggested_key.default).toBe('Alt+Shift+D');
     expect(commands['toggle-draw']?.description).toBe('Draw on this page');
   });
+
+  it('lets only Motikord message Klipkord, for the shared brand kit', async () => {
+    expect((await manifest()).externally_connectable).toEqual({ ids: ['pppjklpibpnndjfddhcedbdicfdalchl'] });
+  });
 });

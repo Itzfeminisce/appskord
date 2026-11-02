@@ -170,6 +170,14 @@ describe('renderPlan', () => {
     expect(renderPlan(project, { ...cut, tracks: { overlays: { hidden: true } } }, 1100).overlays).toEqual([]);
     expect(renderPlan(project, { ...cut, captions: { ...cut.captions, show: false } }, 1100, undefined, caps).captions).toBeUndefined();
   });
+  it('moves a blur that follows the page with the scroll of a tab recording', () => {
+    const { project, cut } = setup({
+      overlays: [{ id: 'b', kind: 'blur', at: 0, end: 2000, box: { x: 0.1, y: 0.5, w: 0.2, h: 0.1 }, motion: 'none', blur: { mode: 'blur', amount: 0.6, follow: true } }],
+    });
+    const scroll: EventsTrack = { version: 1, viewport: { w: 1280, h: 720 }, events: [{ t: 500, type: 'scroll', dy: 0.25 }] };
+    expect(renderPlan(project, cut, 1000, scroll).overlays[0]!.box.y).toBeCloseTo(0.25);
+    expect(renderPlan({ ...project, events: false }, cut, 1000, scroll).overlays[0]!.box.y).toBe(0.5);
+  });
 });
 
 describe('arrange', () => {

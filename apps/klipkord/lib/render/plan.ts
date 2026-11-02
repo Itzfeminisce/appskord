@@ -1,6 +1,7 @@
 import { MARGIN_SHARE } from '../bubble';
 import { captionAt, type Caption } from '../project/captions';
 import { cursorAt } from '../project/cursor';
+import { followOverlays } from '../project/follow';
 import { spanAt, toOut } from '../project/time';
 import type {
   Box, Camera, Cut, EventsTrack, LayoutKind, Look, Project, RenderPlan, Shape, Source, Zoom,
@@ -208,7 +209,10 @@ export function renderPlan(project: Project, cut: Cut, out: number, events?: Eve
     }
   }
 
-  if (!hidden('overlays')) plan.overlays = cut.overlays.filter((o) => rec >= o.at && rec < o.end);
+  if (!hidden('overlays')) {
+    const shown = cut.overlays.filter((o) => rec >= o.at && rec < o.end);
+    plan.overlays = project.events ? followOverlays(shown, events?.events, rec) : shown;
+  }
   if (!hidden('cards')) {
     plan.cards = cut.cards.filter((c) => {
       const start = toOut(cut, c.at);

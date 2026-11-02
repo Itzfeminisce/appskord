@@ -12,6 +12,7 @@ import { captionsSlots, lookSlots } from './inspector/slots';
 import { AutoZoomOnOpen, FocusStage } from './inspector/ZoomEdit';
 import { timelineSlots } from './timeline/slots';
 import { transcriptSlots } from './transcript';
+import { storySlots } from './story';
 import { mediaSlots } from './voiceover';
 
 const Timeline = timelineSlots.timeline!;
@@ -22,13 +23,13 @@ const slots = {
   ...timelineSlots,
   ...exportSlots,
   topBar: (p) => ({ ...timelineSlots.topBar?.(p), ...exportSlots.topBar?.(p) }),
-  inspector: (p) => ({ ...timelineSlots.inspector?.(p), panels: { ...timelineSlots.inspector?.(p).panels, ...captionsSlots.inspector?.(p).panels, ...lookSlots.inspector?.(p).panels, Layout: <LayoutPanel {...p} /> } }),
+  inspector: (p) => ({ ...storySlots.inspector(p, timelineSlots.inspector?.(p)), panels: { ...timelineSlots.inspector?.(p).panels, ...captionsSlots.inspector?.(p).panels, ...lookSlots.inspector?.(p).panels, Layout: <LayoutPanel {...p} /> } }),
   // Add media and Voiceover live beside the timeline (with T10's first-open autoZoom); a take's panel shares the inspector cover with Clean up.
-  timeline: (p) => <><Timeline {...p} /><mediaSlots.Host {...p} /><AutoZoomOnOpen {...p} /></>,
-  stage: FocusStage,
-  aside: (p) => <><Aside {...p} /><mediaSlots.Cover /></>,
+  timeline: (p) => <><Timeline {...p} /><mediaSlots.Host {...p} /><AutoZoomOnOpen {...p} /><storySlots.Host /></>,
+  stage: (p) => <><FocusStage {...p} /><storySlots.Handles {...p} /></>,
+  aside: (p) => <><Aside {...p} /><mediaSlots.Cover /><storySlots.Cover {...p} /></>,
   subscribe: (onChange) => {
-    const offs = [timelineSlots.subscribe?.(onChange), mediaSlots.subscribe(onChange)];
+    const offs = [timelineSlots.subscribe?.(onChange), mediaSlots.subscribe(onChange), storySlots.subscribe(onChange)];
     return () => offs.forEach((off) => off?.());
   },
 } satisfies EditorSlots;
