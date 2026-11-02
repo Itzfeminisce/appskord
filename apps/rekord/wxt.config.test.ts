@@ -1,7 +1,7 @@
 import { manifestChecks } from '@appskord/config/checks';
 import { describe, expect, it, vi } from 'vitest';
 
-const PERMISSIONS = ['sidePanel', 'storage', 'tabCapture', 'offscreen', 'activeTab', 'identity'];
+const PERMISSIONS = ['sidePanel', 'storage', 'tabCapture', 'offscreen', 'activeTab', 'identity', 'alarms'];
 const OPTIONAL_HOSTS = [
   'https://penv.cloud/*',
   'https://api.groq.com/*',

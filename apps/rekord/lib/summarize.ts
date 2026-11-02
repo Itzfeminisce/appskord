@@ -1,5 +1,5 @@
 import { getMeeting, listMarkers, listNotes, listSegments, putMeeting } from './db';
-import { extractMeeting } from './memory/extract';
+import { enqueueExtraction } from './memory/backfill';
 import { chat, LLMError, transcriptLines, type FetchLike } from './llm';
 import { getSettings } from './settings';
 import { formatClock } from './time';
@@ -128,8 +128,8 @@ export async function summarize(meetingId: string, fetchFn: FetchLike = (u, i) =
     }
     done.summary = { ...parseSummary(content, Math.max(0, ...segments.map((g) => g.endMs), ...notes.map((n) => n.atMs))), generatedAt: Date.now(), model };
     await putMeeting(done);
-    // Memory never holds up or breaks the summary.
-    void extractMeeting(meetingId, { fetchFn }).catch((error) => console.error('Rekord: could not extract memory', error));
+    // Memory never holds up or breaks the summary; the background extracts it, so closing the panel does not stop it.
+    void enqueueExtraction(meetingId).catch((error) => console.error('Rekord: could not queue memory', error));
     return done;
   } catch (e) {
     await putMeeting(done); // keep the transcript reachable even without a summary

@@ -1,6 +1,6 @@
 import { getMeeting, listMeetings, listSegments } from '../db';
 import { record } from '../ledger';
-import { chat, displayName, transcriptLines, type FetchLike } from '../llm';
+import { chat, displayName, LLMError, transcriptLines, type FetchLike } from '../llm';
 import { getSettings } from '../settings';
 import type { Meeting, Segment } from '../types';
 import { normalise, quoteFound } from './check';
@@ -13,14 +13,22 @@ import type { ItemKind, LedgerEntry, MemoryItem, Person, Quote } from './types';
 export const PART_MS = 10 * 60_000;
 export const MAX_CALL_TOKENS = 8_000;
 export const REPLY_TOKENS = 1_500;
-// Tokens are counted generously (3 characters each) so a part never pushes a call past 8,000.
-export const MAX_PART_CHARS = 12_000;
+// With the prompt around it and the reply, a part of this size keeps a call under 8,000 tokens.
+export const MAX_PART_TOKENS = 4_000;
 const clip = (t: string) => (t.length > 120 ? `${t.slice(0, 119)}…` : t);
 export const MAX_OPEN_PROMISES = 15;
 export const MAX_NOT_PROMISES = 10;
 export const LEDGER_WHAT = 'Transcript text for summary and memory';
 
-export const estimateTokens = (text: string) => Math.ceil(text.length / 3);
+const LATIN = /[\u0000-\u024f\u1e00-\u1eff\u2000-\u206f]/;
+
+/** Counted generously: Latin text at 3 characters a token, any other character (CJK and so on) as a token of its own. */
+export function estimateTokens(text: string): number {
+  let narrow = 0;
+  let wide = 0;
+  for (const ch of text) if (LATIN.test(ch)) narrow++; else wide++;
+  return wide + Math.ceil(narrow / 3);
+}
 
 export const EXTRACT_SYSTEM = [
   'You find promises, decisions and open questions in one part of a meeting transcript. Reply with ONLY a JSON object, no prose, shaped as:',
@@ -45,21 +53,21 @@ export interface Extraction { items: RawItem[]; done: RawDone[] }
 export interface Part { startMs: number; endMs: number; segments: Segment[] }
 
 /** Splits a transcript into 10-minute parts, cutting a part early when its text would be too long for one call. */
-export function splitParts(segments: Segment[], speakers?: Meeting['speakers'], partMs = PART_MS, maxChars = MAX_PART_CHARS): Part[] {
+export function splitParts(segments: Segment[], speakers?: Meeting['speakers'], partMs = PART_MS, maxTokens = MAX_PART_TOKENS): Part[] {
   const parts: Part[] = [];
   let cur: Part | undefined;
-  let chars = 0;
+  let tokens = 0;
   for (const s of segments.filter((x) => x.text.trim() && !x.interim).sort((a, b) => a.startMs - b.startMs)) {
-    const len = (transcriptLines([s], speakers)[0] ?? '').length + 1;
+    const len = estimateTokens(`${transcriptLines([s], speakers)[0] ?? ''}\n`);
     const slot = Math.floor(s.startMs / partMs);
-    if (!cur || Math.floor(cur.startMs / partMs) !== slot || chars + len > maxChars) {
+    if (!cur || Math.floor(cur.startMs / partMs) !== slot || tokens + len > maxTokens) {
       cur = { startMs: s.startMs, endMs: s.endMs, segments: [] };
       parts.push(cur);
-      chars = 0;
+      tokens = 0;
     }
     cur.segments.push(s);
     cur.endMs = Math.max(cur.endMs, s.endMs);
-    chars += len;
+    tokens += len;
   }
   return parts;
 }
@@ -202,18 +210,51 @@ export interface ExtractResult { found: number; promises: number; decisions: num
 export interface ExtractDeps { fetchFn?: FetchLike; now?: () => number; newId?: () => string }
 
 const EMPTY: ExtractResult = { found: 0, promises: 0, decisions: 0, questions: 0, people: 0, leftOut: 0, looksDone: 0 };
-const LEDGER_SERVICE: Partial<Record<string, LedgerEntry['service']>> = { groq: 'groq', openai: 'openai' };
+// Ollama runs on the person's computer, so nothing leaves it and nothing is recorded.
+const LEDGER_SERVICE: Partial<Record<string, LedgerEntry['service']>> = { groq: 'groq', openai: 'openai', openrouter: 'openrouter', anthropic: 'anthropic' };
+// These failures happen before any text leaves the browser.
+const NOT_SENT = new Set(['no-key', 'offline', 'local-unavailable', 'cancelled']);
+
+export const extractedKey = (meetingId: string) => `rekord.extracted.${meetingId}`;
+export const partsKey = (meetingId: string) => `rekord.extract.parts.${meetingId}`;
+/** A part's parsed reply, with the open promises its "done" refs point at. */
+interface SavedPart { extraction: Extraction; openIds: string[] }
+
+async function readParts(meetingId: string): Promise<Record<string, SavedPart>> {
+  return ((await browser.storage.local.get(partsKey(meetingId)))[partsKey(meetingId)] as Record<string, SavedPart> | undefined) ?? {};
+}
+
+/** How many parts of a meeting already have a reply kept, so a rate-limited meeting resumes where it stopped. */
+export async function partsSaved(meetingId: string): Promise<number> {
+  return Object.keys(await readParts(meetingId)).length;
+}
+
+export async function isExtracted(meetingId: string): Promise<boolean> {
+  return !!(await browser.storage.local.get(extractedKey(meetingId)))[extractedKey(meetingId)];
+}
+
+const inFlight = new Map<string, Promise<ExtractResult>>();
 
 /**
  * Finds memory items in a finished meeting and saves them as suggested. Saves nothing until every AI call
- * has answered, so a rate limit leaves no half-done meeting. Throws LLMError (rate limits included).
+ * has answered; each part's reply is kept so a rate limit resumes from the first part without one.
+ * A second call for the same meeting joins the first. Throws LLMError (rate limits included).
  */
-export async function extractMeeting(meetingId: string, deps: ExtractDeps = {}): Promise<ExtractResult> {
+export function extractMeeting(meetingId: string, deps: ExtractDeps = {}): Promise<ExtractResult> {
+  let run = inFlight.get(meetingId);
+  if (!run) {
+    run = extractOnce(meetingId, deps).finally(() => inFlight.delete(meetingId));
+    inFlight.set(meetingId, run);
+  }
+  return run;
+}
+
+async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<ExtractResult> {
   const now = deps.now ?? Date.now;
   const newId = deps.newId ?? (() => crypto.randomUUID());
   const [meeting, segments, settings] = await Promise.all([getMeeting(meetingId), listSegments(meetingId), getSettings()]);
   if (!meeting) return EMPTY;
-  if ((await itemsForMeeting(meetingId)).length) return EMPTY; // already extracted
+  if ((await isExtracted(meetingId)) || (await itemsForMeeting(meetingId)).length) return EMPTY;
   const parts = splitParts(segments, meeting.speakers);
   if (!parts.length) return EMPTY;
 
@@ -229,21 +270,36 @@ export async function extractMeeting(meetingId: string, deps: ExtractDeps = {}):
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_NOT_PROMISES);
   const service = LEDGER_SERVICE[settings.summary.provider];
+  // Recorded whether or not the call succeeds: a rate-limited or failed call may still have sent the text.
   const ask = async (system: string, user: string, maxTokens: number) => {
-    const reply = await chat([{ role: 'system', content: system }, { role: 'user', content: user }], { json: true, maxTokens }, deps.fetchFn);
-    if (service) await record({ meetingId, service, what: LEDGER_WHAT });
-    return reply;
+    let sent = true;
+    try {
+      return await chat([{ role: 'system', content: system }, { role: 'user', content: user }], { json: true, maxTokens }, deps.fetchFn);
+    } catch (error) {
+      sent = !(error instanceof LLMError && NOT_SENT.has(error.code));
+      throw error;
+    } finally {
+      if (service && sent) await record({ meetingId, service, what: LEDGER_WHAT });
+    }
   };
 
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const saved = await readParts(meetingId);
   const found: { raw: RawItem; part: Part }[] = [];
-  const done: { raw: RawDone; part: Part }[] = [];
-  for (const part of parts) {
-    const user = buildExtractPrompt({
-      title: meeting.title, date: isoDay(meeting.startedAt), lines: transcriptLines(part.segments, meeting.speakers), open, notPromises,
-    });
-    const reply = parseExtraction(await ask(EXTRACT_SYSTEM, user, REPLY_TOKENS));
-    found.push(...reply.items.map((raw) => ({ raw, part })));
-    done.push(...reply.done.map((raw) => ({ raw, part })));
+  const done: { raw: RawDone; part: Part; target?: MemoryItem }[] = [];
+  for (const [index, part] of parts.entries()) {
+    let kept = saved[index];
+    if (!kept) {
+      const user = buildExtractPrompt({
+        title: meeting.title, date: isoDay(meeting.startedAt), lines: transcriptLines(part.segments, meeting.speakers), open, notPromises,
+      });
+      kept = { extraction: parseExtraction(await ask(EXTRACT_SYSTEM, user, REPLY_TOKENS)), openIds: open.map((o) => o.id) };
+      saved[index] = kept;
+      await browser.storage.local.set({ [partsKey(meetingId)]: saved });
+    }
+    const { extraction, openIds } = kept;
+    found.push(...extraction.items.map((raw) => ({ raw, part })));
+    done.push(...extraction.done.map((raw) => ({ raw, part, target: byId.get(openIds[raw.ref - 1] ?? '') })));
   }
 
   const at = now();
@@ -281,14 +337,14 @@ export async function extractMeeting(meetingId: string, deps: ExtractDeps = {}):
     }, LINK_MIN_SCORE);
     if (!link) { keep.push(item); continue; }
     if (item.kind === 'decision' && relations.get(link.id) === 'replaces') { keep.push({ ...item, replacesId: link.id }); continue; }
-    updated.set(link.id, { ...link, history: [...link.history, item.quote], updatedAt: at });
+    const repeat = [link.quote, ...link.history].some((q) => q.meetingId === item.quote.meetingId && q.text === item.quote.text);
+    if (!repeat) updated.set(link.id, { ...link, history: [...link.history, item.quote], updatedAt: at });
   }
 
   // A later meeting can only say a promise looks done; the user closes it.
   let looksDone = 0;
-  for (const { raw, part } of done) {
-    const target = open[raw.ref - 1];
-    if (!target) continue;
+  for (const { raw, part, target } of done) {
+    if (!target || target.status !== 'open') continue;
     const check = checkQuote(raw.quote, raw.atMs, part);
     if (!check.found) continue;
     const current = updated.get(target.id) ?? target;
@@ -296,8 +352,12 @@ export async function extractMeeting(meetingId: string, deps: ExtractDeps = {}):
     if (next !== current) { updated.set(target.id, next); looksDone++; }
   }
 
+  // The marker goes first so no other path saves this meeting twice.
+  if (await isExtracted(meetingId)) return EMPTY;
+  await browser.storage.local.set({ [extractedKey(meetingId)]: at });
   for (const p of plan.changed) await putPerson(p);
   for (const i of [...keep, ...updated.values()]) await putItem(i);
+  await browser.storage.local.remove(partsKey(meetingId));
   const kept = keep.filter((i) => !i.leftOut);
   const count = (k: ItemKind) => kept.filter((i) => i.kind === k).length;
   return {

@@ -5,7 +5,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { closeDB, putMeeting, putSegment } from '../db';
 import { saveKeys } from '../penv';
 import { getSettings } from '../settings';
-import { BACKFILL_ALARM, BACKFILL_KEY, readBackfill, requestBackfill, runBackfill, type BackfillProgress } from './backfill';
+import { BACKFILL_ALARM, BACKFILL_KEY, MAX_RATE_LIMITS, readBackfill, requestBackfill, runBackfill, type BackfillProgress } from './backfill';
 import { listLedger } from './store';
 
 const reply = (content: unknown) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
@@ -81,5 +81,47 @@ describe('backfill', () => {
     const f = vi.fn();
     await runBackfill({ fetchFn: f });
     expect(f).not.toHaveBeenCalled();
+  });
+
+  it('gives up on a meeting after repeated rate limits and moves on', async () => {
+    await requestBackfill();
+    let t = 0;
+    for (let i = 0; i < MAX_RATE_LIMITS; i++) {
+      t += 100_000;
+      await runBackfill({ fetchFn: async () => limit(), now: () => t });
+    }
+    let p = (await readBackfill())!;
+    expect(p.meetings.map((m) => m.status)).toEqual(['failed', 'waiting', 'waiting']);
+    expect(p).toMatchObject({ done: 1, failed: 1, total: 3 });
+    await runBackfill({ fetchFn: vi.fn().mockImplementation(answer), now: () => t + 100_000 });
+    p = (await readBackfill())!;
+    expect(p.meetings.map((m) => m.status)).toEqual(['failed', 'done', 'done']);
+    expect((await getSettings()).memory.backfill).toBe('done');
+  });
+
+  it('stops on a key problem, keeps the meetings to do, and resumes when asked again', async () => {
+    await requestBackfill();
+    const bad = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ error: { message: 'Invalid API Key' } }), { status: 401 }));
+    await runBackfill({ fetchFn: bad });
+    expect(bad).toHaveBeenCalledTimes(1);
+    let p = (await readBackfill())!;
+    expect(p).toMatchObject({ error: 'key', done: 0, total: 3 });
+    expect(p.meetings.every((m) => m.status === 'waiting')).toBe(true);
+    expect((await getSettings()).memory.backfill).toBe('running');
+
+    await requestBackfill();
+    expect((await readBackfill())?.error).toBeUndefined();
+    await runBackfill({ fetchFn: vi.fn().mockImplementation(answer) });
+    p = (await readBackfill())!;
+    expect(p).toMatchObject({ done: 3, total: 3 });
+  });
+
+  it('does nothing when asked again while it is running', async () => {
+    await requestBackfill();
+    await fakeBrowser.storage.local.set({ [BACKFILL_KEY]: { ...(await readBackfill())!, meetings: [{ id: 'a', title: 'A', status: 'done', found: 1 }] } });
+    await fakeBrowser.alarms.clear(BACKFILL_ALARM);
+    const again = await requestBackfill();
+    expect(again.meetings).toEqual([{ id: 'a', title: 'A', status: 'done', found: 1 }]);
+    expect(await fakeBrowser.alarms.get(BACKFILL_ALARM)).toBeUndefined();
   });
 });

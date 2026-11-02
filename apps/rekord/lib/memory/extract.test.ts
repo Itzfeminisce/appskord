@@ -5,10 +5,12 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { closeDB, putMeeting, putSegment } from '../db';
 import { saveKeys } from '../penv';
 import { summarize } from '../summarize';
+import { updateSettings, getSettings } from '../settings';
+import { QUEUE_KEY, readQueue, runBackfill } from './backfill';
 import type { Segment } from '../types';
 import {
   buildExtractPrompt, estimateTokens, extractMeeting, EXTRACT_SYSTEM, LEDGER_WHAT, MAX_NOT_PROMISES, MAX_OPEN_PROMISES, MAX_CALL_TOKENS,
-  MAX_PART_CHARS, parseExtraction, parseRelation, REPLY_TOKENS, resolvePeople, similarity, splitParts,
+  MAX_PART_TOKENS, parseExtraction, partsSaved, isExtracted, parseRelation, REPLY_TOKENS, resolvePeople, similarity, splitParts,
 } from './extract';
 import { mergeSuggestions } from './link';
 import { getItem, itemsForMeeting, listLedger, listPeople, putItem, putPerson } from './store';
@@ -70,11 +72,20 @@ describe('parts and limits', () => {
     const long = Array.from({ length: 40 }, (_, i) => seg(`l${i}`, i * 1000, 'x'.repeat(1000)));
     const parts = splitParts(long);
     expect(parts.length).toBeGreaterThan(2);
-    expect(parts.every((p) => p.segments.length * 1000 <= MAX_PART_CHARS)).toBe(true);
+    expect(parts.every((p) => p.segments.length * 1000 <= MAX_PART_TOKENS * 3)).toBe(true);
+  });
+  it('counts CJK characters as a token each, so Chinese and Japanese parts stay small enough', () => {
+    expect(estimateTokens('abcdef')).toBe(2);
+    expect(estimateTokens('会议记录')).toBe(4);
+    expect(estimateTokens('Café naïve')).toBe(4);
+    const cjk = Array.from({ length: 40 }, (_, i) => seg(`c${i}`, i * 1000, '我们下周五之前把报价单发给客户'.repeat(60)));
+    const parts = splitParts(cjk);
+    expect(parts.length).toBeGreaterThan(8);
+    expect(parts.every((p) => estimateTokens(p.segments.map((x) => x.text).join('\n')) <= MAX_PART_TOKENS)).toBe(true);
   });
   it('keeps the biggest call under 8,000 tokens', () => {
     const user = buildExtractPrompt({
-      title: 'T'.repeat(200), date: '2026-11-03', lines: ['x'.repeat(MAX_PART_CHARS)],
+      title: 'T'.repeat(200), date: '2026-11-03', lines: ['会'.repeat(MAX_PART_TOKENS)],
       open: Array.from({ length: MAX_OPEN_PROMISES }, () => ({ text: 'y'.repeat(150) })),
       notPromises: Array.from({ length: MAX_NOT_PROMISES }, () => item({ text: 'z'.repeat(100), quote: { speaker: '', text: 'q'.repeat(150), meetingId: '', atMs: 0 } })),
     });
@@ -164,23 +175,76 @@ describe('extractMeeting', () => {
     expect((await listLedger())[0]?.count).toBe(3);
   });
 
-  it('saves nothing when a call fails part way', async () => {
+  it('saves nothing when a call fails part way, and records the call that sent the text', async () => {
     await expect(extractMeeting('m2', { fetchFn: async () => new Response('{}', { status: 429 }) })).rejects.toMatchObject({ code: 'rate-limited' });
     expect(await itemsForMeeting('m2')).toEqual([]);
     expect(await listPeople()).toEqual([]);
+    expect(await listLedger()).toMatchObject([{ meetingId: 'm2', service: 'groq', count: 1 }]);
+  });
+
+  it('records OpenRouter and Anthropic calls in the ledger, and nothing for local Ollama', async () => {
+    await saveKeys({ GROQ_API_KEY: 'gsk_test', OPENROUTER_API_KEY: 'sk-or-test' });
+    await updateSettings({ summary: { ...(await getSettings()).summary, provider: 'openrouter', model: 'x/y' } });
+    await extractMeeting('m2', { fetchFn: async () => reply({ items: [], done: [] }) });
+    expect(await listLedger()).toMatchObject([{ meetingId: 'm2', service: 'openrouter' }]);
+  });
+
+  it('keeps each part\'s reply through a rate limit and resumes from the first part without one', async () => {
+    await putSegment(seg('d', 15 * 60_000, 'We will revisit hiring next quarter.'));
+    const f = vi.fn()
+      .mockResolvedValueOnce(reply({ items: [{ kind: 'promise', text: 'Send the deck', quote: "I'll send the revised pricing deck by Friday", speaker: 'You', atMs: 60_000 }] }))
+      .mockResolvedValueOnce(new Response('{}', { status: 429 }));
+    await expect(extractMeeting('m2', { fetchFn: f })).rejects.toMatchObject({ code: 'rate-limited' });
+    expect(await partsSaved('m2')).toBe(1);
+    const g = vi.fn(async () => reply({ items: [] }));
+    expect(await extractMeeting('m2', { fetchFn: g })).toMatchObject({ found: 1, promises: 1 });
+    expect(g).toHaveBeenCalledTimes(1);
+    expect(body(g, 0).messages[1]!.content).toContain('revisit hiring');
+    expect(await partsSaved('m2')).toBe(0);
+  });
+
+  it('saves a meeting once: joins a call in flight and honours the extracted marker', async () => {
+    let calls = 0;
+    const f = vi.fn(async () => { calls++; return reply({ items: [{ kind: 'decision', text: 'Annual plan', quote: "Let's go with the annual plan for Northwind", speaker: 'Sarah Chen', atMs: 120_000 }] }); });
+    const [a, b] = await Promise.all([extractMeeting('m2', { fetchFn: f }), extractMeeting('m2', { fetchFn: f })]);
+    expect(a).toBe(b);
+    expect(calls).toBe(1);
+    expect(await isExtracted('m2')).toBe(true);
+    expect(await itemsForMeeting('m2')).toHaveLength(1);
+    await putSegment({ ...seg('z', 0, "Let's go with the annual plan for Northwind"), meetingId: 'm1' });
+    await fakeBrowser.storage.local.set({ 'rekord.extracted.m1': 1 });
+    expect(await extractMeeting('m1', { fetchFn: f })).toMatchObject({ found: 0 });
+    expect(calls).toBe(1);
+  });
+
+  it('does not add a quote to an earlier item\'s history twice', async () => {
+    const quote = { speaker: 'You', text: "I'll send the revised pricing deck by Friday", meetingId: 'm2', atMs: 60_000 };
+    await putItem(item({ id: 'old', history: [quote] }));
+    const f = vi.fn()
+      .mockResolvedValueOnce(reply({ items: [{ kind: 'promise', text: 'Send the revised pricing deck', quote: quote.text, speaker: 'You', atMs: 60_000 }] }))
+      .mockResolvedValueOnce(reply('{"relation":"same"}'));
+    await extractMeeting('m2', { fetchFn: f });
+    expect((await getItem('old'))?.history).toHaveLength(1);
   });
 });
 
 describe('after the summary', () => {
-  it('runs extraction and never breaks the summary', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const f = vi.fn()
-      .mockResolvedValueOnce(reply('{"overview":"o","decisions":[],"actions":[],"questions":[]}'))
-      .mockRejectedValueOnce(new TypeError('offline'));
+  it('hands extraction to the background queue, which a rate limit pauses and the same alarm resumes', async () => {
+    const f = vi.fn().mockResolvedValueOnce(reply('{"overview":"o","decisions":[],"actions":[],"questions":[]}'));
     const m = await summarize('m2', f);
     expect(m.summary?.overview).toBe('o');
-    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('Rekord: could not extract memory', expect.anything()));
-    expect(f).toHaveBeenCalledTimes(2);
-    error.mockRestore();
+    expect(f).toHaveBeenCalledTimes(1);
+    await vi.waitFor(async () => expect((await readQueue()).ids).toEqual(['m2']));
+    expect(await fakeBrowser.alarms.get('rekord.backfill')).toBeDefined();
+
+    await runBackfill({ fetchFn: async () => new Response('{}', { status: 429, headers: { 'retry-after': '30' } }), now: () => 1000 });
+    expect(await readQueue()).toMatchObject({ ids: ['m2'], resumeAt: 31_000, rateLimits: { m2: 1 } });
+    expect((await fakeBrowser.alarms.get('rekord.backfill'))?.scheduledTime).toBe(31_000);
+
+    await runBackfill({ fetchFn: async () => reply({ items: [{ kind: 'decision', text: 'Annual', quote: "Let's go with the annual plan for Northwind", speaker: 'Sarah Chen', atMs: 120_000 }] }), now: () => 40_000 });
+    expect((await readQueue()).ids).toEqual([]);
+    expect(await itemsForMeeting('m2')).toHaveLength(1);
+    expect(await fakeBrowser.alarms.get('rekord.backfill')).toBeUndefined();
+    expect(QUEUE_KEY).toBe('rekord.extract.queue');
   });
 });
