@@ -4,11 +4,9 @@ import type { SlotProps } from '../components/slots';
 import { AddMedia } from '../dialogs/AddMedia';
 import { registerTimelineAction, select, timelineState } from '../timeline/store';
 import { videoStore } from '@/lib/videoStore';
-import { group } from '@/lib/project/history';
-import { addVoiceover, fileName, mediaSource, voiceRange } from '@/lib/project/media';
-import { newId, setAudio, LABELS } from '@/lib/project/ops';
-import { toRec } from '@/lib/project/time';
-import { startTake, stopTake } from './record';
+import { addVoiceover, fileName, mediaSource, takePieces, voiceRange } from '@/lib/project/media';
+import { newId } from '@/lib/project/ops';
+import { askForMic, cancelTake, startTake, stopTake } from './record';
 import { VoiceoverPanel, VoiceoverPill } from './VoiceoverPanel';
 import { setVoiceover, subscribeVoiceover, voiceoverBusy, voiceoverState } from './state';
 
@@ -24,31 +22,33 @@ export function MediaHost(p: SlotProps) {
       const { cut, out, recording, project } = props.current;
       const selected = timelineState().selected;
       const range = voiceRange(cut, { out, selectedClips: selected?.kind === 'clips' ? selected.ids : [], transcript: recording.transcript });
-      if (range.endOut - range.startOut < 500) return;
-      void startTake({
+      if (range.endOut - range.startOut < 500) {
+        // "Allow mic" still asks for the mic where there is nothing to record over.
+        if (voiceoverState().phase === 'no-mic') void askForMic();
+        return;
+      }
+      // The take is placed through the cut as it plays now (`cut` from this press), so later edits don't move it.
+      startTake({
         ...range,
+        playhead: () => props.current.out,
         seek: (o) => props.current.seek(o),
         play: () => props.current.play(),
         pause: () => props.current.pause?.(),
-        async save(blob, ms, startOut) {
+        async save(blob, take) {
+          const pieces = takePieces(cut, take.from, take.to, take.fileAt);
+          if (pieces.length === 0) return;
           const id = newId();
           const file = fileName('voiceover', id, 'webm');
           await videoStore.put(project.id, file, blob);
-          const now = props.current;
-          const source = mediaSource({ id, kind: 'voiceover', file, mime: 'audio/webm', name: 'Voiceover', probed: { duration: ms, video: false, audio: true } });
-          const at = Math.round(toRec(now.cut, startOut) ?? 0);
-          const clean = voiceoverState().clean;
+          const source = mediaSource({ id, kind: 'voiceover', file, mime: 'audio/webm', name: 'Voiceover', probed: { duration: take.ms, video: false, audio: true } });
           const takeId = newId();
-          now.edit((q) => group(q, LABELS.voiceover, (r) => {
-            const added = addVoiceover(r, { source, at, id: takeId });
-            return clean ? setAudio(added, { patch: { denoise: true, level: true }, label: LABELS.voiceover }) : added;
-          }));
+          props.current.edit((q) => addVoiceover(q, { source, pieces, clean: voiceoverState().clean, id: takeId }));
           select({ kind: 'voiceovers', ids: [takeId] });
         },
-      });
+      }).catch((error: unknown) => console.error('Klipkord: the voiceover stopped', error));
     };
     const offs = [registerTimelineAction('media', () => setAdding(true)), registerTimelineAction('voiceover', begin)];
-    return () => { offs.forEach((off) => off()); stopTake(); };
+    return () => { offs.forEach((off) => off()); cancelTake(); };
   }, []);
 
   // Letter keys belong to the open dialog, not the timeline behind it.

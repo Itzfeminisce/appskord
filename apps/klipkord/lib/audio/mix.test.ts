@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { blankCut } from '../project/cuts';
 import type { Clip, Cut, Placed, Project, Source } from '../project/types';
 import { CEILING } from './loudness';
-import { connectMix, EDGE_MS, mixPlan, partEnvelope, softClipCurve, stretchKey, type AudioPart, type MixPlan } from './mix';
+import { connectMix, EDGE_MS, mixPlan, needsDenoise, partEnvelope, softClipCurve, stretchKey, type AudioPart, type MixPlan } from './mix';
 
 const src = (id: string, kind: Source['kind'], offset: number, duration: number, audio = true): Source =>
   ({ id, kind, file: `${id}.webm`, mime: 'audio/webm', offset, duration, video: false, audio });
@@ -35,6 +35,29 @@ describe('mix plan', () => {
     // The take spans rec 1000..4000: rec 1000..2000 plays, 2000..4000 is cut, rec 4000 starts the 2x clip at take ms 3000.
     expect(pick(plan, 'voiceover')).toEqual([{ when: 1000, from: 0, length: 1000, rate: 1 }]);
     expect(pick(plan, 'media')).toEqual([{ when: 2500, from: 0, length: 500, rate: 2 }]);
+  });
+
+  it('plays a take recorded across a cut piece by piece where each was said', () => {
+    const c = cut([clip('a', 0, 2000), clip('b', 5000, 10_000)], {
+      voiceovers: [placed('vo', 1500, [40, 540], { id: 'p1' }), placed('vo', 5000, [540, 1540], { id: 'p2' })],
+    });
+    expect(pick(mixPlan(project(c), c), 'voiceover')).toEqual([{ when: 1500, from: 40, length: 500, rate: 1 }, { when: 2000, from: 540, length: 1000, rate: 1 }]);
+  });
+
+  it('plays a take in a 2x clip at rate 1 over the output time it was said', () => {
+    const c = cut([clip('a', 0, 2000), clip('b', 2000, 10_000, 2)], { voiceovers: [placed('vo', 2000, [1000, 3000], { muteOriginal: true })] });
+    const plan = mixPlan(project(c), c);
+    expect(pick(plan, 'voiceover')).toEqual([{ when: 2000, from: 1000, length: 2000, rate: 1 }]);
+    // The original voice is silent over the same output time: rec 2000..6000 at 2x.
+    expect(pick(plan, 'voice')).toEqual([{ when: 0, from: 0, length: 2000, rate: 1 }, { when: 4000, from: 6000, length: 2000, rate: 2 }]);
+  });
+
+  it('cleans and levels only a take marked for it', () => {
+    const c = cut([clip('a', 0, 10_000)], { voiceovers: [placed('vo', 0, [0, 1000], { clean: true })] });
+    const plan = mixPlan(project(c), c);
+    expect(plan.parts.find((p) => p.track === 'voiceover')?.clean).toBe(true);
+    expect(plan.parts.find((p) => p.track === 'voice')?.clean).toBeUndefined();
+    expect([plan.denoise, plan.level, needsDenoise(plan)]).toEqual([false, false, true]);
   });
 
   it('silences the original voice under a take that mutes it, and honours muted takes and tracks', () => {
@@ -153,6 +176,27 @@ describe('mix graph', () => {
     const stretched = { duration: 2 } as AudioBuffer;
     connectMix(ctx, natural, new Map([['mic', buffer(10)]]), {} as AudioNode, { t0: 0, stretched: new Map([[stretchKey(natural.parts[0]!), stretched]]) });
     expect(started).toEqual([{ at: 2, offset: 0, duration: 2, rate: 1, loop: false }]);
+  });
+  it('sends a clean take alone through noise removal, at its own loudness gain', () => {
+    const parts: AudioPart[] = [
+      { track: 'voice', source: 'mic', when: 0, from: 0, length: 1000, rate: 1, gain: 1 },
+      { track: 'voiceover', source: 'vo', when: 0, from: 0, length: 1000, rate: 1, gain: 0.5, clean: true },
+    ];
+    const two: MixPlan = { length: 1000, parts, music: null, denoise: false, level: false };
+    const { ctx, ramps } = fakeContext();
+    const into: unknown[] = [];
+    const denoise = { connect: (n: unknown) => n } as unknown as AudioNode;
+    const spy = ctx.createGain.bind(ctx);
+    (ctx as { createGain: () => GainNode }).createGain = () => {
+      const g = spy();
+      g.connect = ((n: unknown) => { if (n === denoise) into.push(g); return n; }) as GainNode['connect'];
+      return g;
+    };
+    connectMix(ctx, two, new Map([['mic', buffer(10)], ['vo', buffer(10)]]), {} as AudioNode, { t0: 0, denoise, levels: new Map([['vo', 2]]) });
+    expect(into).toHaveLength(1);
+    // The take's edges ramp to 0.5 x 2; the voice's to 1.
+    expect(ramps).toContainEqual(['ramp', 1, 0.005]);
+    expect(ramps.some(([, v]) => v === 0.5)).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 // The export's sound, rendered in ~20 s chunks (each its own OfflineAudioContext with a discarded pre-roll) from only
 // the source ranges each chunk plays, so a long cut never holds more than a chunk or two in memory.
-import { gainTo, Limiter, LoudnessMeter } from './loudness';
-import { schedule, type AudioPart, type MixPlan, type Playback } from './mix';
+import { gainTo, integratedLoudness, Limiter, LoudnessMeter } from './loudness';
+import { needsDenoise, schedule, type AudioPart, type MixPlan, type Playback } from './mix';
 import { Stretcher } from './stretch';
 
 export interface SourceInfo { duration: number; sampleRate: number; channels: number }   // ms, Hz
@@ -95,7 +95,7 @@ class StretchStream {
 }
 
 /** Raw mix chunks, back to back from the start of the cut. */
-async function* renderChunks(plan: MixPlan, parts: AudioPart[], infos: Map<string, SourceInfo>, loader: RangeLoader,
+async function* renderChunks(plan: MixPlan, parts: AudioPart[], infos: Map<string, SourceInfo>, loader: RangeLoader, levels: Map<string, number>,
   o: Settings): AsyncGenerator<Float32Array[]> {
   const sr = o.sampleRate;
   const total = Math.ceil((plan.length / 1000) * sr);
@@ -141,7 +141,7 @@ async function* renderChunks(plan: MixPlan, parts: AudioPart[], infos: Map<strin
       }
     }
     let clean: AudioNode | undefined;
-    if (plan.denoise && o.denoise && !denoiseFailed) {
+    if (needsDenoise(plan) && o.denoise && !denoiseFailed) {
       try {
         clean = await o.denoise(ctx);
       } catch (error) {
@@ -149,7 +149,7 @@ async function* renderChunks(plan: MixPlan, parts: AudioPart[], infos: Map<strin
         console.error('Klipkord: could not load noise removal', error);
       }
     }
-    schedule(ctx, chunkPlan, (part) => play.get(part) ?? null, ctx.destination, { t0: 0, from, to, denoise: clean });
+    schedule(ctx, chunkPlan, (part) => play.get(part) ?? null, ctx.destination, { t0: 0, from, to, denoise: clean, levels });
     const rendered = await ctx.startRendering();
     yield Array.from({ length: o.channels }, (_, c) =>
       rendered.getChannelData(Math.min(c, rendered.numberOfChannels - 1)).slice(s0 - r, s1 - r));
@@ -160,6 +160,20 @@ function toBuffer(ctx: BaseAudioContext, data: Float32Array<ArrayBuffer>[], samp
   const buffer = ctx.createBuffer(data.length, Math.max(1, data[0]?.length ?? 0), sampleRate);
   data.forEach((d, c) => buffer.copyToChannel(d, c));
   return buffer;
+}
+
+/** Loudness gain of each "Clean and level" take, measured over its whole file (takes are short). */
+async function takeLevels(parts: AudioPart[], infos: Map<string, SourceInfo>, loader: RangeLoader): Promise<Map<string, number>> {
+  const levels = new Map<string, number>();
+  for (const id of new Set(parts.filter((p) => p.clean).map((p) => p.source))) {
+    try {
+      const b = await loader.load(id, 0, infos.get(id)!.duration);
+      if (b) levels.set(id, gainTo(integratedLoudness(Array.from({ length: b.numberOfChannels }, (_, c) => b.getChannelData(c)), b.sampleRate)));
+    } catch (error) {
+      console.error('Klipkord: could not measure the voiceover', error);
+    }
+  }
+  return levels;
 }
 
 /**
@@ -186,10 +200,11 @@ export async function exportMix(plan: MixPlan, loader: RangeLoader, options: Exp
   const sr = o.sampleRate;
   return {
     async *[Symbol.asyncIterator]() {
+      const levels = await takeLevels(parts, infos, loader);
       let gain = 1;
       if (plan.level) {
         const meter = new LoudnessMeter(sr, o.channels);
-        for await (const chunk of renderChunks(plan, parts, infos, loader, o)) meter.push(chunk);
+        for await (const chunk of renderChunks(plan, parts, infos, loader, levels, o)) meter.push(chunk);
         gain = gainTo(meter.integrated());
       }
       const limiter = plan.level ? new Limiter(sr, o.channels) : null;
@@ -199,7 +214,7 @@ export async function exportMix(plan: MixPlan, loader: RangeLoader, options: Exp
         made += data[0]?.length ?? 0;
         return chunk;
       };
-      for await (const chunk of renderChunks(plan, parts, infos, loader, o)) {
+      for await (const chunk of renderChunks(plan, parts, infos, loader, levels, o)) {
         if (!limiter) {
           yield emit(chunk);
           continue;

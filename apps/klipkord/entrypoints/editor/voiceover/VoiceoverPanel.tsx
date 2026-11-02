@@ -58,6 +58,7 @@ export function VoiceoverPanel({ onAllowMic }: { onAllowMic(): void }) {
             <Switch on={v.clean} label="Clean and level the voiceover" onChange={(clean) => setVoiceover({ clean })} />
             <Switch on={v.countIn} label="Count in 3 seconds" onChange={(countIn) => setVoiceover({ countIn })} />
             <p style={{ margin: 0, fontSize: 11.5, color: C.muted }}>Press V to stop. Each take is kept; pick one after.</p>
+            {v.phase === 'recording' && <p style={{ margin: 0, fontSize: 11.5, color: C.muted }}>Closing this tab stops it. Chrome asks before the tab closes.</p>}
           </>
         )}
       </div>

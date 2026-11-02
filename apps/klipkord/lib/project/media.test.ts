@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Recording } from '../types';
 import { currentCut, steps, undo } from './history';
 import {
-  addMedia, addMusic, addVoiceover, formatOf, IMAGE_MS, mediaSource, meterBars, OPEN_RANGE_MS, placeAt, takeNumber, takesOver, voiceRange,
+  addMedia, addMusic, addVoiceover, formatOf, IMAGE_MS, mediaSource, meterBars, OPEN_RANGE_MS, placeAt, takeEnd, takeNumber, takePieces, takesOver, voiceRange,
 } from './media';
 import { fromRecording } from './migrate';
 import { split } from './ops';
@@ -82,13 +82,26 @@ describe('voiceover takes', () => {
   it('can leave the original voice playing', () => {
     expect(cut(addVoiceover(base(), { source: take('t1'), at: 0, muteOriginal: false })).voiceovers[0]!.muteOriginal).toBe(false);
   });
-  it('keeps every take and silences the older ones over the same spot', () => {
+  it('keeps every take and silences the older ones mostly under a new one', () => {
     let p = addVoiceover(base(), { source: take('t1'), at: 1000 });
-    p = addVoiceover(p, { source: take('t2', 1500), at: 1500 });
+    p = addVoiceover(p, { source: take('t2', 1800), at: 1200 });
     p = addVoiceover(p, { source: take('t3'), at: 8000 });
     const v = cut(p).voiceovers;
     expect(v).toHaveLength(3);
     expect(v.map((x) => [x.source, x.muted])).toEqual([['t1', true], ['t2', false], ['t3', false]]);
+  });
+  it('mutes only the part of an earlier take a new one covers', () => {
+    let p = addVoiceover(base(), { source: take('t1', 4000), at: 1000 });
+    p = addVoiceover(p, { source: take('t2', 1000), at: 2000 });
+    expect(cut(p).voiceovers.map((x) => [x.source, x.at, x.trim, x.muted])).toEqual([
+      ['t1', 1000, [0, 1000], false], ['t2', 2000, [0, 1000], false], ['t1', 2000, [1000, 2000], true], ['t1', 3000, [2000, 4000], false],
+    ]);
+    expect(cut(undo(p)).voiceovers).toHaveLength(1);
+  });
+  it('marks a take for clean and level on its own, leaving the project mix alone', () => {
+    const p = addVoiceover(base(), { source: take('t1'), at: 0, clean: true });
+    expect(cut(p).voiceovers[0]!.clean).toBe(true);
+    expect(cut(p).audio).toMatchObject({ denoise: false, level: false });
   });
   it('numbers takes by place among those over the same spot', () => {
     let p = addVoiceover(base(), { source: take('t1'), at: 1000 });
@@ -126,5 +139,30 @@ describe('meterBars', () => {
     expect(meterBars(1)).toHaveLength(7);
     expect(Math.max(...meterBars(1))).toBe(16);
     expect(meterBars(9)).toEqual(meterBars(1));
+  });
+});
+
+describe('takes said across cuts and speed', () => {
+  it('splits a take over a cut into pieces anchored where each was said', () => {
+    // Output 0..2000 is rec 0..2000, then rec 5000..10000 follows the cut.
+    const c = { ...cut(base()), clips: [{ id: 'a', in: 0, out: 2000, speed: 1 }, { id: 'b', in: 5000, out: 10_000, speed: 1 }] };
+    expect(takePieces(c, 1500, 3000, 40)).toEqual([{ at: 1500, trim: [40, 540] }, { at: 5000, trim: [540, 1540] }]);
+  });
+  it('anchors a piece in a 2x clip at its recording time and lets it cover twice its length', () => {
+    const c = { ...cut(base()), clips: [{ id: 'a', in: 0, out: 2000, speed: 1 }, { id: 'b', in: 2000, out: 10_000, speed: 2 }] };
+    const pieces = takePieces(c, 1000, 4000);
+    expect(pieces).toEqual([{ at: 1000, trim: [0, 1000] }, { at: 2000, trim: [1000, 3000] }]);
+    const placed = { id: 'x', source: 's', volume: 1, muted: false, ...pieces[1]! };
+    expect(takeEnd(c, placed)).toBe(6000);
+  });
+  it('leaves out what was said over a gap', () => {
+    const c = { ...cut(base()), clips: [{ id: 'a', in: 0, out: 1000, speed: 1 }, { id: 'g', in: 0, out: 1000, speed: 1, gap: true }, { id: 'b', in: 3000, out: 5000, speed: 1 }] };
+    expect(takePieces(c, 500, 2500)).toEqual([{ at: 500, trim: [0, 500] }, { at: 3000, trim: [1500, 2000] }]);
+  });
+  it('adds every piece as one Undo step', () => {
+    const p = addVoiceover(base(), { source: take('t1', 1540), pieces: [{ at: 1500, trim: [40, 540] }, { at: 5000, trim: [540, 1540] }], id: 'first' });
+    expect(cut(p).voiceovers.map((x) => [x.at, x.trim])).toEqual([[1500, [40, 540]], [5000, [540, 1540]]]);
+    expect(cut(p).voiceovers[0]!.id).toBe('first');
+    expect(cut(undo(p)).voiceovers).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { takeEnd } from '@/lib/project/media';
 import { cutLength, type Span } from '@/lib/project/time';
 import type { Card, Cut, Overlay, Placed, Project, Source } from '@/lib/project/types';
 import { CLIP_NAME } from './actions';
@@ -83,7 +84,7 @@ export function buildRows(project: Project, cut: Cut, clipSpans: readonly Span[]
   ];
   if (cut.voiceovers.length > 0 || cut.tracks.voiceovers) {
     rows.push({ key: 'voiceover', name: 'Voiceover', tracks: ['voiceovers'], mute: true, hint: { text: HINTS.voiceover, add: 'voiceover' },
-      blocks: layerBlocks(clipSpans, view, cut.voiceovers.map((v) => ({ id: v.id, at: v.at, end: placedEnd(v), label: '' })), 'voiceovers', 'voiceover', false) });
+      blocks: layerBlocks(clipSpans, view, cut.voiceovers.map((v) => ({ id: v.id, at: v.at, end: takeEnd(cut, v), label: '' })), 'voiceovers', 'voiceover', false) });
   }
   // AddMedia: each added file sits on its own track, "Media" or "Sound" then "Media 2"; the file name is on the block.
   const counts = { Media: 0, Sound: 0 };

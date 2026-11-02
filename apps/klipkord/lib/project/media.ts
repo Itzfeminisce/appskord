@@ -69,26 +69,91 @@ export function addMusic(project: Project, { source, volume = 0.3 }: { source: S
   });
 }
 
-const end = (v: Placed) => v.at + (v.trim[1] - v.trim[0]);
-const overlaps = (a: Placed, b: Placed) => a.at < end(b) && b.at < end(a);
+/** A take's recording-time end. Its file plays at rate 1 from the clip it starts in, so a 2x clip covers twice its length. */
+export function takeEnd(cut: Cut, v: Placed): number {
+  const s = spans(cut).find((x) => !x.clip.gap && v.at >= x.clip.in && v.at < x.clip.out);
+  return v.at + (v.trim[1] - v.trim[0]) * (s?.clip.speed ?? 1);
+}
+
+/** Where one piece of a take plays: a recording-ms anchor and a range of the take file. */
+export interface TakePiece { at: number; trim: [number, number] }
 
 /**
- * Adds a voiceover take at `at`. Every earlier take over the same spot is kept but silenced, so the newest is the one
- * heard; unmuting another picks it instead.
+ * Splits a take said over output ms [from, to) into one piece per clip it crossed, each anchored at the recording ms
+ * that was playing then, so each piece stays where it was said across cuts and speed. `fileAt` is the take-file ms
+ * heard at output `from`. A gap has no recording time, so what was said over one is left out.
  */
-export function addVoiceover(project: Project, { source, at, muteOriginal = true, id = newId() }: { source: Source; at: number; muteOriginal?: boolean; id?: string }): Project {
-  const take: Placed = { id, source: source.id, at, trim: [0, source.duration], volume: 1, muted: false, muteOriginal };
+export function takePieces(cut: Cut, from: number, to: number, fileAt = 0): TakePiece[] {
+  const pieces: TakePiece[] = [];
+  for (const s of spans(cut)) {
+    const a = Math.max(from, s.start), b = Math.min(to, s.end);
+    if (s.clip.gap || b - a < 1) continue;
+    pieces.push({ at: Math.round(s.clip.in + (a - s.start) * s.clip.speed), trim: [Math.round(fileAt + a - from), Math.round(fileAt + b - from)] });
+  }
+  return pieces;
+}
+
+// An earlier take this much under a new one is muted whole; less, and only the part under it is.
+const MOSTLY = 0.8;
+
+/** The recording-ms ranges of `ranges` inside [lo, hi), merged. */
+function inside(ranges: [number, number][], lo: number, hi: number): [number, number][] {
+  const cut = ranges.map(([a, b]): [number, number] => [Math.max(a, lo), Math.min(b, hi)]).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  const merged: [number, number][] = [];
+  for (const r of cut) {
+    const last = merged.at(-1);
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([...r]);
+  }
+  return merged;
+}
+
+/** Silences the parts of an earlier take under `over`: all of it when mostly covered, else it splits and mutes what is covered. */
+function muteUnder(project: Project, v: Placed, over: [number, number][]): Project {
+  const end = takeEnd(currentCut(project), v), covered = inside(over, v.at, end);
+  const total = covered.reduce((n, [a, b]) => n + b - a, 0);
+  if (total === 0) return project;
+  const patch = (x: Partial<Placed>) => updateLayer(project, { kind: 'voiceovers', id: v.id, patch: x, label: LABELS.voiceover });
+  if (total >= MOSTLY * (end - v.at)) return patch({ muted: true });
+  const k = (end - v.at) / Math.max(1, v.trim[1] - v.trim[0]);
+  const edges = [...new Set([v.at, ...covered.flat(), end])].sort((a, b) => a - b);
+  const pieces = edges.slice(0, -1).map((a, i) => {
+    const b = edges[i + 1]!;
+    return { at: a, trim: [Math.round(v.trim[0] + (a - v.at) / k), Math.round(v.trim[0] + (b - v.at) / k)] as [number, number],
+      muted: covered.some(([x, y]) => a >= x && b <= y) };
+  });
+  const [first, ...rest] = pieces;
+  const { id: _id, ...same } = v;
+  const kept = updateLayer(project, { kind: 'voiceovers', id: v.id, patch: first!, label: LABELS.voiceover });
+  return addLayer(kept, { kind: 'voiceovers', label: LABELS.voiceover, items: rest.map((x) => ({ ...same, ...x })) });
+}
+
+/**
+ * Adds a voiceover take, as one piece at `at` or as the `pieces` it was said over (takePieces). An earlier take mostly
+ * under the new one is kept but silenced, so the newest is heard; one partly under it is silenced only there.
+ * Unmuting another picks it instead. `clean` runs this take alone through "Clean and level".
+ */
+export function addVoiceover(project: Project, { source, at = 0, pieces, muteOriginal = true, clean = false, id = newId() }:
+  { source: Source; at?: number; pieces?: TakePiece[]; muteOriginal?: boolean; clean?: boolean; id?: string }): Project {
+  const parts = pieces ?? [{ at, trim: [0, source.duration] }];
+  const takes: Placed[] = parts.map((x, i) => ({ id: i === 0 ? id : newId(), source: source.id, at: x.at, trim: x.trim, volume: 1, muted: false, muteOriginal,
+    ...(clean && { clean: true }) }));
+  const fresh = new Set(takes.map((t) => t.id));
   return group(project, LABELS.voiceover, (p) => {
-    const added = addLayer(withSource(p, source), { kind: 'voiceovers', label: LABELS.voiceover, items: [take] });
-    return currentCut(added).voiceovers.filter((v) => v.id !== take.id && !v.muted && overlaps(v, take))
-      .reduce((q, v) => updateLayer(q, { kind: 'voiceovers', id: v.id, patch: { muted: true }, label: LABELS.voiceover }), added);
+    const before = currentCut(p).voiceovers.filter((v) => !v.muted);
+    const added = addLayer(withSource(p, source), { kind: 'voiceovers', label: LABELS.voiceover, items: takes });
+    const over = takes.map((t): [number, number] => [t.at, takeEnd(currentCut(added), t)]);
+    return before.filter((v) => !fresh.has(v.id)).reduce((q, v) => muteUnder(q, v, over), added);
   });
 }
+
+const overlaps = (cut: Cut, a: Placed, b: Placed) => a.at < takeEnd(cut, b) && b.at < takeEnd(cut, a);
 
 /** Every take that covers the same spot as `take`, oldest first (the order sources were added). */
 export function takesOver(project: Project, take: Placed): Placed[] {
   const order = new Map(project.sources.map((s, i) => [s.id, i]));
-  return currentCut(project).voiceovers.filter((v) => overlaps(v, take)).sort((a, b) => (order.get(a.source) ?? 0) - (order.get(b.source) ?? 0));
+  const cut = currentCut(project);
+  return cut.voiceovers.filter((v) => overlaps(cut, v, take)).sort((a, b) => (order.get(a.source) ?? 0) - (order.get(b.source) ?? 0));
 }
 
 /** "take 2": this take's place among the takes over the same spot. */
