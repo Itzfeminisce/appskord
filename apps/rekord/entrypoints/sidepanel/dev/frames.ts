@@ -4,6 +4,7 @@ import { M, SAMPLE_MEETINGS } from '@/lib/memory/sample';
 import { getSettings, updateSettings } from '@/lib/settings';
 import type { RouteParams, ScreenName } from '../router';
 import { BACKFILL_KEY, type BackfillMeeting, type BackfillProgress } from '@/lib/memory/backfill';
+import { personView } from '../screens/v4/Person';
 
 export interface DevFrame {
   screen: ScreenName;
@@ -55,5 +56,15 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
       await setMemory({ backfill: 'running' });
       await browser.storage.local.set({ [BACKFILL_KEY]: backfillState() });
     },
+  },
+  V4People: { screen: 'people' },
+  V4Person: {
+    screen: 'person', params: { personId: 'p-sarah' },
+    setup: async () => { personView.menuOpen = true; },
+  },
+  V4PersonMerge: { screen: 'personMerge', params: { personId: 'p-sam-guest', otherId: 'p-sam' } },
+  V4Forget: {
+    screen: 'forget', params: { personId: 'p-sarah' },
+    setup: async () => { await setMemory({ folder: true }); },
   },
 };

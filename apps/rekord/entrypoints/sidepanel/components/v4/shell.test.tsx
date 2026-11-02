@@ -56,17 +56,15 @@ describe('v4 shell', () => {
     expect(view.host.querySelector('.v4-brief')?.textContent).toBe('Brief');
   });
 
-  it('Meetings opens the library; People waits for its screen', async () => {
+  it('Meetings opens the library; People opens its screen', async () => {
     const view = await mount(sidepanel, 'home');
-    const [, meetings, people] = view.host.querySelectorAll<HTMLButtonElement>('.v4-tab');
-    expect(people!.getAttribute('aria-disabled')).toBe('true');
+    const [, , people] = view.host.querySelectorAll<HTMLButtonElement>('.v4-tab');
+    expect(people!.getAttribute('aria-disabled')).toBeNull();
     people!.click();
     await settle();
-    expect(view.router.route.screen).toBe('home');
-    meetings!.click();
+    expect(view.router.route.screen).toBe('people');
+    view.host.querySelectorAll<HTMLButtonElement>('.v4-tab')[1]!.click();
     await settle();
     expect(view.router.route.screen).toBe('library');
-    expect(view.router.has('library')).toBe(true);
-    expect(view.router.has('people')).toBe(false);
   });
 });
