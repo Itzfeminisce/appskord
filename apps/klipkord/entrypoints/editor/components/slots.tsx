@@ -18,6 +18,7 @@ export interface SlotProps {
   readOnly: boolean;
   seek(out: number): void;
   play(): void;
+  pause?(): void;
   /** Runs one pure op from lib/project (one Undo step) and saves. */
   edit(op: (project: Project) => Project): void;
 }
