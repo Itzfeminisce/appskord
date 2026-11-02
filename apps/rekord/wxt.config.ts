@@ -10,7 +10,7 @@ export default defineAppConfig({
   description: 'Personal AI meeting note taker',
   publicKey: REKORD_KEY,
   icons: { 16: 'icon/16.png', 32: 'icon/32.png', 48: 'icon/48.png', 128: 'icon/128.png' },
-  permissions: ['sidePanel', 'storage', 'tabCapture', 'offscreen', 'activeTab', 'identity'],
+  permissions: ['sidePanel', 'storage', 'tabCapture', 'offscreen', 'activeTab', 'identity', 'alarms'],
   // Requested only when the user turns on Penv Cloud, a cloud AI key, Deepgram, Google, Notion or Ollama (lib/hosts.ts).
   optionalHostPermissions: OPTIONAL_HOSTS,
 });

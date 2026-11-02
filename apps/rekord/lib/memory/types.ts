@@ -35,7 +35,7 @@ export interface VectorRow { id: string; meetingId: string; atMs: number; endMs:
 
 export interface LedgerEntry {
   id: string; meetingId?: string;    // missing = not tied to a meeting (backfill, brief)
-  service: 'groq' | 'openai' | 'deepgram' | 'google-calendar' | 'google-tasks' | 'notion' | 'linear' | 'huggingface' | 'gmail' | 'off-record' | 'redaction';
+  service: 'groq' | 'openai' | 'openrouter' | 'anthropic' | 'deepgram' | 'google-calendar' | 'google-tasks' | 'notion' | 'linear' | 'huggingface' | 'gmail' | 'off-record' | 'redaction';
   what: string;                      // "Audio for transcription"
   count: number; firstAt: number; lastAt: number;
 }
