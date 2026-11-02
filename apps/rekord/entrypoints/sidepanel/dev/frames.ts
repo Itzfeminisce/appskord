@@ -3,6 +3,7 @@ import { getDB } from '@/lib/db';
 import { M, SAMPLE_MEETINGS } from '@/lib/memory/sample';
 import { getSettings, updateSettings } from '@/lib/settings';
 import type { RouteParams, ScreenName } from '../router';
+import { draftKey } from '../screens/v4/Nudge';
 import { BACKFILL_KEY, type BackfillMeeting, type BackfillProgress } from '../screens/v4/backfillView';
 
 export interface DevFrame {
@@ -41,6 +42,16 @@ function backfillState(): BackfillProgress {
 
 export const DEV_FRAMES: Record<string, DevFrame> = {
   V4Home: { screen: 'home' },
+  V4Promise: { screen: 'promise', params: { itemId: 'i-deck' } },
+  V4LooksDone: { screen: 'looksDone', params: { itemId: 'i-checklist' } },
+  V4Nudge: {
+    screen: 'nudge', params: { itemId: 'i-q3' },
+    // The AI's Friendly draft in the frame, so the route opens without a key.
+    setup: async () => {
+      await browser.storage.session.set({ [draftKey('i-q3', 'friendly')]: 'Hi Sarah, could you send over the Q3 usage numbers today? You mentioned them in our 1:1 last week, and I’d like them before we talk at 10:00. Thank you, Alex' });
+    },
+  },
+  V4Decisions: { screen: 'decisions' },
   V4WhatsNew: {
     screen: 'whatsnew',
     // Before the update: the 23 earlier meetings, without the 2 Nov sync.
