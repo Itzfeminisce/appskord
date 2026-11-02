@@ -9,7 +9,7 @@ import { hasWords } from '@/lib/transcribe/merge';
 import { SAMPLE_RATE } from '@/lib/transcribe/chunker';
 import { readVoice } from '@/lib/transcribe/voice';
 import type { CleanupItem, KeptRange, Recording, Settings } from '@/lib/types';
-import { videoStore } from '@/lib/videoStore';
+import { readPlayable } from '@/lib/export/playable';
 import { Retranscribe, retranscribeReason } from '../components/Retranscribe';
 import { useRouter } from '../router';
 
@@ -80,7 +80,7 @@ export default function Cleanup() {
     if (!id || !rec) return;
     let url: string | undefined;
     let gone = false;
-    videoStore.read(id, 'video', rec.mime).then((blob) => {
+    readPlayable(rec).then((blob) => {
       if (gone || blob.size === 0) return;
       url = URL.createObjectURL(blob);
       setSrc(url);

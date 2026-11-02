@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { SAVE_LABEL, type SaveStatus } from '../hooks/useProject';
 import { C, Icon, iconButton, ICONS } from '../ui';
 
@@ -17,6 +18,8 @@ export interface TopBarProps {
   onShortcuts?: () => void;
   onAskAI?: () => void;
   onExport?: () => void;
+  /** T9's "Exporting 62%" pill, left of Undo. */
+  status?: ReactNode;
 }
 
 const DIVIDER = { width: 1, height: 20, background: C.line, flexShrink: 0 } as const;
@@ -40,6 +43,7 @@ export function TopBar(p: TopBarProps) {
         <span style={p.save === 'not-saved' ? { color: C.accentText } : undefined}>{SAVE_LABEL[p.save]}</span>
       </span>
       <span style={{ flexGrow: 1 }} />
+      {p.status}
       <button type="button" aria-label="Undo (Ctrl+Z)" title={undoTip} disabled={!p.canUndo} onClick={p.onUndo}
         onContextMenu={(e) => { if (p.onHistory) { e.preventDefault(); p.onHistory(); } }}
         style={{ ...iconButton(), opacity: p.canUndo ? 1 : 0.4, cursor: p.canUndo ? 'pointer' : 'default' }}>
@@ -53,11 +57,11 @@ export function TopBar(p: TopBarProps) {
         <Icon>{ICONS.keys}</Icon>
       </button>
       <span style={{ ...DIVIDER, margin: '0 4px' }} />
-      <button type="button" onClick={p.onAskAI}
+      <button type="button" data-tour="ask-ai" onClick={p.onAskAI}
         style={{ height: 32, padding: '0 12px', borderRadius: 8, background: C.raised, border: `1px solid ${C.line}`, color: C.text, display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
         <Icon size={15}>{ICONS.ai}</Icon><span>Ask AI</span>
       </button>
-      <button type="button" onClick={p.onExport}
+      <button type="button" data-tour="export" onClick={p.onExport}
         style={{ height: 32, padding: '0 14px', borderRadius: 8, background: C.accent, color: '#FFFFFF', border: 0, display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
         <Icon size={15}>{ICONS.export}</Icon><span>Export</span>
       </button>

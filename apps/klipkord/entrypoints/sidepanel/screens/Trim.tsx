@@ -4,7 +4,7 @@ import { getRecording, updateRecording } from '@/lib/db';
 import { cut, describe, editedLength, keptRanges, playable, restore, setEnd, setStart, type Edit } from '@/lib/editList';
 import { formatClock } from '@/lib/time';
 import type { KeptRange, Recording } from '@/lib/types';
-import { videoStore } from '@/lib/videoStore';
+import { readPlayable } from '@/lib/export/playable';
 import { useRouter } from '../router';
 
 const MONO = "'Geist Mono', monospace";
@@ -73,7 +73,7 @@ export default function Trim() {
     if (!id || !rec) return;
     let url: string | undefined;
     let gone = false;
-    videoStore.read(id, 'video', rec.mime).then((blob) => {
+    readPlayable(rec).then((blob) => {
       if (gone || blob.size === 0) return;
       url = URL.createObjectURL(blob);
       setSrc(url);

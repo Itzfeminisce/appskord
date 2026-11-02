@@ -79,8 +79,9 @@ export function cropPx(crop: Box, src: Size, out: Box): Box {
   return out;
 }
 
-/** Corner radius of the camera: a circle when round, else a soft square. */
-export const cameraRadius = (shape: 'round' | 'rounded', dest: Size) => Math.min(dest.w, dest.h) * (shape === 'round' ? 0.5 : 0.16);
+/** Corner radius of the camera: a circle when round, else a soft square; `round` blends the two. */
+export const cameraRadius = (shape: 'round' | 'rounded', dest: Size, round = shape === 'round' ? 1 : 0) =>
+  Math.min(dest.w, dest.h) * (0.16 + 0.34 * round);
 /** The white ring around the camera, frame px. */
 export const cameraRing = (dest: Size) => Math.min(6, Math.min(dest.w, dest.h) * 0.04);
 

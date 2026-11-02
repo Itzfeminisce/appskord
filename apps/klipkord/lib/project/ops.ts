@@ -2,9 +2,10 @@ import { MIN_KEPT_MS } from '../editList';
 import { formatClock } from '../time';
 import type { Chapter } from '../types';
 import { wordCount, wordsToRanges, type Unit } from '../wordCuts';
+import { autoZoom } from './autoZoom';
 import { commit, currentCut } from './history';
 import { clipLength, spans, toOut } from './time';
-import type { AudioMix, Camera, CaptionStyle, Card, Clip, Cut, LayoutKind, LayoutSwitch, Look, Overlay, Placed, Project, Zoom } from './types';
+import type { AudioMix, Camera, CaptionStyle, Card, Clip, Cut, LayoutKind, LayoutSwitch, Look, Overlay, Placed, Project, RecEvent, Zoom } from './types';
 
 export const MIN_SPEED = 0.5;
 export const MAX_SPEED = 4;
@@ -399,6 +400,23 @@ export function removeLayer<K extends LayerKind>(project: Project, { kind, ids, 
     const kept = list.filter((x) => !gone.has(x.id));
     return kept.length === list.length ? c : { ...c, [kind]: kept };
   });
+}
+
+/** Whether the first-open autoZoom has run; a project saved before the flag counts once it has zooms or any history. */
+export function autoZoomed(project: Project): boolean {
+  return project.options.autoZoomed
+    ?? (project.cuts.some((c) => c.zooms.length > 0) || Object.values(project.history).some((h) => h.undo.length > 0 || h.redo.length > 0));
+}
+
+/**
+ * First open of a recording with events: zooms on its clicks and typing, as one Undo step. It marks the project
+ * `autoZoomed` and never runs again; edits made before the events loaded do not stop it.
+ */
+export function autoZoomOnOpen(project: Project, { events, duration, label }: Labelled<{ events: RecEvent[]; duration?: number }>): Project {
+  if (!project.events || autoZoomed(project) || !events.length) return project;
+  const items = autoZoom(events, 'smooth', duration);
+  if (!items.length) return { ...project, options: { ...project.options, autoZoomed: true } };
+  return addLayer({ ...project, options: { ...project.options, autoZoomed: true } }, { kind: 'zooms', items, label });
 }
 
 // ---- Chapters (project-wide, rec ms) ----

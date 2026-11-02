@@ -19,6 +19,8 @@ function setup(change: Partial<Cut> = {}): { project: Project; cut: Cut } {
   const project = fromRecording(rec, [src('screen', 'screen', 1920, 1080), src('camera', 'camera', 640, 480)]);
   const cut: Cut = {
     ...currentCut(project),
+    // The box maths below is written for this frame, not the design default.
+    look: { ...currentCut(project).look, padding: 48, corners: 16 },
     clips: [
       { id: 'a', in: 0, out: 4000, speed: 1 },
       { id: 'g', in: 0, out: 1000, speed: 1, gap: true },
@@ -119,6 +121,17 @@ describe('renderPlan', () => {
     expect(cam.camera!.dest).toEqual({ x: 0, y: 0, w: 1920, h: 1080 });
   });
 
+  it('blends the round bubble into rounded corners during a smooth switch', () => {
+    const { project, cut } = setup({
+      layouts: [{ id: 'b', at: 0, layout: 'bubble', switch: 'cut' }, { id: 's', at: 2000, layout: 'side', switch: 'smooth' }],
+    });
+    expect(renderPlan(project, cut, 1000).camera!.round).toBeUndefined();
+    expect(renderPlan(project, cut, 2200).camera!.round).toBeCloseTo(1 - ease(0.5));
+    const after = renderPlan(project, cut, 3500).camera!;
+    expect(after.shape).toBe('rounded');
+    expect(after.round).toBeUndefined();
+  });
+
   it('places the cursor through the crop and rings clicks', () => {
     const events: EventsTrack = { version: 1, viewport: { w: 1920, h: 1080 }, events: [
       { t: 0, type: 'move', x: 0.5, y: 0.5 }, { t: 1000, type: 'click', x: 0.75, y: 0.5 }, { t: 1100, type: 'key', key: 'typing' },
@@ -156,6 +169,14 @@ describe('renderPlan', () => {
     expect(renderPlan(project, cut, 6000).cards).toEqual([]);
     expect(renderPlan(project, { ...cut, tracks: { overlays: { hidden: true } } }, 1100).overlays).toEqual([]);
     expect(renderPlan(project, { ...cut, captions: { ...cut.captions, show: false } }, 1100, undefined, caps).captions).toBeUndefined();
+  });
+  it('moves a blur that follows the page with the scroll of a tab recording', () => {
+    const { project, cut } = setup({
+      overlays: [{ id: 'b', kind: 'blur', at: 0, end: 2000, box: { x: 0.1, y: 0.5, w: 0.2, h: 0.1 }, motion: 'none', blur: { mode: 'blur', amount: 0.6, follow: true } }],
+    });
+    const scroll: EventsTrack = { version: 1, viewport: { w: 1280, h: 720 }, events: [{ t: 500, type: 'scroll', dy: 0.25 }] };
+    expect(renderPlan(project, cut, 1000, scroll).overlays[0]!.box.y).toBeCloseTo(0.25);
+    expect(renderPlan({ ...project, events: false }, cut, 1000, scroll).overlays[0]!.box.y).toBe(0.5);
   });
 });
 

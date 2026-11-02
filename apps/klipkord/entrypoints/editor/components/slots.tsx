@@ -17,6 +17,8 @@ export interface SlotProps {
   ready: boolean;
   readOnly: boolean;
   seek(out: number): void;
+  play(): void;
+  pause?(): void;
   /** Runs one pure op from lib/project (one Undo step) and saves. */
   edit(op: (project: Project) => Project): void;
 }
@@ -48,15 +50,18 @@ function TranscriptSkeleton() {
   );
 }
 
-function TranscriptFrame({ children, opening }: { children: ReactNode; opening: boolean }) {
+/** The transcript column's frame; T6's body brings its own header tools and footer. */
+export function TranscriptFrame({ children, opening = false, tools, footer }: { children: ReactNode; opening?: boolean; tools?: ReactNode; footer?: ReactNode }) {
   return (
     <section aria-label="Transcript" style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${C.line}`, background: C.panel }}>
       <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 0 14px' }}>
         <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, flexGrow: 1 }}>Transcript</h2>
+        {tools}
       </div>
       <div style={{ flexGrow: 1, minHeight: 0, overflow: 'hidden', padding: '0 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</div>
       <div style={{ flexShrink: 0, minHeight: 32, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderTop: `1px solid ${C.line}`, fontSize: 11.5, color: C.secondary }}>
         {opening && <span style={{ color: C.muted }}>The transcript appears here in a moment.</span>}
+        {footer}
       </div>
     </section>
   );
@@ -72,7 +77,8 @@ export function TranscriptColumn({ body: Body, ...p }: TranscriptSlotProps & { b
   if (p.state === 'words-pending') content = <WordsPending onGroq={p.onGroq} />;
   else if (p.state === 'transcript-failed') content = <TranscriptFailed stoppedAt={p.failedAt ?? 0} onRetry={p.onRetry ?? (() => {})} onGroq={p.onGroq} />;
   else if (p.state === 'no-voice') content = <NoVoice />;
-  else content = Body ? <Body {...p} /> : <TranscriptSkeleton />;
+  else if (Body) return <Body {...p} />;
+  else content = <TranscriptSkeleton />;
   return <TranscriptFrame opening={false}>{content}</TranscriptFrame>;
 }
 

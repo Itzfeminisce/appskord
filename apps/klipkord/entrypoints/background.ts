@@ -1,3 +1,4 @@
+import { answerBrand, brandStore, MOTIKORD_ID, type BrandRuntime } from '@appskord/brand';
 import { markInterrupted, updateRecording } from '@/lib/db';
 import { commandMessage, onMessage, send } from '@/lib/messages';
 import { RECORDER_PATH, closeRecorder, getRecorderState, hasRecorder, requestStart, setRecorderState } from '@/lib/capture';
@@ -42,6 +43,9 @@ function showToast(label: string, time: string, recordingId: string, id: string)
 }
 
 export default defineBackground(() => {
+  // Motikord reads and offers the shared brand kit even while no editor tab is open.
+  answerBrand(browser.runtime as unknown as BrandRuntime, brandStore(browser.storage.local), [MOTIKORD_ID]);
+
   // Kept in memory so a shortcut can act (and open the panel) without waiting on storage.
   let current: RecorderState = IDLE;
   let recorderTab: number | undefined;

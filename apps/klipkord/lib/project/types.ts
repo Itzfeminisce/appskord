@@ -51,7 +51,8 @@ export interface Card { id: string; template: string; at: number; ms: number;  /
 export interface AudioMix { denoise: boolean; level: boolean; tabVolume: number; voiceVolume: number;
   music?: { source: string; volume: number; duck: boolean; fadeIn: number; fadeOut: number } }
 export interface Placed { id: string; source: string; at: number; trim: [number, number]; volume: number; muted: boolean;
-  muteOriginal?: boolean }                   // voiceover: the original voice is silent under this take
+  muteOriginal?: boolean;                    // voiceover: the original voice is silent under this take
+  clean?: boolean }                          // voiceover: "Clean and level" this take (noise removal, own loudness gain)
 
 export interface Cut {
   id: string; name: string; shape: Shape; fit: VerticalFit;
@@ -73,7 +74,7 @@ export interface Project {
   cuts: Cut[]; current: string;
   history: Record<string, { undo: Step[]; redo: Step[] }>;  // per cut, 200 steps each
   quickWins: 'new' | 'seen';
-  options: { lightPreview: boolean; tour: boolean; bakeCamera: boolean };  // bakeCamera: this recording's next re-record; the global default is Settings.bakeCamera
+  options: { lightPreview: boolean; tour: boolean; bakeCamera: boolean; autoZoomed?: boolean };  // autoZoomed: first-open autoZoom has run; bakeCamera: this recording's next re-record; the global default is Settings.bakeCamera
   updatedAt: number;
 }
 
@@ -82,7 +83,7 @@ export interface RenderPlan {
   out: number; rec: number | null;            // null: gap or past the end
   screen?: { source: string; t: number; crop: Box; dest: Box; radius: number; shadow: number };
   background: Look['background'];
-  camera?: { source: string; t: number; dest: Box; shape: Camera['shape']; mirror: boolean; blur: Camera['blur']; alpha: number };
+  camera?: { source: string; t: number; dest: Box; shape: Camera['shape']; mirror: boolean; blur: Camera['blur']; alpha: number; round?: number };   // round: 0 rounded..1 round, set mid smooth switch
   cursor?: { x: number; y: number; size: number; click: number; ring?: { x: number; y: number } };   // click: 0..1 ring progress; ring: where it is drawn
   overlays: Overlay[]; cards: Card[]; captions?: { words: { text: string; on: boolean }[]; style: CaptionStyle };
   media?: { source: string; t: number };

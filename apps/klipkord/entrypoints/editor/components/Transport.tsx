@@ -35,7 +35,7 @@ export function Transport(p: TransportProps) {
         <Icon>{ICONS.next}</Icon>
       </button>
       <span style={{ flexGrow: 1 }} />
-      <button type="button" onClick={p.onShape}
+      <button type="button" data-shape-button aria-label={`Shape ${p.shape}`} aria-haspopup="dialog" onClick={p.onShape}
         style={{ height: 26, padding: '0 8px', borderRadius: 6, border: `1px solid ${C.line}`, background: C.raised, color: C.secondary, fontFamily: 'inherit', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
         {p.shape}<Icon size={12}>{ICONS.down}</Icon>
       </button>

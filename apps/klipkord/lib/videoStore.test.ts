@@ -5,6 +5,7 @@ const notFound = () => Object.assign(new Error('not found'), { name: 'NotFoundEr
 
 // Minimal in-memory OPFS: directories, files, keepExistingData writables.
 class FakeFile {
+  kind = 'file' as const;
   data = new Blob([]);
   writables = 0;
   async getFile() { return this.data; }
@@ -14,8 +15,8 @@ class FakeFile {
     let pos = 0;
     return {
       seek: async (p: number) => { pos = p; },
-      write: async (chunk: Blob) => {
-        const bytes = new Uint8Array(await chunk.arrayBuffer());
+      write: async (chunk: Blob | Uint8Array) => {
+        const bytes = chunk instanceof Blob ? new Uint8Array(await chunk.arrayBuffer()) : chunk;
         const next = new Uint8Array(Math.max(buf.length, pos + bytes.length));
         next.set(buf);
         next.set(bytes, pos);
@@ -28,21 +29,25 @@ class FakeFile {
   }
 }
 class FakeDir {
-  entries = new Map<string, FakeDir | FakeFile>();
+  kind = 'directory' as const;
+  items = new Map<string, FakeDir | FakeFile>();
+  async *entries() {
+    yield* this.items;
+  }
   async getDirectoryHandle(name: string, { create = false } = {}) {
-    let e = this.entries.get(name);
-    if (!e && create) this.entries.set(name, (e = new FakeDir()));
+    let e = this.items.get(name);
+    if (!e && create) this.items.set(name, (e = new FakeDir()));
     if (!(e instanceof FakeDir)) throw notFound();
     return e;
   }
   async getFileHandle(name: string, { create = false } = {}) {
-    let e = this.entries.get(name);
-    if (!e && create) this.entries.set(name, (e = new FakeFile()));
+    let e = this.items.get(name);
+    if (!e && create) this.items.set(name, (e = new FakeFile()));
     if (!(e instanceof FakeFile)) throw notFound();
     return e;
   }
   async removeEntry(name: string) {
-    if (!this.entries.delete(name)) throw notFound();
+    if (!this.items.delete(name)) throw notFound();
   }
 }
 
@@ -86,7 +91,7 @@ describe('videoStore', () => {
     await store.close('r3');
     expect(await (await store.read('r3', 'video')).text()).toBe('012345');
     const folder = await (await root.getDirectoryHandle('recordings')).getDirectoryHandle('r3');
-    const segments = [...folder.entries.values()] as FakeFile[];
+    const segments = [...folder.items.values()] as FakeFile[];
     expect(segments.map((f) => f.writables)).toEqual([1, 1]);
     await store.append('r3', 'video', new Blob(['6']));
     await store.close('r3');
@@ -113,7 +118,7 @@ describe('videoStore', () => {
     await store.append('r2', 'video', new Blob(['open']));
     await store.remove('r2');
     await store.remove('r2');
-    expect((await root.getDirectoryHandle('recordings')).entries.has('r2')).toBe(false);
+    expect((await root.getDirectoryHandle('recordings')).items.has('r2')).toBe(false);
     expect(await store.size('r2')).toBe(0);
   });
 
@@ -137,5 +142,19 @@ describe('videoStore', () => {
 
   it('reports storage usage', async () => {
     expect(await setup().store.usage()).toEqual({ usage: 1234, quota: 99_999 });
+  });
+
+  it('copies every file of a recording to a new id and leaves the first one as it was', async () => {
+    const { store } = setup();
+    await store.append('r1', 'screen', new Blob(['scr']));
+    await store.append('r1', 'voice', new Blob(['mic']));
+    await store.close('r1');
+    await store.put('r1', 'events.json', new Blob(['{}']));
+    await store.copy('r1', 'r1c');
+    expect(await (await store.read('r1c', 'screen')).text()).toBe('scr');
+    expect(await (await store.read('r1c', 'voice')).text()).toBe('mic');
+    expect(await store.size('r1c')).toBe(await store.size('r1'));
+    await store.remove('r1c');
+    expect(await (await store.read('r1', 'screen')).text()).toBe('scr');
   });
 });

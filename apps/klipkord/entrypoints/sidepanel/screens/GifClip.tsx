@@ -7,7 +7,7 @@ import { GIF_DELAY_MS, GIF_MAX_MS, GIF_FPS, GIF_WIDTH, checkRange, estimateGifBy
 import { updateSettings } from '@/lib/settings';
 import { formatBytes, formatClock } from '@/lib/time';
 import type { Recording } from '@/lib/types';
-import { videoStore } from '@/lib/videoStore';
+import { readPlayable } from '@/lib/export/playable';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
 import type { GifIn, GifOut } from '../workers/gif';
@@ -154,7 +154,7 @@ export default function GifClip() {
     if (!id || !rec) return;
     let url: string | undefined;
     let gone = false;
-    videoStore.read(id, 'video', rec.mime).then((blob) => {
+    readPlayable(rec).then((blob) => {
       if (gone || blob.size === 0) return;
       url = URL.createObjectURL(blob);
       setSrc(url);

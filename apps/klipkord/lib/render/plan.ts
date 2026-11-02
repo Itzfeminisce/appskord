@@ -1,6 +1,7 @@
 import { MARGIN_SHARE } from '../bubble';
 import { captionAt, type Caption } from '../project/captions';
 import { cursorAt } from '../project/cursor';
+import { followOverlays } from '../project/follow';
 import { spanAt, toOut } from '../project/time';
 import type {
   Box, Camera, Cut, EventsTrack, LayoutKind, Look, Project, RenderPlan, Shape, Source, Zoom,
@@ -198,12 +199,20 @@ export function renderPlan(project: Project, cut: Cut, out: number, events?: Eve
     const camBox = a.camera && b.camera ? lerpBox(a.camera, b.camera, progress) : (b.camera ?? a.camera);
     const alpha = a.camera && b.camera ? 1 : b.camera ? progress : 1 - progress;
     if (camBox && alpha > 0) {
-      const { shape, mirror, blur } = cut.camera;
+      const { mirror, blur } = cut.camera;
+      // Round or rounded is the bubble's setting; the camera beside or behind the screen keeps rounded corners.
+      const roundOf = (l: LayoutKind) => (l === 'bubble' && cut.camera.shape === 'round' ? 1 : 0);
+      const round = roundOf(from) + (roundOf(to) - roundOf(from)) * progress;
+      const shape = (progress < 0.5 ? from : to) === 'bubble' ? cut.camera.shape : 'rounded';
       plan.camera = { source: camSrc.id, t: sourceTime(camSrc, rec), dest: camBox, shape, mirror, blur, alpha };
+      if (round > 0 && round < 1) plan.camera.round = round;
     }
   }
 
-  if (!hidden('overlays')) plan.overlays = cut.overlays.filter((o) => rec >= o.at && rec < o.end);
+  if (!hidden('overlays')) {
+    const shown = cut.overlays.filter((o) => rec >= o.at && rec < o.end);
+    plan.overlays = project.events ? followOverlays(shown, events?.events, rec) : shown;
+  }
   if (!hidden('cards')) {
     plan.cards = cut.cards.filter((c) => {
       const start = toOut(cut, c.at);

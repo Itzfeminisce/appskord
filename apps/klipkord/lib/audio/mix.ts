@@ -1,9 +1,10 @@
 // The cut's sound: what plays when (a pure plan in output ms), then Web Audio graphs for export and live preview.
 import type { Word } from '../types';
 import type { Cut, Placed, Project } from '../project/types';
+import { takeEnd } from '../project/media';
 import { cutLength, spans } from '../project/time';
 import { duckEnvelope, gainAt, type Point } from './duck';
-import { CEILING } from './loudness';
+import { CEILING, gainTo, integratedLoudness } from './loudness';
 import { stretch } from './stretch';
 
 export type AudioTrack = 'voice' | 'tab' | 'voiceover' | 'media' | 'music';
@@ -19,6 +20,7 @@ export interface AudioPart {
   loop?: boolean;      // music repeats to fill the cut
   natural?: boolean;   // "Keep the voice natural": time-stretched to `rate`, played at rate 1
   seams?: { start?: boolean; end?: boolean };  // runs on from the part before / into the next: no fade there
+  clean?: boolean;     // a take with "Clean and level": through noise removal and its own loudness gain
 }
 export interface MixPlan {
   length: number;      // output ms
@@ -67,6 +69,15 @@ function placedParts(cut: Cut, list: Placed[], track: AudioTrack, hasAudio: (id:
       .map((piece) => ({ track, source: p.source, gain: p.volume, ...piece })));
 }
 
+/** Takes are said in output time: each plays at rate 1 from where it was recorded, whatever the clip's speed. */
+function takeParts(cut: Cut, list: Placed[], hasAudio: (id: string) => boolean): AudioPart[] {
+  return list.filter((p) => !p.muted && hasAudio(p.source)).flatMap((p) => {
+    const end = takeEnd(cut, p), k = (end - p.at) / Math.max(1, p.trim[1] - p.trim[0]);
+    return throughClips(cut, p.at, end, (rec) => p.trim[0] + (rec - p.at) / k).map(({ when, from, length }): AudioPart =>
+      ({ track: 'voiceover', source: p.source, gain: p.volume, when, from, length, rate: 1, ...(p.clean && { clean: true }) }));
+  });
+}
+
 function fades(length: number, fadeIn: number, fadeOut: number): Point[] {
   // On a cut shorter than both fades, each gets half.
   const scale = fadeIn + fadeOut > length ? length / (fadeIn + fadeOut) : 1;
@@ -89,10 +100,10 @@ export function mixPlan(project: Project, cut: Cut, words: Word[] = []): MixPlan
       throughClips(cut, s.offset, s.offset + s.duration, (rec) => rec - s.offset).map((piece) => ({ track, source: s.id, gain, ...piece })));
   };
 
-  const takes = muted('voiceover') ? [] : placedParts(cut, cut.voiceovers, 'voiceover', hasAudio);
+  const takes = muted('voiceover') ? [] : takeParts(cut, cut.voiceovers, hasAudio);
   // The original voice is silent wherever a take that mutes it plays.
   const replaced = muted('voiceover') ? [] : cut.voiceovers.filter((v) => v.muteOriginal && !v.muted);
-  const holes = replaced.flatMap((v) => throughClips(cut, v.at, v.at + (v.trim[1] - v.trim[0]), (r) => r))
+  const holes = replaced.flatMap((v) => throughClips(cut, v.at, takeEnd(cut, v), (r) => r))
     .map((p): [number, number] => [p.when, p.when + p.length]);
   parts.push(...recorded('voice', ['mic', 'baked'], audio.voiceVolume).flatMap((p) => without(p, holes)));
   parts.push(...recorded('tab', ['tab'], audio.tabVolume));
@@ -106,11 +117,24 @@ export function mixPlan(project: Project, cut: Cut, words: Word[] = []): MixPlan
     // Only words still heard duck the music: none when the voice is off, none under a take that replaces it.
     const heard = muted('voice') || audio.voiceVolume <= 0 ? [] : words.filter((w) => {
       const mid = (w.start + w.end) / 2;
-      return !replaced.some((v) => mid >= v.at && mid < v.at + (v.trim[1] - v.trim[0]));
+      return !replaced.some((v) => mid >= v.at && mid < takeEnd(cut, v));
     });
     music = { fade: fades(length, m.fadeIn, m.fadeOut), duck: m.duck ? duckEnvelope(cut, heard) : [] };
   }
   return { length, parts: parts.filter((p) => p.length > 0 && p.gain > 0), music, denoise: audio.denoise, level: audio.level };
+}
+
+/** True when the plan needs the noise-removal node: for the voice, or for a take with "Clean and level". */
+export const needsDenoise = (plan: MixPlan): boolean => plan.denoise || plan.parts.some((p) => p.clean);
+
+/** The gain that brings each "Clean and level" take's source to the target loudness, from its decoded sound. */
+export function takeLevels(plan: MixPlan, buffers: Map<string, AudioBuffer>): Map<string, number> {
+  const levels = new Map<string, number>();
+  for (const id of new Set(plan.parts.filter((p) => p.clean).map((p) => p.source))) {
+    const b = buffers.get(id);
+    if (b) levels.set(id, gainTo(integratedLoudness(Array.from({ length: b.numberOfChannels }, (_, c) => b.getChannelData(c)), b.sampleRate)));
+  }
+  return levels;
 }
 
 /** Decodes each source the plan uses once; a source that can't be loaded is left out. */
@@ -178,11 +202,13 @@ export interface ScheduleOptions {
   /** Output ms past which nothing new is started (a chunk's end). */
   to?: number;
   denoise?: AudioNode;
+  /** Loudness gain of each "Clean and level" take's source (takeLevels). */
+  levels?: ReadonlyMap<string, number>;
 }
 
 /** Builds the mix graph into `out` from parts resolved by `play`; output ms `from` plays at context time `t0`. */
 export function schedule(ctx: BaseAudioContext, plan: MixPlan, play: (part: AudioPart) => Playback | null, out: AudioNode,
-  { t0 = ctx.currentTime, from = 0, to = Infinity, denoise }: ScheduleOptions = {}): Graph {
+  { t0 = ctx.currentTime, from = 0, to = Infinity, denoise, levels }: ScheduleOptions = {}): Graph {
   const graph: Graph = { sources: [], nodes: [] };
   const gain = (value = 1) => {
     const g = ctx.createGain();
@@ -191,8 +217,11 @@ export function schedule(ctx: BaseAudioContext, plan: MixPlan, play: (part: Audi
     return g;
   };
   const voiceBus = gain();
-  if (denoise && plan.denoise) voiceBus.connect(denoise).connect(out);
-  else voiceBus.connect(out);
+  // Clean takes go through noise removal on their own bus, so the rest of the voice stays as set.
+  const cleanBus = plan.parts.some((p) => p.clean) ? gain() : null;
+  if (denoise && (plan.denoise || cleanBus)) denoise.connect(out);
+  voiceBus.connect(denoise && plan.denoise ? denoise : out);
+  cleanBus?.connect(denoise ?? out);
   let musicBus: AudioNode | null = null;
   if (plan.music) {
     const fade = gain(), duck = gain();
@@ -201,8 +230,8 @@ export function schedule(ctx: BaseAudioContext, plan: MixPlan, play: (part: Audi
     fade.connect(duck).connect(out);
     musicBus = fade;
   }
-  const busFor = (track: AudioTrack): AudioNode =>
-    track === 'voice' || track === 'voiceover' ? voiceBus : track === 'music' ? (musicBus ?? out) : out;
+  const busFor = ({ track, clean }: AudioPart): AudioNode =>
+    clean && cleanBus ? cleanBus : track === 'voice' || track === 'voiceover' ? voiceBus : track === 'music' ? (musicBus ?? out) : out;
 
   for (const part of plan.parts) {
     const end = part.when + part.length;
@@ -220,9 +249,9 @@ export function schedule(ctx: BaseAudioContext, plan: MixPlan, play: (part: Audi
       node.loop = true;
       offset %= p.buffer.duration;
     } else if (offset >= p.buffer.duration) continue;
-    const level = gain(0);
-    applyEnvelope(level.gain, partEnvelope(part), t0, from);
-    node.connect(level).connect(busFor(part.track));
+    const level = gain(0), lift = part.clean ? (levels?.get(part.source) ?? 1) : 1;
+    applyEnvelope(level.gain, partEnvelope(lift === 1 ? part : { ...part, gain: part.gain * lift }), t0, from);
+    node.connect(level).connect(busFor(part));
     node.start(at, offset, duration);
     graph.sources.push(node);
   }
@@ -234,13 +263,13 @@ export function schedule(ctx: BaseAudioContext, plan: MixPlan, play: (part: Audi
  * through its fades and duck, natural-voice parts from `stretched` when there. Output ms `from` plays at `t0`.
  */
 export function connectMix(ctx: BaseAudioContext, plan: MixPlan, buffers: Map<string, AudioBuffer>, out: AudioNode,
-  { stretched, ...options }: Omit<ScheduleOptions, 'to'> & { stretched?: StretchCache } = {}): Graph {
+  { stretched, levels = takeLevels(plan, buffers), ...options }: Omit<ScheduleOptions, 'to'> & { stretched?: StretchCache } = {}): Graph {
   return schedule(ctx, plan, (part) => {
     const done = part.natural ? stretched?.get(stretchKey(part)) : undefined;
     if (done) return { buffer: done, origin: 0, rate: 1 };
     const buffer = buffers.get(part.source);
     return buffer ? { buffer, origin: part.from, rate: part.rate } : null;
-  }, out, options);
+  }, out, { ...options, levels });
 }
 
 /** A soft-clip curve over input -range..range: straight up to 80% of the ceiling, then easing into it. */

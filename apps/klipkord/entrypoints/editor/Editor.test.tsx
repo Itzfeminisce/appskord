@@ -68,6 +68,8 @@ function fakeDeps({ media = {}, session = 'editing', draws = true }: Setup = {})
     useGroq: vi.fn(),
     closeTab: vi.fn(),
     putFile: vi.fn(async () => {}),
+    openEditor: vi.fn(),
+    duplicateProject: vi.fn(async () => 'copy'),
   };
   return { deps, rendered, panels, session: sessionObj, client };
 }

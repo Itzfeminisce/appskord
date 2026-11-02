@@ -2,7 +2,7 @@ import { ArrayBufferTarget as Mp4Target, Muxer as Mp4Muxer } from 'mp4-muxer';
 import { ArrayBufferTarget as WebmTarget, Muxer as WebmMuxer } from 'webm-muxer';
 import { editedLength } from '../editList';
 import type { Recording } from '../types';
-import { videoStore } from '../videoStore';
+import { readPlayable } from '../export/playable';
 import { sniff, type AudioTrack, type Container, type Demuxer, type Packet, type Tracks, type VideoTrack } from './demux';
 import { createMp4Demuxer } from './mp4';
 import { AUDIO_CODECS, KEY_FRAME_EVERY_US, VIDEO_CODECS, audioSlices, editedMicros, encodePlan, opensPart, targetBitrate } from './plan';
@@ -15,7 +15,7 @@ const CHUNK_BYTES = 2 * 1024 * 1024;
 const MAX_QUEUE = 6;
 
 export interface EncodeDeps { read: (rec: Recording) => Promise<Blob> }
-const defaultDeps: EncodeDeps = { read: (rec) => videoStore.read(rec.id, 'video', rec.mime) };
+const defaultDeps: EncodeDeps = { read: (rec) => readPlayable(rec) };
 
 const aborted = () => new DOMException('The export was stopped', 'AbortError');
 
