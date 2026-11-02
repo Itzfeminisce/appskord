@@ -123,6 +123,7 @@ export function Preview(p: PreviewProps) {
     <div ref={p.stageRef} style={{ flexGrow: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', paddingTop: 8 }}>
       <div style={{ width: box.w, height: box.h, position: 'relative', borderRadius: 6, overflow: 'hidden', background: p.firstFrame ? '#000000' : C.raised }}>
         <canvas ref={canvasRef} aria-label="Preview" style={{ width: '100%', height: '100%', display: 'block', visibility: p.firstFrame ? 'visible' : 'hidden' }} />
+        {p.firstFrame && p.children}
         {!p.firstFrame && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{p.opening}</div>
         )}

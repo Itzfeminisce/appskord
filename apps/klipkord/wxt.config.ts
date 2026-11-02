@@ -1,3 +1,4 @@
+import { MOTIKORD_ID } from '@appskord/brand';
 import { defineAppConfig } from '@appskord/config';
 
 // Klipkord's public key fixes the extension id (iapgbifdchhmidblniddncnagghloepi) for Penv Cloud, Google and the Web Store.
@@ -34,6 +35,8 @@ export default defineAppConfig({
       'add-marker': { suggested_key: { default: 'Alt+Shift+M' }, description: 'Add a marker' },
       'toggle-draw': { suggested_key: { default: 'Alt+Shift+D' }, description: 'Draw on this page' },
     },
+    // Only Motikord may message Klipkord from outside, to share the brand kit.
+    externally_connectable: { ids: [MOTIKORD_ID] },
     // ONNX Runtime compiles its bundled wasm; MV3 blocks that without 'wasm-unsafe-eval'.
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
