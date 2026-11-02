@@ -59,7 +59,7 @@ describe('Canvas 2D backend', () => {
     backend.draw(scene(p));
     backend.draw(scene(p));
     expect(f.calls.filter((c) => c[0] === 'createLinearGradient')).toHaveLength(1);
-    expect(f.calls.filter((c) => c[0] === 'addColorStop')).toEqual([['addColorStop', 0, '#7C2D12'], ['addColorStop', 0.55, '#C2410C'], ['addColorStop', 1, '#FDBA74']]);
+    expect(f.calls.filter((c) => c[0] === 'addColorStop')).toEqual([['addColorStop', 0, '#7C2D12'], ['addColorStop', 0.5, '#C2410C'], ['addColorStop', 1, '#FDBA74']]);
 
     const g = fake2d();
     const screen = fakeFrame();

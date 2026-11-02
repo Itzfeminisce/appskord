@@ -42,12 +42,12 @@ export function Btn({ icon, children, onClick, disabled, active, danger }: {
 }
 
 /** Segmented control (None / Cross-fade / Zoom). */
-export function Seg<T extends string>({ options, value, onChange, label }: { options: readonly { value: T; label: string }[]; value: T | undefined; onChange: (v: T) => void; label?: string }) {
+export function Seg<T extends string>({ options, value, onChange, label, disabled }: { options: readonly { value: T; label: string }[]; value: T | undefined; onChange: (v: T) => void; label?: string; disabled?: boolean }) {
   return (
     <div role="radiogroup" aria-label={label} style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 8, background: C.ground, border: `1px solid ${C.line}` }}>
       {options.map((o) => (
-        <button key={o.value} type="button" role="radio" aria-checked={o.value === value} onClick={() => onChange(o.value)}
-          style={{ flex: 1, height: 22, border: 0, borderRadius: 6, fontFamily: 'inherit', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+        <button key={o.value} type="button" role="radio" aria-checked={o.value === value} disabled={disabled} onClick={() => onChange(o.value)}
+          style={{ flex: 1, height: 22, border: 0, borderRadius: 6, fontFamily: 'inherit', fontSize: 12, fontWeight: 500, cursor: disabled ? 'default' : 'pointer',
             background: o.value === value ? C.tabOn : 'transparent', color: o.value === value ? C.text : C.secondary }}>{o.label}</button>
       ))}
     </div>
@@ -55,13 +55,13 @@ export function Seg<T extends string>({ options, value, onChange, label }: { opt
 }
 
 /** A labelled slider with its value in mono on the right; `onCommit` runs once when the drag ends (one Undo step). */
-export function Slider({ label, min, max, step, value, text, onInput, onCommit }: {
-  label?: string; min: number; max: number; step: number; value: number; text: string; onInput?: (v: number) => void; onCommit: (v: number) => void;
+export function Slider({ label, min, max, step, value, text, onInput, onCommit, disabled }: {
+  label?: string; min: number; max: number; step: number; value: number; text: string; onInput?: (v: number) => void; onCommit: (v: number) => void; disabled?: boolean;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       {label && <span style={{ fontSize: 12, color: C.secondary, width: 74, flexShrink: 0 }}>{label}</span>}
-      <input type="range" aria-label={label} min={min} max={max} step={step} value={value}
+      <input type="range" aria-label={label} min={min} max={max} step={step} value={value} disabled={disabled}
         onChange={(e) => onInput?.(Number(e.target.value))}
         onPointerUp={(e) => onCommit(Number((e.target as HTMLInputElement).value))}
         onKeyUp={(e) => onCommit(Number((e.target as HTMLInputElement).value))}

@@ -19,6 +19,8 @@ function setup(change: Partial<Cut> = {}): { project: Project; cut: Cut } {
   const project = fromRecording(rec, [src('screen', 'screen', 1920, 1080), src('camera', 'camera', 640, 480)]);
   const cut: Cut = {
     ...currentCut(project),
+    // The box maths below is written for this frame, not the design default.
+    look: { ...currentCut(project).look, padding: 48, corners: 16 },
     clips: [
       { id: 'a', in: 0, out: 4000, speed: 1 },
       { id: 'g', in: 0, out: 1000, speed: 1, gap: true },

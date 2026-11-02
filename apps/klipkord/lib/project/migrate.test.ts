@@ -45,7 +45,7 @@ describe('fromRecording', () => {
     const p = fromRecording({ ...v2, v3: { sources: ['screen', 'camera'], events: true } }, sources, { bakeCamera: true });
     expect(p.sources).toBe(sources);
     expect(p.events).toBe(true);
-    expect(p.options).toEqual({ lightPreview: false, tour: true, bakeCamera: true });
+    expect(p.options).toEqual({ lightPreview: false, tour: true, bakeCamera: true, autoZoomed: false });
     const cut = currentCut(p);
     expect(cut.clips.map((c) => [c.in, c.out])).toEqual([[0, 8000]]);
     expect(cut.look.padding).toBeGreaterThan(0);

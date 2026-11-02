@@ -1,4 +1,5 @@
 import type { Recording } from '../types';
+import { autoZoomed } from './ops';
 import type { Project } from './types';
 
 export interface DuplicateDeps {
@@ -15,7 +16,9 @@ export interface DuplicateDeps {
 /** The copy keeps every cut and edit but starts with an empty Undo history. */
 export function copyProject(project: Project, id: string): Project {
   const history = Object.fromEntries(project.cuts.map((c) => [c.id, { undo: [], redo: [] }]));
-  return { ...structuredClone(project), id, name: `${project.name} copy`, history };
+  // The cleared history must not make a copy look unopened to autoZoom.
+  const copy = structuredClone(project);
+  return { ...copy, id, name: `${project.name} copy`, history, options: { ...copy.options, autoZoomed: autoZoomed(project) } };
 }
 
 /** Duplicate project: a new recording row, its files and the project under a new id. Returns the new id. */

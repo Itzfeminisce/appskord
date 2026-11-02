@@ -4,7 +4,7 @@ import { currentCut } from '@/lib/project/history';
 import { removeLayer } from '@/lib/project/ops';
 import { flushProjects } from '@/lib/project/store';
 import { cutLength, spans, toOut } from '@/lib/project/time';
-import type { Project, Source } from '@/lib/project/types';
+import type { Cut, EventsTrack, Project, Source } from '@/lib/project/types';
 import { units } from '@/lib/wordCuts';
 import { Inspector, type InspectorProps } from './components/Inspector';
 import { Preview } from './components/Preview';
@@ -36,9 +36,13 @@ export interface EditorSlots {
   aside?: ComponentType<SlotProps>;
   inspector?: (props: SlotProps) => Pick<InspectorProps, 'panels' | 'selection'>;
   topBar?: (props: SlotProps) => Partial<Pick<TopBarProps, 'onName' | 'onCuts' | 'onHistory' | 'onShortcuts' | 'onAskAI' | 'onExport'>>;
+  /** Drawn over the preview picture (T10's zoom focus ring); `preview` shows a cut live without an edit, null ends it. */
+  stage?: ComponentType<StageProps>;
   /** Slots whose inspector or top bar read their own state call `onChange` so the shell draws them again. */
   subscribe?: (onChange: () => void) => () => void;
 }
+
+export type StageProps = SlotProps & { events?: EventsTrack; preview(cut: Cut | null): void };
 
 const PREVIEW_SLOW_SEEN = 'klipkord.previewSlowSeen';
 
@@ -90,6 +94,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   const [longOk, setLongOk] = useState(false);
   const started = useRef(performance.now());
   const [media, setMedia] = useState<LoadedMedia | null>(null);
+  const [stageCut, setStageCut] = useState<Cut | null>(null);
   const [times, setTimes] = useState<StepTimes>([]);
   const [firstFrame, setFirstFrame] = useState(false);
   const [slowOpen, setSlowOpen] = useState(false);
@@ -199,6 +204,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
 
   const ready = projectReady && !!cut && !!recording && firstFrame;
   const readOnly = session !== 'editing';
+  const Stage = slots.stage;
   const slotProps: SlotProps | null = project && cut && recording ? {
     recording, project, cut, out: playback.out, length, playing: playback.playing, ready, readOnly, seek: playback.seek, play: playback.play, pause: playback.pause, edit: api.edit,
   } : null;
@@ -253,9 +259,11 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
             )}
             <section ref={previewRef} aria-label="Preview" style={{ flexGrow: 1, position: 'relative', display: 'flex', flexDirection: 'column', minWidth: 0, background: full ? '#000000' : C.ground }}>
               {project && cut ? (
-                <Preview project={project} cut={cut} out={playback.out} playing={playback.playing} sources={sources} events={media?.events}
+                <Preview project={project} cut={stageCut?.id === cut.id ? stageCut : cut} out={playback.out} playing={playback.playing} sources={sources} events={media?.events}
                   captions={captions} light={project.options.lightPreview} opening={opening} firstFrame={firstFrame}
-                  onFirstFrame={() => setFirstFrame(true)} onSlow={onSlow} stageRef={stageRef} />
+                  onFirstFrame={() => setFirstFrame(true)} onSlow={onSlow} stageRef={stageRef}>
+                  {Stage && slotProps && <Stage {...slotProps} events={media?.events} preview={setStageCut} />}
+                </Preview>
               ) : (
                 <div ref={stageRef} style={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 8 }}>
                   <div style={{ width: 533, height: 300, borderRadius: 6, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{opening}</div>

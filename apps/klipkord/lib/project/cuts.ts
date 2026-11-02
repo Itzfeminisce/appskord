@@ -24,7 +24,8 @@ export const PLAIN_LOOK: Look = {
   background: { kind: 'colour', value: '#1C1917' }, padding: 0, corners: 0, shadow: 0,
   cursor: { size: 1, smooth: true, clicks: true },
 };
-export const DEFAULT_LOOK: Look = { ...PLAIN_LOOK, padding: 48, corners: 16, shadow: 24 };
+// Design defaults: Ember, 7% padding of a 1920 px wide frame, 10 px corners, Soft shadow.
+export const DEFAULT_LOOK: Look = { ...PLAIN_LOOK, background: { kind: 'gradient', value: 'ember' }, padding: 134, corners: 10, shadow: 24 };
 
 /** The picture for a tall shape: the camera under the screen when there is one, else follow the cursor or fit with bars. */
 export function defaultFit(sources: Source[], events: boolean): VerticalFit {
