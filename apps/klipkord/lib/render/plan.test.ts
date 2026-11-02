@@ -169,6 +169,8 @@ describe('renderPlan', () => {
     expect(renderPlan(project, cut, 6000).cards).toEqual([]);
     expect(renderPlan(project, { ...cut, tracks: { overlays: { hidden: true } } }, 1100).overlays).toEqual([]);
     expect(renderPlan(project, { ...cut, captions: { ...cut.captions, show: false } }, 1100, undefined, caps).captions).toBeUndefined();
+    const es = { ...cut, captions: { ...cut.captions, language: 'Spanish' } };
+    expect(renderPlan({ ...project, translations: { Spanish: ['Elige un rol.'] } }, es, 1050, undefined, caps).captions?.words.map((w) => w.text)).toEqual(['Elige', 'un', 'rol.']);
   });
   it('moves a blur that follows the page with the scroll of a tab recording', () => {
     const { project, cut } = setup({

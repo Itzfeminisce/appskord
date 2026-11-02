@@ -66,7 +66,7 @@ export function ThumbnailPicker({ p, thumb, onBack, onUse }: { p: SlotProps; thu
       </>}>
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
         <div style={{ height: 169, borderRadius: 8, overflow: 'hidden', background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {url && <img src={url} alt="" style={{ maxWidth: '100%', maxHeight: '100%' }} />}
+          {url && <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

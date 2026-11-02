@@ -231,7 +231,11 @@ export function renderPlan(project: Project, cut: Cut, out: number, events?: Eve
   if (captions && cut.captions.show && !hidden('captions')) {
     const line = captionAt(captions, rec);
     const words = line?.words.filter((w) => toOut(cut, (w.start + w.end) / 2) !== null) ?? [];
-    if (words.length) plan.captions = { words: words.map((w) => ({ text: w.text, on: w.start <= rec })), style: cut.captions };
+    const lang = cut.captions.language;
+    const shown = line && lang ? project.translations[lang]?.[captions.indexOf(line)]?.trim() : undefined;
+    // A translation has no word timings, so all of its words show at once.
+    if (words.length && shown) plan.captions = { words: shown.split(/\s+/).map((text) => ({ text, on: true })), style: cut.captions };
+    else if (words.length) plan.captions = { words: words.map((w) => ({ text: w.text, on: w.start <= rec })), style: cut.captions };
   }
   if (!hidden('media')) {
     const placed = [...cut.media].reverse().find((m) => rec >= m.at && rec < m.at + (m.trim[1] - m.trim[0]));

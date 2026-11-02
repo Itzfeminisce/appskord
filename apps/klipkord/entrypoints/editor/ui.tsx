@@ -39,10 +39,11 @@ export const iconButton = (size = 32): CSSProperties => ({
   alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', flexShrink: 0,
 });
 
-export type Tone = 'primary' | 'secondary' | 'ghost';
+export type Tone = 'primary' | 'accent' | 'secondary' | 'ghost';
 
 const TONES: Record<Tone, CSSProperties> = {
   primary: { background: C.text, color: C.ground, border: 0 },
+  accent: { background: C.accent, color: '#FFFFFF', border: 0 },
   secondary: { background: C.raised, color: C.text, border: `1px solid ${C.line}` },
   ghost: { background: 'transparent', color: C.secondary, border: 0 },
 };

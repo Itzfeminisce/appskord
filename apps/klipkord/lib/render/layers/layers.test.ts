@@ -113,11 +113,11 @@ describe('layoutCaption', () => {
   it('centres one line above the bottom safe margin', () => {
     const l = layoutCaption({ words: words(3), style: { style: 'clean', position: 'bottom', size: 48, show: true } }, frame, measure);
     expect(l.lines).toHaveLength(1);
-    expect(l.w).toBe(140);
-    expect(l.x).toBe((1920 - 140) / 2);
+    expect(l.w).toBe(140 + 64);
+    expect(l.x).toBe((1920 - 204) / 2);
     expect(l.y + l.h).toBeCloseTo(1080 * (1 - CAPTION_MARGIN.bottom));
     expect(l.lines[0]!.words.map((w) => w.x)).toEqual([890, 940, 990]);
-    expect(l.box).toBe('');
+    expect(l.box).toBe('rgba(17,17,20,0.82)');
   });
 
   it('wraps long captions inside the frame width, top and middle too', () => {

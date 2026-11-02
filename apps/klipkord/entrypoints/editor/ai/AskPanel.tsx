@@ -9,15 +9,16 @@ import type { Unit } from '@/lib/wordCuts';
 import type { SlotProps } from '../components/slots';
 import { clock } from '../format';
 import { StateCard } from '../states/StateCard';
+import { TL_ICONS } from '../timeline/controls';
 import { ICON } from '../transcript/icons';
-import { C, Icon, ICONS, iconButton, MONO } from '../ui';
+import { C, Icon, iconButton, MONO } from '../ui';
 import { ask, checkSetup, stop, tryHighlight } from './actions';
 import { aiDeps } from './deps';
 import { setAi, useAi, useDraft, useUnits, type Trial } from './store';
 import { BODY, BUBBLE, BUTTON, Check, Header, MIC, NotSetUp, Offline, PANEL, useOnline } from './ui';
 
 const OP_ICON: Record<AiOp['op'], ReactNode> = {
-  cut: ICON.cut, keep: ICON.retake, move: ICON.next, speed: ICON.speed, zoom: ICON.zoom, caption: ICON.wand, card: ICONS.plus, chapter: ICON.flag, layout: ICON.more, newCut: ICON.cut,
+  cut: ICON.cut, keep: ICON.retake, move: ICON.next, speed: ICON.speed, zoom: ICON.zoom, caption: ICON.wand, card: TL_ICONS.text, chapter: ICON.flag, layout: ICON.more, newCut: ICON.cut,
 };
 const CHIPS = ['Make it 15 s', '9:16 for Shorts', 'Try other parts'] as const;
 const many = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;

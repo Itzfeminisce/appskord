@@ -61,7 +61,7 @@ export function drawVector(ctx: Ctx2D, scene: Scene, layer: Layer): void {
       ctx.font = font;
       return ctx.measureText(text).width;
     };
-    drawCaption(ctx, layoutCaption(plan.captions, scene.frame, measure), scale.x);
+    drawCaption(ctx, layoutCaption(plan.captions, scene.frame, measure));
   }
   ctx.restore();
 }

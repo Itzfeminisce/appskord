@@ -25,9 +25,11 @@ export function drawTitle(ctx: Ctx, text: string, style: Exclude<TitleStyle, 'no
   const pad = Math.round(height * 0.07);
   ctx.textBaseline = 'top';
   if (style === 'bold') {
-    const size = Math.round(height * 0.11);
+    // The frame's 22 px words, 14 px in from the corner, on a 169 px tall picture.
+    const size = Math.round(height * 0.13);
+    const inset = Math.round(height * 0.083);
     ctx.font = `800 ${size}px Geist, sans-serif`;
-    const lines = titleLines(text, width * 0.72, (s) => ctx.measureText(s).width, 2);
+    const lines = titleLines(text, width - inset * 2, (s) => ctx.measureText(s).width, 2);
     // A soft dark shade over the top third keeps white words readable on any picture.
     const shade = ctx.createLinearGradient(0, 0, 0, height / 3);
     shade.addColorStop(0, 'rgba(0,0,0,0.55)');
@@ -36,7 +38,7 @@ export function drawTitle(ctx: Ctx, text: string, style: Exclude<TitleStyle, 'no
     ctx.fillRect(0, 0, width, height / 3);
     ctx.font = `800 ${size}px Geist, sans-serif`;
     ctx.fillStyle = '#FFFFFF';
-    lines.forEach((l, i) => ctx.fillText(l, pad, pad + i * size * 1.1));
+    lines.forEach((l, i) => ctx.fillText(l, inset, inset + i * size * 1.1));
     return;
   }
   const size = Math.round(height * 0.065);

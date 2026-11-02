@@ -1,7 +1,7 @@
 import type { Overlay } from '@/lib/project/types';
 import type { SlotProps } from '../components/slots';
 import { clock } from '../format';
-import { Heading, Seg, Switch } from '../timeline/controls';
+import { Heading, Seg, Slider, Switch } from '../timeline/controls';
 import { C, MONO } from '../ui';
 import { BLUR_AMOUNT, BLUR_STOPS, blurStop, changeOverlay, shownSpan, spanAt, wholeVideo } from './model';
 import { OVERLAY_NAMES } from './store';
@@ -10,6 +10,17 @@ const BLUR_MODES = [{ value: 'blur', label: 'Blur' }, { value: 'pixelate', label
 const MOTIONS = [{ value: 'fade', label: 'Fade' }, { value: 'pop', label: 'Pop' }, { value: 'none', label: 'None' }] as const;
 
 /** The Overlays frame names the default strength "Strong"; other strengths show as a share. */
+
+/** Blur Amount: a slider over the three stops, the stop's name beside it. */
+function AmountSlider({ amount, disabled, onCommit }: { amount: number; disabled: boolean; onCommit: (amount: number) => void }) {
+  const stop = BLUR_STOPS.findIndex((s) => s.value === blurStop(amount).value);
+  const [shown, setShown] = useState(stop);
+  useEffect(() => setShown(stop), [stop]);
+  return (
+    <Slider label="Amount" min={0} max={BLUR_STOPS.length - 1} step={1} value={shown} text={BLUR_STOPS[shown]!.label} disabled={disabled}
+      onInput={setShown} onCommit={(i) => onCommit(BLUR_STOPS[i]!.amount)} />
+  );
+}
 
 /** The words of a text or callout; one Undo step when the field is left. */
 function TextField({ o, edit, readOnly }: { o: Overlay; edit: (patch: Partial<Overlay>) => void; readOnly: boolean }) {
@@ -35,9 +46,7 @@ export function OverlayPanel({ p, o }: { p: SlotProps; o: Overlay }) {
         <>
           <Heading>Blur</Heading>
           <Seg label="Blur" options={BLUR_MODES} value={blur.mode} onChange={(mode) => edit({ blur: { ...blur, mode } })} />
-          <span style={{ fontSize: 12, color: C.secondary }}>Amount</span>
-          <Seg label="Amount" options={BLUR_STOPS} value={blurStop(blur.amount).value}
-            onChange={(v) => { const amount = BLUR_STOPS.find((s) => s.value === v)!.amount; if (amount !== blur.amount) edit({ blur: { ...blur, amount } }); }} />
+          <AmountSlider amount={blur.amount} disabled={p.readOnly} onCommit={(amount) => { if (amount !== blur.amount) edit({ blur: { ...blur, amount } }); }} />
           <Switch label="Follow the element" sub="Tracks this box as the page scrolls. Tab recordings only." on={blur.follow}
             disabled={p.readOnly || (!p.project.events && !blur.follow)} onChange={(follow) => edit({ blur: { ...blur, follow } })} />
         </>

@@ -123,7 +123,7 @@ describe('overlay inspector', () => {
     const project = setup([blur]);
     const { p, edit } = props(project);
     const { host, button } = render(<OverlayPanel p={p} o={blur} />);
-    for (const text of ['Blur', 'Pixelate', 'Solid', 'Amount', 'Strong', 'Follow the element', 'Tracks this box as the page scrolls. Tab recordings only.', 'Timing', 'Shows', '0:14.0 to 0:23.0', 'Fade', 'Pop', 'None', 'Keep for the whole video'])
+    for (const text of ['Blur', 'Pixelate', 'Solid', 'Amount', 'Medium', 'Follow the element', 'Tracks this box as the page scrolls. Tab recordings only.', 'Timing', 'Shows', '0:14.0 to 0:23.0', 'Fade', 'Pop', 'None', 'Keep for the whole video'])
       expect(host.textContent).toContain(text);
     act(() => button('Pixelate').click());
     const a = edit.mock.calls[0]![0](project) as Project;
@@ -136,6 +136,9 @@ describe('overlay inspector', () => {
     const whole = host.querySelectorAll('input[role="switch"]')[1] as HTMLInputElement;
     act(() => whole.click());
     expect(currentCut(edit.mock.calls[3]![0](project) as Project).overlays[0]).toMatchObject({ at: 0, end: 60_000 });
+    const amount = host.querySelector('input[aria-label="Amount"]') as HTMLInputElement;
+    act(() => { amount.value = '2'; amount.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true })); });
+    expect(currentCut(edit.mock.calls[4]![0](project) as Project).overlays[0]!.blur!.amount).toBe(0.9);
   });
 
   it('turns follow off for screen recordings without events', () => {
@@ -225,12 +228,12 @@ describe('brand kit dialog', () => {
     for (const text of ['Brand kit', 'Logo', 'Replace', 'Colours', 'Main', 'Ink', 'Paper', 'Accent', 'Fonts', 'Shared with Motikord on this computer. A change here shows in both apps.', 'Used by cards, captions, backgrounds and the logo sting.', 'Cancel', 'Save'])
       expect(host.textContent).toContain(text);
     const colour = host.querySelector('input[aria-label="Main"]') as HTMLInputElement;
-    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(colour, '#2563eb'); colour.dispatchEvent(new Event('input', { bubbles: true })); });
+    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(colour, '#0f766e'); colour.dispatchEvent(new Event('input', { bubbles: true })); });
     const heading = host.querySelector('select[aria-label="Headings"]') as HTMLSelectElement;
     act(() => { heading.value = 'Inter'; heading.dispatchEvent(new Event('change', { bubbles: true })); });
     await act(async () => { button('Save').click(); await new Promise((r) => setTimeout(r, 0)); });
     const saved = onSave.mock.calls[0]![0];
-    expect(saved.kit).toEqual({ colours: [{ hex: '#2563EB', role: 'primary' }], headingFont: 'Inter', bodyFont: 'Inter', useForNewClips: false });
+    expect(saved.kit).toEqual({ colours: [{ hex: '#0F766E', role: 'primary' }], headingFont: 'Inter', bodyFont: 'Inter', useForNewClips: false });
     expect(await mine.load()).toEqual(saved);
     expect(await theirs.load()).toEqual(saved);
     expect(onClose).toHaveBeenCalled();

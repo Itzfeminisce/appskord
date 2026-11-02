@@ -3,12 +3,11 @@ import { LABELS } from '@/lib/project/ops';
 import { steps, undo } from '@/lib/project/history';
 import type { SlotProps } from '../components/slots';
 import { setTimeline } from '../timeline/store';
-import { C } from '../ui';
+import { actionButton, C } from '../ui';
 import { AskPanel } from './AskPanel';
 import { stop } from './actions';
 import { openAsk, setAi, subscribeAi, useAi } from './store';
 import { TranslatePanel } from './TranslatePanel';
-import { BUTTON } from './ui';
 
 /** The inspector cover: Ask AI or Translate captions while open. */
 function Cover(p: SlotProps) {
@@ -46,8 +45,8 @@ function Overlay(p: SlotProps) {
       padding: '8px 8px 8px 14px', borderRadius: 10, background: C.raised, border: `1px solid ${C.line}`, color: C.text, fontSize: 13, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
     }}>
       <span style={{ whiteSpace: 'nowrap' }}>AI edit applied · {applied} {applied === 1 ? 'change' : 'changes'}</span>
-      <button type="button" onClick={undoIt} disabled={p.readOnly} style={{ ...BUTTON(false), flex: 'none', height: 28 }}>Undo</button>
-      <button type="button" onClick={() => { setTimeline({ dialog: 'history' }); setAi({ applied: null }); }} style={{ ...BUTTON(false), flex: 'none', height: 28 }}>Show changes</button>
+      <button type="button" onClick={undoIt} disabled={p.readOnly} style={{ ...actionButton('primary'), height: 28 }}>Undo</button>
+      <button type="button" onClick={() => { setTimeline({ dialog: 'history' }); setAi({ applied: null }); }} style={{ ...actionButton('ghost'), height: 28 }}>Show changes</button>
     </div>
   );
 }
