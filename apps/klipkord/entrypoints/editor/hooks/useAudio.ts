@@ -43,7 +43,10 @@ export const moved = (started: { out: number; at: number }, out: number, now: nu
 /** Plays the cut's live mix (voice, tab, takes, media, music) in step with the playhead, through lib/audio. */
 export function useAudio(project: Project | undefined, cut: Cut | undefined, words: Word[], blobs: Map<string, Blob> | undefined,
   out: number, playing: boolean, make: EditorDeps['mix']): void {
-  const engine = useMemo<LiveMix | null>(() => (blobs ? make(blobs) : null), [blobs, make]);
+  // One engine, context and decode cache for the editor's life: files it already read are kept when sources change.
+  const blobsRef = useRef(blobs);
+  blobsRef.current = blobs;
+  const engine = useMemo<LiveMix | null>(() => make((id) => blobsRef.current?.get(id) ?? null), [make]);
   useEffect(() => () => engine?.dispose(), [engine]);
 
   // One plan per real change: zoom or caption edits leave the sound alone.
@@ -63,21 +66,22 @@ export function useAudio(project: Project | undefined, cut: Cut | undefined, wor
   const levelKnown = !plan?.level || measured.key === measureKey(plan);
 
   useEffect(() => {
-    if (!engine || !plan || !playing) {
+    if (!engine || !plan || !playing || !blobs) {
       started.current = null;
       return;
     }
     engine.play(plan, () => outRef.current, lufsRef.current);
     started.current = { out: outRef.current, at: performance.now() };
     return () => engine.stop();
-  }, [engine, plan, playing, restart, levelKnown]);
+  }, [engine, plan, playing, restart, levelKnown, blobs]);
 
   useEffect(() => {
     if (playing && started.current && moved(started.current, out, performance.now())) setRestart((k) => k + 1);
   }, [out, playing]);
 
   useEffect(() => {
-    if (!engine || !plan || !(want || plan.level)) return;
+    // Sources are measured once per file; after that an edit only sums their powers again.
+    if (!engine || !plan || !blobs || !(want || plan.level)) return;
     const k = measureKey(plan);
     if (meter.key === k) return;
     let gone = false;
@@ -92,5 +96,5 @@ export function useAudio(project: Project | undefined, cut: Cut | undefined, wor
       gone = true;
       clearTimeout(timer);
     };
-  }, [engine, plan, want]);
+  }, [engine, plan, want, blobs]);
 }

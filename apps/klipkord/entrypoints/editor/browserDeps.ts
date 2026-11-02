@@ -1,6 +1,6 @@
 import RenderWorker from '@/lib/render/render.worker?worker';
 import { liveMix } from '@/lib/audio/live';
-import { mediaLoader } from '@/lib/audio/load';
+import { blobKey, mediaLoader } from '@/lib/audio/load';
 import { deleteRecording, getRecording, putRecording } from '@/lib/db';
 import { send } from '@/lib/messages';
 import { duplicateProject } from '@/lib/project/duplicate';
@@ -25,13 +25,17 @@ export function browserDeps(): EditorDeps {
       if (!('transferControlToOffscreen' in canvas)) return null;
       return workerPreview(new RenderWorker(), canvas, sources);
     },
-    mix(blobs) {
+    mix(blobOf) {
       if (typeof AudioContext === 'undefined') return null;
-      const loader = mediaLoader(async (id) => blobs.get(id) ?? null);
+      const loader = mediaLoader(async (id) => blobOf(id));
       const live = liveMix({
         context: () => new AudioContext({ sampleRate: 48_000, latencyHint: 'playback' }),
         loader,
         denoise: async (ctx) => (await import('@/lib/audio/denoise')).denoise(ctx),
+        fileKey: (id) => {
+          const blob = blobOf(id);
+          return blob ? `${id}|${blobKey(blob)}` : id;
+        },
       });
       return { ...live, dispose: () => { live.dispose(); loader.dispose(); } };
     },

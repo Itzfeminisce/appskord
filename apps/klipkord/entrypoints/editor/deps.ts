@@ -15,7 +15,7 @@ export interface EditorDeps {
   /** Null where the canvas cannot be handed to a worker. */
   startPreview(canvas: HTMLCanvasElement, sources: RenderSource[]): PreviewClient | null;
   /** The live mix over the project's files (lib/audio/live); null where Web Audio is missing. */
-  mix(blobs: Map<string, Blob>): LiveMix | null;
+  mix(blobOf: (source: string) => Blob | null): LiveMix | null;
   joinSession(id: string, onTaken: () => Promise<void>): EditorSession;
   openPanel(screen: PanelScreen): void;
   /** "Use Groq instead" for the transcript still being made. */
