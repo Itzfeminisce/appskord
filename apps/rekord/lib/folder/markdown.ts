@@ -3,6 +3,9 @@
 //   People/<name>.md                          one per person; " (<id>)" is added only when two people share a name
 //   Open loops.md                      open promises and questions
 //   Decisions.md                       every decision, replaced ones struck through
+import { CATCHUP_TAG, FROM_CATCHUP, isCatchup } from '../catchup/label';
+import { clockOf, dayMonth, weekdayDate } from '../memory/brief';
+import { formatClock, formatDuration } from '../time';
 import type { Marker, Meeting, Note, Segment } from '../types';
 import type { MemoryItem, Person } from '../memory/types';
 
@@ -61,6 +64,15 @@ function itemLine(item: MemoryItem, people: People, meetings?: Map<string, Meeti
   return `- ${parts.join(' · ')}\n${quote}`;
 }
 
+/** A catch-up's two header lines: "Mon 2 Nov · 13:00 · 4 h · Catch up" / "From your catch-up, told 2 Nov, 17:10 · 12:40". */
+export function catchupHeader(meeting: Meeting): string {
+  if (!isCatchup(meeting) || !meeting.told) return '';
+  const length = meeting.endedAt && meeting.endedAt > meeting.startedAt ? formatDuration(meeting.endedAt - meeting.startedAt) : undefined;
+  const first = [weekdayDate(meeting.startedAt), clockOf(meeting.startedAt), length, CATCHUP_TAG].filter(Boolean).join(' · ');
+  const { at, ms } = meeting.told;
+  return `\n${first}  \n${FROM_CATCHUP}, told ${dayMonth(at)}, ${clockOf(at)} · ${formatClock(ms)}\n`;
+}
+
 const section = (heading: string, lines: string[]) => (lines.length ? `\n## ${heading}\n\n${lines.join('\n')}\n` : '');
 const visible = (i: MemoryItem) => !i.leftOut && i.status !== 'dismissed' && i.status !== 'suggested';
 
@@ -75,6 +87,7 @@ export function meetingMarkdown({ meeting, segments, notes, markers, items }: Me
       end: meeting.endedAt ? hhmm(meeting.endedAt) : undefined, people: names, source: 'rekord',
     }),
     `\n# ${meeting.title}\n`,
+    catchupHeader(meeting),
     section('Summary', summary?.overview ? [summary.overview] : []),
     section('Promises', kept.filter((i) => i.kind === 'promise').map((i) => itemLine(i, people))),
     section('Decisions', kept.filter((i) => i.kind === 'decision').map((i) => itemLine(i, people))),

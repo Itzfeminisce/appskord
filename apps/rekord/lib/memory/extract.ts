@@ -2,6 +2,7 @@ import { getMeeting, listMeetings, listSegments } from '../db';
 import { record } from '../ledger';
 import { onRecord } from '../live/offRecord';
 import { chat, displayName, LLMError, transcriptLines, type FetchLike } from '../llm';
+import { preambleFor } from '../catchup/preamble';
 import { getSettings } from '../settings';
 import type { Meeting, Segment } from '../types';
 import { normalise, quoteFound } from './check';
@@ -89,6 +90,12 @@ export function buildExtractPrompt(p: PromptInput): string {
   }
   out.push('', 'Transcript part:', ...p.lines);
   return out.join('\n');
+}
+
+/** The extraction instructions; a catch-up gets the catch-up preamble first (CONTRACT "Where a catch-up differs"). */
+export function extractSystem(meeting: Pick<Meeting, 'source' | 'startedAt'>): string {
+  const preamble = preambleFor(meeting);
+  return preamble ? `${preamble}\n${EXTRACT_SYSTEM}` : EXTRACT_SYSTEM;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
@@ -219,7 +226,10 @@ export const NOT_SENT = new Set(['no-key', 'offline', 'local-unavailable', 'canc
 export const extractedKey = (meetingId: string) => `rekord.extracted.${meetingId}`;
 export const partsKey = (meetingId: string) => `rekord.extract.parts.${meetingId}`;
 /** A part's parsed reply, with the open promises its "done" refs point at. */
-interface SavedPart { extraction: Extraction; openIds: string[] }
+interface SavedPart { extraction: Extraction; openIds: string[]; sig?: string }
+
+// A catch-up's answers join the telling after its draft was read, so a kept reply is reused only for the same lines.
+const partSig = (part: Part) => `${part.segments.length}:${part.segments[0]?.id ?? ''}:${part.segments.at(-1)?.id ?? ''}`;
 
 async function readParts(meetingId: string): Promise<Record<string, SavedPart>> {
   return ((await browser.storage.local.get(partsKey(meetingId)))[partsKey(meetingId)] as Record<string, SavedPart> | undefined) ?? {};
@@ -250,58 +260,21 @@ export function extractMeeting(meetingId: string, deps: ExtractDeps = {}): Promi
   return run;
 }
 
+/**
+ * The part replies of a catch-up before its follow-up questions: the same calls, kept as extraction keeps them, so
+ * extraction later asks again only for parts the answers changed. Saves no items. Throws LLMError.
+ */
+export async function draftExtraction(meetingId: string, deps: ExtractDeps = {}): Promise<RawItem[]> {
+  const run = await readAll(meetingId, deps);
+  return run ? run.found.map(({ raw }) => raw) : [];
+}
+
 async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<ExtractResult> {
   const now = deps.now ?? Date.now;
   const newId = deps.newId ?? (() => crypto.randomUUID());
-  const [meeting, segments, settings] = await Promise.all([getMeeting(meetingId), listSegments(meetingId), getSettings()]);
-  if (!meeting) return EMPTY;
-  if ((await isExtracted(meetingId)) || (await itemsForMeeting(meetingId)).length) return EMPTY;
-  const parts = splitParts(onRecord(segments, meeting.offSpans), meeting.speakers);
-  if (!parts.length) return EMPTY;
-
-  const [items, people, meetings] = await Promise.all([listItems(), listPeople(), listMeetings()]);
-  const startedAt = new Map(meetings.map((m) => [m.id, m.startedAt]));
-  // Only promises made before this meeting can be finished in it (backfill runs old meetings too).
-  const open = items
-    .filter((i) => i.kind === 'promise' && i.status === 'open' && i.meetingId !== meetingId && (startedAt.get(i.meetingId) ?? 0) < meeting.startedAt)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, MAX_OPEN_PROMISES);
-  const notPromises = items
-    .filter((i) => (i.status === 'dismissed' && i.dismissReason === 'notAPromise') || (i.status === 'dropped' && i.dropReason === 'notAPromise'))
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, MAX_NOT_PROMISES);
-  const service = LEDGER_SERVICE[settings.summary.provider];
-  // Recorded whether or not the call succeeds: a rate-limited or failed call may still have sent the text.
-  const ask = async (system: string, user: string, maxTokens: number) => {
-    let sent = true;
-    try {
-      return await chat([{ role: 'system', content: system }, { role: 'user', content: user }], { json: true, maxTokens }, deps.fetchFn);
-    } catch (error) {
-      sent = !(error instanceof LLMError && NOT_SENT.has(error.code));
-      throw error;
-    } finally {
-      if (service && sent) await record({ meetingId, service, what: LEDGER_WHAT });
-    }
-  };
-
-  const byId = new Map(items.map((i) => [i.id, i]));
-  const saved = await readParts(meetingId);
-  const found: { raw: RawItem; part: Part }[] = [];
-  const done: { raw: RawDone; part: Part; target?: MemoryItem }[] = [];
-  for (const [index, part] of parts.entries()) {
-    let kept = saved[index];
-    if (!kept) {
-      const user = buildExtractPrompt({
-        title: meeting.title, date: isoDay(meeting.startedAt), lines: transcriptLines(part.segments, meeting.speakers), open, notPromises,
-      });
-      kept = { extraction: parseExtraction(await ask(EXTRACT_SYSTEM, user, REPLY_TOKENS)), openIds: open.map((o) => o.id) };
-      saved[index] = kept;
-      await browser.storage.local.set({ [partsKey(meetingId)]: saved });
-    }
-    const { extraction, openIds } = kept;
-    found.push(...extraction.items.map((raw) => ({ raw, part })));
-    done.push(...extraction.done.map((raw) => ({ raw, part, target: byId.get(openIds[raw.ref - 1] ?? '') })));
-  }
+  const run = await readAll(meetingId, deps);
+  if (!run) return EMPTY;
+  const { meeting, items, people, ask, found, done } = run;
 
   const at = now();
   const attendees = (meeting.event?.attendees ?? []).filter((a) => !a.self).map((a) => ({ name: a.name, email: a.email }));
@@ -365,4 +338,61 @@ async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<Extrac
     found: kept.length, promises: count('promise'), decisions: count('decision'), questions: count('question'),
     people: plan.created, leftOut: keep.length - kept.length, looksDone,
   };
+}
+
+/** Everything both extraction and the catch-up draft need, with every part's reply. Undefined: nothing to read. */
+async function readAll(meetingId: string, deps: ExtractDeps) {
+  const [meeting, segments, settings] = await Promise.all([getMeeting(meetingId), listSegments(meetingId), getSettings()]);
+  if (!meeting) return undefined;
+  if ((await isExtracted(meetingId)) || (await itemsForMeeting(meetingId)).length) return undefined;
+  const parts = splitParts(onRecord(segments, meeting.offSpans), meeting.speakers);
+  if (!parts.length) return undefined;
+  const instructions = extractSystem(meeting);
+
+  const [items, people, meetings] = await Promise.all([listItems(), listPeople(), listMeetings()]);
+  const startedAt = new Map(meetings.map((m) => [m.id, m.startedAt]));
+  // Only promises made before this meeting can be finished in it (backfill runs old meetings too).
+  const open = items
+    .filter((i) => i.kind === 'promise' && i.status === 'open' && i.meetingId !== meetingId && (startedAt.get(i.meetingId) ?? 0) < meeting.startedAt)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_OPEN_PROMISES);
+  const notPromises = items
+    .filter((i) => (i.status === 'dismissed' && i.dismissReason === 'notAPromise') || (i.status === 'dropped' && i.dropReason === 'notAPromise'))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_NOT_PROMISES);
+  const service = LEDGER_SERVICE[settings.summary.provider];
+  // Recorded whether or not the call succeeds: a rate-limited or failed call may still have sent the text.
+  const ask = async (system: string, user: string, maxTokens: number) => {
+    let sent = true;
+    try {
+      return await chat([{ role: 'system', content: system }, { role: 'user', content: user }], { json: true, maxTokens }, deps.fetchFn);
+    } catch (error) {
+      sent = !(error instanceof LLMError && NOT_SENT.has(error.code));
+      throw error;
+    } finally {
+      if (service && sent) await record({ meetingId, service, what: LEDGER_WHAT });
+    }
+  };
+
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const saved = await readParts(meetingId);
+  const found: { raw: RawItem; part: Part }[] = [];
+  const done: { raw: RawDone; part: Part; target?: MemoryItem }[] = [];
+  for (const [index, part] of parts.entries()) {
+    let kept = saved[index];
+    if (kept?.sig && kept.sig !== partSig(part)) kept = undefined;
+    if (!kept) {
+      const user = buildExtractPrompt({
+        title: meeting.title, date: isoDay(meeting.startedAt), lines: transcriptLines(part.segments, meeting.speakers), open, notPromises,
+      });
+      kept = { extraction: parseExtraction(await ask(instructions, user, REPLY_TOKENS)), openIds: open.map((o) => o.id), sig: partSig(part) };
+      saved[index] = kept;
+      await browser.storage.local.set({ [partsKey(meetingId)]: saved });
+    }
+    const { extraction, openIds } = kept;
+    found.push(...extraction.items.map((raw) => ({ raw, part })));
+    done.push(...extraction.done.map((raw) => ({ raw, part, target: byId.get(openIds[raw.ref - 1] ?? '') })));
+  }
+
+  return { meeting, items, people, ask, found, done };
 }

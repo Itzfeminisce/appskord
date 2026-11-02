@@ -1,5 +1,7 @@
 import { getMeeting, listMarkers, listNotes, listSegments, putMeeting } from './db';
+import { preambleFor } from './catchup/preamble';
 import { enqueueExtraction } from './memory/backfill';
+import { estimateTokens, MAX_CALL_TOKENS, REPLY_TOKENS } from './memory/extract';
 import { onRecord } from './live/offRecord';
 import { chat, LLMError, transcriptLines, type FetchLike } from './llm';
 import { getSettings } from './settings';
@@ -20,11 +22,25 @@ export function truncateMiddle(text: string, max = MAX_TRANSCRIPT_CHARS): string
 const aiExtra = (m: Marker) =>
   [m.owner && `owner: ${m.owner}`, m.due && `due: ${m.due}`].filter(Boolean).map((x) => ` (${x})`).join('');
 
+/** Over `maxTokens` (counted as estimateTokens does), keeps the start and end of a text, dropping the middle. */
+export function truncateTokens(text: string, maxTokens: number): string {
+  let out = text;
+  for (let max = text.length; estimateTokens(out) > maxTokens && max > 0;) {
+    max = Math.floor(Math.min(max, out.length) * Math.min(0.95, maxTokens / estimateTokens(out)));
+    out = truncateMiddle(text, max);
+  }
+  return out;
+}
+
+// A catch-up's summary call keeps to the 8,000-token budget: instructions and notes, the reply, then the telling.
+export const CATCHUP_TELLING_TOKENS = MAX_CALL_TOKENS - REPLY_TOKENS - 1_500;
+
 export function buildPrompt(
-  title: string, segments: Segment[], notes: Note[], markers: Marker[], speakers?: Meeting['speakers'],
+  title: string, segments: Segment[], notes: Note[], markers: Marker[], speakers?: Meeting['speakers'], maxTokens?: number,
 ): string {
-  const lines = transcriptLines(segments, speakers);
-  const parts = [`Meeting: ${title}`, '', 'Transcript:', truncateMiddle(lines.join('\n')) || '(no speech was transcribed)'];
+  const lines = transcriptLines(segments, speakers).join('\n');
+  const transcript = maxTokens === undefined ? truncateMiddle(lines) : truncateTokens(lines, maxTokens);
+  const parts = [`Meeting: ${title}`, '', 'Transcript:', transcript || '(no speech was transcribed)'];
   if (notes.length) {
     parts.push('', "The user's own notes:", ...notes.map((n) => `[${formatClock(n.atMs)}] ${n.text}`));
   }
@@ -35,7 +51,7 @@ export function buildPrompt(
   return parts.join('\n');
 }
 
-const SYSTEM = [
+export const SYSTEM = [
   'You write concise meeting summaries. Reply with ONLY a JSON object, no prose, shaped as:',
   '{"overview": string (2-4 sentences), "decisions": [{"text": string, "atMs"?: number}], "actions": [{"text": string, "owner"?: string, "due"?: string}], "questions": string[]}',
   'Use "You" or "Others" as owner only when clear from the transcript. "questions" are issues still open.',
@@ -96,6 +112,15 @@ export function parseSummary(raw: string, maxMs = Infinity): Omit<Summary, 'gene
   return { overview, decisions, actions, questions: strings(o.questions) };
 }
 
+/** The summary call; a catch-up adds the catch-up preamble and keeps to the 8,000-token budget. */
+export function summaryMessages(meeting: Meeting, segments: Segment[], notes: Note[], markers: Marker[]): { role: 'system' | 'user'; content: string }[] {
+  const preamble = preambleFor(meeting);
+  return [
+    { role: 'system', content: preamble ? `${preamble}\n${SYSTEM}` : SYSTEM },
+    { role: 'user', content: buildPrompt(meeting.title, segments, notes, markers, meeting.speakers, preamble ? CATCHUP_TELLING_TOKENS : undefined) },
+  ];
+}
+
 /**
  * Writes the summary for a meeting and marks it done. If the call fails the meeting is still marked done
  * (transcript is kept) and a SummarizeError with a user-facing message is thrown.
@@ -118,10 +143,7 @@ export async function summarize(meetingId: string, fetchFn: FetchLike = (u, i) =
 
     let content: string;
     try {
-      content = await chat([
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: buildPrompt(meeting.title, segments, notes, markers, meeting.speakers) },
-      ], {}, fetchFn);
+      content = await chat(summaryMessages(meeting, segments, notes, markers), preambleFor(meeting) ? { maxTokens: REPLY_TOKENS } : {}, fetchFn);
     } catch (e) {
       if (e instanceof LLMError && e.code === 'no-key') {
         throw new SummarizeError('Rekord needs an AI connection to write the summary. Check Connect AI in Settings.');
