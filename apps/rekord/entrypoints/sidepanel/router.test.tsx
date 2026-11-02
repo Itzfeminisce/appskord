@@ -10,7 +10,7 @@ const fake = createRouter(
     start: screen('start'), library: screen('library'), settings: screen('settings'), connections: screen('connections'),
     googleConnect: screen('googleConnect'), live: screen('live'), processing: screen('processing'), transcript: screen('transcript'),
   },
-  { fresh: ['googleConnect'], hold: ['live'] },
+  { fresh: ['googleConnect'], hold: ['live'], home: 'start' },
 );
 
 async function step(run: () => void) {
@@ -40,6 +40,16 @@ describe('side panel router on TanStack Router', () => {
     expect(view.router.route).toEqual({ screen: 'transcript', params: { meetingId: 'm-1', atMs: 4500 } });
     await step(() => view.router.replace('start'));
     expect(view.router.canGoBack).toBe(false);
+  });
+
+  it('Back with no back stack goes home, so a back arrow is never dead', async () => {
+    const view = await mount(fake, 'start');
+    await step(() => view.router.replace('library'));
+    expect(view.router.canGoBack).toBe(false);
+    await step(() => view.router.back());
+    expect(view.router.route.screen).toBe('start');
+    await step(() => view.router.back());
+    expect(view.router.route.screen).toBe('start');
   });
 
   it('a reload keeps the screen and its params, ids staying strings', async () => {

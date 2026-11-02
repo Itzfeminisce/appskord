@@ -133,7 +133,7 @@ export async function initialRoute(): Promise<Route> {
 }
 
 /** The side panel's routes. Connect flows keep their return path in memory; Live and No sound keep Back from leaving. */
-export const sidepanel = createRouter(SCREENS, { fresh: ['googleConnect', 'notionPage'], hold: ['live', 'nosound'] });
+export const sidepanel = createRouter(SCREENS, { fresh: ['googleConnect', 'notionPage'], hold: ['live', 'nosound'], home: 'home' });
 const { RouterProvider } = sidepanel;
 
 /** Dev builds: `#/dev/<Frame>` opens that frame's screen in the sample world; a frame not built yet shows its name. */

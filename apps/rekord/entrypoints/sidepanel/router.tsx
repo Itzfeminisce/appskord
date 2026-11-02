@@ -55,6 +55,8 @@ export interface SurfaceOptions {
   fresh?: ScreenName[];
   /** Screens the browser's Back and Forward cannot leave (a live recording). */
   hold?: ScreenName[];
+  /** Where back() goes when there is no back stack, so a back arrow always does something. */
+  home?: ScreenName;
 }
 
 // Survives Back and reload in the URL hash (`#/transcript?meeting=…&at=…`); ids, times and app copy only.
@@ -116,7 +118,11 @@ export function createRouter(screens: Partial<Record<ScreenName, ComponentType>>
       });
     const back = () =>
       run(() => {
-        if (!canGoBack(router.state.location) || (hold as string[]).includes(screenOf(router))) return Promise.resolve();
+        if ((hold as string[]).includes(screenOf(router))) return Promise.resolve();
+        if (!canGoBack(router.state.location)) {
+          if (!options.home || screenOf(router) === options.home) return Promise.resolve();
+          return router.navigate({ to: `/${options.home}`, replace: true, state: clearBackState(router.state.location) });
+        }
         // Resolves on navigation, or after a short wait when a blocker swallows the pop, so the queue never stalls.
         return new Promise<void>((resolve) => {
           const done = () => { clearTimeout(timer); stop(); resolve(); };
