@@ -67,7 +67,7 @@ afterEach(() => { act(() => root.unmount()); host.remove(); select(null); previe
 describe('Look tab', () => {
   it('picks a background kind and swatch, each one named step', () => {
     render(fromRecording(recording), 'look');
-    expect(find('Image')).toBeUndefined();
+    expect(find('Image')).toBeDefined();
     act(() => find('Gradient').click());
     expect(look().background).toEqual({ kind: 'gradient', value: 'ember' });
     act(() => find('Background 2').click());
@@ -181,13 +181,15 @@ describe('FocusStage', () => {
   const pointer = (type: string, x: number, y: number) => act(() => { stage()!.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y })); });
   const focusOf = (c: Cut) => c.zooms[0]!.focus;
 
-  it('shows the Focus ring only for a selected fixed-spot zoom', () => {
+  it('offers the focus stage only for a selected fixed-spot zoom, its ring only while dragging', () => {
     render(withZooms(), 'stage');
     expect(stage()).toBeNull();
     act(() => select({ kind: 'zooms', ids: [zooms()[1]!.id] }));
     expect(stage()).toBeNull();
     act(() => select({ kind: 'zooms', ids: [zooms()[0]!.id] }));
-    expect(ring()!.textContent).toBe('Focus');
+    expect(stage()).not.toBeNull();
+    expect(ring()).toBeNull();
+    pointer('pointerdown', 57.6, 32.4);
     expect(ring()!.style.left).toBe('30%');
   });
 
@@ -206,6 +208,16 @@ describe('FocusStage', () => {
     expect(zooms()[0]!.focus).toEqual({ x: 0.25, y: 0.5 });
     expect(steps(latest).steps).toHaveLength(before + 1);
     expect(lastLabel()).toBe('Changed the zoom at 00:01');
+  });
+
+  it('previews the selected zoom at full depth while the playhead is inside it', () => {
+    const start = addLayer(v3(), { kind: 'zooms', items: [{ at: 0, end: 3000, depth: 2, focus: 'cursor', feel: 'smooth', auto: false }] });
+    render(start, 'stage');
+    expect(preview).not.toHaveBeenCalled();
+    act(() => select({ kind: 'zooms', ids: [zooms()[0]!.id] }));
+    expect(preview.mock.calls.at(-1)![0].zooms[0]).toMatchObject({ depth: 2, rampIn: 0, rampOut: 0 });
+    act(() => select(null));
+    expect(preview.mock.calls.at(-1)![0]).toBeNull();
   });
 
   it('cannot be moved while read-only', () => {

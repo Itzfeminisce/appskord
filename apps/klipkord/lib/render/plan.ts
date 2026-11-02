@@ -20,8 +20,8 @@ export const FRAME: Record<Shape, { w: number; h: number }> = {
 export const SWITCH_MS = 400;
 /** Share of the frame the screen keeps beside the camera in "Side by side". */
 export const SIDE_SHARE = 0.68;
-/** In "Screen over camera", the screen takes at most this share of the frame height. */
-export const STACK_MAX = 0.6;
+/** In "Screen over camera", the screen fills this share of the frame height, edge to edge; the camera fills the rest. */
+export const STACK_SHARE = 0.58;
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -37,8 +37,11 @@ export function fit(aspect: number, area: Box): Box {
 
 const aspectOf = (s: Source | undefined, fallback: number) => (s?.width && s.height ? s.width / s.height : fallback);
 
-/** Where the screen and camera sit for one layout. `follow`: the screen fills its box and the crop follows the cursor. */
-export interface Arrangement { screen?: Box; camera?: Box; follow: boolean }
+/**
+ * Where the screen and camera sit for one layout. `follow`: the screen fills its box and the crop follows the cursor.
+ * `edge`: both run edge to edge with no corners, ring or shadow ("Screen over camera").
+ */
+export interface Arrangement { screen?: Box; camera?: Box; follow: boolean; edge?: boolean }
 
 export interface ArrangeInput {
   layout: LayoutKind; shape: Shape; fit: Cut['fit']; look: Look; camera: Camera; screenAspect: number; cameraAspect: number;
@@ -66,8 +69,12 @@ export function arrange({ layout, shape, fit: vfit, look, camera, screenAspect, 
   const gap = Math.max(16, p / 2);
 
   if (layout === 'screen') return { screen: screenOnly(), follow };
-  if (tall && (vfit === 'stack' || (layout === 'side' && vfit !== 'follow'))) {
-    const screen = fit(screenAspect, { ...inner, h: Math.min(inner.h * STACK_MAX, inner.w / screenAspect) });
+  if (tall && vfit === 'stack') {
+    const seam = Math.round(H * STACK_SHARE);
+    return { screen: { x: 0, y: 0, w: W, h: seam }, camera: { x: 0, y: seam, w: W, h: H - seam }, follow: true, edge: true };
+  }
+  if (tall && layout === 'side' && vfit !== 'follow') {
+    const screen = fit(screenAspect, { ...inner, h: Math.min(inner.h * STACK_SHARE, inner.w / screenAspect) });
     const top = { ...screen, y: inner.y };
     const below = inner.y + top.h + gap;
     return { screen: top, camera: { x: inner.x, y: below, w: inner.w, h: Math.max(0, inner.y + inner.h - below) }, follow: false };
@@ -179,7 +186,8 @@ export function renderPlan(project: Project, cut: Cut, out: number, events?: Eve
   const screenBox = b.screen && a.screen ? lerpBox(a.screen, b.screen, progress) : (b.screen ?? (progress < 1 ? a.screen : undefined));
   if (screenSrc && screenBox && covers(screenSrc, rec) && !hidden('screen')) {
     const crop = cropFor(cut, rec, screenBox, screenAspect, b.follow, pointer);
-    plan.screen = { source: screenSrc.id, t: sourceTime(screenSrc, rec), crop, dest: screenBox, radius: cut.look.corners, shadow: cut.look.shadow };
+    const edge = b.edge && progress >= 0.5;
+    plan.screen = { source: screenSrc.id, t: sourceTime(screenSrc, rec), crop, dest: screenBox, radius: edge ? 0 : cut.look.corners, shadow: edge ? 0 : cut.look.shadow };
     if (pointer && !hidden('cursor') && pointer.x >= crop.x && pointer.x <= crop.x + crop.w && pointer.y >= crop.y && pointer.y <= crop.y + crop.h) {
       plan.cursor = {
         x: screenBox.x + ((pointer.x - crop.x) / crop.w) * screenBox.w,
@@ -206,6 +214,7 @@ export function renderPlan(project: Project, cut: Cut, out: number, events?: Eve
       const shape = (progress < 0.5 ? from : to) === 'bubble' ? cut.camera.shape : 'rounded';
       plan.camera = { source: camSrc.id, t: sourceTime(camSrc, rec), dest: camBox, shape, mirror, blur, alpha };
       if (round > 0 && round < 1) plan.camera.round = round;
+      if ((progress < 0.5 ? a : b).edge) plan.camera.edge = true;
     }
   }
 

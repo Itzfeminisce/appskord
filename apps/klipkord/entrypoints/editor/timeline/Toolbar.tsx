@@ -49,7 +49,7 @@ export function Toolbar(p: ToolbarProps) {
       <span style={{ flexGrow: 1 }} />
       <span style={{ fontSize: 11.5, color: C.muted, fontFamily: MONO }}>{range}</span>
       <input type="range" aria-label={range} min={0} max={1} step={0.01} value={sliderOf(p.view, p.length)} onChange={(e) => p.onSlider(Number(e.target.value))}
-        style={{ width: 80, margin: '0 6px 0 10px', accentColor: C.secondary }} />
+        className="kk-range kk-plain" style={{ width: 80, margin: '0 6px 0 10px' }} />
       <Tool label="Fit the whole video (Shift+Z)" icon={TL_ICONS.fit} onClick={p.onFit} size={28} />
     </div>
   );

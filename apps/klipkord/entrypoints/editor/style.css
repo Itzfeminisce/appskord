@@ -16,3 +16,24 @@ button:disabled { cursor: default; }
 button:focus-visible { outline: 2px solid #fb923c; outline-offset: 1px; }
 
 @keyframes klipkord-spin { to { transform: rotate(360deg); } }
+
+/* The frames' slider: a 4px #2C2C34 track, orange up to the thumb (--fill), a white 14px thumb. */
+input.kk-range { -webkit-appearance: none; appearance: none; height: 14px; margin: 0; background: transparent; cursor: pointer; }
+input.kk-range:disabled { cursor: default; opacity: 0.5; }
+input.kk-range::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, #fb923c var(--fill, 0%), #2c2c34 var(--fill, 0%));
+}
+input.kk-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -5px; border: 0; border-radius: 50%; background: #ffffff;
+}
+input.kk-range::-moz-range-track { height: 4px; border-radius: 2px; background: #2c2c34; }
+input.kk-range::-moz-range-progress { height: 4px; border-radius: 2px; background: #fb923c; }
+input.kk-range::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: #ffffff; }
+input.kk-range:focus-visible { outline: 2px solid #fb923c; outline-offset: 2px; border-radius: 7px; }
+/* The timeline zoom slider: no fill, a grey 12px thumb. */
+input.kk-range.kk-plain { height: 12px; }
+input.kk-range.kk-plain::-webkit-slider-runnable-track { background: #2c2c34; }
+input.kk-range.kk-plain::-webkit-slider-thumb { width: 12px; height: 12px; margin-top: -4px; background: #a9a9b2; }
+input.kk-range.kk-plain::-moz-range-progress { background: transparent; }
+input.kk-range.kk-plain::-moz-range-thumb { width: 12px; height: 12px; background: #a9a9b2; }

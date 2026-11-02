@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { CaptionStyle } from '@/lib/project/types';
 import { setCaptions } from '@/lib/project/ops';
 import type { SlotProps } from '../components/slots';
-import { Seg } from '../timeline/controls';
+import { rangeFill, Seg } from '../timeline/controls';
 import { C, Icon, ICONS } from '../ui';
 import { openTranslate } from '../ai/store';
 
@@ -65,7 +65,7 @@ export function CaptionsPanel({ project, cut, readOnly, edit, onTranslate = open
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <label htmlFor="caption-size" style={{ fontSize: 12, color: C.secondary, width: 74, flexShrink: 0 }}>Size</label>
         <input id="caption-size" type="range" min={SIZE_MIN} max={SIZE_MAX} step={2} value={c.size} disabled={readOnly}
-          aria-valuetext={sizeLetter(c.size)} onChange={(e) => set({ size: Number(e.target.value) })} style={{ flexGrow: 1, accentColor: C.accentText }} />
+          aria-valuetext={sizeLetter(c.size)} onChange={(e) => set({ size: Number(e.target.value) })} className="kk-range" style={{ flexGrow: 1, minWidth: 0, ...rangeFill(c.size, SIZE_MIN, SIZE_MAX) }} />
         <span style={{ fontFamily: "'Geist Mono Variable', 'Geist Mono', monospace", fontSize: 11.5, color: C.text, width: 40, textAlign: 'right' }}>{sizeLetter(c.size)}</span>
       </div>
 

@@ -39,7 +39,7 @@ export function PanelSkeleton() {
   );
 }
 
-const BODY = { flexGrow: 1, minHeight: 0, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 14 } as const;
+const BODY = { flexGrow: 1, minHeight: 0, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#2C2C34 transparent', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 14 } as const;
 
 export function Inspector({ panels = {}, selection, tab: controlled, onTab, notices = [], cover }: InspectorProps) {
   const [own, setOwn] = useState<InspectorTab>('Layout');

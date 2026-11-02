@@ -15,7 +15,12 @@ export interface Block {
   gap?: boolean;
   /** Edges can be dragged; the block can be moved. */
   resizable: boolean; movable: boolean;
+  /** The voiceover take being recorded now (Voiceover frame): a red dot before its label, not selectable. */
+  live?: boolean;
 }
+
+/** A voiceover take while it records, output ms. */
+export interface LiveTake { from: number; to: number; label: string }
 
 /** FRAMES.md "Empty track hints". */
 export const HINTS = {
@@ -83,7 +88,7 @@ const placedEnd = (p: Placed) => p.at + (p.trim[1] - p.trim[0]);
 const sourceName = (project: Project, id: string) => project.sources.find((s) => s.id === id)?.name ?? '';
 
 /** The timeline's rows with only the blocks inside the view, so a long recording draws only what shows. */
-export function buildRows(project: Project, cut: Cut, clipSpans: readonly Span[], view: View): Row[] {
+export function buildRows(project: Project, cut: Cut, clipSpans: readonly Span[], view: View, live?: LiveTake): Row[] {
   const sources = project.sources;
   const visible = clipSpans.filter((s) => inView(s.start, s.end, view));
   const clipBlock = (look: Look, label: (s: Span) => string) => (s: Span): Block => ({
@@ -97,9 +102,12 @@ export function buildRows(project: Project, cut: Cut, clipSpans: readonly Span[]
     { key: 'camera', name: 'Camera', tracks: ['camera'], mute: true, blocks: camera ? cameraBlocks(cut, clipSpans, view, visible.filter((s) => !s.clip.gap).map(clipBlock('camera', () => 'Camera'))) : [], ...(!camera && { hint: { text: HINTS.noCamera } }) },
     { key: 'voice', name: 'Voice', tracks: ['voice'], mute: true, blocks: voice ? visible.filter((s) => !s.clip.gap).map(clipBlock('voice', () => '')) : [], ...(!voice && { hint: { text: HINTS.noVoice } }) },
   ];
-  if (cut.voiceovers.length > 0 || cut.tracks.voiceovers) {
-    rows.push({ key: 'voiceover', name: 'Voiceover', tracks: ['voiceovers'], mute: true, hint: { text: HINTS.voiceover, add: 'voiceover' },
-      blocks: layerBlocks(clipSpans, view, cut.voiceovers.map((v) => ({ id: v.id, at: v.at, end: takeEnd(cut, v), label: '' })), 'voiceovers', 'voiceover', false) });
+  if (cut.voiceovers.length > 0 || cut.tracks.voiceovers || live) {
+    const blocks = layerBlocks(clipSpans, view, cut.voiceovers.map((v) => ({ id: v.id, at: v.at, end: takeEnd(cut, v), label: 'Voiceover' })), 'voiceovers', 'voiceover', false);
+    if (live && inView(live.from, live.to, view)) {
+      blocks.push({ key: 'live', id: 'live', kind: 'voiceovers', start: live.from, end: Math.max(live.to, live.from + 1), label: live.label, look: 'voiceover', resizable: false, movable: false, live: true });
+    }
+    rows.push({ key: 'voiceover', name: 'Voiceover', tracks: ['voiceovers'], mute: true, hint: { text: HINTS.voiceover, add: 'voiceover' }, blocks });
   }
   // AddMedia: each added file sits on its own track, "Media" or "Sound" then "Media 2"; the file name is on the block.
   const counts = { Media: 0, Sound: 0 };

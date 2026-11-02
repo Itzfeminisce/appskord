@@ -190,4 +190,12 @@ describe('timeline labels', () => {
     expect(media.map((r) => r.name)).toEqual(['Media', 'Sound', 'Media 2']);
     expect(media[1]!.blocks[0]!.label).toBe('b.file');
   });
+
+  it('draws the take being recorded on a Voiceover track', () => {
+    const p = fromRecording(rec);
+    const cut = currentCut(p);
+    expect(buildRows(p, cut, spans(cut), { start: 0, end: 10_000 }).some((r) => r.key === 'voiceover')).toBe(false);
+    const row = buildRows(p, cut, spans(cut), { start: 0, end: 10_000 }, { from: 1000, to: 7000, label: 'Recording 0:06' }).find((r) => r.key === 'voiceover')!;
+    expect(row.blocks).toEqual([expect.objectContaining({ start: 1000, end: 7000, label: 'Recording 0:06', live: true })]);
+  });
 });

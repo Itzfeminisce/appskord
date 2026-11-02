@@ -64,9 +64,9 @@ export function ZoomEdit({ p, zoom }: { p: SlotProps; zoom: Zoom }) {
           <li key={z.id}>
             <button type="button" aria-current={z.id === zoom.id ? 'true' : undefined} onClick={() => open(z)}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 4px', border: 0, borderBottom: `1px solid ${C.line}`,
-                background: z.id === zoom.id ? C.raised : 'transparent', color: C.text, fontFamily: 'inherit', fontSize: 12.5, textAlign: 'left', cursor: 'pointer' }}>
+                background: 'transparent', color: C.text, fontFamily: 'inherit', fontSize: 12.5, textAlign: 'left', cursor: 'pointer' }}>
               <span style={{ fontFamily: MONO, fontSize: 11, color: C.muted, width: 30, flexShrink: 0 }}>{clock(toOut(p.cut, z.at) ?? z.at)}</span>
-              <span style={{ flexGrow: 1 }}>{z.why ?? ''}</span>
+              <span style={{ flexGrow: 1 }}>{z.why ?? (z.auto ? '' : 'Added by hand')}</span>
               <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.secondary }}>{times(z.depth)}</span>
             </button>
           </li>
@@ -97,12 +97,21 @@ const toSpot = (v: View, fx: number, fy: number): Spot => ({
 const toFrame = (v: View, s: Spot) => ({ x: v.dest.x + ((s.x - v.crop.x) / v.crop.w) * v.dest.w, y: v.dest.y + ((s.y - v.crop.y) / v.crop.h) * v.dest.h });
 const withFocus = (cut: Cut, id: string, focus: Spot): Cut => ({ ...cut, zooms: cut.zooms.map((z) => (z.id === id ? { ...z, focus } : z)) });
 
-/** The "Fixed spot" focus ring over the preview while that zoom is selected: click to place it, drag to move it. */
-export function FocusStage({ project, cut, out, events, readOnly, edit, preview }: StageProps) {
+/** The selected zoom at full depth from its first frame, so a paused preview shows the zoomed picture (ZoomEdit). */
+const atDepth = (cut: Cut, id: string): Cut => ({ ...cut, zooms: cut.zooms.map((z) => (z.id === id ? { ...z, rampIn: 0, rampOut: 0 } : z)) });
+
+/**
+ * The selected zoom on the preview: zoomed at the playhead while paused, and for "Fixed spot" a stage to click or drag
+ * the focus; its ring shows only while dragging.
+ */
+export function FocusStage({ project, cut, out, events, playing, readOnly, edit, preview }: StageProps) {
   const { selected } = useTimeline();
   const [drag, setDrag] = useState<{ view: View; spot: Spot } | null>(null);
   const id = selected?.kind === 'zooms' && selected.ids.length === 1 ? selected.ids[0] : undefined;
   const zoom = cut.zooms.find((z) => z.id === id);
+  const rec = renderPlan(project, cut, out).rec;
+  const inside = !!zoom && !playing && rec !== null && rec >= zoom.at && rec < zoom.end;
+  const shownCut = zoom && inside ? atDepth(cut, zoom.id) : cut;
   const active = !!zoom && zoom.focus !== 'cursor';
   const previewRef = useRef(preview);
   previewRef.current = preview;
@@ -115,11 +124,18 @@ export function FocusStage({ project, cut, out, events, readOnly, edit, preview 
   useEffect(() => {
     if (active) return;
     setDrag(null);
-    clear();
   }, [active]);
+  useEffect(() => {
+    if (drag) return;
+    if (shownCut === cut) return clear();
+    shown.current = true;
+    previewRef.current(shownCut);
+    // shownCut is new each render; the cut, zoom and playhead state decide it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cut, zoom?.id, inside, drag]);
   useEffect(() => clear, []);
   if (!zoom || zoom.focus === 'cursor') return null;
-  const screen = renderPlan(project, cut, out, events).screen;
+  const screen = renderPlan(project, shownCut, out, events).screen;
   if (!screen) return null;
   const frame = FRAME[cut.shape];
   // The drag keeps the view it started on; the live zoom moving under the pointer would chase it.
@@ -134,7 +150,7 @@ export function FocusStage({ project, cut, out, events, readOnly, edit, preview 
   const move = (next: { view: View; spot: Spot }) => {
     setDrag(next);
     shown.current = true;
-    preview(withFocus(cut, zoom.id, next.spot));
+    preview(withFocus(shownCut, zoom.id, next.spot));
   };
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
     if (readOnly) return;
@@ -152,11 +168,10 @@ export function FocusStage({ project, cut, out, events, readOnly, edit, preview 
   return (
     <div data-testid="focus-stage" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onLostPointerCapture={onUp}
       style={{ position: 'absolute', inset: 0, cursor: readOnly ? 'default' : 'crosshair', touchAction: 'none' }}>
-      <div aria-label="Focus" style={{ position: 'absolute', left: `${(at.x / frame.w) * 100}%`, top: `${(at.y / frame.h) * 100}%`, transform: 'translate(-50%, -50%)',
-        width: 34, height: 34, borderRadius: '50%', border: '2px solid #FFFFFF', boxShadow: '0 0 0 1px rgba(0,0,0,0.35)', cursor: readOnly ? 'default' : 'grab' }}>
-        <span style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translate(-50%, 4px)', padding: '1px 6px', borderRadius: 4,
-          background: C.accentText, color: '#FFFFFF', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>Focus</span>
-      </div>
+      {drag && (
+        <div aria-label="Focus" style={{ position: 'absolute', left: `${(at.x / frame.w) * 100}%`, top: `${(at.y / frame.h) * 100}%`, transform: 'translate(-50%, -50%)',
+          width: 34, height: 34, borderRadius: '50%', border: '2px solid #FFFFFF', boxShadow: '0 0 0 1px rgba(0,0,0,0.35)', cursor: 'grabbing' }} />
+      )}
     </div>
   );
 }

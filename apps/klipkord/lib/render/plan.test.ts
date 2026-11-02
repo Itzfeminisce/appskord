@@ -199,8 +199,11 @@ describe('arrange', () => {
 
   it('puts the camera under the screen in "Screen over camera"', () => {
     const a = arrange({ ...base, shape: '9:16', fit: 'stack', layout: 'bubble' });
-    expect(a.camera!.y).toBeGreaterThan(a.screen!.y + a.screen!.h);
-    expect(a.screen!.w / a.screen!.h).toBeCloseTo(16 / 9);
+    expect(a).toMatchObject({ follow: true, edge: true, screen: { x: 0, y: 0, w: 1080, h: 1114 }, camera: { x: 0, y: 1114, w: 1080, h: 806 } });
+    const tall = setup({ shape: '9:16', fit: 'stack' });
+    const plan = renderPlan(tall.project, tall.cut, 100);
+    expect(plan.screen).toMatchObject({ radius: 0, shadow: 0 });
+    expect(plan.camera).toMatchObject({ edge: true });
   });
 
   it('fills a tall frame and crops around the cursor in "Follow the cursor"', () => {

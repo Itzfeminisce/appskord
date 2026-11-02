@@ -186,13 +186,18 @@ export function Track({ row, cut, view, width, selected, moved, strip, ...on }: 
               }}
               onContextMenu={(e) => on.onBlockMenu(e, b)}
               style={{
+                ...(b.live && { pointerEvents: 'none' }),
                 position: 'absolute', left, width: Math.max(2, right - left - 1), top: 2, bottom: 2, borderRadius: 5, boxSizing: 'border-box', overflow: 'hidden',
                 display: 'flex', alignItems: 'center', cursor: b.movable ? 'grab' : 'pointer', touchAction: 'none',
                 background: b.gap ? 'repeating-linear-gradient(135deg, #1F1F25 0 6px, #16161A 6px 12px)' : isOn ? '#3B2A22' : look.bg,
                 border: `1px solid ${isOn ? C.accentText : look.border}`, boxShadow: isOn ? `0 0 0 1px ${C.accentText}` : undefined,
               }}>
               {b.resizable && <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: EDGE_PX, cursor: 'ew-resize', zIndex: 2 }} />}
-              {b.label && <span style={{ position: 'relative', zIndex: 2, fontSize: 10.5, fontWeight: 600, color: look.text, padding: '0 6px', whiteSpace: 'nowrap', overflow: 'hidden', pointerEvents: 'none' }}>{b.label}</span>}
+              {b.live ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 6px', fontSize: 10.5, fontWeight: 600, color: '#FCA5A5', whiteSpace: 'nowrap' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#DC2626', flexShrink: 0 }} />{b.label}
+                </span>
+              ) : b.label && <span style={{ position: 'relative', zIndex: 2, fontSize: 10.5, fontWeight: 600, color: look.text, padding: '0 6px', whiteSpace: 'nowrap', overflow: 'hidden', pointerEvents: 'none' }}>{b.label}</span>}
               {b.resizable && <span aria-hidden="true" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: EDGE_PX, cursor: 'ew-resize', zIndex: 2 }} />}
             </span>
           );

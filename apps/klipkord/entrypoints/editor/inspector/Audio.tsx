@@ -11,7 +11,7 @@ import { Heading, Seg, Slider, Switch } from '../timeline/controls';
 import { C, Icon, MONO } from '../ui';
 
 type Music = NonNullable<AudioMix['music']>;
-type Volume = 'voiceVolume' | 'tabVolume' | 'music';
+type Volume = 'tabVolume' | 'music';
 const FADES = [{ value: 'none', label: 'No fade' }, { value: 'both', label: 'Fade both' }] as const;
 
 /** The meter's scale, LUFS: -16 fills 70%, as in the frame. */
@@ -72,21 +72,20 @@ export function AudioPanel(p: SlotProps) {
             </span>
             <span style={{ fontFamily: MONO, fontSize: 11, width: 52, textAlign: 'right' }}>{lufs !== null ? lufsText(lufs) : ''}</span>
           </div>
-          {volume('voiceVolume')}
         </>
       )}
 
       <Heading>Music</Heading>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 10, background: C.raised, border: `1px solid ${C.line}` }}>
-        <span style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1D4ED8', color: '#FFFFFF' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, background: C.raised, border: `1px solid ${C.line}` }}>
+        <span style={{ color: '#93C5FD', display: 'flex' }}>
           <Icon><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></Icon>
         </span>
-        <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source ? (source.name ?? source.file) : 'No music'}</span>
-          {source && <span style={{ fontSize: 11.5, color: C.muted }}>{musicLine(source.name, source.duration, length)}</span>}
+        <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source ? (source.name ?? source.file) : 'No music'}</span>
+          {source && <span style={{ fontSize: 11, color: C.muted }}>{musicLine(source.name, source.duration, length)}</span>}
         </span>
         <button type="button" disabled={readOnly} onClick={() => setDialog('music')}
-          style={{ height: 28, padding: '0 10px', borderRadius: 7, border: `1px solid ${C.line}`, background: C.tabOn, color: C.text, fontFamily: 'inherit', fontSize: 12, fontWeight: 500, cursor: readOnly ? 'default' : 'pointer' }}>
+          style={{ height: 28, padding: '0 12px', borderRadius: 8, border: 0, background: 'transparent', color: C.secondary, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', cursor: readOnly ? 'default' : 'pointer' }}>
           <span>Change</span>
         </button>
       </div>

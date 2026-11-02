@@ -104,7 +104,7 @@ export function MusicPicker({ p, onClose, onOwnFile, io = browserMediaIO, audio 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,5,7,0.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20 }}
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-label="Music" style={{ width: 480, maxHeight: 600, borderRadius: 14, background: C.panel, border: `1px solid ${C.line}`, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden', color: C.text }}>
+      <div role="dialog" aria-label="Music" style={{ width: 520, maxHeight: 600, borderRadius: 14, background: C.panel, border: `1px solid ${C.line}`, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden', color: C.text }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '16px 16px 0 20px' }}>
           <div style={{ flexGrow: 1 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Music</h2>
@@ -120,16 +120,16 @@ export function MusicPicker({ p, onClose, onOwnFile, io = browserMediaIO, audio 
               return (
                 <div key={t.id} role="option" aria-selected={on} tabIndex={0} onClick={() => setChosen(t)}
                   onKeyDown={(e) => { if (e.key === 'Enter') setChosen(t); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 10, cursor: 'pointer', background: C.raised, border: `1px solid ${on ? C.accentText : C.line}` }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, cursor: 'pointer', background: C.raised, border: `1px solid ${on ? C.accentText : C.line}` }}>
                   <button type="button" aria-label={`Play ${t.name}`} aria-pressed={playing === t.id} onClick={(e) => { e.stopPropagation(); toggle(t); }}
-                    style={{ ...iconButton(32), borderRadius: '50%', background: C.tabOn, color: C.text }}>
-                    <Icon>{playing === t.id ? <><path d="M8 5v14" /><path d="M16 5v14" /></> : <path d="M7 4l13 8-13 8z" />}</Icon>
+                    style={{ ...iconButton(30), borderRadius: '50%', background: C.tabOn, color: C.text }}>
+                    <Icon size={13}>{playing === t.id ? <><path d="M8 5v14" /><path d="M16 5v14" /></> : <path d="M7 4l13 8-13 8z" />}</Icon>
                   </button>
-                  <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                  <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <span style={{ fontSize: 13, fontWeight: 500 }}>{t.name}</span>
                     <span style={{ fontSize: 11.5, color: C.muted }}>{t.about}</span>
                   </span>
-                  <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.secondary }}>{lengths[t.id] ? clock(lengths[t.id]!) : ''}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.secondary }}>{clock(lengths[t.id] || t.ms)}</span>
                 </div>
               );
             })}
@@ -138,7 +138,7 @@ export function MusicPicker({ p, onClose, onOwnFile, io = browserMediaIO, audio 
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderTop: `1px solid ${C.line}` }}>
           <button type="button" onClick={onOwnFile} disabled={p.readOnly} style={{ ...actionButton('secondary'), height: 32, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Icon size={14}><path d="M12 15V3" /><path d="M7 8l5-5 5 5" /><path d="M5 21h14" /></Icon><span>Use your own file</span>
+            <Icon size={15}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></Icon><span>Use your own file</span>
           </button>
           <span style={{ flexGrow: 1 }} />
           <button type="button" onClick={none} style={{ ...actionButton('ghost'), height: 32 }}>No music</button>
