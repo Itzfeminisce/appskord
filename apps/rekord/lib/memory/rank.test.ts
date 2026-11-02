@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isoDay, rankOpenLoops } from './rank';
+import { isoDay, nextWake, rankOpenLoops } from './rank';
 import { SAMPLE_ITEMS, SAMPLE_NOW } from './sample';
 import type { MemoryItem } from './types';
 
@@ -42,5 +42,15 @@ describe('rankOpenLoops', () => {
       ['thisWeek', ['soon', 'late']],
       ['noDate', ['woke', 'q']],
     ]);
+  });
+});
+
+describe('snooze wake', () => {
+  it('hides a snoozed item until its time, then it rejoins Open loops', () => {
+    const snoozed = item('s', { snoozedUntil: 2_000 });
+    expect(rankOpenLoops([snoozed], 1_000).counts.youOwe).toBe(0);
+    expect(nextWake([snoozed], 1_000)).toBe(2_000);
+    expect(rankOpenLoops([snoozed], 2_001).counts.youOwe).toBe(1);
+    expect(nextWake([snoozed], 2_001)).toBeUndefined();
   });
 });

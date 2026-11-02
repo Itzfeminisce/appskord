@@ -27,7 +27,8 @@ export type ScreenName =
   | 'home' | 'backfill' // v4: Open loops is home
   | 'people' | 'person' | 'personMerge' | 'forget'
   | 'review' | 'reviewEdit'
-  | 'redact' | 'ledger';
+  | 'redact' | 'ledger'
+  | 'promise' | 'looksDone' | 'nudge' | 'decisions';
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
 export interface RouteParams { meetingId?: string; itemId?: string; message?: string; atMs?: number; endMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string }

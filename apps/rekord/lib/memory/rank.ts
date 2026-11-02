@@ -51,3 +51,9 @@ export function rankOpenLoops(items: MemoryItem[], now: number, tab?: LoopTab): 
   const overdue = open.filter((i) => i.kind === 'promise' && sectionOf(i, now) === 'overdue').length;
   return { sections, counts, overdue };
 }
+
+/** When the next snoozed item wakes and rejoins Open loops; undefined when none is snoozed. */
+export function nextWake(items: MemoryItem[], now: number): number | undefined {
+  const wakes = items.map((i) => i.snoozedUntil).filter((t): t is number => !!t && t > now);
+  return wakes.length ? Math.min(...wakes) : undefined;
+}

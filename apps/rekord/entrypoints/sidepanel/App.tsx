@@ -32,6 +32,11 @@ import ReviewEdit from './screens/v4/ReviewEdit';
 import Redact from './screens/v4/Redact';
 import Ledger from './screens/v4/Ledger';
 import { Shell } from './components/v4/Shell';
+import Home from './screens/v4/Home';
+import PromiseScreen from './screens/v4/Promise';
+import LooksDone from './screens/v4/LooksDone';
+import Nudge from './screens/v4/Nudge';
+import Decisions from './screens/v4/Decisions';
 import Connections from './screens/Connections';
 import Share from './screens/Share';
 import NotionConnect from './screens/NotionConnect';
@@ -45,9 +50,6 @@ declare global {
   const __REKORD_DEV_FRAMES__: boolean;
 }
 const devFrames = typeof __REKORD_DEV_FRAMES__ !== 'undefined' && __REKORD_DEV_FRAMES__;
-
-// Open loops' body arrives with its own task; the shell is the home screen meanwhile.
-const Home = () => <Shell tab="loops" />;
 
 export const SCREENS: Record<ScreenName, ComponentType> = {
   welcome: Welcome,
@@ -86,6 +88,10 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   reviewEdit: ReviewEdit,
   redact: Redact,
   ledger: Ledger,
+  promise: PromiseScreen,
+  looksDone: LooksDone,
+  nudge: Nudge,
+  decisions: Decisions,
 };
 
 /** First screen: onboarding until the user has finished it, then Open loops. */
