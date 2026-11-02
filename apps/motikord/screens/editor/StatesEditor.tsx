@@ -114,6 +114,20 @@ export function ClipNotFound({ onGo }: { onGo?: () => void }) {
   );
 }
 
+/** Whole tab: "Open the editor now" was used, then the make failed or was cancelled, so its unfinished clip was removed. */
+export function ClipUnfinished({ onBack }: { onBack?: () => void }) {
+  return (
+    <div role="alert" style={{ padding: 14, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <svg {...svg(20)} stroke="var(--muted)" strokeWidth={2}><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.01" /></svg>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>This clip wasn’t finished</span>
+        <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>Making stopped before the clip was ready. Your other clips are safe.</span>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}><button type="button" onClick={onBack} style={actionStyle}>Back to Motikord</button></div>
+      </div>
+    </div>
+  );
+}
+
 /** Two bars while the clip plays ("Pause"), a triangle when it stops ("Play"). */
 export function PlayIcon({ playing }: { playing: boolean }) {
   return playing
@@ -155,6 +169,7 @@ export default function StatesEditor() {
       <Section label="save-failed · Editor"><SaveFailed /></Section>
       <Section label="undo-toast · Editor (after a fix or hand edit)"><UndoToast text="Fixed 3 things" /></Section>
       <Section label="clip-not-found · Editor (whole tab)"><ClipNotFound /></Section>
+      <Section label="clip-unfinished · Editor (whole tab)"><ClipUnfinished /></Section>
       <Section label="pause-control · Editor (under the clip, while playing)">
         <div style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--stage)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <button type="button" aria-label="Pause" style={{ width: 34, height: 34, border: 0, borderRadius: '50%', background: 'var(--ink)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}><PlayIcon playing /></button>

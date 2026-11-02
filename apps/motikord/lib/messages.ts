@@ -10,6 +10,8 @@ export interface MessageMap {
   'editor/open': { req: { clipId?: string }; res: { tabId: number } };
   // Editor tab → everyone: a clip was saved to IndexedDB, so lists reload it.
   'clip/saved': { req: { clipId: string }; res: void };
+  // Side panel → editor tab: the make stopped (failed or cancelled) and its unfinished clip is about to be removed.
+  'clip/unfinished': { req: { clipId: string }; res: void };
   // Brand kit screen → editor tab: apply the saved brand kit to the open clip as one Change by 'hand'.
   'brand/apply': { req: { clipId?: string }; res: { applied: boolean } };
   // Editor tab → side panel: show PasteKey (the Pexels field), e.g. from "Add a Pexels key".
@@ -30,6 +32,8 @@ export interface MessageMap {
 
 /** Session-storage key the editor sets for a side panel that is still loading. */
 export const PANEL_GOTO = 'motikordPanelGoto';
+/** Session-storage key holding the last unfinished clip removed, for an editor tab that missed 'clip/unfinished' while loading. */
+export const UNFINISHED_CLIP = 'motikordUnfinished';
 
 export type MessageType = keyof MessageMap;
 export type MessageOf<T extends MessageType> = { type: T } & MessageMap[T]['req'];

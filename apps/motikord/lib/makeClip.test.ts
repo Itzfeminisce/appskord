@@ -183,6 +183,41 @@ describe('library', () => {
     expect(await getClip('id-1')).toBeUndefined();
   });
 
+  it('cancel after "Open the editor now" tells the editor before removing the unfinished clip', async () => {
+    const log: string[] = [];
+    let seen: AbortSignal | undefined;
+    const hang: RunnerDeps['make'] = (_i, h) => new Promise((_res, rej) => { seen = h?.signal; h?.signal?.addEventListener('abort', () => rej(new AiError('cancelled', 'make'))); });
+    const runner = createRunner(deps({ log, make: hang }));
+    const run = runner.start({ prompt: 'A promo', attached: [] });
+    await vi.waitFor(() => expect(seen).toBeDefined());
+    await runner.openNow({ prompt: 'A promo', attached: [] });
+    await runner.cancel();
+    await run;
+    expect(log).toEqual(['unfinished id-1 still stored', 'remove id-1']);
+  });
+
+  it('a failed make after "Open the editor now" tells the editor before removing the unfinished clip', async () => {
+    const log: string[] = [];
+    let fail: ((e: Error) => void) | undefined;
+    const make: RunnerDeps['make'] = () => new Promise((_res, rej) => { fail = rej; });
+    const runner = createRunner(deps({ log, make }));
+    const run = runner.start({ prompt: 'A promo', attached: [] });
+    await vi.waitFor(() => expect(fail).toBeDefined());
+    await runner.openNow({ prompt: 'A promo', attached: [] });
+    fail!(new AiError('invalid-reply', 'make'));
+    await run;
+    expect(runner.get().status).toBe('failed');
+    expect(log).toEqual(['unfinished id-1 still stored', 'remove id-1']);
+    expect(await getClip('id-1')).toBeUndefined();
+  });
+
+  it('a failed make without an open editor sends no unfinished notice', async () => {
+    const log: string[] = [];
+    const runner = createRunner(deps({ log, make: async () => { throw new AiError('invalid-reply', 'make'); } }));
+    await runner.start({ prompt: 'A promo', attached: [] });
+    expect(log).toEqual([]);
+  });
+
   it('shows provider-access without any AI call when host access is denied', async () => {
     const g = groq();
     const runner = createRunner(deps({ hooks: g.hooks }));
@@ -387,15 +422,16 @@ describe('runner: v2 Making', () => {
   });
 });
 
-function deps(o: { opened?: string[]; notified?: string[]; hooks?: Record<string, unknown>; make?: RunnerDeps['make'] } = {}): RunnerDeps {
+function deps(o: { opened?: string[]; notified?: string[]; log?: string[]; hooks?: Record<string, unknown>; make?: RunnerDeps['make'] } = {}): RunnerDeps {
   let n = 0;
   const base = o.make ?? makeClip;
   return {
     make: (i, h) => base(i, { ...h, ...o.hooks, signal: h?.signal, onType: h?.onType, onRecipe: h?.onRecipe }),
     openEditor: async (id) => { o.opened?.push(id); },
     notifySaved: async (id) => { o.notified?.push(id); },
+    notifyUnfinished: async (id) => { o.log?.push(`unfinished ${id} ${(await getClip(id)) ? 'still stored' : 'already gone'}`); },
     save: putClip,
-    remove: deleteClip,
+    remove: async (id) => { o.log?.push(`remove ${id}`); await deleteClip(id); },
     settings: async () => settings,
     brand: async () => undefined,
     id: () => `id-${++n}`,

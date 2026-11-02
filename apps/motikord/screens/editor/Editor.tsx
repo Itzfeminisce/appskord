@@ -9,9 +9,10 @@ import { devSampleRecipe, findLayer, initState, reducer, removeLayer, sceneIndex
 import { getBrandKit, getClip, putClip, updateClip } from '../../lib/db';
 import { getMedia } from '../../lib/media';
 import { brandEdit, loadKit, registerBrandFonts } from '../../lib/brand';
-import { onMessage, send } from '../../lib/messages';
+import { onMessage, send, UNFINISHED_CLIP } from '../../lib/messages';
+import { goneReason, type GoneReason } from '../../lib/editorTab';
 import { applyPatch, PatchError } from '../../lib/patch';
-import { goInSidePanel, useWindowId } from '../../lib/sidepanelGo';
+import { goInSidePanel, openSidePanel, useWindowId } from '../../lib/sidepanelGo';
 import { MediaCache } from '../../lib/render/cache';
 import { devTools, type RouteParams } from '../../lib/router';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
@@ -30,7 +31,7 @@ import { FormatsPanel } from './Formats';
 import { LayerTab } from './LayerTab';
 import { PresetsPopover } from './Presets';
 import { ScenesList } from './ScenesList';
-import { ClipNotFound, EditorLoading, FirstRun, MediaMissing, PreviewLight, SaveFailed, UndoToast } from './StatesEditor';
+import { ClipNotFound, ClipUnfinished, EditorLoading, FirstRun, MediaMissing, PreviewLight, SaveFailed, UndoToast } from './StatesEditor';
 import { Timeline } from './Timeline';
 import { TopBar } from './TopBar';
 import { Transport } from './Transport';
@@ -211,18 +212,25 @@ export default function Editor({ open }: { open?: EditorOpenOn } = {}) {
   const { route } = useRouter();
   const [cache] = useState(pageCache);
   const [loaded, setLoaded] = useState<Loaded>();
-  const [gone, setGone] = useState(false);
+  const [gone, setGone] = useState<GoneReason>();
   const [name, setName] = useState('');
+  const clipId = route.params.clipId ?? new URLSearchParams(location.search).get('clip') ?? undefined;
   useEffect(() => {
     let live = true;
-    const id = route.params.clipId ?? new URLSearchParams(location.search).get('clip') ?? undefined;
+    const id = clipId;
+    // The make can stop while this tab is still loading: hear it here too, before the clip opens.
+    const stop = onMessage({ 'clip/unfinished': ({ clipId: c }) => { if (live && c === id) setGone('unfinished'); } });
     if (id) void getClip(id).then((c) => live && c && setName(c.recipe.name)).catch(() => undefined);
-    openClip(id, cache).then((l) => { if (!live) return; if (l) { setName(l.clip.recipe.name); setLoaded(l); } else setGone(true); })
-      .catch((error: unknown) => console.error('Motikord: could not open the clip', error));
-    return () => { live = false; };
-  }, [route.params.clipId, cache]);
+    openClip(id, cache).then(async (l) => {
+      if (!live) return;
+      if (l) { setName(l.clip.recipe.name); setLoaded(l); return; }
+      const reason = goneReason(id, await unfinishedClip());
+      if (live) setGone((g) => g ?? reason);
+    }).catch((error: unknown) => console.error('Motikord: could not open the clip', error));
+    return () => { live = false; stop(); };
+  }, [clipId, cache]);
 
-  if (gone) return <NotFound />;
+  if (gone) return <NotFound reason={gone} />;
   if (!loaded) {
     return (
       <div style={{ flex: 1, display: 'grid', placeItems: 'center', background: 'var(--stage)' }}>
@@ -233,19 +241,26 @@ export default function Editor({ open }: { open?: EditorOpenOn } = {}) {
   return <EditorOpen loaded={loaded} cache={cache} open={open} />;
 }
 
-/** clip-not-found: the whole tab, when the clip was deleted (before or while it is open). */
-function NotFound() {
+/** The last clip removed because its make stopped; undefined when none or unreadable. */
+const unfinishedClip = (): Promise<unknown> => browser.storage.session.get(UNFINISHED_CLIP).then((v) => v[UNFINISHED_CLIP], () => undefined);
+
+/** The whole tab when the clip is gone: clip-not-found when it was deleted, ClipUnfinished when its make stopped first. */
+function NotFound({ reason }: { reason: GoneReason }) {
   const win = useWindowId();
   return (
     <div style={{ flex: 1, minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--stage)' }}>
-      <div style={{ width: 400 }}><ClipNotFound onGo={() => goInSidePanel(win.current, 'Library')} /></div>
+      <div style={{ width: 400 }}>
+        {reason === 'unfinished'
+          ? <ClipUnfinished onBack={() => openSidePanel(win.current)} />
+          : <ClipNotFound onGo={() => goInSidePanel(win.current, 'Library')} />}
+      </div>
     </div>
   );
 }
 
 function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache; open?: EditorOpenOn }) {
   const router = useRouter();
-  const [gone, setGone] = useState(false);
+  const [gone, setGone] = useState<GoneReason>();
   const [state, dispatch] = useReducer(reducer, loaded.clip, initState);
   const [save, setSave] = useState<SaveStatus>('saved');
   const [smoothPreview, setSmooth] = useState(true);
@@ -280,10 +295,12 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   // The stored clip as the editor last wrote or read it: what other surfaces' saves are merged against.
   const synced = useRef(loaded.clip);
   const goneRef = useRef(false);
-  const markGone = useCallback(() => {
+  const markGone = useCallback((reason?: GoneReason) => {
     goneRef.current = true;
     autosave.current?.dispose();
-    setGone(true);
+    if (reason) { setGone(reason); return; }
+    const id = stateRef.current.clip.id;
+    void unfinishedClip().then((u) => setGone(goneReason(id, u)));
   }, []);
 
   /** Another surface saved this clip: take its version and keep every unsaved edit made here. */
@@ -342,6 +359,9 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
       const stored = await getClip(clipId);
       if (!stored) markGone();
       else takeStored(stored);
+    },
+    'clip/unfinished': ({ clipId }) => {
+      if (clipId === stateRef.current.clip.id && !goneRef.current) markGone('unfinished');
     },
   }), [markGone, takeStored]);
 
@@ -510,7 +530,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
   };
   const si = sceneIndex(state.clip.recipe, state.sceneId);
 
-  if (gone) return <NotFound />;
+  if (gone) return <NotFound reason={gone} />;
   // SwapTemplate: the stage moves left so the preview is not under the popover.
   const swapOpen = panel?.kind === 'swap';
   return (
