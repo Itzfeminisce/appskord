@@ -5,8 +5,9 @@ import type { Project } from './types';
 
 const rec = { id: 'r1', title: 'Demo', share: { fileId: 'f', link: 'l', at: 1 }, bytes: 9 } as unknown as Recording;
 const project = {
-  id: 'r1', name: 'Demo', cuts: [{ id: 'c1' }, { id: 'c2' }], current: 'c1',
+  id: 'r1', name: 'Demo', cuts: [{ id: 'c1', zooms: [] }, { id: 'c2', zooms: [] }], current: 'c1',
   history: { c1: { undo: [{ label: 'Cut 3 words', before: {}, at: 1 }], redo: [] } },
+  options: { lightPreview: false, tour: true, bakeCamera: false },
 } as unknown as Project;
 
 function fakes(fail?: 'project') {
@@ -36,6 +37,7 @@ describe('duplicateProject', () => {
     expect(copy).toMatchObject({ id: 'r2', name: 'Demo copy', current: 'c1' });
     expect(copy.history).toEqual({ c1: { undo: [], redo: [] }, c2: { undo: [], redo: [] } });
     expect(project.history.c1!.undo).toHaveLength(1);
+    expect(copy.options.autoZoomed).toBe(true);
     expect(recordings.get('r1')!.title).toBe('Demo');
   });
 

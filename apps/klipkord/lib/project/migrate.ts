@@ -36,7 +36,7 @@ export function fromRecording(rec: Recording, sources: Source[] = [], options: P
     wordFixes: {}, chapters: [...(rec.summary?.chapters ?? [])].sort((a, b) => a.at - b.at), translations: {},
     cuts: [cut], current: cut.id, history: { [cut.id]: { undo: [], redo: [] } },
     quickWins: 'new',
-    options: { lightPreview: false, tour: true, bakeCamera: false, ...options },
+    options: { lightPreview: false, tour: true, bakeCamera: false, autoZoomed: false, ...options },
     updatedAt: rec.createdAt,
   };
 }

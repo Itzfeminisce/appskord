@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import { autoZoomOnOpen, removeLayer, updateLayer } from '@/lib/project/ops';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { autoZoomed, autoZoomOnOpen, removeLayer, updateLayer } from '@/lib/project/ops';
 import { toOut } from '@/lib/project/time';
-import type { Feel, Zoom } from '@/lib/project/types';
+import type { Box, Cut, Feel, Zoom } from '@/lib/project/types';
+import { FRAME, renderPlan } from '@/lib/render/plan';
 import type { SlotProps } from '../components/slots';
+import type { StageProps } from '../Editor';
 import { clock } from '../format';
 import { Heading, Seg, Slider, Switch } from '../timeline/controls';
 import { times } from '../timeline/rows';
-import { select } from '../timeline/store';
+import { select, useTimeline } from '../timeline/store';
 import { useEvents } from '../transcript/events';
 import { C, MONO } from '../ui';
 
@@ -74,14 +76,71 @@ export function ZoomEdit({ p, zoom }: { p: SlotProps; zoom: Zoom }) {
   );
 }
 
-/** Runs autoZoom once when a recording with events first opens; nothing to draw. */
+/** Runs autoZoom once per project (its `autoZoomed` flag) when a recording with events opens; nothing to draw. */
 export function AutoZoomOnOpen({ project, recording, ready, readOnly, edit }: SlotProps) {
   const events = useEvents(project);
-  const done = useRef(false);
+  const done = autoZoomed(project);
   useEffect(() => {
-    if (done.current || !ready || readOnly || !events) return;
-    done.current = true;
-    if (events.length) edit((proj) => autoZoomOnOpen(proj, { events, duration: recording.duration }));
-  }, [ready, readOnly, events, edit, recording.duration]);
+    if (done || !ready || readOnly || !events?.length) return;
+    edit((proj) => autoZoomOnOpen(proj, { events, duration: recording.duration }));
+  }, [done, ready, readOnly, events, edit, recording.duration]);
   return null;
+}
+
+type Spot = { x: number; y: number };
+/** Where the screen picture sits on the preview: its crop (0..1 of the picture) and box (frame px). */
+interface View { crop: Box; dest: Box }
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+const toSpot = (v: View, fx: number, fy: number): Spot => ({
+  x: clamp01(v.crop.x + ((fx - v.dest.x) / v.dest.w) * v.crop.w), y: clamp01(v.crop.y + ((fy - v.dest.y) / v.dest.h) * v.crop.h),
+});
+const toFrame = (v: View, s: Spot) => ({ x: v.dest.x + ((s.x - v.crop.x) / v.crop.w) * v.dest.w, y: v.dest.y + ((s.y - v.crop.y) / v.crop.h) * v.dest.h });
+const withFocus = (cut: Cut, id: string, focus: Spot): Cut => ({ ...cut, zooms: cut.zooms.map((z) => (z.id === id ? { ...z, focus } : z)) });
+
+/** The "Fixed spot" focus ring over the preview while that zoom is selected: click to place it, drag to move it. */
+export function FocusStage({ project, cut, out, events, readOnly, edit, preview }: StageProps) {
+  const { selected } = useTimeline();
+  const [drag, setDrag] = useState<{ view: View; spot: Spot } | null>(null);
+  const id = selected?.kind === 'zooms' && selected.ids.length === 1 ? selected.ids[0] : undefined;
+  const zoom = cut.zooms.find((z) => z.id === id);
+  if (!zoom || zoom.focus === 'cursor') return null;
+  const screen = renderPlan(project, cut, out, events).screen;
+  if (!screen) return null;
+  const frame = FRAME[cut.shape];
+  // The drag keeps the view it started on; the live zoom moving under the pointer would chase it.
+  const view: View = drag?.view ?? { crop: screen.crop, dest: screen.dest };
+  const placed = zoom.focus;
+  const spot = drag?.spot ?? placed;
+  const at = toFrame(view, spot);
+  const spotAt = (e: PointerEvent<HTMLDivElement>, v: View) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return toSpot(v, ((e.clientX - r.left) / (r.width || 1)) * frame.w, ((e.clientY - r.top) / (r.height || 1)) * frame.h);
+  };
+  const move = (next: { view: View; spot: Spot }) => {
+    setDrag(next);
+    preview(withFocus(cut, zoom.id, next.spot));
+  };
+  const onDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (readOnly) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    move({ view, spot: spotAt(e, view) });
+  };
+  const onMove = (e: PointerEvent<HTMLDivElement>) => drag && move({ view: drag.view, spot: spotAt(e, drag.view) });
+  const onUp = () => {
+    if (!drag) return;
+    const focus = drag.spot;
+    setDrag(null);
+    preview(null);
+    if (focus.x !== placed.x || focus.y !== placed.y) edit((p) => updateLayer(p, { kind: 'zooms', id: zoom.id, patch: { focus } }));
+  };
+  return (
+    <div data-testid="focus-stage" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+      style={{ position: 'absolute', inset: 0, cursor: readOnly ? 'default' : 'crosshair', touchAction: 'none' }}>
+      <div aria-label="Focus" style={{ position: 'absolute', left: `${(at.x / frame.w) * 100}%`, top: `${(at.y / frame.h) * 100}%`, transform: 'translate(-50%, -50%)',
+        width: 34, height: 34, borderRadius: '50%', border: '2px solid #FFFFFF', boxShadow: '0 0 0 1px rgba(0,0,0,0.35)', cursor: readOnly ? 'default' : 'grab' }}>
+        <span style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translate(-50%, 4px)', padding: '1px 6px', borderRadius: 4,
+          background: C.accentText, color: '#FFFFFF', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>Focus</span>
+      </div>
+    </div>
+  );
 }

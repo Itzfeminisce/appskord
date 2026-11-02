@@ -4,7 +4,7 @@ import type { Unit } from '../wordCuts';
 import { currentCut, steps, undo } from './history';
 import { fromRecording } from './migrate';
 import {
-  addChapter, addLayer, autoZoomOnOpen, cutRange, deleteClip, deleteWords, duplicateClip, fixWord, moveRange, pasteAfter, removeChapter,
+  addChapter, addLayer, autoZoomed, autoZoomOnOpen, cutRange, deleteClip, deleteWords, duplicateClip, fixWord, moveRange, pasteAfter, removeChapter,
   removeLayer, restoreWords, setAudio, setCamera, setCaptions, setLook, setSpeed, setTrack, setTransition, split,
   updateChapter, updateLayer, LABELS, quote,
 } from './ops';
@@ -223,13 +223,27 @@ describe('autoZoomOnOpen', () => {
 
   it('runs only on a first open with events', () => {
     const once = autoZoomOnOpen(opened(), { events });
+    expect(once.options.autoZoomed).toBe(true);
     const undone = undo(once);
+    expect(undone.options.autoZoomed).toBe(true);
     expect(autoZoomOnOpen(undone, { events })).toBe(undone);
-    const edited = setLook(opened(), { patch: { padding: 10 } });
-    expect(autoZoomOnOpen(edited, { events })).toBe(edited);
     const none = base();
     expect(autoZoomOnOpen(none, { events })).toBe(none);
     const quiet = opened();
     expect(autoZoomOnOpen(quiet, { events: [] })).toBe(quiet);
+  });
+
+  it('still runs when the user edited before the events loaded', () => {
+    const edited = setLook(opened(), { patch: { padding: 10 } });
+    expect(cut(autoZoomOnOpen(edited, { events })).zooms).toHaveLength(2);
+  });
+
+  it('treats a project saved before the flag as done once it has history or zooms', () => {
+    const legacy = (p: Project): Project => ({ ...p, options: { ...p.options, autoZoomed: undefined } });
+    expect(autoZoomed(legacy(opened()))).toBe(false);
+    const edited = legacy(setLook(opened(), { patch: { padding: 10 } }));
+    expect(autoZoomOnOpen(edited, { events })).toBe(edited);
+    const zoomed = legacy(addLayer(opened(), { kind: 'zooms', items: [{ at: 0, end: 1000, depth: 2, focus: 'cursor', feel: 'smooth', auto: false }] }));
+    expect(autoZoomed(zoomed)).toBe(true);
   });
 });

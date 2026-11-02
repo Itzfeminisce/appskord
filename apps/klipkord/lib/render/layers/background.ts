@@ -3,14 +3,14 @@ import type { Look } from '../../project/types';
 /** A gradient stop: colour and position 0..1 along a 135° line. */
 export type Stop = readonly [string, number];
 
-/** The background gradients from the FrameLook frame, in swatch order ("Background 1" to "Background 6"). */
+/** The background gradients (FRAMES.md "Look tab and zoom values"), in swatch order; Ember is the default. */
 export const GRADIENTS: Readonly<Record<string, readonly Stop[]>> = {
-  ember: [['#7C2D12', 0], ['#C2410C', 0.55], ['#FDBA74', 1]],
+  ember: [['#7C2D12', 0], ['#C2410C', 0.5], ['#FDBA74', 1]],
   ocean: [['#1E3A8A', 0], ['#60A5FA', 1]],
   forest: [['#14532D', 0], ['#4ADE80', 1]],
   graphite: [['#111114', 0], ['#3F3F46', 1]],
   stone: [['#F5F5F4', 0], ['#D6D3D1', 1]],
-  orchid: [['#581C87', 0], ['#F472B6', 1]],
+  dusk: [['#581C87', 0], ['#F472B6', 1]],
 };
 /** Drawn when a background cannot be: an unknown gradient, a missing image or no screen to blur. */
 export const FALLBACK_COLOUR = '#1C1917';

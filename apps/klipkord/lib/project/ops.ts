@@ -402,14 +402,21 @@ export function removeLayer<K extends LayerKind>(project: Project, { kind, ids, 
   });
 }
 
+/** Whether the first-open autoZoom has run; a project saved before the flag counts once it has zooms or any history. */
+export function autoZoomed(project: Project): boolean {
+  return project.options.autoZoomed
+    ?? (project.cuts.some((c) => c.zooms.length > 0) || Object.values(project.history).some((h) => h.undo.length > 0 || h.redo.length > 0));
+}
+
 /**
- * First open of a recording with events: zooms on its clicks and typing, as one Undo step. A project that has any
- * zoom or any history step was opened before, so this runs once.
+ * First open of a recording with events: zooms on its clicks and typing, as one Undo step. It marks the project
+ * `autoZoomed` and never runs again; edits made before the events loaded do not stop it.
  */
 export function autoZoomOnOpen(project: Project, { events, duration, label }: Labelled<{ events: RecEvent[]; duration?: number }>): Project {
-  if (!project.events || project.cuts.some((c) => c.zooms.length > 0)) return project;
-  if (Object.values(project.history).some((h) => h.undo.length > 0 || h.redo.length > 0)) return project;
-  return addLayer(project, { kind: 'zooms', items: autoZoom(events, 'smooth', duration), label });
+  if (!project.events || autoZoomed(project)) return project;
+  const items = autoZoom(events, 'smooth', duration);
+  if (!items.length) return project;
+  return addLayer({ ...project, options: { ...project.options, autoZoomed: true } }, { kind: 'zooms', items, label });
 }
 
 // ---- Chapters (project-wide, rec ms) ----

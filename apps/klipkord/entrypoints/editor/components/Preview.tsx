@@ -28,6 +28,8 @@ export interface PreviewProps {
   onFirstFrame(): void;
   onSlow(): void;
   stageRef: RefObject<HTMLDivElement | null>;
+  /** Drawn over the picture, in its box. */
+  children?: ReactNode;
 }
 
 /** A canvas goes to the worker only once, so its client outlives an effect re-run (StrictMode) and closes on unmount. */
@@ -124,6 +126,7 @@ export function Preview(p: PreviewProps) {
         {!p.firstFrame && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{p.opening}</div>
         )}
+        {p.firstFrame && p.children}
       </div>
     </div>
   );
