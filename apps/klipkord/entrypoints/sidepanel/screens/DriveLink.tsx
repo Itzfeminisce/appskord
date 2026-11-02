@@ -7,7 +7,7 @@ import { GOOGLE_ORIGINS, connectGoogle, forgetGoogleToken, getGoogleToken, googl
 import { estimateVideoBytes } from '@/lib/library';
 import { formatBytes } from '@/lib/time';
 import type { Recording } from '@/lib/types';
-import { videoStore } from '@/lib/videoStore';
+import { readPlayable } from '@/lib/export/playable';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { BackBar } from './Export';
@@ -125,7 +125,7 @@ export default function DriveLink() {
     percent.current = 0;
     setPhase({ kind: 'drive-uploading', sent: 0, total: blob.current?.size ?? estimateVideoBytes(r) });
     if (!blob.current) {
-      const video = r.edits.length > 0 ? await encodeKept(r, () => undefined, abort.signal) : await videoStore.read(r.id, 'video', r.mime);
+      const video = r.edits.length > 0 ? await encodeKept(r, () => undefined, abort.signal) : await readPlayable(r);
       if (video.size === 0) throw new Error('The recording has no video');
       blob.current = video;
     }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { SAVE_LABEL, type SaveStatus } from '../hooks/useProject';
 import { C, Icon, iconButton, ICONS } from '../ui';
 
@@ -17,6 +18,8 @@ export interface TopBarProps {
   onShortcuts?: () => void;
   onAskAI?: () => void;
   onExport?: () => void;
+  /** T9's "Exporting 62%" pill, left of Undo. */
+  status?: ReactNode;
 }
 
 const DIVIDER = { width: 1, height: 20, background: C.line, flexShrink: 0 } as const;
@@ -40,6 +43,7 @@ export function TopBar(p: TopBarProps) {
         <span style={p.save === 'not-saved' ? { color: C.accentText } : undefined}>{SAVE_LABEL[p.save]}</span>
       </span>
       <span style={{ flexGrow: 1 }} />
+      {p.status}
       <button type="button" aria-label="Undo (Ctrl+Z)" title={undoTip} disabled={!p.canUndo} onClick={p.onUndo}
         onContextMenu={(e) => { if (p.onHistory) { e.preventDefault(); p.onHistory(); } }}
         style={{ ...iconButton(), opacity: p.canUndo ? 1 : 0.4, cursor: p.canUndo ? 'pointer' : 'default' }}>

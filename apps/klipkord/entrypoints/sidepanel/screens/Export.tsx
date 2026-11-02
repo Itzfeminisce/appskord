@@ -9,7 +9,7 @@ import { buildMarkdown } from '@/lib/markdown';
 import { updateSettings } from '@/lib/settings';
 import { formatBytes, formatClock } from '@/lib/time';
 import type { Recording } from '@/lib/types';
-import { videoStore } from '@/lib/videoStore';
+import { readPlayable } from '@/lib/export/playable';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { BannerAction, StateBanner } from './Setup';
@@ -146,7 +146,7 @@ export default function Export() {
         plan.push({
           name: `video.${ext}`,
           data: async () => {
-            const blob = encode ? await encodeKept(r, setShare, abort.signal, ext) : await videoStore.read(r.id, 'video', r.mime);
+            const blob = encode ? await encodeKept(r, setShare, abort.signal, ext) : await readPlayable(r);
             if (blob.size === 0) throw new Error('The recording has no video');
             return blob;
           },
