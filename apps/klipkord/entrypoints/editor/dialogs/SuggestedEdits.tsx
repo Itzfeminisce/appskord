@@ -75,18 +75,19 @@ export function SuggestedEdits({ recording, project, ready, readOnly, seek, play
 
   return (
     <div role="dialog" aria-label="Quick wins" style={{
-      position: 'fixed', top: 56, right: 12, width: 420, zIndex: 6, borderRadius: 14, background: C.panel, border: `1px solid ${C.line}`,
+      position: 'fixed', top: 56, right: 12, width: 420, maxHeight: 'calc(100vh - 68px)', zIndex: 6, borderRadius: 14, background: C.panel, border: `1px solid ${C.line}`,
       boxShadow: '0 24px 60px rgba(0,0,0,0.55)', padding: 16, display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box', color: C.text,
     }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexShrink: 0 }}>
         <div style={{ flexGrow: 1 }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{`${n} ${n === 1 ? 'quick win' : 'quick wins'} for this video`}</h2>
           <p style={{ margin: '4px 0 0', fontSize: 12.5, color: C.secondary }}>{`Together they take it from ${clock(before)} to ${clock(after)}. Nothing changes until you apply.`}</p>
         </div>
         <button type="button" aria-label="Close (Esc)" title="Close (Esc)" onClick={close} style={iconButton(30)}><Icon>{ICON.close}</Icon></button>
       </div>
+      <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {wins.map((w) => (
-        <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, background: C.raised, border: `1px solid ${C.line}` }}>
+        <div key={w.id} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, background: C.raised, border: `1px solid ${C.line}` }}>
           <span style={{ width: 32, height: 32, borderRadius: 8, background: C.ground, color: C.accentText, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon>{ICON[KIND_ICON[w.kind]]}</Icon>
           </span>
@@ -98,7 +99,8 @@ export function SuggestedEdits({ recording, project, ready, readOnly, seek, play
           <button type="button" onClick={() => apply(w)} style={BUTTON}><span>Apply</span></button>
         </div>
       ))}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexShrink: 0 }}>
         <span style={{ fontSize: 12, color: C.muted, flexGrow: 1 }}>One Undo reverts all of them.</span>
         <button type="button" onClick={close} style={{ ...BUTTON, height: 32, background: 'transparent', color: C.secondary, border: 0 }}><span>Not now</span></button>
         <button type="button" onClick={applyAll} style={{ ...BUTTON, height: 32, background: C.accent, color: '#FFFFFF', border: 0 }}><span>{`Apply all ${n}`}</span></button>

@@ -1,7 +1,7 @@
 import { TYPING_DEPTH } from '@/lib/project/autoZoom';
 import { newCut } from '@/lib/project/cuts';
 import { currentCut, group } from '@/lib/project/history';
-import { addChapter, addLayer, cutRange, deleteWords, fixWord, LABELS, moveRange, quote, setSpeed, split } from '@/lib/project/ops';
+import { addChapter, addLayer, deleteWords, fixWord, LABELS, moveRange, quote, removeRec, setSpeed, split } from '@/lib/project/ops';
 import { cutLength, spans, toOut } from '@/lib/project/time';
 import type { Cut, Project, Zoom } from '@/lib/project/types';
 import type { Chapter } from '@/lib/types';
@@ -108,8 +108,13 @@ export function cutFromRange(p: Project, units: Unit[], r: Range): Project {
   const start = units[r.lo]!.start;
   const end = units[r.hi]!.end;
   const made = newCut(p, { name });
-  const total = Math.max(...currentCut(made).clips.map((c) => c.out), end);
-  return group(made, LABELS.highlight(name), (q) => cutRange(cutRange(q, { from: end, to: total }), { from: 0, to: start }));
+  const mine = currentCut(p);
+  const total = Math.max(...mine.clips.map((c) => c.out), end);
+  const clips = removeRec(removeRec(mine.clips, end, total), 0, start);
+  if (!clips.some((c) => !c.gap)) return p;
+  // The new cut's first state is the selection, so its Undo never grows it back to full length.
+  const id = made.current;
+  return { ...made, cuts: made.cuts.map((c) => (c.id === id ? { ...c, clips } : c)) };
 }
 
 /** Drag the selection before word `target`. */

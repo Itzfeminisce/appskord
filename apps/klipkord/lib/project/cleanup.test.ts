@@ -58,11 +58,30 @@ describe('clean up finds', () => {
     expect(retakeFinds(units(t), currentCut(fromRecording({ ...rec, transcript: t })))).toEqual([]);
   });
 
+  it('does not call a similar start with a different ending a retake', () => {
+    const t = [line(0, 'Click the button to save.'), line(5000, 'Click the button to export.')];
+    expect(retakeFinds(units(t), currentCut(fromRecording({ ...rec, transcript: t })))).toEqual([]);
+  });
+
+  it('accepts one changed word in a long sentence, and a cut-off first try', () => {
+    const long = [line(0, 'Open the settings page and click the invite button.'), line(7000, 'Open the settings page and press the invite button.')];
+    expect(retakeFinds(units(long), currentCut(fromRecording({ ...rec, transcript: long })))).toHaveLength(1);
+    const cutOff = [line(0, 'Click the button'), line(5000, 'Click the button to export.')];
+    expect(retakeFinds(units(cutOff), currentCut(fromRecording({ ...rec, transcript: cutOff })))).toHaveLength(1);
+  });
+
+  it('honours word fixes and counts a retake once', () => {
+    expect(fillerFinds(transcript, currentCut(base()), all, { 3: 'Sam' }).map((x) => x.text)).toEqual(['So', 'uh,']);
+    const finds = findAll(transcript, currentCut(base()), DEFAULT_CLEANUP);
+    const fillerInRetake = finds.fillers.find((f) => f.text === 'uh,')!;
+    expect(timeSaved([...finds.retakes, fillerInRetake])).toBe(5000);
+  });
+
   it('counts by kind and lists only switched-on kinds', () => {
     const finds = findAll(transcript, currentCut(base()), DEFAULT_CLEANUP);
     expect([finds.fillers.length, finds.pauses.length, finds.retakes.length]).toEqual([3, 1, 1]);
     expect(listed(finds, { ...DEFAULT_CLEANUP, retakes: false }).map((f) => f.kind)).toEqual(['filler', 'filler', 'filler', 'pause']);
-    expect(timeSaved(listed(finds, DEFAULT_CLEANUP))).toBe(500 + 500 + 500 + 2300 + 5000);
+    expect(timeSaved(listed(finds, DEFAULT_CLEANUP))).toBe(500 + 500 + 2300 + 5000);
   });
 });
 

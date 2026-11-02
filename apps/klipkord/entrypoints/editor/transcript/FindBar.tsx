@@ -49,7 +49,7 @@ export function FindBar({ units, project, cut, readOnly, edit, onMatches, onClos
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <input ref={input} aria-label="Find" value={query} onChange={(e) => { setQuery(e.target.value); setCurrent(0); }} onKeyDown={(e) => onKey(e, next)}
           style={{ ...FIELD, border: `1px solid ${C.accentText}` }} />
-        <span style={{ fontFamily: MONO, fontSize: 11, color: C.secondary, padding: '0 4px', whiteSpace: 'nowrap' }}>{`${at + 1} of ${n}`}</span>
+        <span style={{ fontFamily: MONO, fontSize: 11, color: C.secondary, padding: '0 4px', whiteSpace: 'nowrap' }}>{query ? `${at + 1} of ${n}` : ''}</span>
         <button type="button" aria-label="Next (Enter)" title="Next (Enter)" onClick={next} style={iconButton(28)}><Icon>{ICON.next}</Icon></button>
         <button type="button" aria-label="Close (Esc)" title="Close (Esc)" onClick={onClose} style={iconButton(28)}><Icon>{ICON.close}</Icon></button>
       </div>

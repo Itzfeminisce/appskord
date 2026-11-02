@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currentCut, steps } from '@/lib/project/history';
+import { canUndo, currentCut, steps } from '@/lib/project/history';
 import { fromRecording } from '@/lib/project/migrate';
 import { cutLength, toOut } from '@/lib/project/time';
 import type { Project } from '@/lib/project/types';
@@ -69,6 +69,13 @@ describe('selection bar actions', () => {
     expect(p.cuts).toHaveLength(2);
     expect(currentCut(p).name).toBe('Click Invite now');
     expect(cutLength(currentCut(p))).toBe(2800);
+    expect(canUndo(p)).toBe(false);
+  });
+
+  it('a cut made from a selection starts from the current cut', () => {
+    const trimmed = deleteRange(base(), units, { lo: 5, hi: 5 });
+    const p = cutFromRange(trimmed, units, { lo: 4, hi: 6 });
+    expect(cutLength(currentCut(p))).toBe(2000);
   });
 
   it('dragging the selection moves it before another word', () => {

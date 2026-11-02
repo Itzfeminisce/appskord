@@ -13,9 +13,6 @@ import { isUnitKept, lineViews, moveBefore, outAt, rangeText, type LineView, typ
 import { SelectBar } from './SelectBar';
 import { resetUi, setUi, toggleOff, useUi } from './store';
 
-/** One character per unit: '-' cut, 'f' filler, 'x' Clean up will take it, plus 's' selected, 'm'/'M' match/current. */
-type Flags = string[];
-
 const WORD: CSSProperties = { padding: '1px 0', borderRadius: 3 };
 const STYLE: Record<string, CSSProperties> = {
   cut: { color: C.muted, textDecoration: 'line-through' },
@@ -42,13 +39,15 @@ function wordStyle(flags: string): CSSProperties {
 const HEADING: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0 4px', color: C.muted, fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' };
 const TIME: CSSProperties = { fontFamily: MONO, fontSize: 11, color: C.muted, paddingTop: 3, width: 30, flexShrink: 0 };
 
-interface LineProps { view: LineView; texts: string[]; flags: Flags; time: string; pauseTime?: string; pauseCut: boolean; playing: boolean; first: boolean }
+/** `flags` is the line's own flags joined by ',' so memo compares them by value. */
+interface LineProps { view: LineView; texts: string[]; flags: string; time: string; pauseTime?: string; pauseCut: boolean; playing: boolean; first: boolean }
 
 const Line = memo(function Line({ view, texts, flags, time, pauseTime, pauseCut, playing, first }: LineProps) {
   const words = [];
+  const own = flags.split(',');
   for (let i = view.first; i <= view.last; i++) {
     if (i > view.first) words.push(' ');
-    words.push(<span key={i} data-i={i} style={wordStyle(flags[i]!)}>{texts[i]}</span>);
+    words.push(<span key={i} data-i={i} style={wordStyle(own[i - view.first]!)}>{texts[i - view.first]}</span>);
   }
   return (
     <>
@@ -92,7 +91,7 @@ export function TranscriptPanel(p: TranscriptSlotProps) {
   const units = useMemo(() => unitsOf(recording.transcript), [recording.transcript]);
   const lines = useMemo(() => lineViews(units, project.chapters), [units, project.chapters]);
   const kept = useMemo(() => units.map((u) => isUnitKept(cut, u)), [units, cut]);
-  const finds = useMemo(() => findAll(recording.transcript, cut, ui.settings), [recording.transcript, cut, ui.settings]);
+  const finds = useMemo(() => findAll(recording.transcript, cut, ui.settings, project.wordFixes), [recording.transcript, cut, ui.settings, project.wordFixes]);
   const fillerUnits = useMemo(() => new Set(finds.fillers.flatMap((f) => f.units)), [finds]);
   // Clean up open: the words of every ticked filler and retake, by find.
   const cleanBy = useMemo(() => {
@@ -218,7 +217,8 @@ export function TranscriptPanel(p: TranscriptSlotProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [openSearch]);
 
-  const texts = useMemo(() => units.map((u, i) => project.wordFixes[i] ?? u.text), [units, project.wordFixes]);
+  const lineTexts = useMemo(() => lines.map((v) => units.slice(v.first, v.last + 1).map((u, k) => project.wordFixes[v.first + k] ?? u.text)), [lines, units, project.wordFixes]);
+  const lineFlags = useMemo(() => lines.map((v) => flags.slice(v.first, v.last + 1).join(',')), [lines, flags]);
   const selected = sel ? rangeText(units, sel, project.wordFixes) : '';
   const hint = ui.cleanup ? HINT.cleanup : search ? HINT.search : sel ? HINT.selected : HINT.idle;
 
@@ -258,7 +258,7 @@ export function TranscriptPanel(p: TranscriptSlotProps) {
         style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, position: 'relative', paddingBottom: 48 }}>
         {lines.map((view, k) => (
           <div key={view.line} style={{ position: 'relative' }}>
-            <Line view={view} texts={texts} flags={flags}
+            <Line view={view} texts={lineTexts[k]!} flags={lineFlags[k]!}
               time={clock(outAt(cut, view.start))} pauseTime={view.pause ? clock(outAt(cut, view.pause.start)) : undefined}
               pauseCut={!!view.pause && !isKept(cut, (view.pause.start + view.pause.end) / 2)} playing={k === playingLine} first={k === 0} />
             {sel && !readOnly && sel.hi >= view.first && sel.hi <= view.last && (

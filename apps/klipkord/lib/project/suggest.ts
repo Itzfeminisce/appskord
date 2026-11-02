@@ -35,10 +35,14 @@ function fillerWin(fillers: Find[]): QuickWin | null {
   };
 }
 
-function retakeWin(retake: Find): QuickWin {
+function retakeWin(retakes: Find[]): QuickWin | null {
+  if (!retakes.length) return null;
+  const saves = timeSaved(retakes);
+  const one = retakes[0]!;
   return {
-    id: retake.id, kind: 'retake', title: `Cut a ${secs(retake.saves)} retake`, detail: `You said ${opening(retake.text)} twice. Keeps the last.`,
-    saves: retake.saves, at: retake.start, finds: [retake], zooms: [],
+    id: 'retakes', kind: 'retake', title: retakes.length === 1 ? `Cut a ${secs(saves)} retake` : `Cut ${many(retakes.length, 'retake')}`,
+    detail: retakes.length === 1 ? `You said ${opening(one.text)} twice. Keeps the last.` : `Sentences said twice, keeps the last · saves ${secs(saves)}`,
+    saves, at: one.start, finds: retakes, zooms: [],
   };
 }
 
@@ -65,15 +69,15 @@ function zoomWin(zooms: Zoom[]): QuickWin | null {
 /** Local quick wins for a recording: fillers, each retake, long pauses (sped up) and, with an events track, zooms on clicks. */
 export function quickWins(project: Project, segments: Segment[], events?: RecEvent[], duration?: number): QuickWin[] {
   const cut = currentCut(project);
-  const finds = findAll(segments, cut, { ...DEFAULT_CLEANUP, pauseAction: 'speed' });
-  // A filler inside a retake goes with the retake.
+  const finds = findAll(segments, cut, { ...DEFAULT_CLEANUP, pauseAction: 'speed' }, project.wordFixes);
+  // A filler or pause inside a retake goes with the retake.
   const inRetake = (f: Find) => finds.retakes.some((r) => f.start >= r.start && f.end <= r.end);
   const hasAuto = cut.zooms.some((z) => z.auto);
   const zooms = events && !hasAuto ? autoZoom(events, 'smooth', duration) : [];
   return [
     fillerWin(finds.fillers.filter((f) => !inRetake(f))),
-    ...finds.retakes.map(retakeWin),
-    pauseWin(finds.pauses),
+    retakeWin(finds.retakes),
+    pauseWin(finds.pauses.filter((f) => !inRetake(f))),
     zoomWin(zooms),
   ].filter((w): w is QuickWin => w !== null);
 }

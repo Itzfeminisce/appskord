@@ -63,7 +63,7 @@ export function CleanUpPanel({ recording, project, cut, out, playing, seek, play
   const ui = useUi();
   const { settings } = ui;
   const open = ui.cleanup;
-  const finds = useMemo(() => (open ? findAll(recording.transcript, cut, settings) : { fillers: [], pauses: [], retakes: [] }), [open, recording.transcript, cut, settings]);
+  const finds = useMemo(() => (open ? findAll(recording.transcript, cut, settings, project.wordFixes) : { fillers: [], pauses: [], retakes: [] }), [open, recording.transcript, cut, settings, project.wordFixes]);
   const list = useMemo(() => listed(finds, settings), [finds, settings]);
   const chosen = useMemo(() => list.filter((f) => !ui.off.has(f.id)), [list, ui.off]);
   const before = cutLength(cut);
