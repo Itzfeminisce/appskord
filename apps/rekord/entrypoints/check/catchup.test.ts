@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { LINE_MS, TELLINGS } from '@/lib/catchup/fixtures';
 import { cover } from '@/lib/catchup/coverage';
+import { LLMError } from '@/lib/llm';
 import { estimateTokens, MAX_PART_TOKENS } from '@/lib/memory/extract';
 import {
-  catchupSystem, catchupText, coverageDelays, extractUsers, itemsFrom, matchSheet, scoreCoverage, scoreExtraction, scrub, tellingSegments,
+  catchupSystem, catchupText, coverageDelays, extractUsers, itemsFrom, limitWaitSecs, matchSheet, scoreCoverage, scoreExtraction, scrub, tellingSegments,
   type CatchupResult,
 } from './catchup';
 
@@ -102,5 +103,15 @@ describe('no key in check output', () => {
     expect(text).toContain('Fallback: Start from a Rekord tab page');
     expect(text).toContain('Fallback: A stronger instruction');
     expect(text).not.toContain('Fallback: Prompts stay');
+  });
+});
+
+describe('limitWaitSecs', () => {
+  it('uses retry-after, else 60 s, and ignores other errors', () => {
+    expect(limitWaitSecs(new LLMError('busy', 'rate-limited', 12_300))).toBe(13);
+    expect(limitWaitSecs(new LLMError('busy', 'rate-limited'))).toBe(60);
+    expect(limitWaitSecs(new LLMError('busy', 'rate-limited', 900_000))).toBe(120);
+    expect(limitWaitSecs(new LLMError('x', 'auth'))).toBeUndefined();
+    expect(limitWaitSecs(new Error('x'))).toBeUndefined();
   });
 });

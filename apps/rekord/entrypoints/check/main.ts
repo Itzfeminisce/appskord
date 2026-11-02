@@ -17,7 +17,7 @@ import {
   syntheticSegments, syntheticWindows, type CheckId, type CheckResult,
 } from '@/lib/check/score';
 import {
-  CATCHUP_CHECKS, catchupSystem, catchupText, coverageDelays, extractUsers, itemsFrom, matchSheet, MIC_SECONDS, scoreCoverage, scoreExtraction, scrub,
+  CATCHUP_CHECKS, catchupSystem, LIMIT_RETRIES, limitWaitSecs, TELLING_PAUSE_S, catchupText, coverageDelays, extractUsers, itemsFrom, matchSheet, MIC_SECONDS, scoreCoverage, scoreExtraction, scrub,
   type CatchupCheckId, type CatchupResult,
 } from './catchup';
 import type { RecordingReply } from '../background';
@@ -106,7 +106,7 @@ const RUN: Record<number, () => Promise<void>> = {
     try {
       await putMeeting({ id, title: 'Machine check', startedAt: Date.now() - 3_600_000, endedAt: Date.now(), status: 'done', language: 'en' } as never);
       for (const s of syntheticSegments(id)) await putSegment(s);
-      const r = await extractMeeting(id);
+      const r = await retryOnLimit((x) => busy(4, x), () => extractMeeting(id));
       const ms = performance.now() - t0;
       show({ id: 4, verdict: scoreExtract(secs(ms)), value: `${fmt(secs(ms))} s`, note: `${r.found} items found` });
     } finally {
@@ -228,6 +228,17 @@ const busyK = (id: CatchupCheckId, text: string) => { K(id, 'value').textContent
 let micLagMs: number | undefined;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Runs `fn`; on an AI rate limit shows the countdown through `show` and tries again, up to LIMIT_RETRIES times. */
+async function retryOnLimit<T>(show: (text: string) => void, fn: () => Promise<T>): Promise<T> {
+  for (let tries = 0; ; tries++) {
+    try { return await fn(); } catch (e) {
+      const wait = limitWaitSecs(e);
+      if (wait === undefined || tries >= LIMIT_RETRIES) throw e;
+      for (let s = wait; s > 0; s--) { show(`Waiting for the AI limit... (${s} s)`); await sleep(1000); }
+    }
+  }
+}
+
 const K_HINTS: Record<CatchupCheckId, string> = {
   mic: 'Records 10 s from the microphone only, with no tab, then transcribes it. Needs the microphone allowed and a transcription key. The test recording is deleted.',
   extract: 'Sends three made-up tellings to your AI provider with your key. Made-up text only.',
@@ -275,19 +286,25 @@ const RUN_K: Record<CatchupCheckId, () => Promise<void>> = {
     let matched = 0;
     let total = 0;
     const per: string[] = [];
-    for (const t of TELLINGS) {
+    for (const [n, t] of TELLINGS.entries()) {
+      if (n > 0) for (let s = TELLING_PAUSE_S; s > 0; s--) { busyK('extract', `Pausing between tellings... (${s} s)`); await sleep(1000); }
       const replies: string[] = [];
       const users = extractUsers(t);
       for (const [i, user] of users.entries()) {
         busyK('extract', `${t.minutes} min telling, part ${i + 1} of ${users.length}...`);
-        let sent = true;
-        try {
-          replies.push(await chat([{ role: 'system', content: catchupSystem(t.startedAt) }, { role: 'user', content: user }], { json: true, maxTokens: REPLY_TOKENS }));
-        } catch (e) {
-          sent = !(e instanceof LLMError && NOT_SENT.has(e.code));
+        const ask = async () => {
+          let sent = true;
+          try {
+            return await chat([{ role: 'system', content: catchupSystem(t.startedAt) }, { role: 'user', content: user }], { json: true, maxTokens: REPLY_TOKENS });
+          } catch (e) {
+            sent = !(e instanceof LLMError && NOT_SENT.has(e.code));
+            throw e;
+          } finally {
+            if (service && sent) await record({ service, what: LEDGER_WHAT });
+          }
+        };
+        try { replies.push(await retryOnLimit((x) => busyK('extract', x), ask)); } catch (e) {
           throw new Error(scrub(e instanceof Error ? e.message : String(e), secrets));
-        } finally {
-          if (service && sent) await record({ service, what: LEDGER_WHAT });
         }
       }
       const hit = matchSheet(t.sheet, itemsFrom(replies));

@@ -3,7 +3,7 @@ import { CATCHUP_PROMPTS, cover } from '@/lib/catchup/coverage';
 import { LINE_MS, type Telling } from '@/lib/catchup/fixtures';
 import { catchupPreamble } from '@/lib/catchup/preamble';
 import type { CatchupPrompt } from '@/lib/catchup/types';
-import { transcriptLines } from '@/lib/llm';
+import { LLMError, transcriptLines } from '@/lib/llm';
 import { buildExtractPrompt, EXTRACT_SYSTEM, parseExtraction, splitParts, type RawItem } from '@/lib/memory/extract';
 import { isoDay } from '@/lib/memory/rank';
 import type { Segment } from '@/lib/types';
@@ -93,4 +93,16 @@ export function catchupText(results: CatchupResult[]): string {
     return scrub(`Catch up: ${c.label}: ${r?.value ?? '-'} (target ${c.target}) ${mark}${r?.note ? ` - ${r.note}` : ''}.${fallback}`);
   });
   return lines.join('\n');
+}
+
+export const LIMIT_RETRIES = 3;
+export const LIMIT_DEFAULT_WAIT_S = 60;
+export const LIMIT_MAX_WAIT_S = 120;
+export const TELLING_PAUSE_S = 20;
+
+/** Seconds to wait after an AI rate limit (the provider's retry-after if it sent one, else 60), or undefined for any other error. */
+export function limitWaitSecs(e: unknown): number | undefined {
+  if (!(e instanceof LLMError) || e.code !== 'rate-limited') return undefined;
+  const s = e.retryAfterMs ? Math.ceil(e.retryAfterMs / 1000) : LIMIT_DEFAULT_WAIT_S;
+  return Math.min(LIMIT_MAX_WAIT_S, Math.max(5, s));
 }
