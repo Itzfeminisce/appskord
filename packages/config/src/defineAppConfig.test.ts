@@ -64,8 +64,15 @@ describe('defineAppConfig', () => {
   });
 
   it('keeps public/store out of every build', async () => {
-    const files = [{ relativeDest: 'icon/16.png' }, { relativeDest: 'store/screenshot-1.png' }, { relativeDest: 'store/STORE.md' }];
-    await (defineAppConfig(base).hooks as Record<string, (...a: unknown[]) => unknown>)['build:publicAssets']?.({}, files);
+    const files = [
+      { relativeDest: 'icon/16.png' },
+      { relativeDest: 'store/screenshot-1.png' },
+      { relativeDest: 'store/STORE.md' },
+    ];
+    await (defineAppConfig(base).hooks as Record<string, (...a: unknown[]) => unknown>)['build:publicAssets']?.(
+      {},
+      files,
+    );
     expect(files).toEqual([{ relativeDest: 'icon/16.png' }]);
   });
 
