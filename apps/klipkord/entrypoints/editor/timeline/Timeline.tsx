@@ -482,7 +482,8 @@ export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO
 
   const sel = tl.selected;
   const multi = sel && sel.kind !== 'chapters' && sel.ids.length > 1 ? `${sel.ids.length} selected` : '';
-  const toolbarHint = hint || (sel?.kind === 'chapters' || drag?.type === 'flag' ? 'Drag a flag to move a chapter' : multi);
+  const zoomHint = sel?.kind === 'zooms' && sel.ids.length === 1 ? 'Drag the edges to change when it zooms in and out' : '';
+  const toolbarHint = hint || (sel?.kind === 'chapters' || drag?.type === 'flag' ? 'Drag a flag to move a chapter' : multi || zoomHint);
   const playX = xOf(out, view, width);
   const atClip = spanAt(cut, out);
   const speedClipsSel = sel?.kind === 'clips' && tl.speedOpen ? cut.clips.filter((c) => sel.ids.includes(c.id)) : [];

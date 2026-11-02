@@ -13,6 +13,7 @@ import { chaptersInCut } from './chapters';
 import { Btn, Heading, Help, Seg, Slider, TL_ICONS } from './controls';
 import { itemsOf, LAYOUT_NAMES, selectedHeader, times } from './rows';
 import { PlacedPanel, takeLabel } from '../voiceover/TakePanel';
+import { ZoomEdit, zoomPlace } from '../inspector/ZoomEdit';
 import { select, setTimeline, timelineState, type SelectKind, type Selected } from './store';
 
 const MULTI_HELP = (n: number) => `Changes apply to all ${n}. Shift+click adds one; drag on empty space to box-select.`;
@@ -150,7 +151,10 @@ export function timelineInspector(p: SlotProps): Pick<InspectorProps, 'selection
   const [one, many] = NAMES[selected.kind];
   let body: ReactElement | null = null;
   if (selected.kind === 'clips') body = <ClipPanel p={p} clips={p.cut.clips.filter((c) => selected.ids.includes(c.id))} />;
-  else if (selected.kind === 'zooms') body = <ZoomsPanel p={p} zooms={p.cut.zooms.filter((z) => selected.ids.includes(z.id))} />;
+  else if (selected.kind === 'zooms') {
+    const zooms = p.cut.zooms.filter((z) => selected.ids.includes(z.id));
+    body = n === 1 && zooms[0] ? <ZoomEdit key={zooms[0].id} p={p} zoom={zooms[0]} /> : <ZoomsPanel p={p} zooms={zooms} />;
+  }
   else if ((selected.kind === 'media' || selected.kind === 'voiceovers') && n === 1) {
     const item = (selected.kind === 'media' ? p.cut.media : p.cut.voiceovers).find((x) => x.id === selected.ids[0]);
     if (item) body = <PlacedPanel p={p} kind={selected.kind} item={item} />;
@@ -161,6 +165,7 @@ export function timelineInspector(p: SlotProps): Pick<InspectorProps, 'selection
     name: layout ? LAYOUT_NAMES[layout.layout] : n > 1 ? many : one, icon: <Icon>{KIND_ICONS[selected.kind]}</Icon>, index: first + 1, count: all.length,
     ...(n > 1 && { place: selectedHeader(selectedKinds(p.cut, selected)) }),
     ...(n === 1 && selected.kind === 'voiceovers' && { place: takeLabel(p, selected.ids[0]!) }),
+    ...(n === 1 && selected.kind === 'zooms' && all[first] && { place: zoomPlace(first + 1, all.length, all[first] as Zoom) }),
     onBack,
     onDelete: () => { select(null); p.edit((project) => deleteSelected(project, selected)); },
     body: <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{body}</div>,

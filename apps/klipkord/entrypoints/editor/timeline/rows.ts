@@ -113,7 +113,7 @@ export function buildRows(project: Project, cut: Cut, clipSpans: readonly Span[]
   }
   rows.push({
     key: 'zoom', name: 'Zoom', tracks: ['zooms'], mute: false, noClicks: !project.events, hint: { text: HINTS.zoom, add: 'zoom' },
-    blocks: layerBlocks(clipSpans, view, cut.zooms.map((z) => ({ id: z.id, at: z.at, end: z.end, label: times(z.depth) })), 'zooms', 'zoom', true),
+    blocks: layerBlocks(clipSpans, view, cut.zooms.map((z) => ({ id: z.id, at: z.at, end: z.end, label: z.focus === 'cursor' ? `${times(z.depth)} · follows cursor` : times(z.depth) })), 'zooms', 'zoom', true),
   });
   rows.push({
     key: 'text', name: 'Text', tracks: ['overlays', 'cards'], mute: false, hint: { text: HINTS.text, add: 'text' },

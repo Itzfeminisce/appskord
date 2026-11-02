@@ -2,9 +2,10 @@ import { MIN_KEPT_MS } from '../editList';
 import { formatClock } from '../time';
 import type { Chapter } from '../types';
 import { wordCount, wordsToRanges, type Unit } from '../wordCuts';
+import { autoZoom } from './autoZoom';
 import { commit, currentCut } from './history';
 import { clipLength, spans, toOut } from './time';
-import type { AudioMix, Camera, CaptionStyle, Card, Clip, Cut, LayoutKind, LayoutSwitch, Look, Overlay, Placed, Project, Zoom } from './types';
+import type { AudioMix, Camera, CaptionStyle, Card, Clip, Cut, LayoutKind, LayoutSwitch, Look, Overlay, Placed, Project, RecEvent, Zoom } from './types';
 
 export const MIN_SPEED = 0.5;
 export const MAX_SPEED = 4;
@@ -399,6 +400,16 @@ export function removeLayer<K extends LayerKind>(project: Project, { kind, ids, 
     const kept = list.filter((x) => !gone.has(x.id));
     return kept.length === list.length ? c : { ...c, [kind]: kept };
   });
+}
+
+/**
+ * First open of a recording with events: zooms on its clicks and typing, as one Undo step. A project that has any
+ * zoom or any history step was opened before, so this runs once.
+ */
+export function autoZoomOnOpen(project: Project, { events, duration, label }: Labelled<{ events: RecEvent[]; duration?: number }>): Project {
+  if (!project.events || project.cuts.some((c) => c.zooms.length > 0)) return project;
+  if (Object.values(project.history).some((h) => h.undo.length > 0 || h.redo.length > 0)) return project;
+  return addLayer(project, { kind: 'zooms', items: autoZoom(events, 'smooth', duration), label });
 }
 
 // ---- Chapters (project-wide, rec ms) ----

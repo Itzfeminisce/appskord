@@ -4,7 +4,7 @@ import type { Unit } from '../wordCuts';
 import { currentCut, steps, undo } from './history';
 import { fromRecording } from './migrate';
 import {
-  addChapter, addLayer, cutRange, deleteClip, deleteWords, duplicateClip, fixWord, moveRange, pasteAfter, removeChapter,
+  addChapter, addLayer, autoZoomOnOpen, cutRange, deleteClip, deleteWords, duplicateClip, fixWord, moveRange, pasteAfter, removeChapter,
   removeLayer, restoreWords, setAudio, setCamera, setCaptions, setLook, setSpeed, setTrack, setTransition, split,
   updateChapter, updateLayer, LABELS, quote,
 } from './ops';
@@ -206,5 +206,30 @@ describe('layer and setting ops', () => {
     expect(label(setLook(p, { patch: { padding: 10 } }))).toBe('Changed the frame');
     expect(steps(p).steps).toHaveLength(5);
     expect(cut(undo(p)).tracks).toEqual({});
+  });
+});
+
+describe('autoZoomOnOpen', () => {
+  const clicks = [{ t: 2000, type: 'click', x: 0.3, y: 0.3 }, { t: 2400, type: 'click', x: 0.31, y: 0.3 }, { t: 7000, type: 'click', x: 0.8, y: 0.7 }] as const;
+  const events = [...clicks];
+  const opened = (): Project => ({ ...base(), events: true });
+
+  it('adds the zooms on the clicks as one step, with why', () => {
+    const p = autoZoomOnOpen(opened(), { events, duration: 10_000 });
+    expect(cut(p).zooms.map((z) => [z.auto, z.why])).toEqual([[true, '2 clicks'], [true, 'Click']]);
+    expect(steps(p).steps.map((s) => s.label)).toEqual(['Added 2 zooms']);
+    expect(cut(undo(p)).zooms).toEqual([]);
+  });
+
+  it('runs only on a first open with events', () => {
+    const once = autoZoomOnOpen(opened(), { events });
+    const undone = undo(once);
+    expect(autoZoomOnOpen(undone, { events })).toBe(undone);
+    const edited = setLook(opened(), { patch: { padding: 10 } });
+    expect(autoZoomOnOpen(edited, { events })).toBe(edited);
+    const none = base();
+    expect(autoZoomOnOpen(none, { events })).toBe(none);
+    const quiet = opened();
+    expect(autoZoomOnOpen(quiet, { events: [] })).toBe(quiet);
   });
 });
