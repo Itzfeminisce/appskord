@@ -7,7 +7,7 @@ import { chat, LLMError } from '@/lib/llm';
 import { extractedKey, extractMeeting, LEDGER_SERVICE, LEDGER_WHAT, NOT_SENT, REPLY_TOKENS } from '@/lib/memory/extract';
 import { listPeople, putPerson } from '@/lib/memory/store';
 import { loadKeys } from '@/lib/penv';
-import { ensureModel, timeSyntheticSearch } from '@/lib/recall';
+import { ensureModel, modelFailureText, timeSyntheticSearch } from '@/lib/recall';
 import { embedTexts } from '@/lib/recall/model';
 import { quantize } from '@/lib/recall/quantize';
 import { buildIndex, rankIndex } from '@/lib/recall/vectorIndex';
@@ -55,8 +55,9 @@ const fmt = (n: number, d = 1) => n.toFixed(d);
 
 async function ready(id: CheckId): Promise<boolean> {
   busy(id, 'Loading the search model...');
-  if (await ensureModel((p) => busy(id, `Downloading the search model ${p.total ? Math.round((p.loaded / p.total) * 100) : 0}%`))) return true;
-  show({ id, verdict: 'no-go', value: 'The search model did not load' });
+  const r = await ensureModel((p) => busy(id, `Downloading the search model ${p.total ? Math.round((p.loaded / p.total) * 100) : 0}%`));
+  if (r.ok) return true;
+  show({ id, verdict: 'no-go', value: `The search model did not load: ${modelFailureText(r.reason)}` });
   return false;
 }
 

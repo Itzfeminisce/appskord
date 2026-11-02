@@ -3,7 +3,7 @@ import { listMeetings } from '@/lib/db';
 import { DECISIONS_PATH, OPEN_LOOPS_PATH, removePersonFiles } from '@/lib/folder';
 import { forgetAll, listItems, listLedger, listPeople, listVectors } from '@/lib/memory/store';
 import type { MemorySettings } from '@/lib/memory/types';
-import { ensureModel, modelState, removeModel, type ModelState, type Progress } from '@/lib/recall';
+import { ensureModel, modelFailureText, modelState, removeModel, type ModelResult, type ModelState, type Progress } from '@/lib/recall';
 import { MODEL_CACHE, MODEL_ID } from '@/lib/recall/protocol';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { BackIcon } from '../../components/v4/icons';
@@ -127,6 +127,7 @@ export default function SettingsMemory() {
   const { back, canGoBack, replace } = useRouter();
   const [memory, setMemory] = useState<MemorySettings | null>(null);
   const [model, setModel] = useState<{ state: ModelState; bytes: number }>({ state: 'none', bytes: 0 });
+  const [failReason, setFailReason] = useState('');
   const [progress, setProgress] = useState<Progress>({ loaded: 0, total: 0 });
   const [size, setSize] = useState<{ items: number; bytes: number } | null>(null);
   const [plan, setPlan] = useState<ForgetPlan | null>(null);
@@ -174,8 +175,9 @@ export default function SettingsMemory() {
   async function download() {
     setModel({ state: 'downloading', bytes: 0 });
     setProgress({ loaded: 0, total: 0 });
-    const ok = await ensureModel(setProgress).catch(() => false);
-    if (ok) await save({ searchModel: 'ready' });
+    const res = await ensureModel(setProgress).catch((e): ModelResult => ({ ok: false, reason: e instanceof Error ? e.message : 'unknown error' }));
+    setFailReason(res.ok ? '' : modelFailureText(res.reason));
+    if (res.ok) await save({ searchModel: 'ready' });
     await loadModel();
   }
 
@@ -232,7 +234,7 @@ export default function SettingsMemory() {
             {size && <span className="sm-value">{size.items} items · {megabytes(size.bytes)}</span>}
           </Row>
           {model.state === 'downloading' && <div className="sm-state"><ModelDownloadCard loaded={progress.loaded} total={progress.total} /></div>}
-          {model.state === 'failed' && <div className="sm-state"><ModelFailedBanner onRetry={() => void download()} /></div>}
+          {model.state === 'failed' && <div className="sm-state"><ModelFailedBanner reason={failReason} onRetry={() => void download()} /></div>}
           <LinkRow to="folder" title="Rekord folder" sub="Your notes as plain Markdown files" />
           <LinkRow to="move" title="Move to a new computer" sub="Save everything, bring it back later" />
           <LinkRow to="ledger" title="What left this computer" sub="Every time something was sent out" />

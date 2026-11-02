@@ -4,6 +4,15 @@ import { record } from '../ledger';
 import { MODEL_CACHE, MODEL_ID, type FromWorker, type ToWorker } from './protocol';
 
 export type ModelState = 'none' | 'downloading' | 'ready' | 'failed';
+/** reason is 'denied' (huggingface.co access not granted) or the worker's error message. */
+export type ModelResult = { ok: true } | { ok: false; reason: string };
+
+/** One plain sentence for why the model did not load. */
+export function modelFailureText(reason: string): string {
+  return reason === 'denied'
+    ? 'access to huggingface.co was not allowed'
+    : `could not download it (${reason}). Check that huggingface.co opens in a tab.`;
+}
 export interface Progress { loaded: number; total: number }
 
 export interface WorkerLike {
@@ -27,6 +36,7 @@ let nextId = 1;
 const pending = new Map<number, Pending>();
 let state: ModelState = 'none';
 let loading: Promise<boolean> | undefined;
+let lastError = '';
 let download: Promise<boolean> | undefined;
 const listeners = new Set<(p: Progress) => void>();
 const broadcast = (p: Progress) => listeners.forEach((f) => f(p));
@@ -112,6 +122,7 @@ function load(localOnly: boolean, onProgress?: (p: Progress) => void): Promise<b
     },
     (e) => {
       loading = undefined;
+      lastError = (e instanceof Error ? e.message : String(e)).replace(/access_token=[^&\s]+/g, '').trim().slice(0, 80) || 'unknown error';
       if (!localOnly) {
         state = 'failed';
         console.error('Rekord: could not download the search model', e);
@@ -124,12 +135,12 @@ function load(localOnly: boolean, onProgress?: (p: Progress) => void): Promise<b
 
 /**
  * The "Download (22 MB)" click: asks for the huggingface.co hosts (first, so the click still counts),
- * then downloads the weights with progress. One ledger entry per download. Resolves false, never throws.
+ * then downloads the weights with progress. One ledger entry per download. Resolves a result, never throws.
  */
-export async function ensureModel(onProgress?: (p: Progress) => void): Promise<boolean> {
+export async function ensureModel(onProgress?: (p: Progress) => void): Promise<ModelResult> {
   const asked = requestHosts(HUGGINGFACE_HOSTS);
-  if (!(await asked)) return false;
-  if (state === 'ready' && loading) return true;
+  if (!(await asked)) return { ok: false, reason: 'denied' };
+  if (state === 'ready' && loading) return { ok: true };
   if (onProgress) listeners.add(onProgress);
   // A second click while downloading joins the same download and gets its progress.
   download ??= startDownload().finally(() => {
@@ -137,7 +148,7 @@ export async function ensureModel(onProgress?: (p: Progress) => void): Promise<b
     listeners.clear();
   });
   try {
-    return await download;
+    return (await download) ? { ok: true } : { ok: false, reason: lastError || 'unknown error' };
   } finally {
     if (onProgress) listeners.delete(onProgress);
   }

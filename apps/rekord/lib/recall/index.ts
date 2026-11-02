@@ -11,7 +11,7 @@ import { fuse, itemsByWindows, meetingsByWindows, scoreItem, searchable, type Wi
 import { buildIndex, rankIndex, type VectorIndex } from './vectorIndex';
 import { windowsOf } from './windows';
 
-export { ensureModel, modelState, removeModel, type ModelState, type Progress } from './model';
+export { ensureModel, modelFailureText, modelState, removeModel, type ModelResult, type ModelState, type Progress } from './model';
 export { timeSyntheticSearch } from './vectorIndex';
 
 const BATCH = 16;

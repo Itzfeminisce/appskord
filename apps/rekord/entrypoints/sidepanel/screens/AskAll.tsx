@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { askAll, askAllSession, askMemory, askMemorySession, citationClock, nothingFoundText, RANGES, SCOPES, shortDate, SUGGESTIONS, type AskAllResult, type AskMemoryResult, type MemorySource, type Range, type Scope } from '@/lib/askAll';
 import { listMeetings } from '@/lib/db';
-import { ensureModel, embedPending, modelState } from '@/lib/recall';
+import { ensureModel, embedPending, modelFailureText, modelState } from '@/lib/recall';
 import { updateSettings } from '@/lib/settings';
 import { BackIcon } from '../components/v4/icons';
 import { world } from '../components/v4/world';
@@ -324,7 +324,7 @@ export function ModelDownloading({ loaded, total }: { loaded: number; total: num
 }
 
 /** The download failed: keyword search still answers, and "Try again" downloads once more. */
-export function ModelFailed({ onRetry }: { onRetry: () => void }) {
+export function ModelFailed({ onRetry, reason }: { onRetry: () => void; reason?: string }) {
   return (
     <div role="alert" style={{ padding: '12px 14px', borderRadius: 16, background: '#FFF4E5', border: '1px solid #F3D9AE', color: '#8A4B00', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
       <span style={{ marginTop: 1, flexShrink: 0, display: 'flex' }}>
@@ -333,7 +333,7 @@ export function ModelFailed({ onRetry }: { onRetry: () => void }) {
       <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>The search model didn’t download</span>
-          <span style={{ fontSize: 13, lineHeight: 1.45 }}>Keyword search still works.</span>
+          <span style={{ fontSize: 13, lineHeight: 1.45 }}>{reason ? `${reason.charAt(0).toUpperCase()}${reason.slice(1).replace(/\.$/, '')}. ` : ''}Keyword search still works.</span>
         </span>
         <button type="button" className="am-btn" onClick={onRetry} style={{ alignSelf: 'flex-start', height: 44, padding: '0 18px', border: 'none', borderRadius: 12, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Try again</button>
       </span>
@@ -343,19 +343,19 @@ export function ModelFailed({ onRetry }: { onRetry: () => void }) {
 
 function ModelCard({ onReady, onKeep }: { onReady: () => void; onKeep: () => void }) {
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
   async function download() {
-    setFailed(false);
+    setFailed(null);
     setSaveFailed(false);
     setProgress({ loaded: 0, total: 22 * MB });
-    const ok = await ensureModel((p) => alive.current && setProgress({ loaded: p.loaded, total: p.total || 22 * MB }));
+    const res = await ensureModel((p) => alive.current && setProgress({ loaded: p.loaded, total: p.total || 22 * MB }));
     if (!alive.current) return;
     setProgress(null);
-    if (!ok) { setFailed(true); return; }
+    if (!res.ok) { setFailed(modelFailureText(res.reason)); return; }
     try {
       await updateSettings({ memory: { ...(await getSettings()).memory, searchModel: 'ready' } });
     } catch (error) {
@@ -379,7 +379,7 @@ function ModelCard({ onReady, onKeep }: { onReady: () => void; onKeep: () => voi
   }
 
   if (progress) return <div style={{ margin: '0 16px', flexShrink: 0 }}><ModelDownloading loaded={progress.loaded} total={progress.total} /></div>;
-  if (failed) return <div style={{ margin: '0 16px', flexShrink: 0 }}><ModelFailed onRetry={() => void download()} /></div>;
+  if (failed) return <div style={{ margin: '0 16px', flexShrink: 0 }}><ModelFailed reason={failed} onRetry={() => void download()} /></div>;
   return (
     <section aria-label="Search model" style={{ margin: '0 16px', padding: '12px 14px', borderRadius: 16, background: '#EEF0FF', border: '1px solid #D9D7FB', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

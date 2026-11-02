@@ -1,11 +1,12 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDB, putMeeting, putSegment } from '../db';
+import { requestHosts } from '../hosts';
 import { listLedger, putItem, vectorsForMeeting } from '../memory/store';
 import type { MemoryItem } from '../memory/types';
 import type { Meeting, Segment } from '../types';
 import { embedMeeting, ensureModel, modelState, removeModel, search } from './index';
-import { IDLE_MS, setWorkerFactory, type WorkerLike } from './model';
+import { IDLE_MS, modelFailureText, setWorkerFactory, type WorkerLike } from './model';
 import type { FromWorker, ToWorker } from './protocol';
 import { cosine, dequantize, quantize } from './quantize';
 import { fuse, itemsByWindows, rankWindows } from './search';
@@ -107,10 +108,12 @@ class FakeWorker implements WorkerLike {
   onmessage: ((e: MessageEvent<FromWorker>) => void) | null = null;
   onerror: ((e: ErrorEvent) => void) | null = null;
   static made = 0;
+  static loadError: string | undefined;
   constructor() { FakeWorker.made++; }
   postMessage(m: ToWorker) {
     const reply = (data: FromWorker) => queueMicrotask(() => this.onmessage?.({ data } as MessageEvent<FromWorker>));
-    if (m.type === 'load') {
+    if (m.type === 'load' && FakeWorker.loadError) reply({ id: m.id, type: 'error', message: FakeWorker.loadError });
+    else if (m.type === 'load') {
       reply({ id: m.id, type: 'progress', loaded: 11, total: 22 });
       reply({ id: m.id, type: 'loaded' });
     } else reply({ id: m.id, type: 'embedded', vectors: m.texts.map(embedText) });
@@ -135,6 +138,7 @@ describe('recall search', () => {
     globalThis.indexedDB = new IDBFactory();
     cached = false;
     FakeWorker.made = 0;
+    FakeWorker.loadError = undefined;
     vi.stubGlobal('caches', fakeCaches);
     setWorkerFactory(() => new FakeWorker());
     await putMeeting(meeting('m-sync', 'Weekly sync'));
@@ -165,11 +169,11 @@ describe('recall search', () => {
 
   it('downloads once with progress, records one ledger entry, then finds meetings by meaning', async () => {
     const progress = vi.fn();
-    expect(await ensureModel(progress)).toBe(true);
+    expect(await ensureModel(progress)).toEqual({ ok: true });
     expect(progress).toHaveBeenCalledWith({ loaded: 11, total: 22 });
     cached = true;
     expect(await modelState()).toBe('ready');
-    expect(await ensureModel()).toBe(true);
+    expect(await ensureModel()).toEqual({ ok: true });
     expect((await listLedger()).map((e) => [e.service, e.count])).toEqual([['huggingface', 1]]);
 
     expect(await embedMeeting('m-sync')).toBe(2);
@@ -184,11 +188,22 @@ describe('recall search', () => {
     expect((await search('budget engineers')).meetings.map((h) => h.meeting.id).sort()).toEqual(['m-hire', 'm-sync']);
   });
 
+  it('says why the model did not load: denied host access or the worker error', async () => {
+    vi.mocked(requestHosts).mockResolvedValueOnce(false);
+    const denied = await ensureModel();
+    expect(denied).toEqual({ ok: false, reason: 'denied' });
+    expect(modelFailureText('denied')).toBe('access to huggingface.co was not allowed');
+    FakeWorker.loadError = 'Failed to fetch';
+    const failed = await ensureModel();
+    expect(failed).toEqual({ ok: false, reason: 'Failed to fetch' });
+    expect(modelFailureText('Failed to fetch')).toBe('could not download it (Failed to fetch). Check that huggingface.co opens in a tab.');
+  });
+
   it('a second download click joins the first and both get progress', async () => {
     const a = vi.fn();
     const b = vi.fn();
     const [ra, rb] = await Promise.all([ensureModel(a), ensureModel(b)]);
-    expect([ra, rb]).toEqual([true, true]);
+    expect([ra, rb]).toEqual([{ ok: true }, { ok: true }]);
     expect(a).toHaveBeenCalledWith({ loaded: 11, total: 22 });
     expect(b).toHaveBeenCalledWith({ loaded: 11, total: 22 });
     expect(FakeWorker.made).toBe(1);
