@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { getFolderHandle, getRecording, listRecordings } from '@/lib/db';
 import { whenLabel } from '@/lib/library';
+import { fromRecording } from '@/lib/project/migrate';
 import { getProject } from '@/lib/project/store';
+import { quickWins as findQuickWins } from '@/lib/project/suggest';
 import { readSizes } from '@/lib/folder';
 import { formatBytes } from '@/lib/time';
 import type { Recording } from '@/lib/types';
 import { clock } from '../../editor/format';
 import { countClicks } from '../../editor/media';
 import { openEditor } from '../../editor/open';
+import { loadEvents } from '../../editor/transcript/events';
+import { QUICK_WINS_KEY } from '../../editor/transcript/store';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { BackBar } from './Export';
@@ -83,6 +87,16 @@ export function tracksLine(sources: string[]): string | null {
 
 const editorTab = (id: string) => void openEditor(id).catch((error) => console.error('Klipkord: could not open the editor', error));
 
+/** The card opens SuggestedEdits again, even after "Not now": the editor tab picks the ask up. */
+function openQuickWins(id: string) {
+  try {
+    localStorage.setItem(QUICK_WINS_KEY, id);
+  } catch (error) {
+    console.error('Klipkord: could not ask for the quick wins', error);
+  }
+  editorTab(id);
+}
+
 function PanelThumb({ blob, length }: { blob?: Blob; length: number }) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
@@ -106,11 +120,15 @@ function PanelOpen({ rec }: { rec: Recording }) {
   const { navigate } = useRouter();
   const [clicks, setClicks] = useState(0);
   const [rows, setRows] = useState<Row[]>([]);
-  // T6's lib/project/suggest.ts counts the quick wins; until then the card stays hidden.
-  const quickWins: number | undefined = undefined;
+  const [quickWins, setQuickWins] = useState<number>();
 
   useEffect(() => {
     if (rec.v3?.events) void countClicks(rec.id).then(setClicks);
+    (async () => {
+      const project = (await getProject(rec.id)) ?? fromRecording(rec);
+      const events = project.events ? await loadEvents(rec.id) : undefined;
+      setQuickWins(findQuickWins(project, rec.transcript, events, rec.duration).length);
+    })().catch((error) => console.error('Klipkord: could not find the quick wins', error));
     listRecordings().then(async (all) => {
       const recent = all.filter((r) => r.status === 'ready').sort((a, b) => b.createdAt - a.createdAt).slice(0, 3);
       setRows(await Promise.all(recent.map(async (r) => ({ rec: r, cuts: (await getProject(r.id))?.cuts.length ?? 1 }))));
@@ -136,9 +154,9 @@ function PanelOpen({ rec }: { rec: Recording }) {
         <button type="button" onClick={() => editorTab(rec.id)} style={{ height: 44, borderRadius: 12, background: '#C2410C', color: '#FFFFFF', border: 0, font: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Open in the editor</button>
         <button type="button" onClick={() => navigate('Trim', { recordingId: rec.id })} style={{ height: 44, borderRadius: 12, background: '#FFFFFF', color: '#111114', border: '1px solid #E8E8EB', font: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Quick trim here</button>
       </div>
-      {quickWins !== undefined && (
-        <button type="button" onClick={() => editorTab(rec.id)} style={{ margin: '12px 16px 0', padding: 12, borderRadius: 12, background: '#FFFFFF', border: '1px solid #E8E8EB', color: '#111114', font: 'inherit', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 4, cursor: 'pointer' }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{quickWins} quick wins found</span>
+      {!!quickWins && (
+        <button type="button" onClick={() => openQuickWins(rec.id)} style={{ margin: '12px 16px 0', padding: 12, borderRadius: 12, background: '#FFFFFF', border: '1px solid #E8E8EB', color: '#111114', font: 'inherit', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 4, cursor: 'pointer' }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{`${quickWins} ${quickWins === 1 ? 'quick win' : 'quick wins'} found`}</span>
           <span style={{ fontSize: 12.5, color: '#5F6168', lineHeight: 1.45 }}>Fillers, a retake, long pauses and zooms. They wait for you in the editor.</span>
         </button>
       )}
