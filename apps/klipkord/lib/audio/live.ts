@@ -36,12 +36,30 @@ const STRETCH_PAD_MS = 200;
 // A WaveShaper reads input in -1..1, so the master gain scales the mix down by this and the curve scales it back.
 const SHAPER_RANGE = 16;
 const HOP_MS = 100;
+// Natural-voice windows are stretched apart, so each joins the next through a linear crossfade this long (same source both sides, so gains sum to 1).
+export const XFADE_MS = 8;
+
+/** Fades `out` in over `ms` from sample `head` and out over `ms` from sample `tail` (equal power), in place. */
+export function crossfadeEdges(out: Float32Array[], sr: number, head: number | null, tail: number | null, ms = XFADE_MS): void {
+  const n = Math.max(1, Math.round((ms / 1000) * sr));
+  for (const d of out) {
+    if (head !== null) {
+      for (let i = 0; i < d.length; i++) {
+        if (i < head) d[i] = 0;
+        else if (i < head + n) d[i]! *= (i - head + 0.5) / n;
+      }
+    }
+    if (tail !== null) {
+      for (let i = Math.max(0, tail); i < d.length; i++) d[i]! *= i < tail + n ? 1 - (i - tail + 0.5) / n : 0;
+    }
+  }
+}
 
 /**
  * Integrated loudness of the plan from each source's 100 ms hop powers (stereo, per sample), summing the parts'
  * powers under their gains, music fade and duck: what the export would meter, without decoding the mix again.
  */
-export function estimateLoudness(plan: MixPlan, powers: ReadonlyMap<string, Float64Array>): number | null {
+export function estimateLoudness(plan: MixPlan, powers: ReadonlyMap<string, Float64Array>, levels?: ReadonlyMap<string, number>): number | null {
   const hops = new Float64Array(Math.ceil(plan.length / HOP_MS));
   for (const part of plan.parts) {
     const src = powers.get(part.source);
@@ -55,7 +73,7 @@ export function estimateLoudness(plan: MixPlan, powers: ReadonlyMap<string, Floa
       if (part.loop) k %= src.length;
       if (k < 0 || k >= src.length) continue;
       const music = part.track === 'music' && plan.music ? gainAt(plan.music.fade, t) * gainAt(plan.music.duck, t) : 1;
-      const g = part.gain * music;
+      const g = part.gain * music * (part.clean ? (levels?.get(part.source) ?? 1) : 1);
       hops[h]! += g * g * src[k]! * ((b - a) / HOP_MS);
     }
   }
@@ -124,6 +142,9 @@ export function liveMix(deps: LiveDeps): LiveMix {
     const buffer = await deps.loader.load(part.source, part.from + lo * part.rate, part.from + hi * part.rate);
     if (!buffer) return null;
     const out = stretch(Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch)), part.rate, sr);
+    // Fade in at this window's start and out after its end (the tail is scheduled over the next window's start).
+    const at = (ms: number) => Math.round(((ms - lo) / 1000) * sr);
+    crossfadeEdges(out, sr, from > part.when ? at(from - part.when) : null, to < part.when + part.length ? at(to - part.when) : null);
     const made = c.createBuffer(out.length, Math.max(1, out[0]?.length ?? 0), sr);
     out.forEach((d, ch) => made.copyToChannel(d, ch));
     return { buffer: made, origin: -lo, rate: 1 };
@@ -198,6 +219,12 @@ export function liveMix(deps: LiveDeps): LiveMix {
           const to = Math.min(plan.length, next + WINDOW_MS);
           const read = await readWindow(c, parts, infos, next, to);
           if (!current()) return;
+          if (t !== null && t < c.currentTime) {
+            // The read finished after its slot began: start over from the playhead instead of piling windows onto now.
+            next = Math.min(plan.length, at());
+            t = null;
+            continue;
+          }
           let from = next;
           if (t === null || !state) {
             await c.resume();
@@ -208,6 +235,8 @@ export function liveMix(deps: LiveDeps): LiveMix {
               continue;
             }
             t = c.currentTime + LEAD_MS / 1000;
+          }
+          if (!state) {
             const master = c.createGain();
             const tail: AudioNode[] = [master];
             if (plan.level) {
@@ -226,6 +255,12 @@ export function liveMix(deps: LiveDeps): LiveMix {
             const graph = schedule(c, full, (p) => read.get(p) ?? null, state.tail[0]!, { t0: t, from, to, clip: true, denoise: clean, levels: gains });
             t += (to - from) / 1000;
             state.graphs.push({ graph, end: t });
+            const joins = full.parts.filter((p) => p.natural && read.has(p) && p.when < to && p.when + p.length > to);
+            if (to < plan.length && joins.length) {
+              const tailEnd = t + XFADE_MS / 1000;
+              const overlap = schedule(c, { ...full, parts: joins }, (p) => read.get(p) ?? null, state.tail[0]!, { t0: t, from: to, to: to + XFADE_MS, clip: true, denoise: clean, levels: gains });
+              state.graphs.push({ graph: overlap, end: tailEnd });
+            }
           }
           if (to >= plan.length) return;
           next = to;
@@ -247,7 +282,11 @@ export function liveMix(deps: LiveDeps): LiveMix {
         if (error === cancelledError || cancelled()) return null;
         throw error;
       }
-      return cancelled() ? null : estimateLoudness(plan, powers);
+      if (cancelled()) return null;
+      const clean = plan.parts.filter((p) => p.clean);
+      const infos = clean.length ? await infosOf(clean.map((p) => p.source)) : new Map<string, SourceInfo>();
+      const gains = await levelsOf(clean.filter((p) => infos.has(p.source)), infos);
+      return cancelled() ? null : estimateLoudness(plan, powers, gains);
     },
     dispose() {
       stop();
