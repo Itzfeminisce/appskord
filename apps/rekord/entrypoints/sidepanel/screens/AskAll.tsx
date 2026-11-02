@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { askAll, askAllSession, askMemory, askMemorySession, citationClock, nothingFoundText, RANGES, SCOPES, shortDate, SUGGESTIONS, type AskAllResult, type AskMemoryResult, type MemorySource, type Range, type Scope } from '@/lib/askAll';
+import { askAll, askAllSession, askMemory, askMemorySession, citationCaption, nothingFoundText, RANGES, SCOPES, shortDate, SUGGESTIONS, type AskAllResult, type AskMemoryResult, type MemorySource, type Range, type Scope } from '@/lib/askAll';
 import { listMeetings } from '@/lib/db';
 import { ensureModel, embedPending, modelFailureText, modelState } from '@/lib/recall';
 import { updateSettings } from '@/lib/settings';
 import { BackIcon } from '../components/v4/icons';
 import { world } from '../components/v4/world';
 import { dateLabel } from '@/lib/library';
+import { isCatchup } from '@/lib/catchup/label';
 import type { Meeting } from '@/lib/types';
 import { getSettings } from '@/lib/settings';
 import { Spinner } from '../components';
@@ -56,10 +57,10 @@ function Answer({ turn, pending, onOpen, onRetry, onAllTime }: {
         <ul aria-label="Sources" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {sources.map((s) => (
             <li key={s.meetingId}>
-              <button type="button" style={sourceRow} aria-label={`${s.title}, open transcript at ${citationClock(s.atMs)}`} onClick={() => onOpen(s.meetingId, s.atMs)}>
+              <button type="button" style={sourceRow} aria-label={`${s.title}, open transcript at ${citationCaption(s)}`} onClick={() => onOpen(s.meetingId, s.atMs)}>
                 <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>{s.title}</span>
                 <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{dateLabel(s.startedAt)}</span>
-                <span style={chip}>{citationClock(s.atMs)}</span>
+                <span style={chip}>{citationCaption(s)}</span>
               </button>
             </li>
           ))}
@@ -199,10 +200,10 @@ const pillBase: CSSProperties = { height: 22, borderRadius: 999, fontSize: 11, f
 const icon = (d: string[], ring = false) => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ring && <circle cx="12" cy="12" r="9" />}{d.map((p) => <path key={p} d={p} />)}</svg>
 );
-const quoteClock = (ms: number) => citationClock(ms);
+const quoteClock = (s: { atMs: number; catchup?: boolean }) => citationCaption(s);
 
 const firstWord = (name: string) => name.trim().split(/\s+/)[0] ?? name;
-type MeetingRef = Pick<Meeting, 'id' | 'title' | 'startedAt'>;
+type MeetingRef = Pick<Meeting, 'id' | 'title' | 'startedAt' | 'source'>;
 
 function QuoteRow({ speaker, text, caption, onPlay }: { speaker: string; text: string; caption: string; onPlay: () => void }) {
   return (
@@ -247,9 +248,9 @@ export function MemoryCard({ s, onOpen, meetings = [] }: { s: MemorySource; onOp
         )}
       </div>
       <h3 style={{ margin: 0, fontSize: 14, lineHeight: 1.35, fontWeight: 600 }}>{item.text}</h3>
-      <QuoteRow speaker={item.quote.speaker} text={item.quote.text} caption={`${s.title} · ${shortDate(s.startedAt)} · ${quoteClock(s.atMs)}`} onPlay={() => onOpen(s)} />
+      <QuoteRow speaker={item.quote.speaker} text={item.quote.text} caption={`${s.title} · ${shortDate(s.startedAt)} · ${quoteClock(s)}`} onPlay={() => onOpen(s)} />
       {answer && answeredIn && (
-        <QuoteRow speaker={answer.speaker} text={answer.text} caption={`${answeredIn.title} · ${shortDate(answeredIn.startedAt)} · ${quoteClock(answer.atMs)}`}
+        <QuoteRow speaker={answer.speaker} text={answer.text} caption={`${answeredIn.title} · ${shortDate(answeredIn.startedAt)} · ${quoteClock({ atMs: answer.atMs, catchup: isCatchup(answeredIn) })}`}
           onPlay={() => onOpen({ ...s, meetingId: answer.meetingId, title: answeredIn.title, startedAt: answeredIn.startedAt, atMs: answer.atMs })} />
       )}
     </article>
@@ -293,10 +294,10 @@ function MemoryAnswer({ turn, onOpen, onRetry, meetings }: { turn: AskMemoryResu
       <div style={box}><CitedText text={turn.answer ?? ''} sources={sources} onOpen={onOpen} /></div>
       {sources.filter((s) => s.kind === 'item').map((s) => <MemoryCard key={s.item!.id} s={s} onOpen={onOpen} meetings={meetings} />)}
       {sources.filter((s) => s.kind === 'meeting').map((s) => (
-        <button key={s.meetingId} type="button" className="am-src" style={sourceRow} aria-label={`${s.title}, open transcript at ${citationClock(s.atMs)}`} onClick={() => onOpen(s)}>
+        <button key={s.meetingId} type="button" className="am-src" style={sourceRow} aria-label={`${s.title}, open transcript at ${citationCaption(s)}`} onClick={() => onOpen(s)}>
           <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>{s.title}</span>
           <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{shortDate(s.startedAt)}</span>
-          <span style={chip}>{citationClock(s.atMs)}</span>
+          <span style={chip}>{citationCaption(s)}</span>
         </button>
       ))}
     </>

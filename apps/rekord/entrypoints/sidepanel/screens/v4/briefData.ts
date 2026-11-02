@@ -9,8 +9,9 @@ import { cachedEvents, lastTime } from '@/lib/reminders';
 import type { CalendarEvent } from '@/lib/types';
 import { nearMeeting } from '../../components/v4/recordBar';
 import { world } from '../../components/v4/world';
+import type { Meetings } from './loops';
 
-export interface BriefView { ready: boolean; brief?: Brief; agenda?: Agenda; saved: boolean; lastTime?: string[] }
+export interface BriefView { ready: boolean; brief?: Brief; agenda?: Agenda; saved: boolean; lastTime?: string[]; meetings?: Meetings }
 
 /** The named event, else the meeting about to start, else the next one in the cached 24 hours. */
 export function pickEvent(events: CalendarEvent[], now: number, eventId?: string): CalendarEvent | undefined {
@@ -25,7 +26,7 @@ export async function loadBrief(eventId: string | undefined, now: number): Promi
   const [people, items, meetings, stored] = await Promise.all([listPeople(), listItems(), listMeetings(), getAgenda(event.id)]);
   const brief = buildBrief({ event, people, items, meetings, now });
   const agenda = stored ?? suggestAgenda(event, brief.rows.map((r) => r.item), now);
-  return { ready: true, brief, agenda, saved: !!stored };
+  return { ready: true, brief, agenda, saved: !!stored, meetings: new Map(meetings.map((m) => [m.id, m])) };
 }
 
 export function useBrief(eventId?: string): [BriefView, () => void] {
