@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { RangeLoader } from './export';
-import { estimateLoudness, liveMix, WINDOW_MS } from './live';
+import { crossfadeEdges, estimateLoudness, liveMix, WINDOW_MS } from './live';
 import type { MixPlan } from './mix';
 
 // A Web Audio stand-in that records which sources start, when, where and for how long.
@@ -80,6 +80,36 @@ describe('live mix', () => {
     }
   });
 
+  it('resyncs to the playhead when a window read finishes after its slot began', async () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx, started } = fakeContext();
+      const clock = ctx as unknown as { currentTime: number };
+      const files = loader(60);
+      const real = files.load;
+      let reads = 0;
+      files.load = vi.fn(async (id: string, a: number, b: number) => {
+        if (++reads === 2) clock.currentTime = 30;   // the second read is so slow that window one has already played out
+        return real(id, a, b);
+      });
+      let head = 0;
+      const live = liveMix({ context: () => ctx, loader: files, denoise: vi.fn() });
+      live.play(plan({ length: 60_000, parts: [{ track: 'voice', source: 'mic', when: 0, from: 0, length: 60_000, rate: 1, gain: 1 }] }), () => head);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(started).toHaveLength(1);
+      head = 31_000;
+      await vi.advanceTimersByTimeAsync(WINDOW_MS);
+      // The late window is dropped and read again from the playhead, scheduled just ahead of now, not in the past.
+      const last = started[started.length - 1]!;
+      expect(started.length).toBeGreaterThan(1);
+      expect(last.at).toBeCloseTo(30.05);
+      expect(files.load).toHaveBeenLastCalledWith('mic', 30_980, expect.any(Number));   // re-read from the playhead (less the read's 20 ms pad), not the late window
+      live.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps one noise-removal node across plays and destroys it with the engine', async () => {
     const { ctx } = fakeContext();
     const node = rnnoise();
@@ -126,7 +156,27 @@ describe('live mix', () => {
   });
 });
 
+describe('window joins', () => {
+  it('fades equal-power at the edges so two windows sum to constant power', () => {
+    const sr = 48_000, n = Math.round(0.008 * sr);
+    const a = [new Float32Array(1000).fill(1)], b = [new Float32Array(1000).fill(1)];
+    crossfadeEdges(a, sr, null, 500);
+    crossfadeEdges(b, sr, 500, null);
+    expect(a[0]![499]).toBe(1);
+    expect(b[0]![499]).toBe(0);
+    for (let i = 0; i < n; i++) expect(a[0]![500 + i]! ** 2 + b[0]![500 + i]! ** 2).toBeCloseTo(1, 5);
+    expect(a[0]![500 + n]).toBe(0);
+    expect(b[0]![500 + n]).toBe(1);
+  });
+});
+
 describe('loudness from source powers', () => {
+  it('includes the Clean and level gain of a take', () => {
+    const take = plan({ parts: [{ track: 'voiceover', source: 'mic', when: 0, from: 0, length: 5000, rate: 1, gain: 1, clean: true }] });
+    const powers = new Map([['mic', new Float64Array(100).fill(0.01)]]);
+    expect(estimateLoudness(take, powers, new Map([['mic', 2]]))! - estimateLoudness(take, powers)!).toBeCloseTo(20 * Math.log10(2), 1);
+  });
+
   const steady = (power: number, hops = 100) => new Float64Array(hops).fill(power);
 
   it('adds the parts under their gains, and is null for silence', () => {
