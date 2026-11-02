@@ -8,7 +8,7 @@ export interface FitInput {
 }
 export interface Fit { sizePx: number; lines: string[]; fits: boolean }
 
-/** Greedy word wrap; a word wider than the box is broken between characters. */
+/** Greedy word wrap. A word is never split: one wider than the box keeps a line of its own, so the fit fails and the checker reports it. */
 export function wrap(text: string, width: number, sizePx: number, measure: Measure): string[] {
   const lines: string[] = [];
   for (const para of text.split('\n')) {
@@ -17,21 +17,33 @@ export function wrap(text: string, width: number, sizePx: number, measure: Measu
     let line = '';
     for (const word of words) {
       const next = line ? `${line} ${word}` : word;
-      if (measure(next, sizePx) <= width) { line = next; continue; }
-      if (line) lines.push(line);
-      line = '';
-      let rest = word;
-      while (measure(rest, sizePx) > width && rest.length > 1) {
-        let n = rest.length - 1;
-        while (n > 1 && measure(rest.slice(0, n), sizePx) > width) n--;
-        lines.push(rest.slice(0, n));
-        rest = rest.slice(n);
-      }
-      line = rest;
+      if (!line || measure(next, sizePx) <= width) { line = next; continue; }
+      lines.push(line);
+      line = word;
     }
     lines.push(line);
   }
   return lines;
+}
+
+// Faces wider than the default rough glyph width: advances in hundredths of an em, from the shipped font file; other characters take `rest`.
+const CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ,.'!?-&%$";
+const ADVANCES: Record<string, { em: number[]; rest: number }> = {
+  'Archivo Black': {
+    em: [67, 67, 67, 67, 67, 39, 67, 67, 33, 33, 67, 33, 100, 67, 67, 67, 67, 44, 61, 44, 67, 61, 94, 67, 61, 56, 78, 78, 78, 78, 72, 67, 83, 83, 39, 67, 83, 67, 94, 83, 83, 72, 83, 78, 72, 72, 83, 78, 100, 78, 78, 72, 67, 67, 67, 67, 67, 67, 67, 67, 67, 67, 33, 33, 33, 28, 33, 61, 33, 89, 100, 67],
+    rest: 78,
+  },
+};
+
+/** The rough glyph-width measure for a face and its tracking (em), so a long word in a wide face is not under-measured; 0.56 em a character otherwise. */
+export function estimateFor(font?: string, letterSpacing = 0): Measure {
+  const a = ADVANCES[font ?? ''];
+  if (!a) return (text, sizePx) => text.length * sizePx * 0.56;
+  return (text, sizePx) => {
+    let em = 0;
+    for (const c of text) { const i = CHARS.indexOf(c); em += (i < 0 ? a.rest : a.em[i]!) / 100 + letterSpacing; }
+    return em * sizePx;
+  };
 }
 
 function fitsAt(input: FitInput, size: number): { ok: boolean; lines: string[] } {

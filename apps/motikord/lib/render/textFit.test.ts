@@ -23,9 +23,18 @@ describe('textFit', () => {
     expect(bigger.fits).toBe(false);
   });
 
-  it('keeps line breaks and breaks a word that is wider than the box', () => {
+  it('keeps line breaks and never splits a word that is wider than the box', () => {
     expect(wrap('a\nb', 100, 10, measure)).toEqual(['a', 'b']);
-    expect(wrap('abcdefghij', 25, 10, measure)).toEqual(['abcde', 'fghij']);
+    expect(wrap('abcdefghij', 25, 10, measure)).toEqual(['abcdefghij']);
+    expect(wrap('Fresh sourdough', 40, 10, measure)).toEqual(['Fresh', 'sourdough']);
+  });
+
+  it('shrinks or reports a miss for a word too wide for the box, never drawing it split', () => {
+    const f = fitText({ text: 'sourdough', width: 400, height: 400, maxSize: 100, lineHeight: 1, measure });
+    expect(f.lines).toEqual(['sourdough']);
+    expect(f.sizePx).toBeLessThan(100);
+    const miss = fitText({ text: 'sourdough', width: 400, height: 400, maxSize: 100, minSize: 100, lineHeight: 1, measure });
+    expect(miss).toEqual({ sizePx: 100, lines: ['sourdough'], fits: false });
   });
 
   it('reports a miss at the smallest size when nothing fits', () => {

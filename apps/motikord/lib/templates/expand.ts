@@ -5,7 +5,7 @@ import type {
 import { getPreset } from '../render/presets';
 import { getSceneTemplate, isBackgroundBox, SAFE_AREA } from './scenes';
 import { planBlocks, squeezeBox, type BlockPlan, type Squeeze } from './blocks';
-import { fitText } from '../render/textFit';
+import { estimateFor, fitText } from '../render/textFit';
 
 const ASPECTS: readonly Aspect[] = ['9:16', '1:1', '16:9'];
 type Boxes = Record<Aspect, { x: number; y: number; w: number; h: number }>;
@@ -221,7 +221,7 @@ export function expandScene(scene: Scene, pack: StylePack, brand?: BrandKit): Sc
   if (!tpl) return scene;
   const look = lookFor(pack, brand);
   const fullMedia = tpl.slots.some((d) => d.kind === 'media' && isBackgroundBox(d.boxes['9:16']) && isAsset((scene.slots ?? {})[d.id]));
-  const blocks = look.background.kind === 'blocks' ? blockPlans(tpl, fullMedia) : undefined;
+  const blocks = look.background.kind === 'blocks' ? blockPlans(tpl, look, fullMedia) : undefined;
   const t = blocks ? squeezed(tpl, blocks) : tpl;
   if (blocks) look.background = { ...look.background, shapes: Object.fromEntries(ASPECTS.map((a) => [a, blocks[a]?.shape ?? []])) };
   const { slots, original } = fitSlots(t, scene.slots ?? {}, scene.original);
@@ -269,7 +269,7 @@ export function expandScene(scene: Scene, pack: StylePack, brand?: BrandKit): Sc
 }
 
 /** Each size's slab for a blocks background; none under a full-frame picture, which covers it. */
-function blockPlans(t: SceneTemplate, fullMedia: boolean): Partial<Record<Aspect, BlockPlan>> {
+function blockPlans(t: SceneTemplate, look: Look, fullMedia: boolean): Partial<Record<Aspect, BlockPlan>> {
   if (fullMedia) return {};
   const field = t.slots.filter((d) => !(d.kind === 'media' && isBackgroundBox(d.boxes['9:16'])));
   // The quote mark sits outside the quote's box (above it, or left of it at 16:9), so its room counts too.
@@ -278,11 +278,11 @@ function blockPlans(t: SceneTemplate, fullMedia: boolean): Partial<Record<Aspect
     if (!(t.id === 'quote' && d.id === 'quote')) return b;
     return a === '16:9' ? { ...b, x: b.x - 0.17 / RATIO[a] - 0.02, w: b.w + 0.17 / RATIO[a] + 0.02 } : { ...b, y: b.y - 0.17 * (a === '9:16' ? RATIO[a] : 1) - 0.01, h: b.h + 0.17 * (a === '9:16' ? RATIO[a] : 1) + 0.01 };
   };
-  return Object.fromEntries(ASPECTS.map((a) => [a, planBlocks(field.map((d) => room(d, a)), a, SAFE_AREA[a], (q) => wordsFit(t, a, q))]));
+  return Object.fromEntries(ASPECTS.map((a) => [a, planBlocks(field.map((d) => room(d, a)), a, SAFE_AREA[a], (q) => wordsFit(t, look, a, q))]));
 }
 const PX: Record<Aspect, { w: number; h: number }> = { '9:16': { w: 1080, h: 1920 }, '1:1': { w: 1080, h: 1080 }, '16:9': { w: 1920, h: 1080 } };
-/** Whether every text slot, full of average words, still fits at its size once squeezed (the checker's rough glyph width). */
-function wordsFit(t: SceneTemplate, a: Aspect, q: Squeeze): boolean {
+/** Whether every text slot, full of average words or holding one long word, still fits at its size once squeezed, in the look's faces. */
+function wordsFit(t: SceneTemplate, look: Look, a: Aspect, q: Squeeze): boolean {
   return t.slots.every((d) => {
     if (d.kind !== 'text' && d.kind !== 'items') return true;
     const n = d.kind === 'items' ? d.items?.[1] ?? 1 : 1;
@@ -290,11 +290,17 @@ function wordsFit(t: SceneTemplate, a: Aspect, q: Squeeze): boolean {
     const cell = n > 1 && wide(b, a) ? { w: (b.w / n) * 0.9, h: b.h * 0.6 } : { w: b.w * (n > 1 ? 0.8 : 1), h: (b.h / n) * (n > 1 ? 0.85 : 1) };
     const scale = d.scale ?? 'body';
     const size = SLOT_PX[`${t.id}.${d.id}`] ?? SCALE_PX[scale];
-    const text = scale === 'number' ? '1,200' : Array.from({ length: d.words ?? 3 }, () => 'people').join(' ');
-    const fit = fitText({ text, width: cell.w * PX[a].w, height: cell.h * PX[a].h, maxSize: size, lineHeight: LINE_HEIGHT[scale], measure: (s, px) => s.length * px * 0.56 });
-    return fit.fits && fit.sizePx >= Math.floor(size);
+    const font = scale === 'number' ? look.fonts.number : HEADING.includes(scale) ? look.fonts.display : look.fonts.text;
+    const texts = scale === 'number' ? ['1,200'] : [Array.from({ length: d.words ?? 3 }, (_, i) => AVERAGE_WORDS[i % AVERAGE_WORDS.length]).join(' '), LONG_WORD];
+    return texts.every((text) => {
+      const fit = fitText({ text, width: cell.w * PX[a].w, height: cell.h * PX[a].h, maxSize: size, lineHeight: LINE_HEIGHT[scale], measure: estimateFor(font, look.face[scale].tracking) });
+      return fit.fits && fit.sizePx >= Math.floor(size);
+    });
   });
 }
+// A realistic long word (9 letters, like "sourdough"): every slot has room for one at its size.
+const LONG_WORD = 'sourdough';
+const AVERAGE_WORDS = ['people', 'simple', 'really', 'better', 'moment', 'always', 'create', 'friend'];
 /** The template with its field slots moved off the slab where the plan squeezes them. */
 function squeezed(t: SceneTemplate, plans: Partial<Record<Aspect, BlockPlan>>): SceneTemplate {
   return {

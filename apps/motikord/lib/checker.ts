@@ -5,7 +5,7 @@ import { getPack, getSceneTemplate, insideSafeArea, isBackgroundBox, SAFE_AREA, 
 import { ASPECTS } from './recipe/validate';
 import { getPreset } from './render/presets';
 import { boxFor, canvasSize, clampToSafe, insideSafe, isFullBleed, safeBox } from './render/reflow';
-import { fitText, type Measure } from './render/textFit';
+import { estimateFor, fitText, type Measure } from './render/textFit';
 import { polyHitsBox, type Poly } from './templates/blocks';
 
 const ATTRIBUTION: readonly LicenceId[] = ['cc-by', 'cc-by-sa', 'cc-by-nc'];
@@ -25,12 +25,16 @@ const layerPath = (si: number, li: number) => `/scenes/${si}/layers/${li}`;
 
 /** Every problem in the recipe on every size, each with a patch that fixes it. Pure. */
 export function check(recipe: Recipe, opts: CheckOptions = {}): Issue[] {
-  const measure = opts.measure ?? estimateMeasure;
   const issues: Issue[] = [];
   recipe.scenes.forEach((scene, si) => {
     scene.layers.forEach((layer, li) => {
       const at = { recipe, scene, layer, si, li };
-      if (layer.type === 'text') { overflow(at, measure, issues); tooSmall(at, measure, issues); }
+      if (layer.type === 'text') {
+        // Without a real measure, the layer's own face sets the glyph width, so a long word in a wide face is not under-measured.
+        const m = opts.measure ?? estimateFor(layer.font, layer.letterSpacing);
+        overflow(at, m, issues);
+        tooSmall(at, m, issues);
+      }
       for (const aspect of ASPECTS) safeArea(at, aspect, issues);
       if (layer.type === 'text') contrast(at, opts, issues);
       tooFast(at, issues);
