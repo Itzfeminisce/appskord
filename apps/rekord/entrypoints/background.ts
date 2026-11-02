@@ -5,6 +5,7 @@ import { loadKeys } from '@/lib/penv';
 import { onMessage, send, type MessageOf } from '@/lib/messages';
 import { getSettings } from '@/lib/settings';
 import { handleInstalled } from '@/lib/whatsNew';
+import { BACKFILL_ALARM, runBackfill } from '@/lib/memory/backfill';
 import { isStreamRequest, tokenReply } from '@/lib/transcribe/stream';
 import type { Meeting, RecordingState, TranscriberConfig } from '@/lib/types';
 import type { OffscreenReply } from './offscreen/main';
@@ -78,6 +79,11 @@ export default defineBackground(() => {
     opening.catch((error) => console.error('Rekord: could not open the side panel', error));
     // The click grants this tab (activeTab) but fires no tab event: tell an already-open panel to re-check.
     if (tab.id != null) void send({ type: 'tab/granted', tabId: tab.id });
+  });
+
+  // Memory backfill: started, resumed after a rate limit, or picked up after a restart by its alarm.
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === BACKFILL_ALARM) runBackfill().catch((error) => console.error('Rekord: could not build memory', error));
   });
 
   // After a browser restart, finish transcribing chunks left pending by an earlier meeting.
