@@ -74,7 +74,7 @@ export interface Project {
   cuts: Cut[]; current: string;
   history: Record<string, { undo: Step[]; redo: Step[] }>;  // per cut, 200 steps each
   quickWins: 'new' | 'seen';
-  options: { lightPreview: boolean; tour: boolean; bakeCamera: boolean; autoZoomed?: boolean };  // autoZoomed: the first-open autoZoom has run  // bakeCamera: this recording's next re-record; the global default is Settings.bakeCamera
+  options: { lightPreview: boolean; tour: boolean; bakeCamera: boolean; autoZoomed?: boolean };  // autoZoomed: first-open autoZoom has run; bakeCamera: this recording's next re-record; the global default is Settings.bakeCamera
   updatedAt: number;
 }
 

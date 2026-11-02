@@ -413,9 +413,9 @@ export function autoZoomed(project: Project): boolean {
  * `autoZoomed` and never runs again; edits made before the events loaded do not stop it.
  */
 export function autoZoomOnOpen(project: Project, { events, duration, label }: Labelled<{ events: RecEvent[]; duration?: number }>): Project {
-  if (!project.events || autoZoomed(project)) return project;
+  if (!project.events || autoZoomed(project) || !events.length) return project;
   const items = autoZoom(events, 'smooth', duration);
-  if (!items.length) return project;
+  if (!items.length) return { ...project, options: { ...project.options, autoZoomed: true } };
   return addLayer({ ...project, options: { ...project.options, autoZoomed: true } }, { kind: 'zooms', items, label });
 }
 

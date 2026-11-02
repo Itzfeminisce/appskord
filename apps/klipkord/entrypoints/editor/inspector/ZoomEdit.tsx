@@ -103,6 +103,21 @@ export function FocusStage({ project, cut, out, events, readOnly, edit, preview 
   const [drag, setDrag] = useState<{ view: View; spot: Spot } | null>(null);
   const id = selected?.kind === 'zooms' && selected.ids.length === 1 ? selected.ids[0] : undefined;
   const zoom = cut.zooms.find((z) => z.id === id);
+  const active = !!zoom && zoom.focus !== 'cursor';
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  const shown = useRef(false);
+  const clear = () => {
+    if (shown.current) previewRef.current(null);
+    shown.current = false;
+  };
+  // A drag cut short (undo, delete, deselect, unmount) must not leave the preview on a stale cut.
+  useEffect(() => {
+    if (active) return;
+    setDrag(null);
+    clear();
+  }, [active]);
+  useEffect(() => clear, []);
   if (!zoom || zoom.focus === 'cursor') return null;
   const screen = renderPlan(project, cut, out, events).screen;
   if (!screen) return null;
@@ -118,6 +133,7 @@ export function FocusStage({ project, cut, out, events, readOnly, edit, preview 
   };
   const move = (next: { view: View; spot: Spot }) => {
     setDrag(next);
+    shown.current = true;
     preview(withFocus(cut, zoom.id, next.spot));
   };
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -130,11 +146,11 @@ export function FocusStage({ project, cut, out, events, readOnly, edit, preview 
     if (!drag) return;
     const focus = drag.spot;
     setDrag(null);
-    preview(null);
+    clear();
     if (focus.x !== placed.x || focus.y !== placed.y) edit((p) => updateLayer(p, { kind: 'zooms', id: zoom.id, patch: { focus } }));
   };
   return (
-    <div data-testid="focus-stage" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+    <div data-testid="focus-stage" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onLostPointerCapture={onUp}
       style={{ position: 'absolute', inset: 0, cursor: readOnly ? 'default' : 'crosshair', touchAction: 'none' }}>
       <div aria-label="Focus" style={{ position: 'absolute', left: `${(at.x / frame.w) * 100}%`, top: `${(at.y / frame.h) * 100}%`, transform: 'translate(-50%, -50%)',
         width: 34, height: 34, borderRadius: '50%', border: '2px solid #FFFFFF', boxShadow: '0 0 0 1px rgba(0,0,0,0.35)', cursor: readOnly ? 'default' : 'grab' }}>

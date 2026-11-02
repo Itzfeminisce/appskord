@@ -231,6 +231,9 @@ describe('autoZoomOnOpen', () => {
     expect(autoZoomOnOpen(none, { events })).toBe(none);
     const quiet = opened();
     expect(autoZoomOnOpen(quiet, { events: [] })).toBe(quiet);
+    const moves = autoZoomOnOpen(opened(), { events: [{ t: 10, type: 'move', x: 0.5, y: 0.5 }] });
+    expect(moves.options.autoZoomed).toBe(true);
+    expect(cut(moves).zooms).toHaveLength(0);
   });
 
   it('still runs when the user edited before the events loaded', () => {
