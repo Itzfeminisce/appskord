@@ -12,6 +12,7 @@ import { deleteSelected } from './actions';
 import { chaptersInCut } from './chapters';
 import { Btn, Heading, Help, Seg, Slider, TL_ICONS } from './controls';
 import { itemsOf, selectedHeader, times } from './rows';
+import { PlacedPanel, takeLabel } from '../voiceover/TakePanel';
 import { select, setTimeline, timelineState, type SelectKind, type Selected } from './store';
 
 const MULTI_HELP = (n: number) => `Changes apply to all ${n}. Shift+click adds one; drag on empty space to box-select.`;
@@ -137,9 +138,14 @@ export function timelineInspector(p: SlotProps): Pick<InspectorProps, 'selection
   let body: ReactElement | null = null;
   if (selected.kind === 'clips') body = <ClipPanel p={p} clips={p.cut.clips.filter((c) => selected.ids.includes(c.id))} />;
   else if (selected.kind === 'zooms') body = <ZoomsPanel p={p} zooms={p.cut.zooms.filter((z) => selected.ids.includes(z.id))} />;
+  else if ((selected.kind === 'media' || selected.kind === 'voiceovers') && n === 1) {
+    const item = (selected.kind === 'media' ? p.cut.media : p.cut.voiceovers).find((x) => x.id === selected.ids[0]);
+    if (item) body = <PlacedPanel p={p} kind={selected.kind} item={item} />;
+  }
   const selection: Selection = {
     name: n > 1 ? many : one, icon: <Icon>{KIND_ICONS[selected.kind]}</Icon>, index: first + 1, count: all.length,
     ...(n > 1 && { place: selectedHeader(selectedKinds(p.cut, selected)) }),
+    ...(n === 1 && selected.kind === 'voiceovers' && { place: takeLabel(p, selected.ids[0]!) }),
     onBack,
     onDelete: () => { select(null); p.edit((project) => deleteSelected(project, selected)); },
     body: <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{body}</div>,

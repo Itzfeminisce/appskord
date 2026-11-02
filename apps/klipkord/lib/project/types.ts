@@ -51,7 +51,8 @@ export interface Card { id: string; template: string; at: number; ms: number;  /
 export interface AudioMix { denoise: boolean; level: boolean; tabVolume: number; voiceVolume: number;
   music?: { source: string; volume: number; duck: boolean; fadeIn: number; fadeOut: number } }
 export interface Placed { id: string; source: string; at: number; trim: [number, number]; volume: number; muted: boolean;
-  muteOriginal?: boolean }                   // voiceover: the original voice is silent under this take
+  muteOriginal?: boolean;                    // voiceover: the original voice is silent under this take
+  clean?: boolean }                          // voiceover: "Clean and level" this take (noise removal, own loudness gain)
 
 export interface Cut {
   id: string; name: string; shape: Shape; fit: VerticalFit;

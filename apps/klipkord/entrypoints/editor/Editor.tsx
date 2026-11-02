@@ -24,6 +24,7 @@ import { MediaMissing, NotSaved, OldRecording, PreviewSlow } from './states/bann
 import { OpenElsewhere, UnsavedRecovered } from './states/dialogs';
 import { LONG_RECORDING_MS, LongRecording, OPENING_SLOW_MS, OpeningSlow, OpeningSteps, type StepTimes } from './states/opening';
 import { FullPage } from './states/StateCard';
+import { voiceoverBusy } from './voiceover/state';
 import { isWindowSmall, NoProject, WindowSmall } from './states/pages';
 import { C } from './ui';
 
@@ -128,7 +129,8 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   const playback = usePlayback(length, firstFrame);
   const sources = useMemo(() => (project && media ? renderSources(project, media.blobs) : null), [sourcesKey, media]); // eslint-disable-line react-hooks/exhaustive-deps
   const captions = useMemo(() => (recording ? captionLines(units(recording.transcript), project?.wordFixes) : undefined), [recording, project?.wordFixes]);
-  useAudio(project, cut, media?.blobs, playback.out, playback.playing, deps.audio);
+  // A voiceover take plays the picture without the original sound.
+  useAudio(project, cut, media?.blobs, playback.out, playback.playing && !voiceoverBusy(), deps.audio);
 
   const sentenceStops = useMemo(() => (project ? stops(project, recording?.transcript ?? []) : []), [project, recording]);
   const prev = useCallback(() => {
@@ -198,7 +200,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   const ready = projectReady && !!cut && !!recording && firstFrame;
   const readOnly = session !== 'editing';
   const slotProps: SlotProps | null = project && cut && recording ? {
-    recording, project, cut, out: playback.out, length, playing: playback.playing, ready, readOnly, seek: playback.seek, play: playback.play, edit: api.edit,
+    recording, project, cut, out: playback.out, length, playing: playback.playing, ready, readOnly, seek: playback.seek, play: playback.play, pause: playback.pause, edit: api.edit,
   } : null;
   const missing = media?.missing.find((s) => !dismissed[`missing:${s.id}`]);
   const removeMissing = (s: Source) => {
