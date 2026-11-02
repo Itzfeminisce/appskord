@@ -1,5 +1,9 @@
 // Dev frame routes: one entry per FRAMES.md frame, opened at `#/dev/<Frame>`. Later tasks add their frames here.
-import { getDB } from '@/lib/db';
+import { askMemory, askMemorySession } from '@/lib/askAll';
+import { getDB, listMeetings } from '@/lib/db';
+import { getItem } from '@/lib/memory/store';
+import { DEFAULT_SETTINGS } from '@/lib/settings';
+import { world } from '../components/v4/world';
 import { M, SAMPLE_MEETINGS } from '@/lib/memory/sample';
 import { getSettings, updateSettings } from '@/lib/settings';
 import type { RouteParams, ScreenName } from '../router';
@@ -54,6 +58,24 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
     setup: async () => {
       await setMemory({ backfill: 'running' });
       await browser.storage.local.set({ [BACKFILL_KEY]: backfillState() });
+    },
+  },
+  V4AskAll: {
+    screen: 'askall',
+    // First use: the question already answered from the decision and the promise, with the model card above.
+    setup: async () => {
+      await setMemory({ searchModel: 'none' });
+      const hit = async (id: string) => ({ item: (await getItem(id))!, score: 1 });
+      const reply = 'The Team plan is $12 a seat, up from $10, agreed at the Pricing review on 26 Oct. [1] You still owe Sarah the revised pricing deck, 4 days late. [2]';
+      const result = await askMemory('What did we agree with Sarah about pricing?', 'all', await listMeetings(), {
+        now: world.now(),
+        search: async () => ({ mode: 'hybrid', items: [await hit('d-team-12'), await hit('i-deck')], meetings: [] }),
+        config: { settings: DEFAULT_SETTINGS, keys: { GROQ_API_KEY: 'gsk_test' } },
+        fetch: async () => new Response(JSON.stringify({ choices: [{ message: { content: reply } }] })),
+        record: async () => ({ id: '', service: 'groq', what: '', count: 0, firstAt: 0, lastAt: 0 }),
+      });
+      askMemorySession.scope = 'all';
+      askMemorySession.turns = [result];
     },
   },
 };
