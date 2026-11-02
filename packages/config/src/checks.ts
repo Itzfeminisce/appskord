@@ -37,7 +37,8 @@ export function manifestChecks(options: ManifestChecksOptions): void {
     return ((await options.load()).default as { manifest: Manifest }).manifest;
   }
 
-  describe('manifest', () => {
+  // The first test cold-imports wxt, which can take over 5 s while every app's tests run in parallel.
+  describe('manifest', { timeout: 30_000 }, () => {
     afterEach(() => vi.unstubAllEnvs());
 
     it('has a public key and derives the shipped extension id from it', async () => {

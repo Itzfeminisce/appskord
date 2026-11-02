@@ -65,7 +65,7 @@ jobs:
       - name: Test
         run: pnpm -F "${{ steps.meta.outputs.app }}" test
       - name: Zip
-        run: pnpm -F "${{ steps.meta.outputs.app }}" zip
+        run: pnpm -F "${{ steps.meta.outputs.app }}" zip:store
       - name: Check version and find zip
         id: pack
         env:
