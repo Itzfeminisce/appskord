@@ -1,12 +1,12 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { closeDB, getDB, getMeeting, listRecordingParts, listSegments, putMeeting, putSegment } from './db';
-import { getItem, ledgerForMeeting, putVectors, vectorsForMeeting } from './memory/store';
+import { closeDB, getDB, getMeeting, listAsks, listChunks, listNotes, listRecordingParts, listSegments, putAsk, putMeeting, putNote, putSegment } from './db';
+import { getItem, ledgerForMeeting, putVectors, tombstones, vectorsForMeeting } from './memory/store';
 import { M, SAMPLE_ONE_ON_ONE, seedSample } from './memory/sample';
 import {
   canRedactPerson, encodeWav, markFolderWritten, meetingsNeedingFolderWrite, needsFolderWrite, planSpan, redactPerson,
-  redactSpan, redactionsOf, silence, summaryWithout, toRecordingMs,
+  oggOpus, redactSpan, redactionsOf, silence, summaryWithout, toRecordingMs,
 } from './redact';
 import type { Segment } from './types';
 
@@ -16,7 +16,8 @@ const NOW = new Date(2026, 10, 3, 10, 41).getTime();
 const seg = (m: number, s: number, end: number, text: string, extra: Partial<Segment> = {}): Segment => ({
   id: `x-${m}-${s}`, meetingId: M.sarah3, speaker: 'others', startMs: mmss(m, s), endMs: end, text, chunkId: 'c', ...extra,
 });
-const quiet = { notify: () => undefined };
+const quiet = { notify: () => undefined, recording: async () => undefined };
+const tinyPcm = () => ({ sampleRate: 10, samples: new Float32Array(mmss(23, 0) / 100).fill(0.5) });
 
 async function world() {
   await closeDB();
@@ -79,15 +80,46 @@ describe('redactSpan', () => {
     expect(row).toMatchObject({ what: 'Redacted', count: 1, firstAt: NOW });
   });
 
-  it('drops the whole recording when it cannot be decoded', async () => {
-    const result = await redactSpan(M.sarah3, SPAN, { ...quiet, now: NOW, decode: async () => undefined });
-    expect(result.audio).toBe('dropped');
-    expect(await listRecordingParts(M.sarah3)).toEqual([]);
+  it('changes nothing when the recording cannot be decoded', async () => {
+    const before = (await listSegments(M.sarah3)).length;
+    await expect(redactSpan(M.sarah3, SPAN, { ...quiet, now: NOW, decode: async () => undefined })).rejects.toThrow();
+    await expect(redactSpan(M.sarah3, SPAN, { ...quiet, now: NOW, decode: async () => { throw new Error('bad'); } })).rejects.toThrow('bad');
+    const parts = await listRecordingParts(M.sarah3);
+    expect(parts.map((p) => p.id)).toEqual(['r0']);
+    expect(await listSegments(M.sarah3)).toHaveLength(before);
+    expect(await getItem('n-yearly')).toBeDefined();
+    expect(redactionsOf(await getMeeting(M.sarah3))).toEqual([]);
+  });
+
+  it('refuses while this meeting is being recorded', async () => {
+    await expect(redactSpan(M.sarah3, SPAN, { ...quiet, recording: async () => M.sarah3, decode: async () => tinyPcm() })).rejects.toThrow();
+    expect(await listRecordingParts(M.sarah3)).toHaveLength(1);
+    expect(redactionsOf(await getMeeting(M.sarah3))).toEqual([]);
+  });
+
+  it('removes notes and ask answers in the span, trims edge chunks and tombstones removed items', async () => {
+    const db = await getDB();
+    await putNote({ id: 'note-in', meetingId: M.sarah3, atMs: mmss(21, 20), text: 'secret', createdAt: 0 });
+    await putNote({ id: 'note-out', meetingId: M.sarah3, atMs: mmss(22, 20), text: 'fine', createdAt: 0 });
+    await putAsk({ id: 'ask-cite', meetingId: M.sarah3, createdAt: 0, question: 'q', answer: 'a', citations: [mmss(21, 30)] });
+    await putAsk({ id: 'ask-quote', meetingId: M.sarah3, createdAt: 1, question: 'q', answer: 'She asked: Can Northwind pay yearly?' });
+    await putAsk({ id: 'ask-ok', meetingId: M.sarah3, createdAt: 2, question: 'q', answer: 'Rollout moved.' });
+    await db.put('chunks', { id: 'ch-edge', meetingId: M.sarah3, speaker: 'others', startMs: mmss(21, 0), endMs: mmss(21, 20), mimeType: 'audio/webm', status: 'done', attempts: 1 });
+    await db.put('chunks', { id: 'ch-in', meetingId: M.sarah3, speaker: 'others', startMs: mmss(21, 20), endMs: mmss(21, 40), mimeType: 'audio/webm', status: 'done', attempts: 1 });
+    await redactSpan(M.sarah3, SPAN, { ...quiet, now: NOW, decode: async () => tinyPcm() });
+    expect((await listNotes(M.sarah3)).map((n) => n.id)).toEqual(['note-out']);
+    expect((await listAsks(M.sarah3)).map((a) => a.id)).toEqual(['ask-ok']);
+    const chunks = await listChunks(M.sarah3);
+    expect(chunks.find((c) => c.id === 'ch-in')).toBeUndefined();
+    expect(chunks.find((c) => c.id === 'ch-edge')).toMatchObject({ startMs: mmss(21, 0), endMs: SPAN.startMs });
+    expect((await tombstones()).has('n-yearly')).toBe(true);
   });
 
   it('redacts every line one person said, across meetings', async () => {
     expect(canRedactPerson).toBe(true);
-    const out = await redactPerson('p-sarah', { ...quiet, now: NOW, decode: async () => undefined });
+    let decoded = 0;
+    const out = await redactPerson('p-sarah', { ...quiet, now: NOW, decode: async () => { decoded++; return tinyPcm(); } });
+    expect(decoded).toBe(1);
     expect(out.meetings).toBeGreaterThan(1);
     const left = (await listSegments(M.sarah3)).map((s) => s.text);
     expect(left).toEqual(expect.arrayContaining(['Okay, the new date works for me.', 'Let me think about that and come back to you.']));
@@ -130,5 +162,22 @@ describe('redaction planning', () => {
     const out = silence({ sampleRate: 1000, samples: new Float32Array(10).fill(1) }, 2, 5);
     expect([...out.samples]).toEqual([1, 1, 0, 0, 0, 1, 1, 1, 1, 1]);
     expect(encodeWav(out).size).toBe(44 + 20);
+    const pcm = { sampleRate: 1000, samples: new Float32Array(4).fill(1) };
+    expect(silence(pcm, 0, 2).samples).toBe(pcm.samples);
+  });
+
+  it('wraps Opus packets in Ogg pages', async () => {
+    const blob = oggOpus([new Uint8Array(300).fill(1), new Uint8Array(40)], [960, 960], 16_000);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const text = new TextDecoder('latin1').decode(bytes);
+    expect(blob.type).toBe('audio/ogg; codecs=opus');
+    expect(text.startsWith('OggS')).toBe(true);
+    expect(text).toContain('OpusHead');
+    expect(text).toContain('OpusTags');
+    expect(text.split('OggS')).toHaveLength(4);
+    // Last page: end-of-stream flag and granule = pre-skip + both packets.
+    const last = text.lastIndexOf('OggS');
+    expect(bytes[last + 5]).toBe(4);
+    expect(new DataView(bytes.buffer).getUint32(last + 6, true)).toBe(312 + 1920);
   });
 });

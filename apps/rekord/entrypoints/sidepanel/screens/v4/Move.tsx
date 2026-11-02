@@ -41,7 +41,7 @@ export default function Move() {
 
   async function pick(file: File | undefined) {
     if (!file) return;
-    const parsed = parseMove(await file.text());
+    const parsed = await parseMove(file);
     if (!parsed) {
       console.error('Rekord: could not read the file', file.name);
       setChosen(null);

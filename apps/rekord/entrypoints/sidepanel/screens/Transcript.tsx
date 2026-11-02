@@ -9,6 +9,7 @@ import type { Meeting } from '@/lib/types';
 import { redactionsOf, type Span } from '@/lib/redact';
 import { Button, EmptyState, Spinner, Tag } from '../components';
 import { useRouter } from '../router';
+import { useRecordingMeeting } from './v4/Redact';
 import './v4/v4.css';
 
 type Data = { meeting?: Meeting; items: TimelineItem[] };
@@ -56,6 +57,7 @@ export default function Transcript() {
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [picked, setPicked] = useState<Span | null>(null);
+  const recordingId = useRecordingMeeting();
 
   const load = async () => {
     if (!meetingId) { setError(true); return; }
@@ -187,7 +189,7 @@ export default function Transcript() {
         </section>
       )}
 
-      {picked && meetingId && (
+      {picked && meetingId && recordingId !== meetingId && (
         <div className="rd-bar tr-redact">
           <span className="rd-range">{formatClock(picked.startMs)} to {formatClock(picked.endMs)}</span>
           <button type="button" className="rd-bar-btn" onClick={() => navigate('redact', { meetingId, atMs: picked.startMs, endMs: picked.endMs })}>

@@ -1,12 +1,13 @@
 // Rekord folder layout: pure Markdown with front matter, documented so other tools can rely on it.
-//   Meetings/<YYYY-MM-DD> <title>.md   one per meeting
-//   People/<name>.md                   one per person
+//   Meetings/<YYYY-MM-DD> <title> (<id>).md   one per meeting; <id> is a short id suffix, so names never collide
+//   People/<name> (<id>).md                   one per person
 //   Open loops.md                      open promises and questions
 //   Decisions.md                       every decision, replaced ones struck through
 import type { Marker, Meeting, Note, Segment } from '../types';
 import type { MemoryItem, Person } from '../memory/types';
 
-export interface FolderFile { path: string; text: string }
+/** `key` names the meeting or person a file belongs to, so the writer can delete its old file when the name changes. */
+export interface FolderFile { path: string; text: string; key?: string }
 export interface MeetingParts { meeting: Meeting; segments: Segment[]; notes: Note[]; markers: Marker[]; items: MemoryItem[] }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -20,8 +21,11 @@ export function safeName(name: string): string {
   return clean.slice(0, 120) || 'Untitled';
 }
 
-export const meetingPath = (m: Pick<Meeting, 'title' | 'startedAt'>) => `Meetings/${isoDay(m.startedAt)} ${safeName(m.title)}.md`;
-export const personPath = (p: Pick<Person, 'name'>) => `People/${safeName(p.name)}.md`;
+export const shortId = (id: string) => id.replace(/[^a-z0-9]/gi, '').slice(-6) || '0';
+export const meetingPath = (m: Pick<Meeting, 'id' | 'title' | 'startedAt'>) => `Meetings/${isoDay(m.startedAt)} ${safeName(m.title)} (${shortId(m.id)}).md`;
+export const personPath = (p: Pick<Person, 'id' | 'name'>) => `People/${safeName(p.name)} (${shortId(p.id)}).md`;
+export const meetingKey = (id: string) => `m:${id}`;
+export const personKey = (id: string) => `p:${id}`;
 export const OPEN_LOOPS_PATH = 'Open loops.md';
 export const DECISIONS_PATH = 'Decisions.md';
 const link = (path: string) => `[[${path.replace(/\.md$/, '')}]]`;
@@ -109,8 +113,8 @@ export function folderFiles(parts: MeetingParts[], all: { meetings: Meeting[]; p
   const people: People = new Map(all.people.map((p) => [p.id, p]));
   const meetings = new Map(all.meetings.map((m) => [m.id, m]));
   return [
-    ...parts.map((p) => ({ path: meetingPath(p.meeting), text: meetingMarkdown(p, people) })),
-    ...all.people.map((p) => ({ path: personPath(p), text: personMarkdown(p, all.items, meetings, people) })),
+    ...parts.map((p) => ({ path: meetingPath(p.meeting), text: meetingMarkdown(p, people), key: meetingKey(p.meeting.id) })),
+    ...all.people.map((p) => ({ path: personPath(p), text: personMarkdown(p, all.items, meetings, people), key: personKey(p.id) })),
     { path: OPEN_LOOPS_PATH, text: openLoopsMarkdown(all.items, meetings, people) },
     { path: DECISIONS_PATH, text: decisionsMarkdown(all.items, meetings, people) },
   ];

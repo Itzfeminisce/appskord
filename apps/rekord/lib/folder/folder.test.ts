@@ -8,7 +8,8 @@ vi.mock('@appskord/platform', async (original) => {
   let held: FileSystemDirectoryHandle | undefined;
   return { ...actual, folderHandle: () => ({ get: async () => held, put: async (h: FileSystemDirectoryHandle) => { held = h; }, clear: async () => { held = undefined; } }) };
 });
-import { closeDB, getDB } from '../db';
+import { closeDB, getDB, listSegments } from '../db';
+import { meetingsNeedingFolderWrite } from '../redact';
 import { SAMPLE_ITEMS, SAMPLE_MEETINGS, SAMPLE_ONE_ON_ONE, SAMPLE_ONE_ON_ONE_ITEMS, SAMPLE_PEOPLE, sampleSegments, seedSample } from '../memory/sample';
 import { folderFiles, meetingMarkdown, meetingPath, personPath, safeName } from './markdown';
 import { allowFolder, chooseFolder, flushFolder, folderStatus, removeFiles, stopFolder, useFolderDB, writeAll, writeFiles, type DirHandle } from './index';
@@ -36,8 +37,9 @@ describe('Rekord folder Markdown', () => {
   const people = new Map(SAMPLE_PEOPLE.map((p) => [p.id, p]));
 
   it('names files in the documented layout', () => {
-    expect(meetingPath(SAMPLE_ONE_ON_ONE)).toBe('Meetings/2026-11-03 1∶1 with Sarah.md');
-    expect(personPath(SAMPLE_PEOPLE[0]!)).toBe('People/Sarah Chen.md');
+    expect(meetingPath(SAMPLE_ONE_ON_ONE)).toBe('Meetings/2026-11-03 1∶1 with Sarah (ah1103).md');
+    expect(personPath(SAMPLE_PEOPLE[0]!)).toBe('People/Sarah Chen (psarah).md');
+    expect(meetingPath({ ...SAMPLE_ONE_ON_ONE, id: 'other-1' })).not.toBe(meetingPath(SAMPLE_ONE_ON_ONE));
     expect(safeName('a/b\\c?*"<>|')).toBe('a-b-c------');
     expect(safeName('  ')).toBe('Untitled');
   });
@@ -57,7 +59,7 @@ describe('Rekord folder Markdown', () => {
   it('always writes people, Open loops and Decisions', () => {
     const files = folderFiles([], { meetings: SAMPLE_MEETINGS, people: SAMPLE_PEOPLE, items: SAMPLE_ITEMS });
     const paths = files.map((f) => f.path);
-    expect(paths).toContain('People/Sarah Chen.md');
+    expect(paths).toContain('People/Sarah Chen (psarah).md');
     expect(paths).toContain('Open loops.md');
     expect(paths).toContain('Decisions.md');
     expect(files.find((f) => f.path === 'Decisions.md')!.text).toContain('# Decisions');
@@ -117,5 +119,30 @@ describe('Rekord folder writer', () => {
     expect(files.has(meetingPath(SAMPLE_ONE_ON_ONE))).toBe(true);
     await stopFolder();
     expect((await folderStatus()).state).toBe('off');
+  });
+
+  it('deletes the old file when a meeting is renamed', async () => {
+    await chooseFolder();
+    await (await getDB()).put('meetings', SAMPLE_ONE_ON_ONE);
+    await flushFolder();
+    const old = meetingPath(SAMPLE_ONE_ON_ONE);
+    expect(files.has(old)).toBe(true);
+    const renamed = { ...SAMPLE_ONE_ON_ONE, title: 'Pricing with Sarah' };
+    await (await getDB()).put('meetings', renamed);
+    await flushFolder();
+    expect(files.has(old)).toBe(false);
+    expect(files.has(meetingPath(renamed))).toBe(true);
+  });
+
+  it('rewrites a redacted meeting’s file and clears its flag', async () => {
+    await chooseFolder();
+    await writeAll();
+    const m = SAMPLE_MEETINGS[0]!;
+    await (await getDB()).put('meetings', { ...m, needsFolderWrite: true } as typeof m);
+    await (await getDB()).delete('segments', (await listSegments(m.id))[0]!.id);
+    files.delete(meetingPath(m));
+    await flushFolder();
+    expect(files.has(meetingPath(m))).toBe(true);
+    expect(await meetingsNeedingFolderWrite()).toHaveLength(0);
   });
 });

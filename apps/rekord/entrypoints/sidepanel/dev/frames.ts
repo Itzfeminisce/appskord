@@ -174,7 +174,7 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
     screen: 'redact', moment: 'after', params: { meetingId: M.sarah3, ...redactParams() },
     setup: async () => {
       await redactWorld();
-      await redactSpan(M.sarah3, REDACT_SPAN, { now: new Date(2026, 10, 3, 10, 41).getTime(), decode: async () => undefined, notify: () => undefined });
+      await redactSpan(M.sarah3, REDACT_SPAN, { now: new Date(2026, 10, 3, 10, 41).getTime(), decode: async () => undefined, notify: () => undefined, recording: async () => undefined });
     },
   },
   V4Ledger: { screen: 'ledger', moment: 'after', params: { meetingId: M.sarah3 } },

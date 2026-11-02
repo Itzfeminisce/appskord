@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getMeeting, listSegments } from '@/lib/db';
-import { previewRedaction, redactSpan, redactionsOf, type RedactionMark, type RedactPreview } from '@/lib/redact';
+import { onMessage } from '@/lib/messages';
+import { previewRedaction, recordingMeetingId, redactSpan, redactionsOf, type RedactionMark, type RedactPreview } from '@/lib/redact';
 import { getSettings } from '@/lib/settings';
 import { displayName } from '@/lib/speakers';
 import { formatClock } from '@/lib/time';
@@ -22,6 +23,20 @@ const LockIcon = () => (
 export function speakerName(s: Segment, meeting: Meeting | undefined): string {
   if (s.speaker === 'you') return meeting?.event?.attendees.find((a) => a.self)?.name ?? 'You';
   return displayName(s, meeting?.speakers);
+}
+
+/** The meeting being recorded now; a meeting cannot be redacted while it records. */
+export function useRecordingMeeting(): string | undefined {
+  const [id, setId] = useState<string | undefined>();
+  useEffect(() => {
+    let alive = true;
+    recordingMeetingId().then((m) => alive && setId(m)).catch(() => undefined);
+    const off = onMessage((msg) => {
+      if (msg.type === 'recording/state') setId(msg.state.status === 'idle' ? undefined : msg.state.meetingId);
+    });
+    return () => { alive = false; off(); };
+  }, []);
+  return id;
 }
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
@@ -68,6 +83,7 @@ export default function Redact() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<After | null>(null);
+  const recording = useRecordingMeeting() === meetingId;
 
   useEffect(() => {
     if (!meetingId || atMs === undefined || endMs === undefined) return;
@@ -87,14 +103,14 @@ export default function Redact() {
         setPreview(r.p);
         setFolder(r.folder);
       })
-      .catch((e) => { console.error('Rekord: could not read the part to redact', e); if (alive) setError('Rekord couldn’t read this part of the transcript.'); });
+      .catch((e) => { console.error('Rekord: could not read the part to redact', e); if (alive) setError('This meeting is no longer on this computer.'); });
     return () => { alive = false; };
   }, [meetingId, atMs, endMs]);
 
   const leave = () => (canGoBack ? back() : replace('home'));
 
   const redact = async () => {
-    if (!preview || !meetingId || busy) return;
+    if (!preview || !meetingId || busy || recording) return;
     setBusy(true);
     try {
       const { mark } = await redactSpan(meetingId, preview.span, { now: world.now() });
@@ -102,7 +118,7 @@ export default function Redact() {
       setSheet(false);
     } catch (e) {
       console.error('Rekord: could not redact', e);
-      setError('Rekord couldn’t redact this part. Nothing was changed.');
+      setError('Rekord couldn’t save that change. Try again.');
     } finally {
       setBusy(false);
     }
@@ -136,7 +152,7 @@ export default function Redact() {
             <button type="button" className="rd-ledger-link" onClick={() => navigate('ledger', { meetingId })}>See what left this computer</button>
           </section>
         </>
-      ) : preview && (
+      ) : preview && !recording && (
         <>
           <div className="rd-card" aria-label="Selected part">
             {preview.segments.map((s) => <Line key={s.id} s={s} meeting={meeting} picked />)}

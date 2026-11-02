@@ -121,6 +121,19 @@ export async function ledgerForMeeting(meetingId: string): Promise<LedgerEntry[]
 export async function getAgenda(meetingKey: string): Promise<Agenda | undefined> { return (await getDB()).get('agendas', meetingKey); }
 export async function putAgenda(a: Agenda): Promise<void> { await (await getDB()).put('agendas', a); }
 
+// Tombstones: ids of redacted or forgotten items and people, so a .rekord import never brings them back
+const TOMBSTONES = 'rekord.tombstones';
+const MAX_TOMBSTONES = 20_000; // ~400 KB at most; the oldest fall off
+export async function tombstones(): Promise<Set<string>> {
+  const got = (await browser.storage.local.get(TOMBSTONES))[TOMBSTONES] as string[] | undefined;
+  return new Set(got ?? []);
+}
+export async function addTombstones(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const next = [...new Set([...(await tombstones()), ...ids])].slice(-MAX_TOMBSTONES);
+  await browser.storage.local.set({ [TOMBSTONES]: next });
+}
+
 // People actions, each run only after the user's click
 /** Deletes the person and the promises they owe or are owed; other items lose the link. */
 export async function forgetPerson(id: string, now: number): Promise<ForgetPlan> {
@@ -134,6 +147,7 @@ export async function forgetPerson(id: string, now: number): Promise<ForgetPlan>
     ...plan.unlinked.map((i) => items.put(i)),
     tx.done,
   ]);
+  await addTombstones([id, ...plan.deleteIds]);
   return plan;
 }
 
@@ -177,7 +191,10 @@ export async function splitPerson(id: string, meetingIds: string[], fresh: Pick<
 
 /** Clears every v4 store; meetings and transcripts stay. */
 export async function forgetAll(): Promise<void> {
+  const db = await getDB();
+  const [people, items] = await Promise.all([db.getAllKeys('people'), db.getAllKeys('items')]);
+  await addTombstones([...people, ...items].map(String));
   const stores = ['people', 'items', 'vectors', 'ledger', 'agendas'] as const;
-  const tx = (await getDB()).transaction([...stores], 'readwrite');
+  const tx = db.transaction([...stores], 'readwrite');
   await Promise.all([...stores.map((s) => tx.objectStore(s).clear()), tx.done]);
 }

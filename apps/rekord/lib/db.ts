@@ -155,6 +155,7 @@ export async function putAsk(a: AskTurn): Promise<void> { await (await getDB()).
 export async function listAsks(meetingId: string): Promise<AskTurn[]> {
   return (await listBy('asks', meetingId)).sort((a, b) => a.createdAt - b.createdAt);
 }
+export async function deleteAsk(id: string): Promise<void> { await (await getDB()).delete('asks', id); }
 
 // Continuous recording: parts in seq order, plus pause metadata
 export async function putRecordingPart(p: RecordingPart): Promise<void> { await (await getDB()).put('recordings', p); }
@@ -165,6 +166,12 @@ export async function getRecordingMeta(meetingId: string): Promise<RecordingMeta
   return (await getDB()).get('recordingMeta', meetingId);
 }
 export async function putRecordingMeta(m: RecordingMeta): Promise<void> { await (await getDB()).put('recordingMeta', m); }
+/** Swaps a meeting's recorded parts for new ones in one transaction, so a failure leaves the old parts. */
+export async function replaceRecordingParts(meetingId: string, parts: RecordingPart[]): Promise<void> {
+  const tx = (await getDB()).transaction('recordings', 'readwrite');
+  const keys = await tx.store.index('meetingId').getAllKeys(meetingId);
+  await Promise.all([...keys.map((k) => tx.store.delete(k)), ...parts.map((p) => tx.store.put(p)), tx.done]);
+}
 /** Deletes a meeting's recorded audio parts and their metadata (the transcript is kept). */
 export async function deleteRecording(meetingId: string): Promise<void> {
   const db = await getDB();

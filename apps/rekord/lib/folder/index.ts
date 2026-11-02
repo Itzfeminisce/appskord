@@ -2,13 +2,15 @@
 import { createDB, folderHandle, type DBSchema } from '@appskord/platform';
 import { listMarkers, listMeetings, listNotes, listSegments } from '../db';
 import { itemsForMeeting, listItems, listPeople } from '../memory/store';
+import { markFolderWritten, meetingsNeedingFolderWrite, onFolderRewrite } from '../redact';
 import { getSettings, updateSettings } from '../settings';
-import { folderFiles, type FolderFile, type MeetingParts } from './markdown';
+import { folderFiles, meetingKey, meetingPath, type FolderFile, type MeetingParts } from './markdown';
 
 export * from './markdown';
 
-// `since`: when the folder was chosen; `written`: meetings already in it, so the rest count as past meetings; `remove`: files to delete on the next write.
-interface FolderMeta { name: string; since: number; lastWrittenAt?: number; queue: string[]; written: string[]; remove?: string[] }
+// `since`: when the folder was chosen; `written`: meetings already in it, so the rest count as past meetings; `remove`: files to delete on the next write;
+// `paths`: the file last written for each meeting or person key, so a renamed one loses its old file.
+interface FolderMeta { name: string; since: number; lastWrittenAt?: number; queue: string[]; written: string[]; remove?: string[]; paths?: Record<string, string> }
 interface FolderDB extends DBSchema {
   handles: { key: string; value: FileSystemDirectoryHandle };
   meta: { key: string; value: FolderMeta };
@@ -144,6 +146,9 @@ export async function removeFiles(paths: string[]): Promise<void> {
   await flushFolder();
 }
 
+// A redaction queues its meeting so the redacted words leave the folder file on the next write.
+onFolderRewrite((id) => { void queueMeetings([id]).then(flushFolder); });
+
 async function partsFor(ids: string[]): Promise<MeetingParts[]> {
   const meetings = (await listMeetings()).filter((m) => ids.includes(m.id));
   return Promise.all(meetings.map(async (meeting) => {
@@ -160,14 +165,23 @@ async function write(all: boolean, now = Date.now()): Promise<boolean> {
   if (!handle || !meta) return false;
   const dir = handle as unknown as DirHandle;
   if ((await dir.queryPermission?.({ mode: 'readwrite' })) !== 'granted') return false;
-  const [meetings, people, items] = await Promise.all([listMeetings(), listPeople(), listItems()]);
+  const [meetings, people, items, redacted] = await Promise.all([listMeetings(), listPeople(), listItems(), meetingsNeedingFolderWrite()]);
   const since = meta.lastWrittenAt ?? meta.since;
+  const paths = meta.paths ?? {};
   const changed = new Set(items.filter((i) => i.updatedAt > since).map((i) => i.meetingId));
+  const rewrite = new Set(redacted.map((m) => m.id));
+  const moved = (m: (typeof meetings)[number]) => { const old = paths[meetingKey(m.id)]; return !!old && old !== meetingPath(m); };
   const ids = all ? meetings.map((m) => m.id)
-    : meetings.filter((m) => meta.queue.includes(m.id) || changed.has(m.id) || m.startedAt > since || (m.endedAt ?? 0) > since).map((m) => m.id);
-  await deleteFiles(dir, meta.remove ?? []);
-  await writeFiles(dir, folderFiles(await partsFor(ids), { meetings, people, items }));
-  await writeMeta({ ...meta, lastWrittenAt: now, queue: [], written: [...new Set([...meta.written, ...ids])], remove: [] });
+    : meetings.filter((m) => meta.queue.includes(m.id) || rewrite.has(m.id) || changed.has(m.id) || moved(m) || m.startedAt > since || (m.endedAt ?? 0) > since).map((m) => m.id);
+  const files = folderFiles(await partsFor(ids), { meetings, people, items });
+  // Old names go first: on a case-insensitive disk a rename that only changes case is the same file.
+  const stale = files.filter((f) => f.key && paths[f.key] && paths[f.key] !== f.path).map((f) => paths[f.key!]!);
+  await deleteFiles(dir, [...new Set([...(meta.remove ?? []), ...stale])]);
+  await writeFiles(dir, files);
+  const nextPaths = { ...paths };
+  for (const f of files) if (f.key) nextPaths[f.key] = f.path;
+  await writeMeta({ ...meta, lastWrittenAt: now, queue: [], written: [...new Set([...meta.written, ...ids])], remove: [], paths: nextPaths });
+  for (const id of ids) if (rewrite.has(id)) await markFolderWritten(id);
   return true;
 }
 

@@ -114,7 +114,7 @@ export function useMemoryView(): [MemoryView, () => void] {
   useEffect(() => {
     const wake = nextWake(view.items, world.now());
     if (wake === undefined) return;
-    const timer = setTimeout(reload, Math.min(wake - world.now() + 500, 2 ** 31 - 1));
+    const timer = setTimeout(() => { reload(); refreshBadge(); }, Math.min(wake - world.now() + 500, 2 ** 31 - 1));
     return () => clearTimeout(timer);
   }, [view.items, reload]);
   return [view, reload];
