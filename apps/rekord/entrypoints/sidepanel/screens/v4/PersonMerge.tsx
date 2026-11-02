@@ -18,7 +18,7 @@ function Candidate({ person, data, quote }: { person: Person; data: PeopleData; 
         <span className="pm-card-count"><span className="pp-mono">{person.meetingIds.length}</span> meetings</span>
       </div>
       {quote && (
-        <div className="pm-quote"><span className="pm-quote-text">“{quote.text}”</span><span className="pm-quote-meta">{quoteMeta(quote, meeting)}</span></div>
+        <div className="pm-quote"><span className="pm-quote-text">{`“${quote.text}”`}</span><span className="pm-quote-meta">{quoteMeta(quote, meeting)}</span></div>
       )}
     </div>
   );

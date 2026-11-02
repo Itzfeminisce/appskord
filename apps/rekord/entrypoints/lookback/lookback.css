@@ -22,6 +22,7 @@
 .lb-col ul.lb-people { gap: 6px; }
 .lb-card { border-radius: 18px; background: #ffffff; border: 1px solid #e8e8eb; padding: 10px 14px; }
 .lb-card-stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.lb-decided { align-items: stretch; }
 .lb-text { font-size: 13px; font-weight: 500; line-height: 1.35; }
 .lb-replaces { align-self: stretch; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border-radius: 10px; background: #f6f6f7; font-size: 12px; color: #44464d; }
 .lb-replaces strong { font-weight: 600; }

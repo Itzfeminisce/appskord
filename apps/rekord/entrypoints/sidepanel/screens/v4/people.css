@@ -69,7 +69,7 @@
 .pp-meeting:last-child { border-bottom: 0; }
 .pp-meeting-title { flex: 1; font-size: 14px; font-weight: 500; }
 .pp-meeting-date { font-family: var(--mono); font-size: 12px; color: #6e7079; }
-.pp-meeting-all { font-size: 14px; font-weight: 600; color: #4f46e5; }
+.pp-meeting-all { border-top: 1px solid #efeff1; font-size: 14px; font-weight: 600; color: #4f46e5; }
 
 .pm-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; display: flex; flex-direction: column; gap: 10px; }
 .pm-lead { margin: 0; font-size: 13px; line-height: 1.45; color: #44464d; }
@@ -84,7 +84,7 @@
 .pm-quote-meta { font-family: var(--mono); font-size: 11px; color: #6e7079; }
 .pm-actions { display: flex; gap: 8px; }
 .pm-merge { flex: 3; height: 48px; border: 0; border-radius: 14px; background: #111114; color: #ffffff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
-.pm-different { flex: 2; height: 48px; box-sizing: border-box; border-radius: 14px; background: #ffffff; border: 1px solid #dcdce0; color: #111114; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.pm-different { flex: 2; height: 48px; box-sizing: border-box; padding: 0; border-radius: 14px; background: #ffffff; border: 1px solid #dcdce0; color: #111114; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .pm-split { padding: 10px 14px 12px; border-radius: 16px; background: #ffffff; border: 1px solid #e8e8eb; display: flex; flex-direction: column; gap: 2px; }
 .pm-split h2 { margin: 0; font-size: 12px; font-weight: 600; color: #44464d; }
 .pm-check { min-height: 44px; cursor: pointer; display: flex; align-items: center; gap: 12px; font-size: 13px; }

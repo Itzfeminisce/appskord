@@ -41,7 +41,7 @@ export default function Decisions() {
     <Shell tab="loops">
       <div className="dc-page">
         <div className="dc-head">
-          <button type="button" className="dc-back" aria-label="Back to Open loops" onClick={back}><BackIcon /></button>
+          <button type="button" className="dc-back" aria-label="Back to Open loops" onClick={back}><BackIcon size={20} /></button>
           <h1>Decisions</h1>
           {data.ready && <span className="dc-count">{`${recent} recent`}</span>}
         </div>

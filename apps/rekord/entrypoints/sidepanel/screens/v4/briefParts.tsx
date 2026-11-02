@@ -70,7 +70,7 @@ export function BackHeader({ label, onBack }: { label: string; onBack: () => voi
   return (
     <header className="bp-head">
       <div className="bp-head-left">
-        <button type="button" className="v4-icon" aria-label={label} onClick={onBack}><BackIcon /></button>
+        <button type="button" className="v4-icon" aria-label={label} onClick={onBack}><BackIcon wide /></button>
         <div className="brand"><BrandMark />Rekord</div>
       </div>
       <div className="v4-head-icons">

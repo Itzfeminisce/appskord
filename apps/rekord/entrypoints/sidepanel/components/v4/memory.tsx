@@ -34,7 +34,7 @@ export function QuoteBlock({ speaker, text, meta, onPlay }: { speaker: string; t
   return (
     <div className="mem-quote">
       <span className="mem-quote-text">
-        <span className="mem-quote-said">{speaker}: “{text}”</span>
+        <span className="mem-quote-said">{`${speaker}: “${text}”`}</span>
         <span className="mem-quote-meta">{meta}</span>
       </span>
       <button type="button" className="mem-play" aria-label="Play from this moment" onClick={onPlay}>

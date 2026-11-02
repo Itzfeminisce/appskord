@@ -31,7 +31,7 @@ describe('brief', () => {
   it('words the brief and due-day notifications', () => {
     expect(briefNote(brief(), SAMPLE_NOW)).toEqual({
       title: 'Brief · 1:1 with Sarah in 5 min',
-      message: 'You owe the pricing deck (4 days late). Sarah owes Q3 usage numbers today.',
+      message: 'You owe the pricing deck (4 days late). Sarah owes Q3 numbers today.',
       buttons: [{ title: 'Open brief' }],
     });
     const [q3] = dueToday(SAMPLE_ITEMS, SAMPLE_NOW);

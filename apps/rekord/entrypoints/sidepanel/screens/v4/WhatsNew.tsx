@@ -88,8 +88,8 @@ export default function WhatsNew() {
       {offer?.ask && offer.meetings > 0 && (
         <section aria-label="Build memory" className="wn-card">
           <div className="wn-card-text">
-            <h2>Build memory from your {offer.meetings} earlier meetings</h2>
-            <p>Takes about {backfillMinutes(offer.meetings)} minutes. It runs on {offer.ai} with your key and keeps going in the background if you close Rekord.</p>
+            <h2>{`Build memory from your ${offer.meetings} earlier meetings`}</h2>
+            <p>{`Takes about ${backfillMinutes(offer.meetings)} minutes. It runs on ${offer.ai} with your key and keeps going in the background if you close Rekord.`}</p>
           </div>
           <div className="wn-actions">
             <button type="button" className="wn-build" onClick={build}>Build memory</button>

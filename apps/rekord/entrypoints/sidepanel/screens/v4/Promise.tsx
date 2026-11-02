@@ -88,7 +88,7 @@ function PromiseSheet({ item, view, onChange }: { item: MemoryItem; view: Memory
       </div>
       <QuoteBlock quote={item.quote} meetings={view.meetings} />
       {mention && (
-        <p className="lp-mention"><strong>Mentioned again</strong> in {meetingLine(mention.meetingId, view.meetings)}: “{mention.text}”</p>
+        <p className="lp-mention"><strong>Mentioned again</strong>{` in ${meetingLine(mention.meetingId, view.meetings)}: “${mention.text}”`}</p>
       )}
       {canSnooze && (
         <div className="lp-snooze">

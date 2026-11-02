@@ -112,8 +112,10 @@ function filler(): MemoryItem[] {
   const out: MemoryItem[] = [];
   const earlier = SYNC_DAYS.slice(0, -1).map(syncId);
   const add = (kind: MemoryItem['kind'], status: MemoryItem['status'], label: string, count: number) => {
+    // Filler decisions stay older than last week, so V4Decisions shows "3 recent".
+    const pool = kind === 'decision' ? earlier.slice(0, -1) : earlier;
     for (let n = 1; n <= count; n++) {
-      const meetingId = earlier[n % earlier.length]!;
+      const meetingId = pool[n % pool.length]!;
       const who = `p-filler-${(n % FILLER_PEOPLE) + 1}`;
       const text = `${label} ${n}`;
       out.push(item(`f-${kind}-${n}`, kind, status, text, quote('Alex', `${text}.`, meetingId, mmss(5 + n, 0)), {
@@ -138,17 +140,17 @@ const one = (speaker: string, text: string, m: number, s: number) => quote(speak
 
 /** "What the 1:1 produced": 4 promises, 1 decision, 1 question and 2 left out, all waiting for review. */
 export const SAMPLE_ONE_ON_ONE_ITEMS: MemoryItem[] = [
-  sug('n-deck', 'promise', 'Send the revised pricing deck', one('Sarah', 'Can you send the deck today?', 16, 5),
+  sug('n-deck', 'promise', 'Send the revised pricing deck', one('Alex', 'Yes, I’ll send the deck today.', 16, 5),
     { ownerId: 'me', toId: 'p-sarah', due: '2026-11-03' }),
-  sug('n-demo', 'promise', 'Join Thursday’s rollout demo', one('Alex', 'I’ll join the rollout demo on Thursday.', 17, 20),
+  sug('n-demo', 'promise', 'Join Thursday’s rollout demo', one('Alex', 'I’ll join Thursday’s rollout demo.', 17, 20),
     { ownerId: 'me', toId: 'p-sarah', due: '2026-11-05' }),
-  sug('n-seats', 'promise', 'Northwind seat count', one('Sarah', 'I’ll get you the Northwind seat count by Friday.', 24, 10),
+  sug('n-seats', 'promise', 'Northwind seat count', one('Sarah', 'I’ll send you the seat count by Friday.', 24, 10),
     { ownerId: 'p-sarah', toId: 'me', due: '2026-11-06' }),
   sug('n-intro', 'promise', 'Intro to Northwind’s IT lead', one('Sarah', 'I’ll introduce you to our IT lead.', 26, 45),
     { ownerId: 'p-sarah', toId: 'me' }),
-  sug('n-rollout-16', 'decision', 'Northwind rollout starts 16 Nov', one('Sarah', 'Let’s start the rollout on the 16th instead.', 19, 2),
+  sug('n-rollout-16', 'decision', 'Northwind rollout starts 16 Nov', one('Sarah', 'Let’s move the rollout to the 16th.', 19, 2),
     { replacesId: 'd-rollout-9' }),
-  sug('n-yearly', 'question', 'Can Northwind pay yearly?', one('Sarah', 'Can Northwind pay yearly?', 21, 30)),
+  sug('n-yearly', 'question', 'Can Northwind pay yearly?', one('Sarah', 'Could we pay yearly instead of monthly?', 21, 30)),
   // Quotes the transcript does not hold: shown under "left out".
   sug('n-left-1', 'promise', 'Review the security questionnaire', one('Alex', 'I’ll review the security questionnaire.', 12, 40),
     { ownerId: 'me', toId: 'p-sarah', leftOut: true }),

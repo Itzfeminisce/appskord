@@ -89,7 +89,7 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
   };
 
   const SinceLine = ({ withSeries = false }: { withSeries?: boolean }) => (
-    <>{withSeries && series.label && `${series.label} · `}<span className="pp-mono">{series.count}</span> meetings{series.since && ` since ${series.since}`}</>
+    <>{withSeries && series.label && `${series.label} · `}<span className="pp-mono">{series.count}</span>{` meetings${series.since ? ` since ${series.since}` : ''}`}</>
   );
 
   return (
@@ -114,7 +114,7 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
               onClick={() => { if (pair) { setMenu(false); navigate('personMerge', { personId: pair[0].id, otherId: pair[1].id }); } }}
             >Merge with someone</button>
             <button type="button" role="menuitem" onClick={() => { setMenu(false); navigate('personMerge', { personId: person.id }); }}>Split meetings out</button>
-            <button type="button" role="menuitem" className="pp-menu-danger" onClick={() => { setMenu(false); navigate('forget', { personId: person.id }); }}>Forget {first}</button>
+            <button type="button" role="menuitem" className="pp-menu-danger" onClick={() => { setMenu(false); navigate('forget', { personId: person.id }); }}>{`Forget ${first}`}</button>
           </div>
         )}
       </header>
@@ -142,8 +142,8 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
             <Section title="Decided together" items={decided} meetings={meetings} now={now} kind="decision" />
             {quote && (
               <section className="pp-section">
-                <h2>Last thing {first} said</h2>
-                <div className="pp-quote"><span className="pp-quote-text">“{quote.text}”</span><span className="pp-quote-meta">{quoteMeta(quote, meetings.get(quote.meetingId))}</span></div>
+                <h2>{`Last thing ${first} said`}</h2>
+                <div className="pp-quote"><span className="pp-quote-text">{`“${quote.text}”`}</span><span className="pp-quote-meta">{quoteMeta(quote, meetings.get(quote.meetingId))}</span></div>
               </section>
             )}
             {theirMeetings.length > 0 && (
@@ -156,7 +156,7 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
                     </button>
                   ))}
                   {theirMeetings.length > 3 && (
-                    <button type="button" className="pp-meeting pp-meeting-all" onClick={() => navigate('library')}>See all {theirMeetings.length} meetings</button>
+                    <button type="button" className="pp-meeting pp-meeting-all" onClick={() => navigate('library')}>{`See all ${theirMeetings.length} meetings`}</button>
                   )}
                 </div>
               </section>
