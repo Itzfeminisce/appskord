@@ -36,7 +36,7 @@ function musicLabel(r: Recipe): string {
 }
 
 export function Timeline() {
-  const { state, edit, select, setTime, play, playhead, go, openPanel, remaking, overSlot } = useEditor();
+  const { state, edit, select, setTime, play, playhead, go, openPanel, openedPanel, remaking, overSlot } = useEditor();
   const r = state.clip.recipe;
   const lane = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLSpanElement>(null);
@@ -254,7 +254,8 @@ export function Timeline() {
           {v2 && r.scenes.map((s, si) => {
             if (si === 0) return null;
             const t = transitionOf(r, si);
-            const on = s.id === state.sceneId;
+            // The diamond being edited is the accent one; with no picker open, the selected scene's.
+            const on = openedPanel?.kind === 'transition' ? openedPanel.sceneId === s.id : s.id === state.sceneId;
             return (
               <span key={`d-${s.id}`} style={{ position: 'absolute', left: starts[si]! * k - 7, top: 10, zIndex: 2, width: 14, height: 14 }}>
                 <button type="button" aria-label={`Transition into scene ${si + 1}: ${TRANSITION_NAMES[t.kind]}`} title={transitionLabel(t)}

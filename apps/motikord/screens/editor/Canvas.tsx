@@ -4,6 +4,8 @@ import { findLayer, setBox, setField, type Found } from '../../lib/editor/store'
 import { applyPatch } from '../../lib/patch';
 import { activeLayers, clipDuration, drawFrame, fontFor, sceneAt } from '../../lib/render/drawFrame';
 import { boxFor, safeBox } from '../../lib/render/reflow';
+import { sizeOn } from '../../lib/render/textFit';
+import { aspectOf } from '../../lib/templates/blocks';
 import type { Box, Layer, Recipe, Scene, TextLayer } from '../../lib/types';
 import { countLabel, layerSlotText, overflowAt, setSlot, slotCount, slotOfLayer, slotWith, type LayerSlot } from '../../lib/editor/v2';
 import { frameReady, useEditor } from './Editor';
@@ -234,7 +236,7 @@ function TextEditor({ found, box, W, H, onText, onDone, value, overflow }: { fou
   useEffect(() => { const el = ref.current; if (el) { el.focus(); el.select(); } }, []);
   const text = value ?? l.text;
   const shared: CSSProperties = {
-    ...place(box, W, H), margin: 0, padding: l.background ? 16 * unit : 0, border: 0, overflow: 'hidden', font: fontFor(l, l.sizePx * unit),
+    ...place(box, W, H), margin: 0, padding: l.background ? 16 * unit : 0, border: 0, overflow: 'hidden', font: fontFor(l, sizeOn(l, aspectOf(W, H)) * unit),
     lineHeight: l.lineHeight, textAlign: l.align, whiteSpace: 'pre-wrap', overflowWrap: 'break-word',
   };
   return (

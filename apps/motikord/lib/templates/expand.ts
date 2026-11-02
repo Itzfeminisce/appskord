@@ -13,7 +13,11 @@ type Boxes = Record<Aspect, { x: number; y: number; w: number; h: number }>;
 // Type scale in px at a 1080 short side (SceneTemplates, Clean at 9:16), and each pack's weight and tracking (em).
 const SCALE_PX: Record<TypeScale, number> = { display: 140, headline: 88, body: 54, caption: 40, number: 380 };
 // Slots whose copy at the full word limit does not fit at their scale's size on every shape: the size they are drawn at.
-const SLOT_PX: Record<string, number> = { 'title-hook.kicker': 46, 'stat-reveal.number': 320, 'quote.quote': 62, 'list.items': 45, 'hero.headline': 100, 'hero.line': 46, 'end-card.cta': 100 };
+const SLOT_PX: Record<string, number> = { 'title-hook.kicker': 56, 'stat-reveal.number': 320, 'quote.quote': 62, 'list.items': 45, 'hero.headline': 100, 'hero.line': 46, 'end-card.cta': 100 };
+// FormatsV2: slots whose frame sets a size of its own on one shape, as a share of the slot's size.
+const SLOT_SCALE: Record<string, Partial<Record<Aspect, number>>> = { 'title-hook.kicker': { '1:1': 0.65 }, 'title-hook.headline': { '1:1': 0.68 } };
+// The kicker is an uppercase line in every pack ("RISE BAKERY"): weight 600, 0.12 em tracking.
+const KICKER = { weight: 600, tracking: 0.12 };
 const LINE_HEIGHT: Record<TypeScale, number> = { display: 1, headline: 1.08, body: 1.3, caption: 1.3, number: 0.9 };
 type Face = Record<TypeScale, { weight: number; tracking: number }>;
 const FACE: Record<StyleId, Face> = {
@@ -138,11 +142,17 @@ function text(c: Ctx, def: SlotDef, value: string, order: number, boxes: Boxes, 
   const face = c.look.face[scale];
   const font = scale === 'number' ? c.look.fonts.number : HEADING.includes(scale) ? c.look.fonts.display : c.look.fonts.text;
   const pill = !opts.colour && !c.overMedia && def.kind === 'text' && scale === 'caption' && def.id !== 'kicker' ? c.look.pack.label : undefined;
-  const colour = opts.colour ?? pill?.ink ?? (c.overMedia ? '#FFFFFF' : def.kind === 'text' && scale === 'caption' ? (def.id === 'kicker' ? c.look.accentText : c.look.muted) : c.look.ink);
+  const kicker = def.id === 'kicker';
+  // Playful's kicker takes its label teal; the others take the accent.
+  const kickerInk = c.look.pack.label?.bg ?? c.look.accentText;
+  const colour = opts.colour ?? pill?.ink ?? (c.overMedia ? '#FFFFFF' : def.kind === 'text' && scale === 'caption' ? (kicker ? kickerInk : c.look.muted) : c.look.ink);
+  const scaleAt = SLOT_SCALE[`${c.t.id}.${def.id}`];
   return {
-    ...base(c, def, order, opts.item ?? 0, opts.suffix), ...withBoxes(boxes), type: 'text', role: ROLE[scale], text: value,
-    font, sizePx: opts.sizePx ?? SLOT_PX[`${c.t.id}.${def.id}`] ?? SCALE_PX[scale], weight: HEADING.includes(scale) ? c.look.headingWeight ?? face.weight : face.weight,
-    colour, align: def.align ?? 'left', lineHeight: LINE_HEIGHT[scale], letterSpacing: face.tracking,
+    ...base(c, def, order, opts.item ?? 0, opts.suffix), ...withBoxes(boxes), type: 'text', role: ROLE[scale], text: kicker ? value.toUpperCase() : value,
+    font, sizePx: opts.sizePx ?? SLOT_PX[`${c.t.id}.${def.id}`] ?? SCALE_PX[scale], weight: kicker ? KICKER.weight : HEADING.includes(scale) ? c.look.headingWeight ?? face.weight : face.weight,
+    colour, align: def.align ?? 'left', lineHeight: LINE_HEIGHT[scale], letterSpacing: kicker ? KICKER.tracking : face.tracking,
+    ...(scaleAt && !opts.sizePx ? { scaleAt: { ...scaleAt } } : {}),
+    ...(def.valign ? { valign: def.valign } : {}),
     ...(opts.stagger !== false && def.motion.stagger ? { stagger: def.motion.stagger } : {}),
     ...(c.overMedia ? { shadow: true } : {}),
     ...(pill ? { background: pill.bg, pill: true } : {}),
@@ -289,11 +299,12 @@ function wordsFit(t: SceneTemplate, look: Look, a: Aspect, q: Squeeze): boolean 
     const b = squeezeBox(d.boxes[a], q);
     const cell = n > 1 && wide(b, a) ? { w: (b.w / n) * 0.9, h: b.h * 0.6 } : { w: b.w * (n > 1 ? 0.8 : 1), h: (b.h / n) * (n > 1 ? 0.85 : 1) };
     const scale = d.scale ?? 'body';
-    const size = SLOT_PX[`${t.id}.${d.id}`] ?? SCALE_PX[scale];
+    const size = (SLOT_PX[`${t.id}.${d.id}`] ?? SCALE_PX[scale]) * (SLOT_SCALE[`${t.id}.${d.id}`]?.[a] ?? 1);
     const font = scale === 'number' ? look.fonts.number : HEADING.includes(scale) ? look.fonts.display : look.fonts.text;
-    const texts = scale === 'number' ? ['1,200'] : [Array.from({ length: d.words ?? 3 }, (_, i) => AVERAGE_WORDS[i % AVERAGE_WORDS.length]).join(' '), LONG_WORD];
+    const kicker = d.id === 'kicker';
+    const texts = (scale === 'number' ? ['1,200'] : [Array.from({ length: d.words ?? 3 }, (_, i) => AVERAGE_WORDS[i % AVERAGE_WORDS.length]).join(' '), LONG_WORD]).map((x) => (kicker ? x.toUpperCase() : x));
     return texts.every((text) => {
-      const fit = fitText({ text, width: cell.w * PX[a].w, height: cell.h * PX[a].h, maxSize: size, lineHeight: LINE_HEIGHT[scale], measure: estimateFor(font, look.face[scale].tracking) });
+      const fit = fitText({ text, width: cell.w * PX[a].w, height: cell.h * PX[a].h, maxSize: size, lineHeight: LINE_HEIGHT[scale], measure: estimateFor(font, kicker ? KICKER.tracking : look.face[scale].tracking) });
       return fit.fits && fit.sizePx >= Math.floor(size);
     });
   });

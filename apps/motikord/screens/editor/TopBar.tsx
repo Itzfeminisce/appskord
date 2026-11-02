@@ -81,7 +81,7 @@ export function TopBar() {
         <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', background: dot ?? 'transparent', border: dot ? 0 : '1.5px dashed var(--line-strong)' }} />Brand
       </button>
       <button type="button" data-slot="check-count" style={linkStyle} onClick={() => go('Checker')}>
-        Check<span aria-label={`${count} to fix`} style={{ minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: count > 0 ? '#FEF3C7' : 'var(--stage)', color: count > 0 ? '#92400E' : 'var(--muted)', font: '600 11px/18px var(--font)', textAlign: 'center' }}>{count}</span>
+        Check{count > 0 && <span aria-label={`${count} to fix`} style={{ minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: '#FEF3C7', color: '#92400E', font: '600 11px/18px var(--font)', textAlign: 'center' }}>{count}</span>}
       </button>
       <button type="button" className="btn btn-primary" onClick={() => go('Export')} style={{ height: 36, padding: '0 16px', borderRadius: 9, fontSize: 13, fontWeight: 600, gap: 6 }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14" /></svg>Export

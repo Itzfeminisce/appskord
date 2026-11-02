@@ -66,12 +66,12 @@ describe('backgrounds', () => {
     expect(log).toContain('fillStyle=createLinearGradient');
   });
 
-  it('blobs paint one soft radial per accent colour over the base, once, on a quarter-size layer', () => {
+  it('blobs paint one crisp radial per accent colour over the base, once, on a half-size layer', () => {
     const cache = new MediaCache();
     const bg: Background = { kind: 'blobs', colours: ['#FFF7ED', '#FDBA74', '#5EEAD4'], drift: true };
     const log = bgOf(bg, 0, cache);
     const off = FakeOffscreen.log;
-    expect(off[0]).toBe('scale(0.25,0.25)');
+    expect(off[0]).toBe('scale(0.50,0.50)');
     expect(off.indexOf('fillStyle=#FFF7ED')).toBeLessThan(off.indexOf('fillStyle=createRadialGradient'));
     expect(off.filter((c) => c.startsWith('createRadialGradient'))).toHaveLength(2);
     expect(off).toContain('stop(1.00,rgba(253,186,116,0))');

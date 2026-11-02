@@ -5,7 +5,7 @@ import { getPack, getSceneTemplate, insideSafeArea, isBackgroundBox, SAFE_AREA, 
 import { ASPECTS } from './recipe/validate';
 import { getPreset } from './render/presets';
 import { boxFor, canvasSize, clampToSafe, insideSafe, isFullBleed, safeBox } from './render/reflow';
-import { estimateFor, fitText, type Measure } from './render/textFit';
+import { estimateFor, fitText, sizeOn, type Measure } from './render/textFit';
 import { polyHitsBox, type Poly } from './templates/blocks';
 
 const ATTRIBUTION: readonly LicenceId[] = ['cc-by', 'cc-by-sa', 'cc-by-nc'];
@@ -59,12 +59,12 @@ function overflow({ recipe, scene, layer, si, li }: At, measure: Measure, out: I
   const fits = ASPECTS.map((aspect) => {
     const b = boxFor(l, aspect, recipe.aspect, scene.layout);
     const { w, h } = canvasSize(aspect, 1080);
-    return { aspect, fit: fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize: l.sizePx, lineHeight: l.lineHeight, measure }) };
+    return { aspect, fit: fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize: sizeOn(l, aspect), lineHeight: l.lineHeight, measure }) };
   });
-  const bad = fits.filter(({ fit }) => !fit.fits || fit.sizePx < Math.floor(l.sizePx));
+  const bad = fits.filter(({ aspect, fit }) => !fit.fits || fit.sizePx < Math.floor(sizeOn(l, aspect)));
   if (!bad.length) return;
   // One size for every aspect: the smallest fit, so no fix undoes another.
-  const sizePx = Math.min(...fits.map(({ fit }) => fit.sizePx));
+  const sizePx = Math.min(...fits.map(({ aspect, fit }) => fit.sizePx / (l.scaleAt?.[aspect] ?? 1)));
   for (const { aspect } of bad) {
     out.push({
       id: id('overflow', scene.id, l.id, aspect), sceneId: scene.id, layerId: l.id, aspect, kind: 'overflow',
@@ -82,11 +82,13 @@ function tooSmall({ recipe, scene, layer, si, li }: At, measure: Measure, out: I
     const pad = l.background && !l.pill ? 32 : 0;
     return fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize, lineHeight: l.lineHeight, measure });
   };
-  if (l.sizePx >= MIN_TEXT_PX && fitAt('9:16', l.sizePx).sizePx >= MIN_TEXT_PX) return;
-  if (!ASPECTS.every((aspect) => fitAt(aspect, MIN_TEXT_PX).sizePx >= MIN_TEXT_PX)) return;
+  const on = sizeOn(l, '9:16');
+  if (on >= MIN_TEXT_PX && fitAt('9:16', on).sizePx >= MIN_TEXT_PX) return;
+  const raised = MIN_TEXT_PX / (l.scaleAt?.['9:16'] ?? 1);
+  if (!ASPECTS.every((aspect) => fitAt(aspect, sizeOn({ ...l, sizePx: raised }, aspect)).sizePx >= Math.floor(sizeOn({ ...l, sizePx: raised }, aspect)))) return;
   out.push({
     id: id('too-small', scene.id, l.id, '9:16'), sceneId: scene.id, layerId: l.id, aspect: '9:16', kind: 'too-small',
-    fix: [{ op: 'replace', path: `${layerPath(si, li)}/sizePx`, value: MIN_TEXT_PX }],
+    fix: [{ op: 'replace', path: `${layerPath(si, li)}/sizePx`, value: raised }],
   });
 }
 
@@ -461,7 +463,7 @@ function inkArea(v: Vis, aspect: Aspect, measure: Measure): number {
   const l = v.layer as TextLayer;
   const { w, h } = canvasSize(aspect, 1080);
   const pad = l.background && !l.pill ? 32 : 0;
-  const fit = fitText({ text: l.text, width: v.box.w * w - pad, height: v.box.h * h - pad, maxSize: l.sizePx, lineHeight: l.lineHeight, measure });
+  const fit = fitText({ text: l.text, width: v.box.w * w - pad, height: v.box.h * h - pad, maxSize: sizeOn(l, aspect), lineHeight: l.lineHeight, measure });
   const widest = Math.max(0, ...fit.lines.map((line) => measure(line, fit.sizePx)));
   return Math.min(area(v.box), (widest * fit.lines.length * fit.sizePx * l.lineHeight) / (w * h));
 }

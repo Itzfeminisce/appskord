@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { check } from '../checker';
 import { canvasSize, boxFor } from '../render/reflow';
-import { estimateFor, fitText } from '../render/textFit';
+import { estimateFor, fitText, sizeOn } from '../render/textFit';
 import type { Aspect, Recipe, Scene, SceneTemplate, SlotValue, TextLayer } from '../types';
 import { expandScene } from './expand';
 import { SCENE_TEMPLATES, STYLE_PACKS } from './scenes';
@@ -58,7 +58,7 @@ describe('a 9-letter word in every headline slot and "1,200" in the stat slot fi
         const b = boxFor(l, aspect, aspect, scene.layout);
         const { w, h } = canvasSize(aspect, 1080);
         const pad = l.background && !l.pill ? 32 : 0;
-        const fit = fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize: l.sizePx, minSize: l.sizePx, lineHeight: l.lineHeight, measure: estimateFor(l.font, l.letterSpacing) });
+        const fit = fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize: sizeOn(l, aspect), minSize: sizeOn(l, aspect), lineHeight: l.lineHeight, measure: estimateFor(l.font, l.letterSpacing) });
         expect(fit.lines.join(' ').split(/\s+/)).toEqual(l.text.trim().split(/\s+/));
         expect(fit.fits, `${l.id} "${l.text}"`).toBe(true);
       }

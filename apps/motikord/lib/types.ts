@@ -41,7 +41,7 @@ export interface SlotDef {                                 // one named slot in 
   id: string; name: string; kind: SlotKind;                // name is the frame's label ("Headline")
   words?: number;                                          // word limit (text, and each item)
   items?: [number, number];                                // min and max items (items, chart bars)
-  scale?: TypeScale; align?: 'left' | 'center' | 'right'; optional?: boolean;
+  scale?: TypeScale; align?: 'left' | 'center' | 'right'; optional?: boolean; valign?: 'top';
   highlight?: boolean;                                     // one word may carry the accent highlight
   boxes: Record<Aspect, Box>;                              // 0..1 of the frame, inside the safe area
   motion: { in: string; stagger?: 'word' | 'line'; during?: string };   // preset ids from lib/render/presets
@@ -86,6 +86,8 @@ export interface TextLayer extends LayerBase {
   pill?: boolean;                                            // the background hugs the words as a pill instead of filling the box
   letterSpacing?: number;                                    // em
   highlight?: { word: number; colour: string }; shadow?: boolean; stagger?: 'word' | 'line'; slot?: string;
+  scaleAt?: Partial<Record<Aspect, number>>;                 // sizePx times this on one size (the frame's own type size per shape)
+  valign?: 'top';                                            // lines start at the top of the box instead of its middle
 }
 export interface ShapeLayer extends LayerBase { type: 'shape'; shape: 'rect' | 'circle' | 'line'; fill: string; radius?: number; slot?: string }
 export interface MediaLayer extends LayerBase {
