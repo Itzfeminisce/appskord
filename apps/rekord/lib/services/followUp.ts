@@ -90,8 +90,8 @@ export function followUpFacts(
     ...(me ? { me } : {}),
     recipients,
     subject: `Notes from ${meeting.title}, ${dayOf(new Date(meeting.startedAt))}`,
-    decisions,
-    owes,
+    decisions: decisions.slice(0, MAX_LIST),
+    owes: owes.slice(0, MAX_LIST),
     ...(d ? { next: `${dayOf(d)}, ${pad(d.getHours())}:${pad(d.getMinutes())}` } : {}),
     ...(meeting.summary?.overview ? { overview: meeting.summary.overview } : {}),
   };
@@ -119,6 +119,8 @@ export function plainDraft(f: FollowUpFacts, length: FollowUpLength): string {
   return parts.join('\n\n');
 }
 
+/** Longest decision or owes list in a follow-up. */
+const MAX_LIST = 30;
 export const FOLLOW_UP_LEDGER_WHAT = 'Meeting notes for a follow-up email';
 const LEDGER_SERVICE: Partial<Record<string, LedgerEntry['service']>> = { groq: 'groq', openai: 'openai', openrouter: 'openrouter', anthropic: 'anthropic' };
 const NOT_SENT = new Set(['no-key', 'offline', 'local-unavailable', 'cancelled']);

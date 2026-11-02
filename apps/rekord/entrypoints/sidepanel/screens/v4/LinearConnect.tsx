@@ -23,6 +23,10 @@ async function fromPenv(): Promise<boolean> {
   return settings.keySource !== 'paste' && stored[LINEAR_PASTED_KEY] !== true;
 }
 
+const PASTE_DEBOUNCE_MS = 500;
+/** The saved team if still there, else the only team; with several, none until the user picks. */
+const pick = (teams: LinearTeam[], saved?: LinearTeam) => teams.find((t) => t.id === saved?.id)?.id ?? (teams.length === 1 ? teams[0]!.id : '');
+
 /** V4LinearConnect: LINEAR_API_KEY from Penv Cloud first (its status only, never the key), a pasted key as the fallback. */
 export default function LinearConnect() {
   const { back, canGoBack, replace } = useRouter();
@@ -47,11 +51,26 @@ export default function LinearConnect() {
       // Teams load now only when Chrome already allows Linear; otherwise Connect asks first.
       if (!(await (deps.hasHosts ?? hasLinearHosts)())) return;
       const [found, saved] = await Promise.all([listTeams(key, deps).catch(() => []), savedTeam().catch(() => undefined)]);
-      if (alive) { setTeams(found); setTeamId(found.find((t) => t.id === saved?.id)?.id ?? found[0]?.id ?? ''); }
+      if (alive) { setTeams(found); setTeamId(pick(found, saved)); }
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A pasted key loads its teams once typing pauses (when Chrome already allows Linear), so the user picks the team.
+  useEffect(() => {
+    if (how !== 'paste' || !pasted.trim()) return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      void (async () => {
+        if (!(await (deps.hasHosts ?? hasLinearHosts)())) return;
+        const [found, saved] = await Promise.all([listTeams(pasted.trim(), deps).catch(() => []), savedTeam().catch(() => undefined)]);
+        if (alive && found.length) { setTeams(found); setTeamId(pick(found, saved)); }
+      })();
+    }, PASTE_DEBOUNCE_MS);
+    return () => { alive = false; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pasted, how]);
 
   async function connect() {
     if (busy) return;
@@ -71,8 +90,9 @@ export default function LinearConnect() {
     }
     try {
       const list = how === 'penv' && teams.length ? teams : await listTeams(key, deps);
-      const team = list.find((t) => t.id === teamId) ?? list[0];
-      if (!team) throw new LinearError('auth');
+      if (list.length === 0) throw new LinearError('auth');
+      const team = list.find((t) => t.id === teamId) ?? (list.length === 1 ? list[0] : undefined);
+      if (!team) { setTeams(list); setTeamId(''); setBusy(false); return; } // the user picks the team, then connects
       if (how === 'paste') {
         await mergeKeys({ [LINEAR_KEY]: key });
         await browser.storage.local.set({ [LINEAR_PASTED_KEY]: true });
@@ -124,6 +144,7 @@ export default function LinearConnect() {
         <div className="lc-team">
           <label htmlFor="lc-team" className="af-label">Send issues to</label>
           <select id="lc-team" value={teamId} disabled={teams.length === 0} onChange={(e) => setTeamId(e.target.value)}>
+            {teams.length > 1 && !teamId && <option value="" />}
             {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <span className="lc-hint">You can change the team each time you send.</span>

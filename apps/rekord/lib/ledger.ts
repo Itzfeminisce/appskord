@@ -30,3 +30,9 @@ async function write(call: LedgerCall): Promise<LedgerEntry> {
   await Promise.all([tx.store.put(entry), tx.done]);
   return entry;
 }
+
+/** Wraps fetch so the caller knows whether a request actually left, for entries that only count sent requests. */
+export function trackSend(f?: typeof fetch): { fetch: typeof fetch; left: () => boolean } {
+  let left = false;
+  return { fetch: ((...a: Parameters<typeof fetch>) => { left = true; return (f ?? fetch)(...a); }) as typeof fetch, left: () => left };
+}

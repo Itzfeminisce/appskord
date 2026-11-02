@@ -1,7 +1,7 @@
 /** Google Tasks: the `tasks` scope is asked the first time the user sends, then lists are read and tasks added. */
 import { getToken, googleFetch, grantedScopes, GoogleError, scopesFor, TASKS_SCOPE, type GoogleDeps } from '../google';
 import { requestHosts, TASKS_HOSTS } from '../hosts';
-import { record as recordCall } from '../ledger';
+import { record as recordCall, trackSend } from '../ledger';
 import { getSettings } from '../settings';
 import type { MemoryItem } from '../memory/types';
 
@@ -49,8 +49,9 @@ const dueTime = (due?: string) => (due ? `${due}T00:00:00.000Z` : undefined);
 
 /** Adds one promise as a task; resolves to the task's link. */
 export async function addTask(listId: string, item: Pick<MemoryItem, 'text' | 'due' | 'meetingId'>, notes: string, deps: TasksDeps = {}): Promise<string> {
+  const tracked = trackSend(deps.fetch);
   try {
-    const res = await googleFetch(`${API}/lists/${encodeURIComponent(listId)}/tasks`, [TASKS_SCOPE], deps, {
+    const res = await googleFetch(`${API}/lists/${encodeURIComponent(listId)}/tasks`, [TASKS_SCOPE], { ...deps, fetch: tracked.fetch }, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: item.text, notes, ...(item.due ? { due: dueTime(item.due) } : {}) }),
@@ -58,6 +59,6 @@ export async function addTask(listId: string, item: Pick<MemoryItem, 'text' | 'd
     const task = (await res.json()) as { webViewLink?: string };
     return task.webViewLink || TASKS_APP_URL;
   } finally {
-    await (deps.record ?? recordCall)({ meetingId: item.meetingId, service: 'google-tasks', what: 'Tasks' });
+    if (tracked.left()) await (deps.record ?? recordCall)({ meetingId: item.meetingId, service: 'google-tasks', what: 'Tasks' });
   }
 }

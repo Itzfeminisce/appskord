@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeUrl } from './gmail';
+import { bodyTooLong, composeUrl, MAX_COMPOSE_URL } from './gmail';
 
 describe('Gmail compose URL', () => {
   it('fills to, subject and body, encoded', () => {
@@ -14,5 +14,14 @@ describe('Gmail compose URL', () => {
 
   it('leaves out an empty recipient', () => {
     expect(composeUrl({ to: [' '], subject: 's', body: 'b' })).not.toContain('to=');
+  });
+
+  it('over the cap opens compose without the body', () => {
+    const draft = { to: ['a@b.co'], subject: 's', body: 'long text '.repeat(1500) };
+    expect(bodyTooLong(draft)).toBe(true);
+    const url = composeUrl(draft);
+    expect(url.length).toBeLessThanOrEqual(MAX_COMPOSE_URL);
+    expect(url).not.toContain('body=');
+    expect(bodyTooLong({ subject: 's', body: 'short' })).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 /** Sending action items out: one call per promise to the chosen service, then the promise remembers where it went. */
-import { record as recordCall } from '../ledger';
+import { record as recordCall, trackSend } from '../ledger';
 import { putItem } from '../memory/store';
 import type { MemoryItem } from '../memory/types';
 import { addDatabasePage, searchDatabases, type NotionDatabase, type NotionDeps } from '../share/notion';
@@ -16,6 +16,9 @@ export const SERVICE_NAMES: Record<SendService, string> = { gtasks: 'Google Task
 export function lastSent(item: Pick<MemoryItem, 'sentTo'>): NonNullable<MemoryItem['sentTo']>[number] | undefined {
   return item.sentTo?.reduce<NonNullable<MemoryItem['sentTo']>[number] | undefined>((a, b) => (!a || b.at >= a.at ? b : a), undefined);
 }
+
+/** Whether this item already went to the service. */
+export const sentTo = (item: Pick<MemoryItem, 'sentTo'>, service: SendService): boolean => !!item.sentTo?.some((s) => s.service === service);
 
 /** The promises a meeting can send, in the frame's order. */
 export function sendable(items: MemoryItem[], meetingId: string): MemoryItem[] {
@@ -52,10 +55,11 @@ async function sendOne(target: SendTarget, item: MemoryItem, note: string, deps:
   const record = deps.record;
   if (target.service === 'gtasks') return addTask(target.listId, item, note, { ...deps.tasks, ...(record ? { record } : {}) });
   if (target.service === 'linear') return createIssue(target.key, target.teamId, item, note, { ...deps.linear, ...(record ? { record } : {}) });
+  const tracked = trackSend(deps.notion?.fetch);
   try {
-    return await addDatabasePage(target.token, target.database, item, note, deps.notion);
+    return await addDatabasePage(target.token, target.database, item, note, { ...deps.notion, fetch: tracked.fetch });
   } finally {
-    await (record ?? recordCall)({ meetingId: item.meetingId, service: 'notion', what: 'Action items' });
+    if (tracked.left()) await (record ?? recordCall)({ meetingId: item.meetingId, service: 'notion', what: 'Action items' });
   }
 }
 

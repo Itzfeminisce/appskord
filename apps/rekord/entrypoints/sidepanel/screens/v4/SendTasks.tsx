@@ -3,10 +3,11 @@ import { getMeeting } from '@/lib/db';
 import { GoogleError } from '@/lib/google';
 import { itemsForMeeting, listPeople } from '@/lib/memory/store';
 import type { MemoryItem, Person } from '@/lib/memory/types';
+import { LINEAR_HOSTS } from '@/lib/hosts';
 import { loadKeys } from '@/lib/penv';
 import { DEFAULT_LIST, listTaskLists, tasksTurnedOn, turnOnTasks, type TaskList } from '@/lib/services/gtasks';
 import { LINEAR_KEY, listTeams, savedTeam, type LinearTeam } from '@/lib/services/linear';
-import { notionDatabases, sendable, sendItems, SERVICE_NAMES, type SendDeps, type SendService, type SendTarget } from '@/lib/services/send';
+import { notionDatabases, sendable, sendItems, sentTo, SERVICE_NAMES, type SendDeps, type SendService, type SendTarget } from '@/lib/services/send';
 import type { NotionDatabase } from '@/lib/share/notion';
 import type { Meeting } from '@/lib/types';
 import { Spinner } from '../../components';
@@ -19,7 +20,7 @@ import './after.css';
 export interface SendDone { meetingId: string; service: SendService; target: string; sentIds: string[] }
 
 /** Test and dev-frame hooks: service calls and where keys come from. */
-export const sendTasksDeps: { current?: SendDeps & { loadKeys?: () => Promise<Record<string, string>> } } = {};
+export const sendTasksDeps: { current?: SendDeps & { loadKeys?: () => Promise<Record<string, string>>; hasHosts?: () => Promise<boolean> } } = {};
 /** Survives a trip to Connect Linear and back, and holds the done state until it is shown. */
 export const sendTasksSession: { tab?: SendService; done?: SendDone } = {};
 
@@ -71,11 +72,17 @@ export default function SendTasks() {
         if (!alive) return;
         const rows = sendable(all, meetingId);
         setMeeting(m); setItems(rows); setPeople(ps);
-        setChecked(new Set(rows.filter((i) => i.ownerId === 'me').map((i) => i.id)));
       })
       .catch((e) => console.error('Rekord: could not load the action items', e));
     return () => { alive = false; };
   }, [meetingId]);
+
+  // Mine start ticked, except what already went to the selected service.
+  const itemKey = items.map((i) => i.id).join();
+  useEffect(() => {
+    setChecked(new Set(items.filter((i) => i.ownerId === 'me' && !sentTo(i, tab)).map((i) => i.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, itemKey]);
 
   // Each destination loads what its picker needs the first time its tab opens.
   useEffect(() => {
@@ -99,7 +106,9 @@ export default function SendTasks() {
       });
     } else if (tab === 'linear' && !linear) {
       void keys().then(async (k) => {
-        const key = k[LINEAR_KEY]?.trim();
+        // Without Chrome's permission for Linear the picker offers Connect Linear instead.
+        const allowed = await (deps.hasHosts ?? (() => browser.permissions.contains({ origins: LINEAR_HOSTS })))().catch(() => false);
+        const key = allowed ? k[LINEAR_KEY]?.trim() : undefined;
         const teams = key ? await listTeams(key, deps.linear, meetingId).catch((e) => { fail(e); return []; }) : [];
         const saved = await savedTeam().catch(() => undefined);
         if (alive) { setLinear({ key, teams }); setTeamId(teams.find((t) => t.id === saved?.id)?.id ?? teams[0]?.id ?? ''); }
@@ -154,7 +163,8 @@ export default function SendTasks() {
       browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
       const sentById = new Map(result.sent.map((s) => [s.item.id, s.item]));
       setItems((rows) => rows.map((r) => sentById.get(r.id) ?? r));
-      setDone({ meetingId, service: tab, target: label, sentIds: result.sent.map((s) => s.item.id) });
+      if (result.error) setChecked((c) => new Set([...c].filter((id) => !sentById.has(id))));
+      else setDone({ meetingId, service: tab, target: label, sentIds: result.sent.map((s) => s.item.id) });
     }
     if (result.error) setError(errorText(result.error));
     setBusy(false);
@@ -250,7 +260,7 @@ export default function SendTasks() {
                   <span className={on ? 'st-box on' : 'st-box'}>{on && <Tick size={14} />}</span>
                   <span className="st-text">
                     <span className="st-title">{item.text}</span>
-                    <span className="st-meta">{rowMeta(item, people, world.now())}</span>
+                    <span className="st-meta">{sentTo(item, tab) ? 'Sent · ' : ''}{rowMeta(item, people, world.now())}</span>
                   </span>
                 </label>
               </li>

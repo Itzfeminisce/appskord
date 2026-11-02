@@ -109,6 +109,22 @@ describe('Google Tasks', () => {
   });
 });
 
+describe('ledger rows only for requests that left', () => {
+  it('a task that never reached the network is not recorded', async () => {
+    const identity = { launchWebAuthFlow: vi.fn(async () => { throw new Error('cancelled'); }), getRedirectURL: vi.fn(() => REDIRECT) } satisfies IdentityApi;
+    const fetch = vi.fn(async () => json({}));
+    await expect(addTask('l1', { text: 'x', meetingId: M.sarah3 }, 'n', { identity, clientId: 'x', fetch, record })).rejects.toBeDefined();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('an issue is recorded after a network error, because the request was sent', async () => {
+    const fetch = vi.fn(async () => { throw new TypeError('offline'); });
+    await expect(createIssue('k', 't1', { text: 'x', meetingId: M.sarah3 }, 'n', { fetch, record })).rejects.toBeInstanceOf(LinearError);
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('Linear', () => {
   it('lists teams and creates issues with the key as it is', async () => {
     const fetch = vi.fn(async (_u: string | URL | Request, init?: RequestInit) => {

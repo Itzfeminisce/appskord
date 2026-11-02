@@ -1,5 +1,5 @@
 /** Linear over GraphQL with a personal API key: list teams and create issues. The key is sent only to api.linear.app. */
-import { record as recordCall } from '../ledger';
+import { record as recordCall, trackSend } from '../ledger';
 
 export const LINEAR_KEY = 'LINEAR_API_KEY';
 const API = 'https://api.linear.app/graphql';
@@ -60,14 +60,15 @@ const CREATE = `mutation Create($input: IssueCreateInput!) { issueCreate(input: 
 export async function createIssue(
   key: string, teamId: string, item: { text: string; due?: string; meetingId: string }, description: string, deps: LinearDeps = {},
 ): Promise<string> {
+  const tracked = trackSend(deps.fetch);
   try {
     const input = { teamId, title: item.text, description, ...(item.due ? { dueDate: item.due } : {}) };
-    const data = await gql<{ issueCreate?: { success?: boolean; issue?: { url?: string } } }>(key, CREATE, { input }, deps);
+    const data = await gql<{ issueCreate?: { success?: boolean; issue?: { url?: string } } }>(key, CREATE, { input }, { ...deps, fetch: tracked.fetch });
     const url = data.issueCreate?.issue?.url;
     if (!data.issueCreate?.success || !url) throw new LinearError('server');
     return url;
   } finally {
-    await (deps.record ?? recordCall)({ meetingId: item.meetingId, service: 'linear', what: 'Issues' });
+    if (tracked.left()) await (deps.record ?? recordCall)({ meetingId: item.meetingId, service: 'linear', what: 'Issues' });
   }
 }
 

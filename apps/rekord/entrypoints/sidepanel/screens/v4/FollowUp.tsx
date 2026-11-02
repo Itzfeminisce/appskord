@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getMeeting } from '@/lib/db';
 import { record } from '@/lib/ledger';
 import { itemsForMeeting, listItems, listPeople } from '@/lib/memory/store';
-import { composeUrl } from '@/lib/services/gmail';
+import { bodyTooLong, composeUrl } from '@/lib/services/gmail';
 import {
   draftFollowUp, followUpFacts, GMAIL_LEDGER_WHAT, plainDraft,
   type FollowUpDeps, type FollowUpFacts, type FollowUpLength, type Recipient,
@@ -74,7 +74,8 @@ export default function FollowUp() {
     setAddress(''); setAdding(false);
   };
 
-  const gmail = composeUrl({ to: to.map((r) => r.email), subject, body });
+  const draft = { to: to.map((r) => r.email), subject, body };
+  const gmail = composeUrl(draft);
 
   return (
     <main className="af-page">
@@ -127,6 +128,7 @@ export default function FollowUp() {
               href={gmail} target="_blank" rel="noreferrer" className="fu-gmail" aria-disabled={drafting || undefined}
               onClick={(e) => {
                 if (drafting) { e.preventDefault(); return; }
+                if (bodyTooLong(draft)) navigator.clipboard.writeText(body).catch((err) => console.error('Rekord: could not copy the email', err));
                 void record({ meetingId, service: 'gmail', what: GMAIL_LEDGER_WHAT }).catch((err) => console.error('Rekord: could not record the Gmail draft', err));
               }}
             >Open in Gmail</a>
