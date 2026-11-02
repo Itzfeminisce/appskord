@@ -2,6 +2,7 @@
 import { getDB } from '@/lib/db';
 import { SAMPLE_AFTER, SAMPLE_EVENT, SAMPLE_NOW, seedSample } from '@/lib/memory/sample';
 import { BACKFILL_KEY } from '@/lib/memory/backfill';
+import { TASKS_ON_KEY } from '@/lib/services/gtasks';
 import { world } from '../components/v4/world';
 import type { Route } from '../router';
 import { DEV_FRAMES } from './frames';
@@ -10,7 +11,7 @@ const SCRATCH_DB = 'rekord-dev-frames';
 const SESSION_KEY = 'rekord.devFrame';
 const SNAPSHOT_KEY = 'rekord.devFrame.storage';
 // Every chrome.storage.local key the frames write; restored when the dev world is left.
-const TOUCHED_KEYS = ['settings', BACKFILL_KEY, 'whatsNewPending'];
+const TOUCHED_KEYS = ['settings', BACKFILL_KEY, 'whatsNewPending', TASKS_ON_KEY];
 
 /** The frame named by `#/dev/<Frame>`, if any. */
 export function frameInHash(hash: string): string | undefined {

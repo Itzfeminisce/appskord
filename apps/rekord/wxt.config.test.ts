@@ -13,6 +13,8 @@ const OPTIONAL_HOSTS = [
   'https://api.notion.com/*',
   'https://www.googleapis.com/*',
   'https://oauth2.googleapis.com/*',
+  'https://tasks.googleapis.com/*',
+  'https://api.linear.app/*',
   'http://localhost:11434/*',
   'https://huggingface.co/*',
   'https://cdn-lfs.huggingface.co/*',

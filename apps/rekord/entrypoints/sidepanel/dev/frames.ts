@@ -9,6 +9,11 @@ import { getSettings, updateSettings } from '@/lib/settings';
 import type { RouteParams, ScreenName } from '../router';
 import { BACKFILL_KEY, type BackfillMeeting, type BackfillProgress } from '@/lib/memory/backfill';
 import { personView } from '../screens/v4/Person';
+import { followUpDeps } from '../screens/v4/FollowUp';
+import { sendTasksSession } from '../screens/v4/SendTasks';
+import { linearConnectDeps } from '../screens/v4/LinearConnect';
+import { putItem } from '@/lib/memory/store';
+import { TASKS_ON_KEY } from '@/lib/services/gtasks';
 
 export interface DevFrame {
   screen: ScreenName;
@@ -63,6 +68,33 @@ async function afterOneOnOne() {
   await db.put('people', { id: 'p-tom-heard', name: SAMPLE_PERSON_SUGGESTION.aliases[0]!, aliases: [], ...base });
 }
 
+const noRecord = async () => ({ id: '', service: 'groq' as const, what: '', count: 0, firstAt: 0, lastAt: 0 });
+const json = (body: unknown) => new Response(JSON.stringify(body));
+
+/** The AI's draft in the frame: the plain draft it was asked to reword, unchanged. */
+function echoDraft() {
+  followUpDeps.current = {
+    config: { settings: DEFAULT_SETTINGS, keys: { GROQ_API_KEY: 'gsk_test' } },
+    record: noRecord,
+    fetch: async (_url, init) => {
+      const prompt = (JSON.parse(String(init?.body)) as { messages: { content: string }[] }).messages[1]!.content;
+      const draft = prompt.split('exactly:\n\n')[1]!.split('\n\nMeeting summary')[0]!;
+      return json({ choices: [{ message: { content: draft } }] });
+    },
+  };
+}
+
+/** After "Send 2 to Google Tasks": both of your promises are in My Tasks. */
+async function sentTwo() {
+  await afterOneOnOne();
+  await browser.storage.local.set({ [TASKS_ON_KEY]: true });
+  for (const id of ['n-deck', 'n-demo']) {
+    const item = (await getItem(id))!;
+    await putItem({ ...item, sentTo: [{ service: 'gtasks', url: 'https://tasks.google.com/', at: world.now() }] });
+  }
+  sendTasksSession.done = { meetingId: M.sarah3, service: 'gtasks', target: 'My Tasks', sentIds: ['n-deck', 'n-demo'] };
+}
+
 export const DEV_FRAMES: Record<string, DevFrame> = {
   V4Home: { screen: 'home' },
   V4WhatsNew: {
@@ -109,6 +141,29 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
       });
       askMemorySession.scope = 'all';
       askMemorySession.turns = [result];
+    },
+  },
+  V4FollowUp: {
+    screen: 'followUp', params: { meetingId: M.sarah3 }, moment: 'after',
+    setup: async () => { await afterOneOnOne(); echoDraft(); },
+  },
+  V4SendTasks: {
+    screen: 'sendTasks', params: { meetingId: M.sarah3 }, moment: 'after',
+    // First time: Google Tasks is not turned on yet.
+    setup: async () => { await afterOneOnOne(); await browser.storage.local.remove(TASKS_ON_KEY); },
+  },
+  V4SendTasksDone: { screen: 'sendTasks', params: { meetingId: M.sarah3 }, moment: 'after', setup: sentTwo },
+  V4LinearConnect: {
+    screen: 'linearConnect',
+    // LINEAR_API_KEY found in Penv Cloud, Linear already allowed: its one team, Product.
+    setup: async () => {
+      linearConnectDeps.current = {
+        loadKeys: async () => ({ LINEAR_API_KEY: 'lin_api_test' }),
+        penvKeys: async () => true,
+        hasHosts: async () => true,
+        record: noRecord,
+        fetch: async () => json({ data: { teams: { nodes: [{ id: 't-product', name: 'Product' }] } } }),
+      };
     },
   },
 };

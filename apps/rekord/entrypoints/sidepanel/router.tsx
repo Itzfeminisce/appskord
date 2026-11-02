@@ -26,7 +26,8 @@ export type ScreenName =
   | 'notionConnect' | 'notionPage'
   | 'home' | 'backfill' // v4: Open loops is home
   | 'people' | 'person' | 'personMerge' | 'forget'
-  | 'review' | 'reviewEdit';
+  | 'review' | 'reviewEdit'
+  | 'followUp' | 'sendTasks' | 'linearConnect'; // v4: after the meeting
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
 export interface RouteParams { meetingId?: string; itemId?: string; message?: string; atMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string }

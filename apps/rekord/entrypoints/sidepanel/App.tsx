@@ -29,6 +29,9 @@ import PersonMerge from './screens/v4/PersonMerge';
 import Forget from './screens/v4/Forget';
 import Review from './screens/v4/Review';
 import ReviewEdit from './screens/v4/ReviewEdit';
+import FollowUp from './screens/v4/FollowUp';
+import SendTasks from './screens/v4/SendTasks';
+import LinearConnect from './screens/v4/LinearConnect';
 import { Shell } from './components/v4/Shell';
 import Connections from './screens/Connections';
 import Share from './screens/Share';
@@ -82,6 +85,9 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   forget: Forget,
   review: Review,
   reviewEdit: ReviewEdit,
+  followUp: FollowUp,
+  sendTasks: SendTasks,
+  linearConnect: LinearConnect,
 };
 
 /** First screen: onboarding until the user has finished it, then Open loops. */
