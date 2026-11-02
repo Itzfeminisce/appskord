@@ -14,6 +14,10 @@ const OPTIONAL_HOSTS = [
   'https://www.googleapis.com/*',
   'https://oauth2.googleapis.com/*',
   'http://localhost:11434/*',
+  'https://huggingface.co/*',
+  'https://cdn-lfs.huggingface.co/*',
+  'https://cdn-lfs-us-1.hf.co/*',
+  'https://cas-bridge.xethub.hf.co/*',
 ];
 
 manifestChecks({
@@ -36,5 +40,9 @@ describe('hosts', () => {
 
   it('signs in to Google with launchWebAuthFlow, not a manifest oauth2 client', async () => {
     expect((await manifest()).oauth2).toBeUndefined();
+  });
+
+  it('lets the search model compile WebAssembly and nothing remote', async () => {
+    expect((await manifest()).content_security_policy).toEqual({ extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';" });
   });
 });

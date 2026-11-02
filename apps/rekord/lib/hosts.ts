@@ -8,6 +8,8 @@ export const DEEPGRAM_HOSTS = ['https://api.deepgram.com/*', 'wss://api.deepgram
 export const GOOGLE_HOSTS = ['https://www.googleapis.com/*', 'https://oauth2.googleapis.com/*'];
 export const NOTION_HOSTS = ['https://api.notion.com/*'];
 export const OLLAMA_HOSTS = ['http://localhost:11434/*'];
+// Search model weights: huggingface.co redirects the files to its CDNs.
+export const HUGGINGFACE_HOSTS = ['https://huggingface.co/*', 'https://cdn-lfs.huggingface.co/*', 'https://cdn-lfs-us-1.hf.co/*', 'https://cas-bridge.xethub.hf.co/*'];
 
 const KEY_HOSTS: Record<string, string[]> = {
   GROQ_API_KEY: ['https://api.groq.com/*'],
@@ -19,7 +21,7 @@ const KEY_HOSTS: Record<string, string[]> = {
 };
 
 /** Every host Rekord may ask for; the manifest lists exactly these as optional_host_permissions. */
-export const OPTIONAL_HOSTS = [...new Set([...PENV_HOSTS, ...Object.values(KEY_HOSTS).flat(), ...GOOGLE_HOSTS, ...OLLAMA_HOSTS])];
+export const OPTIONAL_HOSTS = [...new Set([...PENV_HOSTS, ...Object.values(KEY_HOSTS).flat(), ...GOOGLE_HOSTS, ...OLLAMA_HOSTS, ...HUGGINGFACE_HOSTS])];
 
 /** Hosts for the services these key names unlock. */
 export function hostsForKeys(names: string[]): string[] {
