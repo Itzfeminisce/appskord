@@ -43,11 +43,21 @@ describe('checkReply', () => {
   });
 
   it('turns card ops into ai-cant cards unless cards draw, checks the template; never keeps the model\'s words', () => {
-    const card = { ops: [{ op: 'card', template: 'title-hook', at: 0, slots: {} }] };
+    const card = { ops: [{ op: 'card', template: 'title-hook', at: 0, slots: { headline: 'Hello' } }] };
     expect(checkReply(card, ctx).cant).toBe('cards');
     expect(checkReply(card, { ...ctx, cards: true }).ops).toHaveLength(1);
     expect(checkReply({ ops: [{ op: 'card', template: 'big-statement', at: 0, slots: {} }] }, { ...ctx, cards: true }).problems).toEqual(['Op 0: "template" must be title-hook, end-card, logo-sting.']);
     expect(checkReply({ ops: [], cant: 'add sound effects' }, ctx).cant).toBe('other');
+  });
+
+  it('treats a missing required slot as a problem, not an empty card', () => {
+    const run = (template: string, slots: object) => checkReply({ ops: [{ op: 'card', template, at: 0, slots }] }, { ...ctx, cards: true });
+    for (const [t, slot] of [['title-hook', 'headline'], ['end-card', 'cta']] as const) {
+      const c = run(t, { kicker: 'New', [slot]: '  ' });
+      expect(c.ops).toHaveLength(0);
+      expect(c.problems).toEqual([`Op 0: a ${t} card needs "${slot}" text in "slots".`]);
+    }
+    expect(run('logo-sting', {}).ops).toHaveLength(1);
   });
 
   it('caps labels, titles and slot text at 80 characters', () => {

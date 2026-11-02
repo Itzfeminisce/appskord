@@ -6,6 +6,7 @@ import { addChapter, addLayer, deleteWords, LABELS, MAX_SPEED, MIN_SPEED, moveRa
 import { cutLength, isKept, spans, toOut } from '../project/time';
 import type { AiOp, CaptionStyle, Cut, Draft, LayoutKind, Project, Shape } from '../project/types';
 import { CARD_TEMPLATES as PANEL_CARDS, capWords, cardDefaultMs, cardSlots } from '../render/layers/card';
+import { LOGO_STING_MS } from '../../entrypoints/editor/story/model';
 import { chunkTranscript, echo, editSystem, editUser, REPLY_TOKENS, repairUser, transcriptBudget, type Chunk } from './prompt';
 
 /** Why an AI request ended without a draft; each is one StatesWork state. */
@@ -126,7 +127,9 @@ export function checkReply(raw: unknown, ctx: OpContext): Checked {
           const slots = Object.fromEntries(Object.entries((o.slots ?? {}) as Record<string, unknown>)
             .filter(([k, v]) => typeof v === 'string' && (!defs.size || defs.has(k)))
             .map(([k, v]) => [k, capWords(short(v as string), defs.get(k) ?? MAX_TEXT)]));
-          op = { op: 'card', template: o.template, at: o.at as number, slots };
+          const missing = cardSlots(o.template).filter((d) => !d.optional && !(slots[d.id] ?? '').trim()).map((d) => d.id);
+          if (missing.length) out.problems.push(`Op ${n}: a ${o.template} card needs ${missing.map((m) => `"${m}"`).join(' and ')} text in "slots".`);
+          else op = { op: 'card', template: o.template, at: o.at as number, slots };
         }
         break;
       case 'chapter':
@@ -259,7 +262,7 @@ export function applyOp(project: Project, units: Unit[], op: AiOp): Project {
       return addLayer(project, { kind: 'zooms', items: [{ at: first.start, end: Math.max(last.end, first.start + 800), depth: op.depth, focus: 'cursor', feel: 'smooth', auto: false }] });
     }
     case 'caption': return setCaptions(project, { patch: { style: op.style, show: true } });
-    case 'card': return addLayer(project, { kind: 'cards', items: [{ template: op.template, at: units[op.at]!.start, ms: cardDefaultMs(op.template), slots: op.slots, pack: 'clean' }] });
+    case 'card': return addLayer(project, { kind: 'cards', items: [{ template: op.template, at: units[op.at]!.start, ms: op.template === 'logo-sting' ? LOGO_STING_MS : cardDefaultMs(op.template), slots: op.slots, pack: 'clean' }] });
     case 'chapter': {
       const u = units[op.at]!;
       const index = project.chapters.findIndex((c) => c.at >= u.start - 1 && c.at <= u.end);
