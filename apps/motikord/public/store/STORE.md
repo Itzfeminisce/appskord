@@ -11,10 +11,10 @@ Build the store zip with `pnpm zip:store`; it leaves `key` out of the manifest, 
   - Describe a clip and Motikord picks the type: Promo, Quote, Chart reveal, Explainer, Logo intro, Captions or Social post.
   - Keep editing with prompts like "slower" or "bigger title", or by hand in the editor, with undo.
   - A quality check looks at text size and reading time before you export.
-  - Add a brand kit, your own media, and free photos, videos and music from Openverse and Pexels.
+  - Add a brand kit, your own media, and free photos, videos and music from open media libraries.
   - Export MP4, WebM or GIF in several sizes. Clips with CC BY media export with credits.txt.
   - The editor, preview, render and library stay on your computer. No account, no server, no upload.
-  - Optional: Groq writes the clips, with a key from Penv Cloud (https://penv.cloud) or your own. Keys stay on the computer and are cleared when Chrome closes.
+  - Optional: connect the AI service you choose to write the clips, with your own key or one from Penv Cloud. Keys stay on your computer.
   - Open source.
 - **Category:** Productivity. **Language:** English.
 - **Privacy policy URL:** https://github.com/Itzfeminisce/appskord/blob/main/apps/motikord/docs/privacy.md

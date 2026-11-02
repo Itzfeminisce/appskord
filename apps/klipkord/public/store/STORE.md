@@ -14,8 +14,8 @@ Build the store zip with `pnpm zip:store`; it leaves `key` out of the manifest, 
   - Get a summary, notes and chapters shaped to the recording: how-to guide, bug report, team update or meeting.
   - Jump to any moment from the transcript, trim the video and add comments.
   - Recording, the video, the library, playback and trimming stay on your computer. No account, no server, no upload.
-  - Transcription and notes run on your computer where it allows (on-device Whisper, Chrome's built-in AI, Ollama).
-  - Optional: use Groq for speed and quality, with a key from Penv Cloud (https://penv.cloud) or your own.
+  - Transcription and notes can run entirely on your computer.
+  - Optional: connect the AI service you choose, with your own key or one from Penv Cloud, for faster results.
   - Open source.
 - **Category:** Productivity. **Language:** English.
 - **Privacy policy URL:** https://github.com/Itzfeminisce/appskord/blob/main/apps/klipkord/docs/privacy.md

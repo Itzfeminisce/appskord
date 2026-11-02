@@ -8,17 +8,17 @@ Build the store zip with `pnpm zip:store`; it leaves `key` out of the manifest, 
 - **Long description:**
   Rekord writes down your meetings for you.
 
-  - Record a meeting in a Chrome tab, or in a desktop app such as Zoom or Teams. Add your microphone if you choose.
+  - Record a meeting in a Chrome tab or in a desktop meeting app. Add your microphone if you choose.
   - A live transcript shows while people talk.
   - Type notes and add markers during the meeting.
   - Get a summary and action items when it ends.
   - Ask questions about one meeting, or across all of them.
-  - Export as Markdown or PDF, or share to Google Docs or Notion.
+  - Export as Markdown or PDF, or share to your docs and notes.
   - Rekord remembers promises, decisions, questions and people across meetings, each with the quote it came from.
   - Open loops shows what you owe and what you're owed, with a brief before each meeting and a look back on Fridays.
-  - Send a follow-up in Gmail and action items to Google Tasks, Notion or Linear.
+  - Send a follow-up email, and send action items to your task list.
   - Meetings, transcripts and settings stay in your browser. No account, no server of its own.
-  - Use Groq, OpenAI, Anthropic, OpenRouter, Deepgram or your own Ollama, with keys from Penv Cloud (https://penv.cloud) or your own.
+  - Works with the AI service you choose, using your own key or one from Penv Cloud, or with a model running on your own computer.
   - Open source.
 - **Category:** Productivity. **Language:** English.
 - **Privacy policy URL:** https://github.com/Itzfeminisce/appskord/blob/main/apps/rekord/docs/privacy.md
