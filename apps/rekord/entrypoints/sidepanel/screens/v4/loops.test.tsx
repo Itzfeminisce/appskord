@@ -66,7 +66,8 @@ describe('open loops screens', () => {
     expect([...view.host.querySelectorAll('.lp-seg button')].map((b) => b.textContent)).toEqual(['You owe3', 'Owed to you2', 'Questions1']);
     expect([...view.host.querySelectorAll('.lp-section h2')].map((h) => h.textContent)).toEqual(['Overdue', 'No date']);
     expect(rows(view.host)).toEqual(['Send the revised pricing deck', 'A short proposal', 'Share the onboarding checklist']);
-    expect(button(view.host, 'Open brief')?.getAttribute('aria-disabled')).toBe('true');
+    // T9 registered the brief route, so the card's link is live.
+    expect(button(view.host, 'Open brief')?.getAttribute('aria-disabled')).toBeNull();
   });
 
   it('the check marks a promise done with an undo toast', async () => {

@@ -54,7 +54,19 @@ export function toCalendarEvent(raw: RawEvent): CalendarEvent | null {
     app = detectApp(l);
     if (app) break;
   }
-  return { id: raw.id, title: raw.summary?.trim() || 'Untitled meeting', start, end, attendees, ...(app ? { app } : {}) };
+  const description = plainText(raw.description);
+  return { id: raw.id, title: raw.summary?.trim() || 'Untitled meeting', start, end, attendees, ...(app ? { app } : {}), ...(description ? { description } : {}) };
+}
+
+/** Calendar descriptions may hold HTML; the brief shows plain text. */
+export function plainText(html: string | undefined): string {
+  if (!html) return '';
+  return html
+    .replace(/<br\s*\/?>|<\/(p|div|li)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .split('\n').map((l) => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** The event happening now: started ≤10 min ago or starting in ≤5 min, not over. Closest start wins. */
@@ -76,9 +88,10 @@ export function listWindow(now: number): { timeMin: number; timeMax: number } {
   return { timeMin: now - LOOKBACK_MS, timeMax: end.getTime() };
 }
 
-/** Lists today's events (from 15 minutes ago) for the calendar. Throws GoogleError ('auth' = access lost). */
-export async function listEvents(calendarId: string | undefined, now: number, deps: GoogleDeps = {}): Promise<CalendarEvent[]> {
-  const { timeMin, timeMax } = listWindow(now);
+/** Lists today's events (from 15 minutes ago) for the calendar, or until `until`. Throws GoogleError ('auth' = access lost). */
+export async function listEvents(calendarId: string | undefined, now: number, deps: GoogleDeps = {}, until?: number): Promise<CalendarEvent[]> {
+  const { timeMin, timeMax: endOfDay } = listWindow(now);
+  const timeMax = until ?? endOfDay;
   const q = new URLSearchParams({
     timeMin: new Date(timeMin).toISOString(),
     timeMax: new Date(timeMax).toISOString(),

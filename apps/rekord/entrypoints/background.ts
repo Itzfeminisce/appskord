@@ -8,6 +8,10 @@ import { handleInstalled } from '@/lib/whatsNew';
 import { BACKFILL_ALARM, BACKFILL_KEY, QUEUE_KEY, runBackfill } from '@/lib/memory/backfill';
 import { rankOpenLoops } from '@/lib/memory/rank';
 import { openLoops } from '@/lib/memory/store';
+import {
+  briefTabUrl, EVENTS_KEY, lookBackTabUrl, NOTE_BRIEF, NOTE_DUE, NOTE_LOOKBACK, onReminderAlarm, scheduleReminders, setPanelRoute, snoozeFromNote,
+  type PanelRoute,
+} from '@/lib/reminders';
 import { isStreamRequest, tokenReply } from '@/lib/transcribe/stream';
 import type { Meeting, RecordingState, TranscriberConfig } from '@/lib/types';
 import type { OffscreenReply } from './offscreen/main';
@@ -83,6 +87,47 @@ function updateBadge(): void {
 
 export const BADGE_ALARM = 'rekord.badge';
 
+function reschedule(): void {
+  scheduleReminders().catch((error) => console.error('Rekord: could not schedule reminders', error));
+}
+
+/** The window the person last used, so a notification click can open the panel there. */
+let lastWindowId: number | undefined;
+
+/** Opens the side panel on a screen. Runs inside the notification click (a user gesture): nothing is awaited before open(). */
+function openPanelOn(screen: string, params: PanelRoute['params'], fallback?: () => void): void {
+  const opening = browser.sidePanel.open({ windowId: lastWindowId ?? browser.windows.WINDOW_ID_CURRENT });
+  setPanelRoute(screen, params).catch((error) => console.error('Rekord: could not pass the screen to the side panel', error));
+  opening.catch((error) => {
+    console.error('Rekord: could not open the side panel', error);
+    fallback?.();
+  });
+}
+
+function openTab(url: string): void {
+  browser.tabs.create({ url }).catch((error) => console.error('Rekord: could not open the tab', error));
+}
+
+/** Notification click or button: brief, due-day Nudge and Snooze, look back. */
+function onNote(id: string, button?: number): void {
+  if (id.startsWith(NOTE_BRIEF)) {
+    const eventId = id.slice(NOTE_BRIEF.length);
+    openPanelOn('brief', { eventId }, () => openTab(briefTabUrl(eventId)));
+  } else if (id.startsWith(NOTE_DUE)) {
+    const itemId = id.slice(NOTE_DUE.length);
+    if (button === 1) {
+      snoozeFromNote(itemId).catch((error) => console.error('Rekord: could not snooze the promise', error)).finally(updateBadge);
+    } else {
+      openPanelOn(button === 0 ? 'nudge' : 'promise', { itemId });
+    }
+  } else if (id === NOTE_LOOKBACK) {
+    openTab(lookBackTabUrl());
+  } else {
+    return;
+  }
+  browser.notifications.clear(id).catch(() => undefined);
+}
+
 export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(({ reason }) => {
     handleInstalled(reason, browser.runtime.getManifest().version).catch((error) => console.error('Rekord: could not record the update', error));
@@ -97,7 +142,15 @@ export default defineBackground(() => {
   // The engine saves items from this worker, so its progress writes are the cue; the daily alarm covers promises that turn overdue.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && (BACKFILL_KEY in changes || QUEUE_KEY in changes)) updateBadge();
+    // The panel refreshes the event cache while open; reminder settings change in Settings.
+    if (area === 'local' && (EVENTS_KEY in changes || 'settings' in changes)) reschedule();
   });
+  reschedule();
+  browser.windows.onFocusChanged.addListener((id) => {
+    if (id !== browser.windows.WINDOW_ID_NONE) lastWindowId = id;
+  });
+  browser.notifications.onClicked.addListener((id) => onNote(id));
+  browser.notifications.onButtonClicked.addListener((id, index) => onNote(id, index));
   browser.alarms.create(BADGE_ALARM, { periodInMinutes: 24 * 60 }).catch((error) => console.error('Rekord: could not schedule the badge update', error));
   // We open the panel ourselves from action.onClicked: with openPanelOnActionClick the click never reaches
   // the extension, so the meeting tab is not granted (activeTab) and tab capture is refused.
@@ -118,6 +171,7 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === BACKFILL_ALARM) runBackfill().catch((error) => console.error('Rekord: could not build memory', error)).finally(updateBadge);
     if (alarm.name === BADGE_ALARM) updateBadge();
+    onReminderAlarm(alarm.name).catch((error) => console.error('Rekord: could not send the reminder', error));
   });
 
   // After a browser restart, finish transcribing chunks left pending by an earlier meeting.

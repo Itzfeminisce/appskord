@@ -30,10 +30,11 @@ export type ScreenName =
   | 'redact' | 'ledger'
   | 'promise' | 'looksDone' | 'nudge' | 'decisions'
   | 'settingsMemory' | 'folder' | 'move' // v4 settings: memory, Rekord folder, moving computers
-  | 'followUp' | 'sendTasks' | 'linearConnect'; // v4: after the meeting
+  | 'followUp' | 'sendTasks' | 'linearConnect' // v4: after the meeting
+  | 'brief' | 'agendaEdit'; // v4 before the meeting: brief (or first-meeting brief) and its agenda
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
-export interface RouteParams { meetingId?: string; itemId?: string; message?: string; atMs?: number; endMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string }
+export interface RouteParams { meetingId?: string; itemId?: string; message?: string; atMs?: number; endMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string; eventId?: string }
 export interface Route { screen: ScreenName; params: RouteParams }
 
 export interface Router {
@@ -57,8 +58,8 @@ export interface SurfaceOptions {
 }
 
 // Survives Back and reload in the URL hash (`#/transcript?meeting=…&at=…`); ids, times and app copy only.
-const validateSearch = searchParams({ meeting: 'string', item: 'string', at: 'number', end: 'number', message: 'string', section: 'string', person: 'string', other: 'string' });
-const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, item: p.itemId, at: p.atMs, end: p.endMs, message: p.message, section: p.section, person: p.personId, other: p.otherId });
+const validateSearch = searchParams({ meeting: 'string', item: 'string', at: 'number', end: 'number', message: 'string', section: 'string', person: 'string', other: 'string', event: 'string' });
+const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, item: p.itemId, at: p.atMs, end: p.endMs, message: p.message, section: p.section, person: p.personId, other: p.otherId, event: p.eventId });
 // Redirects name screens built from data, which TanStack's typed `to` cannot check.
 const redirectTo = (route: Route, state?: object) =>
   redirect({ to: `/${route.screen}`, search: toSearch(route.params), replace: true, state } as unknown as Parameters<typeof redirect>[0]);
@@ -71,6 +72,7 @@ function toParams(search: Record<string, unknown>): RouteParams {
   if (s.at !== undefined) params.atMs = s.at;
   if (s.person) params.personId = s.person;
   if (s.other) params.otherId = s.other;
+  if (s.event) params.eventId = s.event;
   if (s.end !== undefined) params.endMs = s.end;
   if (s.section === 'transcription' || s.section === 'assistant') params.section = s.section;
   return params;
