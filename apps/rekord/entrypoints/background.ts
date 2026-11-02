@@ -1,7 +1,7 @@
 import { appSources, CATCHUP_SOURCES, MIC_BLOCKED, micBlockedReply, tabRefusedReply, type AppFlag } from '@/lib/capture';
-import { cappedPartMs, pauseClock, resumeClock, startClock } from '@/lib/catchup/session';
+import { cappedPartMs, isPaused, pauseClock, resumeClock, startClock, TELL_PORT, type TellClock } from '@/lib/catchup/session';
 import { resolveSources, type Sources } from '@/lib/sources';
-import { beginCatchup, deleteMeeting, endCatchupPart, getMeeting, pendingChunks, putMeeting, saveTypedPart } from '@/lib/db';
+import { addCatchupPart, beginCatchup, endCatchupPart, getMeeting, pendingChunks, putMeeting, saveTypedPart, undoCatchup } from '@/lib/db';
 import { loadKeys } from '@/lib/penv';
 import { onMessage, send, type MessageOf } from '@/lib/messages';
 import { getSettings } from '@/lib/settings';
@@ -17,6 +17,7 @@ import { isStreamRequest, tokenReply } from '@/lib/transcribe/stream';
 import { record as recordCall } from '@/lib/ledger';
 import { goOff, goOn, OFF_RECORD_COMMAND, OFF_RECORD_WHAT } from '@/lib/live/offRecord';
 import type { CatchupStart, Meeting, RecordingState, TranscriberConfig } from '@/lib/types';
+import type { TellPart } from '@/lib/catchup/types';
 import type { OffscreenReply } from './offscreen/main';
 
 /** Reply to `recording/start` and `recording/stop`. */
@@ -198,6 +199,9 @@ export default defineBackground(() => {
     void ready.then(() => { if (state.status === 'recording') return setOffRecord(state.offRecord?.since === undefined); });
   });
 
+  // v4.1: the Catch up screen holds a port while it tells; the microphone must not outlive the panel.
+  browser.runtime.onConnect.addListener((port) => watchTellPort(port, stopLostTelling));
+
   onMessage((msg) => {
     // v3 real time: a fresh short-lived Deepgram token per socket; the key itself never leaves the background.
     if (isStreamRequest(msg, 'stream/token')) return tokenReply(loadKeys);
@@ -361,31 +365,40 @@ async function stopRecording(): Promise<RecordingReply> {
   return { ok: true, meetingId };
 }
 
+/** Stops the telling when the Catch up screen's port (`TELL_PORT`) closes, e.g. the side panel is closed. */
+export function watchTellPort(port: Pick<Browser.runtime.Port, 'name' | 'onDisconnect'>, stop: () => Promise<unknown>): void {
+  if (port.name !== TELL_PORT) return;
+  port.onDisconnect.addListener(() => void stop().catch((error) => console.error('Rekord: could not stop the catch-up', error)));
+}
+
+/** The panel went away mid-telling: stop like Stop does, keeping everything said. */
+async function stopLostTelling(): Promise<void> {
+  await ready;
+  if (state.status === 'starting' && starting) await starting.catch(() => undefined);
+  if (state.status === 'recording' && state.tell) await stopCatchup();
+}
+
 /** A catch-up telling: the meeting record first (picked times, `source: 'catchup'`), then the microphone. */
 async function startCatchup(start: CatchupStart): Promise<RecordingReply> {
   const now = Date.now();
   const { meetingId } = start;
   setState({ status: 'starting', meetingId, startedAt: now, micLevel: 0, tabLevel: 0 });
-  let begun = false;
+  let begun: { status?: Meeting['status'] } | null = null;
   try {
     const settings = await getSettings();
-    const { offsetMs, part } = await beginCatchup(start, settings.language, now);
-    begun = true;
+    const { offsetMs, part, status } = await beginCatchup(start, settings.language, now);
+    begun = { status };
     await ensureOffscreen();
     const reply = await send<OffscreenReply>({ type: 'offscreen/start', streamId: '', meetingId, startedAt: now, sources: CATCHUP_SOURCES, catchup: { offsetMs, part } });
     if (!reply?.ok) throw new Error(reply?.error ?? START_ERROR);
     if (reply.micUnavailable) throw new Error(MIC_BLOCKED);
     catchup = start;
-    setState({ status: 'recording', meetingId, startedAt: now, micLevel: 0, tabLevel: 0, sources: CATCHUP_SOURCES, tell: startClock(Date.now(), offsetMs) });
+    setState({ status: 'recording', meetingId, startedAt: now, micLevel: 0, tabLevel: 0, sources: CATCHUP_SOURCES, tell: startClock(reply.tellStart ?? Date.now(), offsetMs) });
     return { ok: true, meetingId };
   } catch (error) {
     console.error('Rekord: could not start the catch-up', error);
     // A failed first telling leaves no meeting behind; a failed "Add more" keeps the meeting as it was.
-    if (begun && !start.append) await deleteMeeting(meetingId).catch(() => undefined);
-    if (begun && start.append) {
-      const meeting = await getMeeting(meetingId).catch(() => undefined);
-      if (meeting) await putMeeting({ ...meeting, status: 'processing' }).catch(() => undefined);
-    }
+    if (begun) await undoCatchup(start, begun.status).catch(() => undefined);
     setState({ status: 'idle' });
     await send({ type: 'offscreen/stop' }).catch(() => undefined);
     await closeOffscreen(true);
@@ -394,12 +407,21 @@ async function startCatchup(start: CatchupStart): Promise<RecordingReply> {
   }
 }
 
-/** Pause or resume a telling: the microphone is off while paused and the clock counts telling time only. */
-async function pauseCatchup(on: boolean): Promise<{ ok: boolean }> {
+/**
+ * Pause or resume a telling: the clock counts telling time only. A pause ends the voice part (it joins the meeting
+ * and the microphone is released); resume asks for the microphone again and starts the next part.
+ */
+async function pauseCatchup(on: boolean): Promise<{ ok: boolean; error?: string; micBlocked?: true }> {
   if (state.status !== 'recording' || !state.tell) return { ok: false };
+  const { meetingId } = state;
   const at = Date.now();
-  const reply = await send<{ ok?: boolean }>({ type: 'offscreen/pause', on, at });
+  const reply = await send<OffscreenReply>({ type: 'offscreen/pause', on, at });
+  if (reply?.ok === false && reply.error === MIC_BLOCKED) return micBlockedReply();
   if (reply?.ok !== true || state.status !== 'recording' || !state.tell) return { ok: false };
+  if (reply.voicePart) {
+    await addCatchupPart(meetingId, reply.voicePart, reply.recorded === true)
+      .catch((error) => console.error('Rekord: could not save the catch-up part', error));
+  }
   setState({ ...state, tell: on ? pauseClock(state.tell, at) : resumeClock(state.tell, at) });
   persist();
   return { ok: true };
@@ -412,9 +434,11 @@ async function stopCatchup(): Promise<RecordingReply> {
   const now = Date.now();
   const start = catchup;
   setState({ ...state, status: 'stopping' });
-  await send<OffscreenReply>({ type: 'offscreen/stop' });
+  const stopped = await send<OffscreenReply>({ type: 'offscreen/stop' }).catch(() => undefined);
   const answer = start?.questionId ? { questionId: start.questionId, atMs: tell.offsetMs } : undefined;
-  await endCatchupPart(meetingId, { at: startedAt, ms: cappedPartMs(tell, now), kind: 'voice' }, answer)
+  // The offscreen clock times the part, so parts never overlap; this clock is the fallback when it did not answer.
+  const part = stopped?.ok ? stopped.voicePart ?? null : await fallbackPart(meetingId, tell, startedAt, now);
+  await endCatchupPart(meetingId, part, answer, stopped?.ok === true && stopped.recorded === true)
     .catch((error) => console.error('Rekord: could not save the catch-up', error));
   catchup = null;
   if (drainedWhileStopping === meetingId) drainedWhileStopping = null;
@@ -422,6 +446,14 @@ async function stopCatchup(): Promise<RecordingReply> {
   setState({ status: 'idle' });
   await closeOffscreen();
   return { ok: true, meetingId };
+}
+
+/** The last voice part by this worker's clock: from the last start or resume, less the parts pauses already saved. */
+async function fallbackPart(meetingId: string, tell: TellClock, startedAt: number, now: number): Promise<TellPart | null> {
+  if (isPaused(tell)) return null;
+  const told = (await getMeeting(meetingId).catch(() => undefined))?.told;
+  const saved = Math.max(0, (told?.ms ?? tell.offsetMs) - tell.offsetMs);
+  return { at: tell.since ?? startedAt, ms: Math.max(0, cappedPartMs(tell, now) - saved), kind: 'voice' };
 }
 
 /** Typed or pasted text: saved as one typed part, then processed like a telling. */

@@ -3,8 +3,14 @@ import type { Meeting, Segment } from '../types';
 import type { CatchupAnswer, PickedMeeting, TellPart, Told } from './types';
 
 const MIN = 60_000;
-// Per part, not per meeting: at the limit V41States says "You can add more from the meeting page".
-/** Each telling (one part or voice answer) is at most 60 minutes; a warning shows at 55:00. */
+/** The Catch up screen connects a port of this name while it tells; the background stops the telling when it closes. */
+export const TELL_PORT = 'rekord:tell';
+/** A form catch-up keeps its attendees in an `event` with this id prefix; it is no calendar event. */
+export const FORM_EVENT_PREFIX = 'form:';
+// Per telling, not per meeting: at the limit V41States says "You can add more from the meeting page".
+// A pause splits a telling into voice parts (one audio file each) but the limit counts the whole telling, so
+// pausing never buys more than 60 minutes on one screen.
+/** Each telling (one Catch up screen or voice answer, pauses excluded) is at most 60 minutes; a warning shows at 55:00. */
 export const TELL_LIMIT_MS = 60 * MIN;
 export const TELL_WARN_MS = 55 * MIN;
 /** Typed text has no audio; each word counts as this much telling so later parts and quotes keep their order. */
@@ -14,23 +20,23 @@ export const TYPED_MS_PER_WORD = 400;
 export type DraftState = 'telling' | 'confirmStop' | 'adding';
 
 /**
- * Telling time only. `offsetMs`: the telling before this part (segments continue after it); `ms`: this part's
- * telling up to `since`; `since`: epoch ms of the last start or resume, missing while paused.
+ * Telling time only. `offsetMs`: the telling before this screen's telling (segments continue after it); `ms`: this
+ * telling up to `since`, across pauses; `since`: epoch ms of the last start or resume, missing while paused.
  */
 export interface TellClock { offsetMs: number; ms: number; since?: number }
 
 export const startClock = (now: number, offsetMs = 0): TellClock => ({ offsetMs, ms: 0, since: now });
 export const isPaused = (c: TellClock): boolean => c.since === undefined;
-/** This part's telling so far. */
+/** This telling so far (every voice part since the screen started). */
 export const partMs = (c: TellClock, now: number): number => c.ms + (c.since === undefined ? 0 : Math.max(0, now - c.since));
 /** The whole telling so far, as the screen's clock shows it and as segment times count. */
 export const clockMs = (c: TellClock, now: number): number => c.offsetMs + partMs(c, now);
-/** This part's length, capped at 60 minutes. */
+/** This telling's length, capped at 60 minutes. */
 export const cappedPartMs = (c: TellClock, now: number): number => Math.max(0, Math.min(partMs(c, now), TELL_LIMIT_MS));
 export const pauseClock = (c: TellClock, now: number): TellClock => (isPaused(c) ? c : { offsetMs: c.offsetMs, ms: partMs(c, now) });
 export const resumeClock = (c: TellClock, now: number): TellClock => (isPaused(c) ? { ...c, since: now } : c);
 
-/** 'warn' from 55:00, 'stop' at 60:00 of one part's telling (`partMs`). */
+/** 'warn' from 55:00, 'stop' at 60:00 of one telling (`partMs`). */
 export function limitState(ms: number): 'ok' | 'warn' | 'stop' {
   if (ms >= TELL_LIMIT_MS) return 'stop';
   return ms >= TELL_WARN_MS ? 'warn' : 'ok';
@@ -56,7 +62,7 @@ export function pickedTimes(picked: PickedMeeting, meetingId = ''): Pick<Meeting
     .filter((a) => a.name || a.email)
     .map((a) => ({ ...(a.name && { name: a.name }), email: a.email }));
   if (attendees.length === 0) return { title, startedAt, endedAt };
-  return { title, startedAt, endedAt, event: { id: `form:${meetingId}`, title, start: startedAt, end: endedAt, attendees } };
+  return { title, startedAt, endedAt, event: { id: `${FORM_EVENT_PREFIX}${meetingId}`, title, start: startedAt, end: endedAt, attendees } };
 }
 
 /** A new catch-up: the picked meeting's times, `source: 'catchup'`, and an empty telling that starts now. */
@@ -64,13 +70,18 @@ export function newCatchupMeeting(id: string, picked: PickedMeeting, language: M
   return { id, ...pickedTimes(picked, id), status: 'recording', language, source: 'catchup', told: { at: now, ms: 0, parts: [] } };
 }
 
-/** Appends a part (and a voice answer) to the telling; the next part's segments start at the new `ms`. */
-export function addPart(told: Told, part: TellPart, answer?: CatchupAnswer): Told {
+/**
+ * Appends a part (and a voice answer) to the telling; the next part's segments start at the new `ms`. `audio`: the
+ * part kept audio, so "Delete audio of your telling" no longer covers the whole telling.
+ */
+export function addPart(told: Told, part: TellPart | null, answer?: CatchupAnswer, audio = false): Told {
+  const { audioDeleted, ...rest } = told;
   return {
-    ...told,
-    ms: told.ms + part.ms,
-    parts: [...told.parts, part],
-    ...((told.typed || part.kind === 'typed') && { typed: true }),
+    ...rest,
+    ...(audioDeleted && !audio && { audioDeleted }),
+    ms: told.ms + (part?.ms ?? 0),
+    parts: part ? [...told.parts, part] : told.parts,
+    ...((told.typed || part?.kind === 'typed') && { typed: true }),
     ...(answer && { answers: [...(told.answers ?? []).filter((a) => a.questionId !== answer.questionId), answer] }),
   };
 }

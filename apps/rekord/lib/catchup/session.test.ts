@@ -3,8 +3,8 @@ import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { CATCHUP_SOURCES, micBlockedReply, needsTabGrant } from '../capture';
 import {
-  beginCatchup, closeDB, deleteTellingAudio, endCatchupPart, getMeeting, listRecordingParts, listSegments, listTellingAudio, putMeeting,
-  putRecordingPart, saveTypedPart, tellingAudioAt,
+  addCatchupPart, beginCatchup, closeDB, deleteTellingAudio, endCatchupPart, getMeeting, listRecordingParts, listSegments, listTellingAudio, putMeeting,
+  putRecordingPart, saveTypedPart, tellingAudioAt, undoCatchup,
 } from '../db';
 import { ContinuousRecording, type SliceRecorder } from '../audio/recording';
 import type { CalendarEvent, CatchupStart } from '../types';
@@ -111,7 +111,7 @@ describe('stored catch-up', () => {
     await endCatchupPart('m1', { at: 5_000, ms: 300_000, kind: 'voice' });
     let m = await getMeeting('m1');
     expect(m).toMatchObject({ status: 'processing', startedAt: event.start, endedAt: event.end, source: 'catchup' });
-    expect(await beginCatchup({ ...start, append: true }, 'en', 900_000)).toEqual({ offsetMs: 300_000, part: 1 });
+    expect(await beginCatchup({ ...start, append: true }, 'en', 900_000)).toEqual({ offsetMs: 300_000, part: 1, status: 'processing' });
     expect((await getMeeting('m1'))?.status).toBe('recording');
     await endCatchupPart('m1', { at: 900_000, ms: 60_000, kind: 'voice' }, { questionId: 'q2', atMs: 300_000 });
     m = await getMeeting('m1');
@@ -148,7 +148,28 @@ describe('stored catch-up', () => {
   it('Add more after a full 60-minute telling', async () => {
     await beginCatchup(start, 'en', 1);
     await endCatchupPart('m1', { at: 1, ms: TELL_LIMIT_MS, kind: 'voice' });
-    expect(await beginCatchup({ ...start, append: true }, 'en', 2)).toEqual({ offsetMs: TELL_LIMIT_MS, part: 1 });
+    expect(await beginCatchup({ ...start, append: true }, 'en', 2)).toEqual({ offsetMs: TELL_LIMIT_MS, part: 1, status: 'processing' });
+  });
+
+  it('a failed Add more puts back the status it had; a failed first telling leaves no meeting', async () => {
+    await beginCatchup(start, 'en', 1);
+    await endCatchupPart('m1', { at: 1, ms: 60_000, kind: 'voice' });
+    await putMeeting({ ...(await getMeeting('m1'))!, status: 'done' });
+    const { status } = await beginCatchup({ ...start, append: true }, 'en', 2);
+    await undoCatchup({ ...start, append: true }, status);
+    expect((await getMeeting('m1'))?.status).toBe('done');
+    await beginCatchup({ meetingId: 'm2', picked }, 'en', 3);
+    await undoCatchup({ meetingId: 'm2', picked }, undefined);
+    expect(await getMeeting('m2')).toBeUndefined();
+  });
+
+  it('a pause saves its voice part and keeps the meeting recording; a stop while paused adds no part', async () => {
+    await beginCatchup(start, 'en', 1);
+    await addCatchupPart('m1', { at: 1, ms: 60_000, kind: 'voice' }, true);
+    expect(await getMeeting('m1')).toMatchObject({ status: 'recording', told: { ms: 60_000 } });
+    await endCatchupPart('m1', null, { questionId: 'q1', atMs: 0 });
+    expect((await getMeeting('m1'))?.told).toMatchObject({ ms: 60_000, parts: [{ ms: 60_000 }], answers: [{ questionId: 'q1' }] });
+    expect((await getMeeting('m1'))?.status).toBe('processing');
   });
 });
 
@@ -218,5 +239,11 @@ describe('the telling’s audio', () => {
     expect(await listTellingAudio('m1')).toEqual([]);
     expect(await listSegments('m1')).toHaveLength(1);
     expect((await getMeeting('m1'))?.told?.audioDeleted).toBe(true);
+    await beginCatchup({ ...start, append: true }, 'en', 3);
+    await endCatchupPart('m1', { at: 3, ms: 1000, kind: 'voice' }, undefined, false);
+    expect((await getMeeting('m1'))?.told?.audioDeleted).toBe(true);
+    await beginCatchup({ ...start, append: true }, 'en', 4);
+    await endCatchupPart('m1', { at: 4, ms: 1000, kind: 'voice' }, undefined, true);
+    expect((await getMeeting('m1'))?.told?.audioDeleted).toBeUndefined();
   });
 });
