@@ -6,8 +6,10 @@ import { itemText, matchIds, splitMatches, transcriptToText } from '@/lib/librar
 import { displayName } from '@/lib/speakers';
 import { formatClock, formatDuration } from '@/lib/time';
 import type { Meeting } from '@/lib/types';
+import { redactionsOf, type Span } from '@/lib/redact';
 import { Button, EmptyState, Spinner, Tag } from '../components';
 import { useRouter } from '../router';
+import './v4/v4.css';
 
 type Data = { meeting?: Meeting; items: TimelineItem[] };
 
@@ -30,6 +32,17 @@ function copyText(items: TimelineItem[], speakers: Meeting['speakers']): string 
     .join('\n');
 }
 
+/** Timeline items with each redaction placed at its time. */
+function withRedactions(items: TimelineItem[], marks: { startMs: number; endMs: number }[]) {
+  const out: (TimelineItem | { mark: { startMs: number; endMs: number } })[] = [];
+  const left = [...marks].sort((a, b) => a.startMs - b.startMs);
+  for (const it of items) {
+    while (left.length && left[0]!.startMs <= it.atMs) out.push({ mark: left.shift()! });
+    out.push(it);
+  }
+  return [...out, ...left.map((mark) => ({ mark }))];
+}
+
 export default function Transcript() {
   const { route, navigate, back } = useRouter();
   const meetingId = route.params.meetingId;
@@ -42,6 +55,7 @@ export default function Transcript() {
   const scrolledFor = useRef<string | undefined>(undefined);
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [picked, setPicked] = useState<Span | null>(null);
 
   const load = async () => {
     if (!meetingId) { setError(true); return; }
@@ -74,6 +88,19 @@ export default function Transcript() {
     scrolledFor.current = `${meetingId}:${atMsParam}`;
     targetRef.current?.scrollIntoView?.({ block: 'center' });
   }, [targetId, meetingId, atMsParam]);
+
+  // Selecting lines offers "Redact": the span runs from the first selected line's start to the last one's end.
+  useEffect(() => {
+    const onSelect = () => {
+      const sel = document.getSelection();
+      const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : undefined;
+      const lines = range ? (data?.items ?? []).filter((it) => it.kind === 'segment' && rowRefs.current[it.id] && range.intersectsNode(rowRefs.current[it.id]!)) : [];
+      const segs = lines.flatMap((it) => (it.kind === 'segment' ? [it.segment] : []));
+      setPicked(segs.length ? { startMs: Math.min(...segs.map((x) => x.startMs)), endMs: Math.max(...segs.map((x) => x.endMs)) } : null);
+    };
+    document.addEventListener('selectionchange', onSelect);
+    return () => document.removeEventListener('selectionchange', onSelect);
+  }, [data]);
 
   const step = (d: number) => ids.length && setCurrent((c) => (c + d + ids.length) % ids.length);
 
@@ -122,7 +149,17 @@ export default function Transcript() {
         <EmptyState title="Nothing was transcribed" body="This meeting has no transcript yet." />
       ) : (
         <section className="tr-list" aria-label="Transcript">
-          {data.items.map((it) => {
+          {withRedactions(data.items, redactionsOf(data.meeting)).map((entry) => {
+            if ('mark' in entry) {
+              const { mark } = entry;
+              return (
+                <div className="rd-gone" key={`redacted-${mark.startMs}`}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>
+                  <span className="rd-gone-at">{formatClock(mark.startMs)}</span>Redacted · {formatClock(mark.endMs - mark.startMs)}
+                </div>
+              );
+            }
+            const it = entry;
             const on = it.id === currentId;
             const hit = ids.includes(it.id);
             const isTarget = it.id === targetId;
@@ -148,6 +185,15 @@ export default function Transcript() {
             );
           })}
         </section>
+      )}
+
+      {picked && meetingId && (
+        <div className="rd-bar tr-redact">
+          <span className="rd-range">{formatClock(picked.startMs)} to {formatClock(picked.endMs)}</span>
+          <button type="button" className="rd-bar-btn" onClick={() => navigate('redact', { meetingId, atMs: picked.startMs, endMs: picked.endMs })}>
+            Redact {formatClock(picked.endMs - picked.startMs)}
+          </button>
+        </div>
       )}
 
       <footer className="tr-foot">

@@ -24,10 +24,11 @@ export type ScreenName =
   | 'setupCustom' | 'penvConnect' | 'howItWorks' | 'settingsMore'
   | 'nosound' // v3: desktop-app capture hears nothing
   | 'notionConnect' | 'notionPage'
-  | 'home' | 'backfill'; // v4: Open loops is home
+  | 'home' | 'backfill' // v4: Open loops is home
+  | 'redact' | 'ledger';
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
-export interface RouteParams { meetingId?: string; message?: string; atMs?: number; section?: 'transcription' | 'assistant' }
+export interface RouteParams { meetingId?: string; message?: string; atMs?: number; endMs?: number; section?: 'transcription' | 'assistant' }
 export interface Route { screen: ScreenName; params: RouteParams }
 
 export interface Router {
@@ -51,8 +52,8 @@ export interface SurfaceOptions {
 }
 
 // Survives Back and reload in the URL hash (`#/transcript?meeting=…&at=…`); ids, times and app copy only.
-const validateSearch = searchParams({ meeting: 'string', at: 'number', message: 'string', section: 'string' });
-const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, at: p.atMs, message: p.message, section: p.section });
+const validateSearch = searchParams({ meeting: 'string', at: 'number', end: 'number', message: 'string', section: 'string' });
+const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, at: p.atMs, end: p.endMs, message: p.message, section: p.section });
 // Redirects name screens built from data, which TanStack's typed `to` cannot check.
 const redirectTo = (route: Route, state?: object) =>
   redirect({ to: `/${route.screen}`, search: toSearch(route.params), replace: true, state } as unknown as Parameters<typeof redirect>[0]);
@@ -62,6 +63,7 @@ function toParams(search: Record<string, unknown>): RouteParams {
   if (s.meeting) params.meetingId = s.meeting;
   if (s.message) params.message = s.message;
   if (s.at !== undefined) params.atMs = s.at;
+  if (s.end !== undefined) params.endMs = s.end;
   if (s.section === 'transcription' || s.section === 'assistant') params.section = s.section;
   return params;
 }
