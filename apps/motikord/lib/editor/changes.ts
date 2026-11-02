@@ -2,6 +2,7 @@ import { applyPatch } from '../patch';
 import { getPreset } from '../render/presets';
 import { clipDuration } from '../render/drawFrame';
 import { PROVIDERS } from '../providers';
+import { getPack } from '../templates/scenes';
 import type { Author, Change, PresetSlot, Recipe, Settings } from '../types';
 
 // The Changes tab: every Change newest first, who made it, and how far "Go back here" undoes.
@@ -116,6 +117,11 @@ export function madeState(now: Recipe, past: readonly Change[]): Recipe | undefi
     try { doc = applyPatch(doc, past[i]!.inverse).doc; } catch { return undefined; }
   }
   return doc;
+}
+/** "Clip made" line for the clip as it was made, so a later look change does not rewrite it; the current clip if a change can't be taken back. */
+export function madeSummary(now: Recipe, past: readonly Change[]): string {
+  const made = madeState(now, past) ?? now;
+  return madeLine(made, made.style ? getPack(made.style)?.name : undefined);
 }
 /** The first scene a change touched, for its thumbnail. */
 export function sceneOf(c: Change): number | undefined {

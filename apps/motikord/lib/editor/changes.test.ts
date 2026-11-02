@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Change, PatchOp } from '../types';
 import { record, undo, type History } from './history';
 import { devSampleRecipe } from './store';
-import { agoLabel, madeBy, madeState, describe as describeChange, madeLine, metaLine, newestFirst, promptSummary, sceneOf, splitSummary, statesAfter, stepsBack, whenLabel, whoLabel } from './changes';
+import { newLook } from './v2';
+import { agoLabel, madeBy, madeState, madeSummary, describe as describeChange, madeLine, metaLine, newestFirst, promptSummary, sceneOf, splitSummary, statesAfter, stepsBack, whenLabel, whoLabel } from './changes';
 
 const r0 = devSampleRecipe('c');
 const size = (v: number): PatchOp[] => [{ op: 'replace', path: '/scenes/0/layers/2/sizePx', value: v }];
@@ -88,5 +89,14 @@ describe('changes v2', () => {
     expect(statesAfter(doc, h.past)).toEqual([docs[3], docs[2], docs[1]]);
     expect(sceneOf(h.past[1]!)).toBe(1);
     expect(madeState(doc, h.past)).toEqual(docs[0]);
+  });
+
+  it('describes "Clip made" as it was made, not in a look applied later', () => {
+    const made = { ...r0, style: 'bold' as const, pace: 'normal' as const };
+    const look = newLook(made, 'playful', 'calm');
+    const { doc, history } = record(made, { past: [], future: [] }, look.ops, { by: 'hand', at: 1000, id: 'c1', summary: look.summary });
+    expect(doc.style).toBe('playful');
+    expect(madeSummary(doc, history.past)).toBe(`${made.scenes.length} scenes, Bold, Normal pace`);
+    expect(madeSummary(made, [])).toBe(`${made.scenes.length} scenes, Bold, Normal pace`);
   });
 });

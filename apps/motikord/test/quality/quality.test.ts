@@ -30,8 +30,9 @@ describe('quality set: 20 recorded prompts through the whole v2 pipeline', () =>
       expect(out.recipe.scenes.every((s) => s.template)).toBe(true);
       expect(check(out.recipe).map((i) => `${i.kind} ${i.sceneId} ${i.layerId} ${i.note ?? ''}`)).toEqual([]);
       expect(calls.filter((c) => c.kind === 'fill').length).toBeGreaterThanOrEqual(out.recipe.scenes.length);
-      if (r.model) expect(calls.some((c) => c.kind === 'critic')).toBe(true);
-      else expect(out.criticSkipped).toBe('critic-not-available');
+      // A blind Groq chat model hands the critic to Groq's vision model, so the critic always runs.
+      expect(calls.some((c) => c.kind === 'critic')).toBe(true);
+      expect(out.criticSkipped).toBeUndefined();
       for (const c of calls) expect(c.tokens).toBeLessThan(CALL_BUDGET);
     });
   }

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { canSeeImages } from '@appskord/llm';
-import { PROVIDER_IDS, PROVIDERS, SUGGESTED_MODELS } from '../lib/providers';
+import { criticModelFor, PROVIDER_IDS, PROVIDERS, SUGGESTED_MODELS } from '../lib/providers';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { getBrandKit } from '../lib/db';
 import { chooseFolder } from '../lib/folder';
@@ -62,7 +62,7 @@ function Status({ ready, children, size = 11 }: { ready: boolean; children: stri
 /** The visual critic's line: whether the chosen model can see images. Built-in AI never can. */
 export function criticStatus(s: SettingsData): { ready: boolean; text: string } {
   const label = PROVIDERS[s.provider].label;
-  const model = s.models[s.provider] ?? SUGGESTED_MODELS[s.provider].models[0]!;
+  const model = criticModelFor(s.provider, s.models[s.provider] ?? SUGGESTED_MODELS[s.provider].models[0]!);
   const ready = s.ai === 'cloud' && canSeeImages(s.provider, model);
   return { ready, text: ready ? `${label}'s model can see images · Ready` : `${label}'s model can't see images. The layout check still runs.` };
 }
@@ -120,10 +120,13 @@ function Tile({ on, mono, name, status, wide, disabled, onPick }: { on: boolean;
   );
 }
 
-/** "OpenAI, Groq and Pexels keys": the keys Penv Cloud gave, the chosen provider first. */
-export function penvKeysLine(provider: Provider, keys: Record<string, string>): string {
-  const have = [provider, ...PROVIDER_IDS.filter((p) => p !== provider && keys[PROVIDERS[p].keyName])].map((p) => PROVIDERS[p].label);
-  return `${[...have, 'Pexels'].slice(0, -1).join(', ')} and Pexels keys`;
+/** "OpenAI, Groq and Pexels keys": the keys Penv Cloud gave, the chosen provider first; "Not connected" before it gave any. */
+export function penvKeysLine(provider: Provider, keys: Record<string, string>, connected: boolean): string {
+  if (!connected) return 'Not connected';
+  const have = [provider, ...PROVIDER_IDS.filter((p) => p !== provider)].filter((p) => keys[PROVIDERS[p].keyName]).map((p) => PROVIDERS[p].label);
+  if (keys.PEXELS_API_KEY) have.push('Pexels');
+  if (!have.length) return 'No keys yet';
+  return have.length === 1 ? `${have[0]} key` : `${have.slice(0, -1).join(', ')} and ${have.at(-1)} keys`;
 }
 
 export default function Settings() {
@@ -182,7 +185,7 @@ export default function Settings() {
       <Section title="Keys">
         <a href="#keys" onClick={(e) => { e.preventDefault(); navigate('PenvConnected'); }} style={{ ...rowStyle, ...first }}>
           <span className="mono" aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--ink)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 500, flexShrink: 0 }}>pv</span>
-          {text('Penv Cloud', penvKeysLine(provider, keys))}
+          {text('Penv Cloud', penvKeysLine(provider, keys, connected))}
           {connected && <Status ready>Connected</Status>}
           {chevron}
         </a>

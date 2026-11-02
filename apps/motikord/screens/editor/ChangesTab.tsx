@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { madeBy, madeLine, madeState, newestFirst, sceneOf, splitSummary, statesAfter, whenLabel, whoLabel } from '../../lib/editor/changes';
+import { madeBy, madeState, madeSummary, newestFirst, sceneOf, splitSummary, statesAfter, whenLabel, whoLabel } from '../../lib/editor/changes';
 import { restTime } from '../../lib/editor/store';
-import { getPack } from '../../lib/templates/scenes';
 import type { Change } from '../../lib/types';
 import { useSettings } from '../../lib/makeClip';
 import { BackHere, UndoIcon } from './dialogIcons';
@@ -95,7 +94,6 @@ export function ChangesTab(_: { onLayer?: () => void } = {}) {
       {offer && <button type="button" onClick={() => (kind === 'ahead' ? forward(c) : goBack(c.id))} style={small}><BackHere />Go back here</button>}
     </>, shot(doc, c));
   };
-  const style = r.style ? getPack(r.style)?.name : undefined;
   return (
     <div ref={panel.ref} style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: panel.h }}>
       <PanelTabs on="changes" />
@@ -109,7 +107,7 @@ export function ChangesTab(_: { onLayer?: () => void } = {}) {
         {entry('made', list.length === 0, false, true, <>
           {title('Clip made', list.length === 0)}
           {who(madeBy(r, settings), state.clip.createdAt)}
-          <span style={{ fontSize: 11, color: 'var(--faint)' }}>{madeLine(r, style)}</span>
+          <span style={{ fontSize: 11, color: 'var(--faint)' }}>{madeSummary(r, past)}</span>
           {list.length > 0 && (list.length === 1 || hover === 'made') && <button type="button" onClick={() => { goBack(list[list.length - 1]!.id); undo(); }} style={small}><BackHere />Go back here</button>}
         </>, shot(first))}
       </ol>
