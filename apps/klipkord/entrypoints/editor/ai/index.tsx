@@ -5,6 +5,7 @@ import type { SlotProps } from '../components/slots';
 import { setTimeline } from '../timeline/store';
 import { C } from '../ui';
 import { AskPanel } from './AskPanel';
+import { stop } from './actions';
 import { openAsk, setAi, subscribeAi, useAi } from './store';
 import { TranslatePanel } from './TranslatePanel';
 import { BUTTON } from './ui';
@@ -25,7 +26,8 @@ function Overlay(p: SlotProps) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openAsk(); }
     };
     addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
+    // Leaving the editor stops a request; closing the panel lets it finish, since the draft waits.
+    return () => { removeEventListener('keydown', onKey); stop(); };
   }, []);
   useEffect(() => {
     if (applied === null) return;

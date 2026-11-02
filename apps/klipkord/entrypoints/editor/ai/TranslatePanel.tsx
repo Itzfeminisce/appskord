@@ -12,8 +12,46 @@ import { callWith, providerName, setup } from './deps';
 import { setAi, useUnits } from './store';
 import { BODY, BUTTON, Header, NotSetUp, Offline, PANEL, useOnline } from './ui';
 
-/** Languages offered by "+ Add a language". */
-export const LANGUAGES = ['Spanish', 'French', 'German', 'Portuguese', 'Italian', 'Dutch', 'Polish', 'Turkish', 'Arabic', 'Hindi', 'Indonesian', 'Japanese', 'Korean', 'Chinese'];
+/** Languages offered by "+ Add a language", in the frames' order: English name, then the name in that language. */
+export const LANGUAGES: readonly (readonly [string, string])[] = [
+  ['Spanish', 'Español'], ['French', 'Français'], ['German', 'Deutsch'], ['Portuguese', 'Português'], ['Italian', 'Italiano'],
+  ['Dutch', 'Nederlands'], ['Polish', 'Polski'], ['Turkish', 'Türkçe'], ['Russian', 'Русский'], ['Arabic', 'العربية'], ['Hindi', 'हिन्दी'],
+  ['Indonesian', 'Bahasa Indonesia'], ['Japanese', '日本語'], ['Korean', '한국어'], ['Chinese (Simplified)', '简体中文'],
+];
+/** The language the captions are spoken in; it is never offered as a translation. */
+const SPOKEN = 'English';
+
+/** "+ Add a language": a search field over the languages not yet added. */
+function AddLanguage({ added, disabled, onPick }: { added: readonly string[]; disabled: boolean; onPick: (language: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const list = LANGUAGES.filter(([en, native]) => en !== SPOKEN && !added.includes(en) && (!q || en.toLowerCase().includes(q) || native.toLowerCase().includes(q)));
+  const pick = (language: string) => { setOpen(false); setQuery(''); onPick(language); };
+  return (
+    <div style={{ position: 'relative' }}>
+      <button type="button" aria-expanded={open} disabled={disabled} onClick={() => setOpen((o) => !o)} style={CHIP(false)}>+ Add a language</button>
+      {open && (
+        <div role="dialog" aria-label="Add a language" style={{
+          position: 'absolute', top: 30, left: 0, zIndex: 5, width: 220, maxHeight: 280, display: 'flex', flexDirection: 'column', borderRadius: 10,
+          background: C.raised, border: `1px solid ${C.line}`, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', overflow: 'hidden',
+        }}>
+          <input aria-label="Search languages" autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); if (e.key === 'Enter' && list[0]) pick(list[0][0]); }}
+            style={{ margin: 6, height: 28, padding: '0 8px', borderRadius: 6, border: `1px solid ${C.line}`, background: C.ground, color: C.text, fontFamily: 'inherit', fontSize: 12.5, outline: 'none' }} />
+          <div role="listbox" aria-label="Languages" style={{ overflowY: 'auto', padding: '0 4px 4px' }}>
+            {list.map(([en, native]) => (
+              <button key={en} type="button" role="option" aria-selected={false} onClick={() => pick(en)}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', border: 0, borderRadius: 6, background: 'transparent', color: C.text, fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer' }}>
+                {native} · <span style={{ color: C.muted }}>{en}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type Status = 'idle' | 'thinking' | 'failed' | 'not-set-up';
 
@@ -90,11 +128,7 @@ export function TranslatePanel(p: SlotProps) {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <span style={CHIP(false)}>English</span>
           {languages.map((l) => <button key={l} type="button" onClick={() => pick(l)} style={CHIP(l === language)}>{l}</button>)}
-          <select aria-label="Add a language" value="" disabled={p.readOnly || status === 'thinking'} onChange={(e) => e.target.value && pick(e.target.value)}
-            style={{ ...CHIP(false), appearance: 'none', background: 'transparent' }}>
-            <option value="">+ Add a language</option>
-            {LANGUAGES.filter((l) => !languages.includes(l)).map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
+          <AddLanguage added={languages} disabled={p.readOnly || status === 'thinking'} onPick={pick} />
         </div>
         <span style={{ fontSize: 12, color: C.secondary }}>Check the words, then pick which one shows in the video. Others export as SRT and VTT.</span>
         {state}

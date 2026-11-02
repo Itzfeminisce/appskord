@@ -11,7 +11,7 @@ import { clock } from '../format';
 import { StateCard } from '../states/StateCard';
 import { ICON } from '../transcript/icons';
 import { C, Icon, ICONS, iconButton, MONO } from '../ui';
-import { ask, checkSetup, stop } from './actions';
+import { ask, checkSetup, stop, tryHighlight } from './actions';
 import { aiDeps } from './deps';
 import { setAi, useAi, useDraft, useUnits, type Trial } from './store';
 import { BODY, BUBBLE, BUTTON, Check, Header, MIC, NotSetUp, Offline, PANEL, useOnline } from './ui';
@@ -152,6 +152,11 @@ export function AskPanel(p: SlotProps) {
   // A highlight cut deleted elsewhere is no longer on trial.
   const trial = ai.trial && p.project.cuts.some((c) => c.id === ai.trial!.cutId) ? ai.trial : null;
   const run = (text: string) => void ask(text, { project: () => latest.current, units, edit: p.edit });
+  // A new cut that landed while the panel was closed is made now.
+  const held = ai.reply && newCutOf(ai.reply.checked.ops) ? ai.reply : null;
+  useEffect(() => {
+    if (held && !p.readOnly) tryHighlight(held.request, held.checked, { units, edit: p.edit });
+  }, [held, units, p.edit, p.readOnly]);
   const deltas = useMemo(() => draft?.ops.map((op) => opDelta(p.project, units, op)) ?? [], [draft, p.project, units]);
 
   const thinking = ai.status === 'thinking';
@@ -173,7 +178,7 @@ export function AskPanel(p: SlotProps) {
   else if (thinking) {
     state = (
       <StateCard state="ai-thinking" role="status" title="Reading your transcript…"
-        body={`${ai.planned ? `Planning ${many(ai.planned, 'change')}. ` : ''}You can keep editing; the draft waits for you.`}
+        body={`${ai.planned ? `Planning ${many(ai.planned, 'change')}.` : 'Working out the changes.'} You can keep editing; the draft waits for you.`}
         actions={[{ label: 'Stop', tone: 'secondary', onClick: stop }]} />
     );
   } else if (ai.status === 'failed') {
@@ -184,7 +189,7 @@ export function AskPanel(p: SlotProps) {
   } else if (ai.status === 'cant') {
     state = (
       <StateCard state="ai-cant" role="alert" title="The AI can't do that yet"
-        body={`It can cut, keep, reorder, speed, zoom, caption, add cards, chapters and layouts.${ai.cant ? ` It can't ${ai.cant.replace(/\.$/, '')}.` : ''}`}
+        body={ai.cant === 'cards' ? "Cards aren't ready yet. Text, arrows and blur work now." : 'It can cut, keep, reorder, speed, zoom, caption, add cards, chapters and layouts.'}
         actions={[{ label: 'Try something else', tone: 'secondary', onClick: () => { setAi({ status: 'idle' }); setFocus((n) => n + 1); } }]} />
     );
   }

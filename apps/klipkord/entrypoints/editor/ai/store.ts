@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react';
-import { draftWords, toDraft, withLengths, type Checked } from '@/lib/ai/ops';
+import { newCutOf } from '@/lib/ai/highlight';
+import { draftSpans, draftWords, toDraft, withLengths, type Checked } from '@/lib/ai/ops';
 import type { QuickWin } from '@/lib/project/suggest';
 import type { Draft, Project } from '@/lib/project/types';
 import type { Recording } from '@/lib/types';
@@ -59,7 +60,8 @@ export const useUnits = (recording: Recording): Unit[] => useMemo(() => unitsOf(
 export function useDraft(project: Project, units: Unit[]): Draft | null {
   const { reply, off } = useAi();
   return useMemo(() => {
-    if (!reply) return null;
+    // A new cut waiting for the panel is not a draft.
+    if (!reply || newCutOf(reply.checked.ops)) return null;
     const d = toDraft(project, units, reply.request, reply.checked);
     return off.size ? withLengths(project, units, { ...d, changes: d.changes.map((c, i) => ({ ...c, on: !off.has(i) })) }) : d;
   }, [project, units, reply, off]);
@@ -72,6 +74,13 @@ export function useDraftUnits(project: Project, recording: Recording): ReadonlyS
   return useMemo(() => (draft ? draftWords(project, units, draft) : new Set<number>()), [draft, project, units]);
 }
 
+/** The waiting draft on the timeline: output ms ranges it would cut, and where its other changes land. */
+export function useDraftMarks(project: Project, recording: Recording): { cuts: { start: number; end: number }[]; at: number[] } | null {
+  const units = useUnits(recording);
+  const draft = useDraft(project, units);
+  return useMemo(() => (draft ? draftSpans(project, units, draft) : null), [draft, project, units]);
+}
+
 // ---- AI rows for T6's SuggestedEdits, one ask per project ----
 
 let wins: Record<string, QuickWin[]> = {};
@@ -81,6 +90,11 @@ export function setWins(id: string, list: QuickWin[]): void {
   winListeners.forEach((l) => l());
 }
 export const winsOf = (id: string): QuickWin[] | undefined => wins[id];
+export function clearWins(id: string): void {
+  const { [id]: _gone, ...rest } = wins;
+  wins = rest;
+  winListeners.forEach((l) => l());
+}
 export function useWins(id: string): QuickWin[] | undefined {
   return useSyncExternalStore((l) => { winListeners.add(l); return () => { winListeners.delete(l); }; }, () => wins[id], () => wins[id]);
 }

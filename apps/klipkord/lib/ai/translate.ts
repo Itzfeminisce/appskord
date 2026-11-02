@@ -9,8 +9,29 @@ const system = (language: string) =>
   `Translate each caption line into ${language}. Keep the meaning, names and product words; keep each line short. ` +
   'Reply with one JSON object: {"lines":["..."]} with exactly one translated line per input line, in the same order.';
 
-/** Lines per call: the lines go out once and come back translated, so each side gets under half the budget. */
-export function lineChunks(lines: string[], budget = (MAX_CALL_TOKENS - 600) / 2): string[][] {
+/**
+ * Reply tokens per input token, by the target's script: Latin stays about the same length, while Cyrillic, Arabic,
+ * Devanagari and CJK text take more tokens for the same meaning.
+ */
+const SCRIPT_GROWTH: Record<string, number> = {
+  Russian: 1.6, Arabic: 1.8, Hindi: 2.5, Japanese: 1.6, Korean: 1.8, 'Chinese (Simplified)': 1.5, Chinese: 1.5,
+};
+export const growthOf = (language: string): number => SCRIPT_GROWTH[language] ?? 1.2;
+
+/** Fixed costs of a call: the system prompt, the JSON wrapping and the repair note. */
+const OVERHEAD = 400;
+
+/**
+ * Input tokens per call for this language. A repair resends the lines and the first reply and gets a second reply,
+ * so lines + 2 replies stay under the budget; for Latin languages that is about a third of it.
+ */
+export const lineBudget = (language: string): number => Math.floor((MAX_CALL_TOKENS - OVERHEAD) / (1 + 2 * growthOf(language)));
+
+/** The reply room for `input` tokens of lines in this language. */
+export const replyTokens = (input: number, language: string): number => Math.ceil(input * growthOf(language)) + 60;
+
+/** Lines per call, each part under `budget` input tokens. */
+export function lineChunks(lines: string[], budget = lineBudget('Spanish')): string[][] {
   const out: string[][] = [];
   let part: string[] = [];
   let size = 0;
@@ -35,9 +56,10 @@ export function checkLines(raw: unknown, count: number): { lines?: string[]; pro
 /** Translates caption lines in calls under 8,000 tokens; a bad reply is repaired once, then `failed`. */
 export async function translateLines(lines: string[], language: string, call: Call): Promise<string[]> {
   const out: string[] = [];
-  for (const part of lineChunks(lines)) {
+  const budget = lineBudget(language) - 60;
+  for (const part of lineChunks(lines, budget)) {
     const messages: ChatMessage[] = [{ role: 'system', content: system(language) }, { role: 'user', content: JSON.stringify({ lines: part }) }];
-    const maxTokens = Math.min(3_600, tokens(JSON.stringify(part)) * 2 + 200);
+    const maxTokens = replyTokens(tokens(JSON.stringify(part)), language);
     const reply = await call(messages, { maxTokens });
     let checked = checkLines(parseReply(reply), part.length);
     if (checked.problem) {

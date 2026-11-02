@@ -5,7 +5,7 @@ import { currentCut, group } from '../project/history';
 import { addChapter, addLayer, deleteWords, LABELS, MAX_SPEED, MIN_SPEED, moveRange, quote, restoreWords, setCaptions, setSpeed, split, updateChapter } from '../project/ops';
 import { cutLength, isKept, spans, toOut } from '../project/time';
 import type { AiOp, CaptionStyle, Cut, Draft, LayoutKind, Project, Shape } from '../project/types';
-import { chunkTranscript, editSystem, editUser, REPLY_TOKENS, repairUser, transcriptBudget, type Chunk } from './prompt';
+import { chunkTranscript, echo, editSystem, editUser, REPLY_TOKENS, repairUser, transcriptBudget, type Chunk } from './prompt';
 
 /** Why an AI request ended without a draft; each is one StatesWork state. */
 export type AiErrorCode = 'not-set-up' | 'offline' | 'failed' | 'cant' | 'stopped';
@@ -20,9 +20,16 @@ export class AiError extends Error {
 export type Call = (messages: ChatMessage[], opts: { maxTokens: number }) => Promise<string>;
 
 /** What the validator knows: how many words there are, which the model saw, and whether cards can draw. */
-export interface OpContext { words: number; from?: number; to?: number; cards: boolean }
+export interface OpContext { words: number; from?: number; to?: number; cards: boolean; templates?: readonly string[] }
 
-export interface Checked { ops: AiOp[]; labels: string[]; problems: string[]; cant?: string }
+/** Card templates the AI may use; none until Motikord's templates land in packages/scenes. */
+export const CARD_TEMPLATES: readonly string[] = [];
+/** Labels, titles and card slot text are cut to this many characters. */
+export const MAX_TEXT = 80;
+/** `cant` when the request needed cards before they can draw; anything else the ops can't do is `other`. */
+export type CantCode = 'cards' | 'other';
+
+export interface Checked { ops: AiOp[]; labels: string[]; problems: string[]; cant?: CantCode }
 
 const CAPTION_STYLES: CaptionStyle['style'][] = ['clean', 'bold', 'word'];
 const LAYOUTS: LayoutKind[] = ['bubble', 'side', 'camera', 'screen'];
@@ -43,10 +50,11 @@ export function parseReply(text: string): unknown {
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 const isText = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
+const short = (v: string, max = MAX_TEXT) => v.trim().slice(0, max);
 
 /**
  * Validates a reply into ops. Rejects unknown ops and word indexes, ranges back to front, overlapping cuts and an empty
- * result; `card` ops while cards cannot draw become `cant`.
+ * result; `card` ops while cards cannot draw, or with a template not in the known list, become `cant: 'cards'`.
  */
 export function checkReply(raw: unknown, ctx: OpContext): Checked {
   const out: Checked = { ops: [], labels: [], problems: [] };
@@ -59,7 +67,7 @@ export function checkReply(raw: unknown, ctx: OpContext): Checked {
   const hi = ctx.to ?? ctx.words - 1;
   const word = (v: unknown, name: string, n: number) => {
     if (isInt(v) && v >= lo && v <= hi) return true;
-    out.problems.push(`Op ${n}: "${name}" ${JSON.stringify(v)} is not a word index from ${lo} to ${hi}.`);
+    out.problems.push(`Op ${n}: "${name}" ${echo(v)} is not a word index from ${lo} to ${hi}.`);
     return false;
   };
   const range = (from: unknown, to: unknown, n: number) => {
@@ -71,7 +79,7 @@ export function checkReply(raw: unknown, ctx: OpContext): Checked {
   let cards = 0;
   for (const [n, item] of ((body as { ops: unknown[] }).ops).entries()) {
     const o = (item ?? {}) as Record<string, unknown>;
-    const label = isText(o.label) ? o.label.trim() : '';
+    const label = isText(o.label) ? short(o.label) : '';
     let op: AiOp | null = null;
     switch (o.op) {
       case 'cut': case 'keep':
@@ -106,15 +114,15 @@ export function checkReply(raw: unknown, ctx: OpContext): Checked {
         else out.problems.push(`Op ${n}: "style" must be clean, bold or word.`);
         break;
       case 'card':
-        if (!ctx.cards) { cards++; break; }
-        if (isText(o.template) && word(o.at, 'at', n)) {
-          const slots = Object.fromEntries(Object.entries((o.slots ?? {}) as Record<string, unknown>).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
+        if (!ctx.cards || !isText(o.template) || !(ctx.templates ?? CARD_TEMPLATES).includes(o.template)) { cards++; break; }
+        if (word(o.at, 'at', n)) {
+          const slots = Object.fromEntries(Object.entries((o.slots ?? {}) as Record<string, unknown>).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, short(v as string)]));
           op = { op: 'card', template: o.template, at: o.at as number, slots };
-        } else if (!isText(o.template)) out.problems.push(`Op ${n}: a card needs a "template".`);
+        }
         break;
       case 'chapter':
         if (word(o.at, 'at', n)) {
-          if (isText(o.title)) op = { op: 'chapter', at: o.at as number, title: o.title.trim().slice(0, 80) };
+          if (isText(o.title)) op = { op: 'chapter', at: o.at as number, title: short(o.title) };
           else out.problems.push(`Op ${n}: a chapter needs a "title".`);
         }
         break;
@@ -137,14 +145,15 @@ export function checkReply(raw: unknown, ctx: OpContext): Checked {
         break;
       }
       default:
-        out.problems.push(`Op ${n}: unknown op ${JSON.stringify(o.op)}.`);
+        out.problems.push(`Op ${n}: unknown op ${echo(o.op)}.`);
     }
     if (op) { out.ops.push(op); out.labels.push(label); }
   }
   const cant = (body as { cant?: unknown }).cant;
   if (!out.ops.length && !out.problems.length) {
-    if (isText(cant)) out.cant = cant.trim();
-    else if (cards) out.cant = 'add cards yet';
+    // The model's own words never reach the screen, only which fixed copy to show.
+    if (cards) out.cant = 'cards';
+    else if (isText(cant)) out.cant = 'other';
     else out.problems.push('The reply has no ops.');
   }
   return out;
@@ -168,10 +177,12 @@ export interface AskArgs { request: string; project: Project; units: Unit[]; car
  * it fails, repaired once; a second failure throws `failed`. A request the ops cannot do throws `cant`.
  */
 export async function askOps({ request, project, units, cards, call, onPart }: AskArgs): Promise<Checked> {
-  const system = editSystem(cards);
-  const chunks: Chunk[] = units.length ? chunkTranscript(project, units, transcriptBudget(system, request)) : [{ from: 0, to: -1, text: '(no transcript)' }];
+  const system = editSystem(cards ? CARD_TEMPLATES : []);
+  // The header is measured as a later part of many, its longest form.
+  const header = editUser(request, project, { from: units.length, to: units.length, text: '' }, { index: 1, count: 2 });
+  const chunks: Chunk[] = units.length ? chunkTranscript(project, units, transcriptBudget(system, header)) : [{ from: 0, to: -1, text: '(no transcript)' }];
   const all: Checked = { ops: [], labels: [], problems: [] };
-  let cant: string | undefined;
+  let cant: CantCode | undefined;
   for (const [index, chunk] of chunks.entries()) {
     const ctx: OpContext = { words: units.length, from: chunk.from, to: chunk.to, cards };
     const messages: ChatMessage[] = [{ role: 'system', content: system }, { role: 'user', content: editUser(request, project, chunk, { index, count: chunks.length }) }];
@@ -306,6 +317,26 @@ export function draftWords(project: Project, units: Unit[], draft: Draft): Set<n
   const out = new Set<number>();
   units.forEach((u, i) => { if (isKept(before, mid(u)) && !isKept(after, mid(u))) out.add(i); });
   return out;
+}
+
+/**
+ * The draft on the timeline, in output ms of the current cut: the ranges its ticked ops would cut, merged, and where
+ * each other ticked change lands.
+ */
+export function draftSpans(project: Project, units: Unit[], draft: Draft): { cuts: { start: number; end: number }[]; at: number[] } {
+  const cut = currentCut(project);
+  const cuts: { start: number; end: number }[] = [];
+  for (const i of [...draftWords(project, units, draft)].sort((a, b) => a - b)) {
+    const start = outOf(cut, units[i], 'start');
+    const end = outOf(cut, units[i], 'end');
+    if (start === null || end === null) continue;
+    const last = cuts.at(-1);
+    // Words a pause apart read as one orange stretch.
+    if (last && start - last.end < 400) last.end = Math.max(last.end, end);
+    else cuts.push({ start, end });
+  }
+  const at = draft.ops.flatMap((op, i) => (draft.changes[i]?.on === false || op.op === 'cut' ? [] : [draft.changes[i]?.at ?? opAt(project, units, op)]));
+  return { cuts, at };
 }
 
 /** A row label when the model gave none, in the words of the undo labels. */

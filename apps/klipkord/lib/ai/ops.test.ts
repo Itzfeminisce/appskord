@@ -6,8 +6,8 @@ import { cutLength } from '../project/time';
 import type { Project } from '../project/types';
 import type { Recording } from '../types';
 import type { Unit } from '../wordCuts';
-import { AiError, applyDraft, askOps, checkReply, draftWords, parseReply, toDraft, toggleChange, type Call } from './ops';
-import { chunkTranscript, MAX_CALL_TOKENS, REPLY_TOKENS, sentences, tokens } from './prompt';
+import { AiError, applyDraft, askOps, checkReply, draftSpans, draftWords, MAX_TEXT, parseReply, toDraft, toggleChange, type Call } from './ops';
+import { chunkTranscript, MAX_CALL_TOKENS, MAX_PROBLEMS, REPLY_TOKENS, repairUser, sentences, tokens } from './prompt';
 
 const rec = { id: 'r', title: 'Demo', createdAt: 1, duration: 10_000, mime: 'video/webm', quality: '1080p', edits: [], transcript: [] } as unknown as Recording;
 const base = (): Project => fromRecording(rec);
@@ -42,9 +42,31 @@ describe('checkReply', () => {
     expect(checkReply({ ops: [{ op: 'cut', from: 1, to: 1 }] }, { ...ctx, from: 3, to: 6 }).problems).toHaveLength(1);
   });
 
-  it('turns card ops into ai-cant while cards are not ready, and passes the model\'s own cant on', () => {
-    expect(checkReply({ ops: [{ op: 'card', template: 'title-hook', at: 0, slots: {} }] }, ctx).cant).toBe('add cards yet');
-    expect(checkReply({ ops: [], cant: 'add sound effects' }, ctx).cant).toBe('add sound effects');
+  it('turns card ops into ai-cant cards unless cards draw and the template is known; never keeps the model\'s words', () => {
+    const card = { ops: [{ op: 'card', template: 'title-hook', at: 0, slots: {} }] };
+    expect(checkReply(card, ctx).cant).toBe('cards');
+    expect(checkReply(card, { ...ctx, cards: true }).cant).toBe('cards');
+    expect(checkReply(card, { ...ctx, cards: true, templates: ['title-hook'] }).ops).toHaveLength(1);
+    expect(checkReply({ ops: [], cant: 'add sound effects' }, ctx).cant).toBe('other');
+  });
+
+  it('caps labels, titles and slot text at 80 characters', () => {
+    const long = 'x'.repeat(200);
+    const c = checkReply({ ops: [
+      { op: 'chapter', at: 0, title: long, label: long },
+      { op: 'card', template: 't', at: 1, slots: { title: long } },
+    ] }, { ...ctx, cards: true, templates: ['t'] });
+    expect(c.labels[0]).toHaveLength(MAX_TEXT);
+    expect(c.ops[0]).toMatchObject({ title: 'x'.repeat(MAX_TEXT) });
+    expect(c.ops[1]).toMatchObject({ slots: { title: 'x'.repeat(MAX_TEXT) } });
+  });
+
+  it('repairs with the first 5 problems, values cut to 40 characters', () => {
+    const c = checkReply({ ops: Array.from({ length: 12 }, () => ({ op: 'cut', from: 'y'.repeat(500), to: 1 })) }, ctx);
+    const text = repairUser(c.problems);
+    expect(text.split('\n').filter((l) => l.startsWith('- Op'))).toHaveLength(MAX_PROBLEMS);
+    expect(text).not.toContain('y'.repeat(40));
+    expect(tokens(text)).toBeLessThan(400);
   });
 
   it('reads JSON inside a code fence', () => {
@@ -65,7 +87,7 @@ describe('askOps', () => {
   it('fails after a second bad reply, and says when it cannot', async () => {
     await expect(askOps({ request: 'x', project: base(), units, cards: false, call: callWith(replies('{', '{')) })).rejects.toEqual(new AiError('failed'));
     const cant = askOps({ request: 'Add a whoosh', project: base(), units, cards: false, call: callWith(replies({ ops: [], cant: 'add sound effects' })) });
-    await expect(cant).rejects.toMatchObject({ code: 'cant', detail: 'add sound effects' });
+    await expect(cant).rejects.toMatchObject({ code: 'cant', detail: 'other' });
   });
 
   it('sends words by index, never times', async () => {
@@ -101,6 +123,36 @@ describe('chunking', () => {
   });
 });
 
+describe('30-minute transcript', () => {
+  // 4,500 words at 150 a minute, with chapters, long words and four-digit indexes.
+  const vocab = ['onboarding', 'the', 'dashboard', 'permissions', 'and', 'then', 'invite', 'workspace', 'members', 'settings'];
+  const units30: Unit[] = Array.from({ length: 4500 }, (_, i) => ({
+    start: i * 400, end: i * 400 + 300, text: i % 15 === 14 ? 'configuration.' : vocab[i % vocab.length]!, line: Math.floor(i / 30),
+  }));
+  const project30 = (): Project => ({ ...base(), chapters: Array.from({ length: 12 }, (_, k) => ({ at: k * 150_000, title: `Chapter ${k + 1}: ${'setup '.repeat(10)}` })) });
+
+  it('keeps every call, repair included, under 8,000 tokens at two characters a token', async () => {
+    // Valid JSON as long as a reply may be, with a long value in each of many bad ops.
+    const op = { op: 'cut', from: 'z'.repeat(120), to: 99_999, label: 'q'.repeat(80) };
+    const bad = JSON.stringify({ ops: Array.from({ length: Math.floor((REPLY_TOKENS * 2 - 20) / (JSON.stringify(op).length + 1)) }, () => op) });
+    const queue: string[] = [];
+    const sizes: number[] = [];
+    const call: Call = async (messages, { maxTokens }) => {
+      sizes.push(tokens(messages.map((m) => m.content).join('')) + maxTokens);
+      const last = messages.at(-1)!.content;
+      const part = /words (\d+) to/.exec(messages[1]!.content)?.[1] ?? '0';
+      // First reply per part is as long as allowed and wrong; the repair is fine.
+      if (!last.startsWith('That reply')) return bad;
+      queue.push(part);
+      return JSON.stringify({ ops: [{ op: 'cut', from: Number(part), to: Number(part) }] });
+    };
+    const c = await askOps({ request: 'Cut every filler word and tighten the pauses', project: project30(), units: units30, cards: false, call });
+    expect(c.ops.length).toBeGreaterThan(1);
+    expect(sizes.length).toBe(queue.length * 2);
+    expect(Math.max(...sizes)).toBeLessThan(MAX_CALL_TOKENS);
+  });
+});
+
 describe('drafts', () => {
   const checked = { ops: [{ op: 'cut' as const, from: 3, to: 3 }, { op: 'caption' as const, style: 'bold' as const }], labels: ['Cut 1 filler word', ''] };
 
@@ -118,6 +170,13 @@ describe('drafts', () => {
     const off = toggleChange(p, units, d, 0);
     expect(draftWords(p, units, off).size).toBe(0);
     expect(off.after).toBe(10_000);
+  });
+
+  it('places the draft on the timeline: cut stretches in output ms and the other changes as marks', () => {
+    const p = base();
+    const d = toDraft(p, units, 'x', checked);
+    expect(draftSpans(p, units, d)).toEqual({ cuts: [{ start: 3000, end: 3600 }], at: [d.changes[1]!.at] });
+    expect(draftSpans(p, units, toggleChange(p, units, d, 0)).cuts).toEqual([]);
   });
 
   it('applies the ticked ops as one Undo step', () => {

@@ -7,7 +7,8 @@ import type { Unit } from '../wordCuts';
 import { discardHighlight, highlightFacts, makeHighlight } from './highlight';
 import type { Call } from './ops';
 import { aiWins } from './suggest';
-import { checkLines, lineChunks, saveTranslation, translateLines } from './translate';
+import { MAX_CALL_TOKENS, tokens } from './prompt';
+import { checkLines, lineBudget, lineChunks, saveTranslation, translateLines } from './translate';
 
 const rec = { id: 'r', title: 'Demo', createdAt: 1, duration: 10_000, mime: 'video/webm', quality: '1080p', edits: [], transcript: [] } as unknown as Recording;
 const base = (): Project => fromRecording(rec);
@@ -54,6 +55,23 @@ describe('translate', () => {
   it('splits long captions into calls under the budget', () => {
     const lines = Array.from({ length: 400 }, () => 'A caption line of about forty characters!');
     expect(lineChunks(lines).length).toBeGreaterThan(1);
+  });
+
+  it('keeps every call, repair included, under 8,000 tokens for every script on a 30-minute video', async () => {
+    const lines = Array.from({ length: 640 }, (_, i) => `Line ${i}: then open the workspace settings and pick Members.`);
+    for (const language of ['Spanish', 'Russian', 'Arabic', 'Hindi', 'Japanese', 'Korean', 'Chinese (Simplified)']) {
+      let max = 0;
+      const call: Call = async (messages, { maxTokens }) => {
+        const count = (JSON.parse(messages[1]!.content) as { lines: string[] }).lines.length;
+        // A resent reply is at most the first call's maxTokens, whatever its script.
+        const sent = messages.reduce((n, m) => n + (m.role === 'assistant' ? maxTokens : tokens(m.content)), 0);
+        max = Math.max(max, sent + maxTokens);
+        return messages.length > 2 ? JSON.stringify({ lines: Array.from({ length: count }, () => 'x') }) : '{"lines":[]}';
+      };
+      expect(await translateLines(lines, language, call)).toHaveLength(lines.length);
+      expect(max, language).toBeLessThan(MAX_CALL_TOKENS);
+    }
+    expect(lineBudget('Hindi')).toBeLessThan(lineBudget('Spanish'));
   });
 
   it('saves the lines and the shown language as one step', () => {

@@ -92,12 +92,37 @@ describe('Ask AI', () => {
     act(() => { openAsk(); root.render(<Harness />); });
     await send('Add a title card');
     expect(text()).toContain("The AI can't do that yet");
-    expect(text()).toContain("It can't add cards yet.");
+    expect(text()).toContain("Cards aren't ready yet. Text, arrows and blur work now.");
     useAi(key, { ops: [] }, { ops: [] });
     act(() => button('Try something else').click());
     await send('Do it');
     expect(text()).toContain("The AI's reply didn't make sense");
     expect(steps(latest).steps).toEqual([]);
+  });
+
+  it('never shows the model\'s own words for ai-cant', async () => {
+    useAi(key, { ops: [], cant: 'add sound effects' });
+    act(() => { openAsk(); root.render(<Harness />); });
+    await send('Add a whoosh');
+    expect(text()).toContain('It can cut, keep, reorder, speed, zoom, caption, add cards, chapters and layouts.');
+    expect(text()).not.toContain('sound effects');
+  });
+
+  it('keeps a request running after Back; a new cut that lands meanwhile is made when Ask AI opens', async () => {
+    let answer: (body: string) => void = () => {};
+    const reply = { ops: [{ op: 'newCut', name: 'Short', shape: '9:16', keep: [{ from: 0, to: 2 }] }] };
+    setAiDeps({ keys: async () => key, online: () => true, watchOnline: () => () => {},
+      fetch: () => new Promise<Response>((r) => { answer = (body) => r(new Response(JSON.stringify({ choices: [{ message: { content: body } }] }))); }) });
+    act(() => { openAsk(); root.render(<Harness />); });
+    await send('Make a short');
+    expect(text()).toContain('Working out the changes. You can keep editing; the draft waits for you.');
+    act(() => button('Back').click());
+    await act(async () => answer(JSON.stringify(reply)));
+    await flush();
+    expect(latest.cuts).toHaveLength(1);
+    act(() => openAsk());
+    await flush();
+    expect(currentCut(latest).name).toBe('Short');
   });
 
   it('makes a highlight cut that Discard removes', async () => {
@@ -125,8 +150,12 @@ describe('Translate captions', () => {
     useAi(key, { lines: ['Hola, soy Sam.', 'Um, luego elige Miembros.'] });
     act(() => { openTranslate(); root.render(<Harness />); });
     await flush();
-    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Add a language"]')!;
-    await act(async () => { select.value = 'Spanish'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    act(() => button('+ Add a language').click());
+    const options = [...host.querySelectorAll('[role="option"]')].map((o) => o.textContent);
+    expect(options[0]).toBe('Español · Spanish');
+    expect(options.at(-1)).toBe('简体中文 · Chinese (Simplified)');
+    expect(options).toHaveLength(15);
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('[role="option"]')][0]!.click());
     await flush();
     expect(text()).toContain('Spanish captions');
     expect(text()).toContain('Show Spanish in the video');
@@ -137,8 +166,15 @@ describe('Translate captions', () => {
 
     useAi(key, {}, {});
     act(() => openTranslate());
-    const again = host.querySelector<HTMLSelectElement>('select[aria-label="Add a language"]')!;
-    await act(async () => { again.value = 'French'; again.dispatchEvent(new Event('change', { bubbles: true })); });
+    act(() => button('+ Add a language').click());
+    const search = host.querySelector<HTMLInputElement>('input[aria-label="Search languages"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'fran');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const left = [...host.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+    expect(left.map((o) => o.textContent)).toEqual(['Français · French']);
+    await act(async () => left[0]!.click());
     await flush();
     expect(text()).toContain("Couldn't translate the captions");
   });

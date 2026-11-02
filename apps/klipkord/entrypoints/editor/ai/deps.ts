@@ -1,4 +1,5 @@
-import { chat, pickProvider, type FetchLike, type ProviderConfig, type ProviderId } from '@/lib/llm';
+import { PROVIDERS as LLM_PROVIDERS } from '@appskord/llm';
+import { chat, pickProvider, type FetchLike, type ProviderConfig } from '@/lib/llm';
 import { loadKeys } from '@/lib/penv';
 import type { Call } from '@/lib/ai/ops';
 
@@ -31,11 +32,29 @@ let deps: AiDeps | null = null;
 export const aiDeps = (): AiDeps => (deps ??= browserAiDeps());
 export const setAiDeps = (next: AiDeps | null): void => { deps = next; };
 
-/** The header's provider: the one `chat` will use, as the frames name it. */
-export const PROVIDER_LABELS: Record<ProviderId, string> = {
-  groq: 'Groq · Llama 3.3', openai: 'OpenAI · GPT-4.1 mini', openrouter: 'OpenRouter · gpt-oss-120b', anthropic: 'Anthropic · Claude Haiku 4.5',
-};
-export const providerName = (p: ProviderConfig): string => PROVIDER_LABELS[p.id].split(' · ')[0]!;
+const LOWER = new Set(['mini', 'nano', 'oss', 'turbo', 'flash', 'pro']);
+const DROP = /^(versatile|instant|latest|preview|chat|instruct|\d+b|\d{4,8})$/i;
+
+/** The short model name for people, never the id: "llama-3.3-70b-versatile" is "Llama 3.3", "claude-haiku-4-5" is "Claude Haiku 4.5". */
+export function shortModel(id: string): string {
+  const parts = (id.split('/').pop() ?? id).split(/[-_:]/).filter((t) => t && !DROP.test(t));
+  const out: string[] = [];
+  for (const t of parts) {
+    const prev = out.at(-1);
+    // Version parts split by dashes join with a dot: 4-5 is 4.5.
+    if (prev && /^\d+(\.\d+)?$/.test(prev) && /^\d+$/.test(t)) { out[out.length - 1] = `${prev}.${t}`; continue; }
+    if (prev === 'GPT') { out[out.length - 1] = `GPT-${t}`; continue; }
+    out.push(/^gpt$/i.test(t) ? 'GPT' : LOWER.has(t.toLowerCase()) || /\d/.test(t) ? t : t[0]!.toUpperCase() + t.slice(1));
+  }
+  return out.join(' ') || id;
+}
+
+/** The Ask AI header: "{provider} · {model}", with the provider's display name from `@appskord/llm`. */
+export function header(p: ProviderConfig): string {
+  const info = LLM_PROVIDERS[p.id];
+  return `${info.label} · ${shortModel(p.model)}${info.host === 'localhost' ? ' · on this computer' : ''}`;
+}
+export const providerName = (p: ProviderConfig): string => LLM_PROVIDERS[p.id].label;
 
 /** The loaded keys and the provider they give, or null when AI is not set up. */
 export async function setup(): Promise<{ keys: Record<string, string>; provider: ProviderConfig } | null> {

@@ -6,15 +6,26 @@ import type { Project } from '../project/types';
 
 /** PLAN "Performance budget": every AI call, prompt and reply together, stays under this. */
 export const MAX_CALL_TOKENS = 8_000;
+/** A request longer than this is cut, so it can't crowd out the transcript. */
+export const MAX_REQUEST = 1_000;
 /** The longest reply we ask for. */
 export const REPLY_TOKENS = 1_200;
 
-/** A safe over-estimate of tokens: about three characters each. */
-export const tokens = (text: string): number => Math.ceil(text.length / 3);
+/** A safe over-estimate of tokens: about two characters each, since "1234:word" lines tokenize densely. */
+export const tokens = (text: string): number => Math.ceil(text.length / 2);
 
-/** Room for the transcript in one call: a repair pass resends the reply and the problems, so both are kept back. */
-export function transcriptBudget(system: string, request: string): number {
-  return MAX_CALL_TOKENS - tokens(system) - tokens(request) - 2 * REPLY_TOKENS - 400;
+/** The repair pass names at most this many problems, each value cut to `ECHO_CHARS`. */
+export const MAX_PROBLEMS = 5;
+export const ECHO_CHARS = 40;
+/** The most a repair message can cost: its frame plus `MAX_PROBLEMS` problems. */
+export const REPAIR_TOKENS = 400;
+
+/**
+ * Room for the transcript in one call. `header` is the user message without the words; a repair pass resends the
+ * reply and the problems and gets a second reply, so both replies and the repair message are kept back.
+ */
+export function transcriptBudget(system: string, header: string): number {
+  return MAX_CALL_TOKENS - tokens(system) - tokens(header) - 2 * REPLY_TOKENS - REPAIR_TOKENS - 100;
 }
 
 /** One sentence: unit indexes `from`..`to`, inclusive. */
@@ -23,6 +34,8 @@ export interface Sentence { from: number; to: number; line: string }
 export interface Chunk { from: number; to: number; text: string }
 
 const ENDS = /[.!?…]["”']?$/;
+/** A sentence with no end mark is split here, so one line never outgrows a call. */
+const LONGEST_LINE = 600;
 
 /** Numbered words grouped by sentence; a word already cut from this cut is marked with `~`. Never times. */
 export function sentences(project: Project, units: Unit[]): Sentence[] {
@@ -34,7 +47,7 @@ export function sentences(project: Project, units: Unit[]): Sentence[] {
     const text = project.wordFixes[i] ?? u.text;
     parts.push(`${isKept(cut, (u.start + u.end) / 2) ? '' : '~'}${i}:${text.trim()}`);
     const next = units[i + 1];
-    if (!next || next.line !== u.line || ENDS.test(text.trim())) {
+    if (!next || next.line !== u.line || ENDS.test(text.trim()) || parts.join(' ').length >= LONGEST_LINE) {
       out.push({ from, to: i, line: parts.join(' ') });
       from = i + 1;
       parts = [];
@@ -104,7 +117,7 @@ export function cutSummary(project: Project): string {
 }
 
 /** The system prompt for Ask AI: the closed list of operations, in JSON. */
-export function editSystem(cards: boolean): string {
+export function editSystem(templates: readonly string[]): string {
   return [
     'You edit a screen recording by its transcript. Words are numbered "index:word"; "~" marks a word already cut.',
     'Lines starting with "#" are chapters. Reply with one JSON object and nothing else:',
@@ -114,7 +127,7 @@ export function editSystem(cards: boolean): string {
     '{"op":"move","from":i,"to":j,"after":k} moves words i..j to play after word k.',
     '{"op":"speed","from":i,"to":j,"rate":0.5-4} changes speed. {"op":"zoom","from":i,"to":j,"depth":1.25-2} zooms on the cursor.',
     '{"op":"caption","style":"clean"|"bold"|"word"} turns captions on.',
-    cards ? '{"op":"card","template":"title-hook"|"end-card"|"logo-sting","at":i,"slots":{"title":"..."}} adds a card at word i.' : '',
+    templates.length ? `{"op":"card","template":${templates.map((t) => JSON.stringify(t)).join('|')},"at":i,"slots":{"title":"..."}} adds a card at word i.` : '',
     '{"op":"chapter","at":i,"title":"..."} adds a chapter at word i, or renames the chapter that starts there.',
     '{"op":"layout","at":i,"layout":"bubble"|"side"|"camera"|"screen"} switches the camera layout at word i.',
     '{"op":"newCut","name":"...","shape":"16:9"|"9:16"|"1:1"|"4:5","keep":[{"from":i,"to":j}]} makes a new cut of only those words, for highlights.',
@@ -127,7 +140,7 @@ export function editSystem(cards: boolean): string {
 export function editUser(request: string, project: Project, chunk: Chunk, part: { index: number; count: number }): string {
   const chapters = project.chapters.map((c) => `- ${c.title}`).join('\n') || '- none';
   return [
-    `Request: ${request}`,
+    `Request: ${request.slice(0, MAX_REQUEST)}`,
     `Chapters:\n${chapters}`,
     cutSummary(project),
     part.count > 1 ? `Part ${part.index + 1} of ${part.count}: words ${chunk.from} to ${chunk.to}. Only edit these words; reply {"ops":[]} when this part needs nothing.` : '',
@@ -135,7 +148,15 @@ export function editUser(request: string, project: Project, chunk: Chunk, part: 
   ].filter(Boolean).join('\n\n');
 }
 
-/** The follow-up after a reply that failed validation: the problems, once. */
+/** A value echoed in a problem, cut to `ECHO_CHARS`. */
+export function echo(value: unknown): string {
+  const text = JSON.stringify(value) ?? String(value);
+  return text.length > ECHO_CHARS ? `${text.slice(0, ECHO_CHARS - 1)}…` : text;
+}
+
+/** The follow-up after a reply that failed validation: the first `MAX_PROBLEMS` problems, once. */
 export function repairUser(problems: string[]): string {
-  return `That reply had problems:\n${problems.map((p) => `- ${p}`).join('\n')}\nReply again with the corrected JSON object only.`;
+  const shown = problems.slice(0, MAX_PROBLEMS).map((p) => `- ${p.slice(0, 120)}`);
+  const more = problems.length > MAX_PROBLEMS ? `\n- and ${problems.length - MAX_PROBLEMS} more like these` : '';
+  return `That reply had problems:\n${shown.join('\n')}${more}\nReply again with the corrected JSON object only.`;
 }
