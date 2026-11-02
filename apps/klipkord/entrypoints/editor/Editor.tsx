@@ -8,6 +8,8 @@ import type { Project, Source } from '@/lib/project/types';
 import { units } from '@/lib/wordCuts';
 import { Inspector, type InspectorProps } from './components/Inspector';
 import { Preview } from './components/Preview';
+import { PreviewFullscreen } from './components/PreviewFullscreen';
+import { ShapeMenu } from './components/ShapeMenu';
 import { TimelineOpening, TimelineSlot, TranscriptColumn, TranscriptOpening, transcriptState, type SlotProps, type TranscriptSlotProps } from './components/slots';
 import { TopBar, type TopBarProps } from './components/TopBar';
 import { Transport } from './components/Transport';
@@ -137,9 +139,21 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
     const after = sentenceStops.find((t) => t > playback.out + 10);
     if (after !== undefined) playback.seek(after);
   }, [sentenceStops, playback]);
-  const fullscreen = useCallback(() => {
-    stageRef.current?.requestFullscreen?.().catch((error: unknown) => console.error('Klipkord: could not go full screen', error));
+  const previewRef = useRef<HTMLElement>(null);
+  const [full, setFull] = useState(false);
+  const [shapeOpen, setShapeOpen] = useState(false);
+  useEffect(() => {
+    const on = () => setFull(!!previewRef.current && document.fullscreenElement === previewRef.current);
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
   }, []);
+  const exitFull = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen().catch((error: unknown) => console.error('Klipkord: could not leave full screen', error));
+  }, []);
+  const fullscreen = useCallback(() => {
+    if (document.fullscreenElement) exitFull();
+    else previewRef.current?.requestFullscreen?.().catch((error: unknown) => console.error('Klipkord: could not go full screen', error));
+  }, [exitFull]);
 
   const keys = useRef({ toggle: playback.toggle, prev, next, fullscreen, undo: api.undo, redo: api.redo });
   keys.current = { toggle: playback.toggle, prev, next, fullscreen, undo: api.undo, redo: api.redo };
@@ -235,7 +249,7 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
             ) : (
               <TranscriptOpening />
             )}
-            <section aria-label="Preview" style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: C.ground }}>
+            <section ref={previewRef} aria-label="Preview" style={{ flexGrow: 1, position: 'relative', display: 'flex', flexDirection: 'column', minWidth: 0, background: full ? '#000000' : C.ground }}>
               {project && cut ? (
                 <Preview project={project} cut={cut} out={playback.out} playing={playback.playing} sources={sources} events={media?.events}
                   captions={captions} light={project.options.lightPreview} opening={opening} firstFrame={firstFrame}
@@ -245,8 +259,11 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
                   <div style={{ width: 533, height: 300, borderRadius: 6, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{opening}</div>
                 </div>
               )}
-              <Transport out={playback.out} length={length || (recording?.duration ?? 0)} playing={playback.playing} canPlay={firstFrame} shape={cut?.shape ?? '16:9'}
-                onToggle={playback.toggle} onPrev={prev} onNext={next} onFullscreen={fullscreen} />
+              {!full && <Transport out={playback.out} length={length || (recording?.duration ?? 0)} playing={playback.playing} canPlay={firstFrame} shape={cut?.shape ?? '16:9'}
+                onToggle={playback.toggle} onPrev={prev} onNext={next} onFullscreen={fullscreen}
+                onShape={() => setShapeOpen((o) => !o)} />}
+              {!full && shapeOpen && cut && <ShapeMenu shape={cut.shape} fit={cut.fit} readOnly={readOnly} edit={api.edit} onClose={() => setShapeOpen(false)} />}
+              <PreviewFullscreen active={full} playing={playback.playing} out={playback.out} length={length || (recording?.duration ?? 0)} onToggle={playback.toggle} seek={playback.seek} onExit={exitFull} />
             </section>
           </div>
           {slotProps ? <TimelineSlot {...slotProps} body={slots.timeline} /> : <TimelineOpening />}
