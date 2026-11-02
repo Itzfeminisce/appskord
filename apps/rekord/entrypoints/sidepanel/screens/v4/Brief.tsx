@@ -96,7 +96,7 @@ function BriefKnown({ brief, agenda, lastTime }: { brief: BriefData; agenda: Age
         <section aria-labelledby="bp-agenda" className="bp-agenda">
           <div className="bp-agenda-head">
             <h2 id="bp-agenda" className="bp-h2">
-              Suggested agenda · {agenda.items.length} {agenda.items.length === 1 ? 'item' : 'items'} · <span className="bp-mono">{agendaMinutes(agenda.items)} of {agenda.totalMinutes} min</span>
+              {`Suggested agenda · ${agenda.items.length} ${agenda.items.length === 1 ? 'item' : 'items'} · `}<span className="bp-mono">{`${agendaMinutes(agenda.items)} of ${agenda.totalMinutes} min`}</span>
             </h2>
             <button type="button" className="bp-link" onClick={() => navigate('agendaEdit', { eventId: brief.event.id })}>Edit agenda</button>
           </div>
@@ -105,7 +105,7 @@ function BriefKnown({ brief, agenda, lastTime }: { brief: BriefData; agenda: Age
               <li key={a.id}>
                 <span className="bp-num">{n + 1}</span>
                 <span className="bp-agenda-text">{a.text}</span>
-                <span className="bp-agenda-src">{SOURCE_LABEL[a.source]} · <span className="bp-mono">{a.minutes} min</span></span>
+                <span className="bp-agenda-src">{`${SOURCE_LABEL[a.source]} · `}<span className="bp-mono">{`${a.minutes} min`}</span></span>
               </li>
             ))}
           </ol>

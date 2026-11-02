@@ -70,7 +70,7 @@ export default function ReviewEdit() {
     <div className="v4-shell">
       <header className="rv-head">
         <button type="button" className="v4-icon rv-back" aria-label="Back to review" onClick={leave}><BackIcon /></button>
-        <h1>{TITLE[item.kind]}</h1>
+        <h1 className="re-title">{TITLE[item.kind]}</h1>
       </header>
       <div className="re-body">
         <section className="re-card">
@@ -109,7 +109,7 @@ export default function ReviewEdit() {
         </section>
         <div className="re-said">
           <span className="re-label">What was said</span>
-          <span className="re-said-text">{item.quote.speaker}: “{item.quote.text}”</span>
+          <span className="re-said-text">{`${item.quote.speaker}: “${item.quote.text}”`}</span>
           <span className="re-said-meta">{quoteMeta(item.quote, data.meeting)}</span>
         </div>
       </div>

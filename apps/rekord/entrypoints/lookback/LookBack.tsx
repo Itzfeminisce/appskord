@@ -112,7 +112,7 @@ export default function LookBack() {
             <h2>Decided this week</h2>
             <ul>
               {week.decided.slice(0, 2).map(({ item, replaces }) => (
-                <li key={item.id} className="lb-card lb-card-stack">
+                <li key={item.id} className="lb-card lb-card-stack lb-decided">
                   <Pill tone="decision"><DiamondIcon />Decision</Pill>
                   <span className="lb-text">{item.text}</span>
                   {replaces

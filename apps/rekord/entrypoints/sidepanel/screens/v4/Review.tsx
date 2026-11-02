@@ -158,7 +158,7 @@ export default function Review() {
         )}
         {item.kind === 'decision' && item.replacesId && (() => {
           const old = all.find((i) => i.id === item.replacesId);
-          return old ? <div className="rv-replaces"><span>Replaces:</span> {old.text} ({shortDate(old.createdAt)})</div> : null;
+          return old ? <div className="rv-replaces"><span>Replaces:</span>{` ${old.text} (${shortDate(old.createdAt)})`}</div> : null;
         })()}
         <QuoteBlock speaker={item.quote.speaker} text={item.quote.text} meta={quoteMeta(item.quote, meeting)} onPlay={() => play(item)} />
       </article>
@@ -212,11 +212,11 @@ export default function Review() {
     <div className="v4-shell rv">
       <header className="rv-head">
         <button type="button" className="v4-icon rv-back" aria-label="Back to summary" onClick={leave}><BackIcon /></button>
-        <h1>Rekord found {total} {total === 1 ? 'thing' : 'things'} in {meeting.title}</h1>
+        <h1>{`Rekord found ${total} ${total === 1 ? 'thing' : 'things'} in ${meeting.title}`}</h1>
       </header>
       {allCount > 0 && (
         <div className="rv-bar">
-          <button type="button" className="rv-all" disabled={saving} onClick={confirmAll}><CheckIcon size={18} />Confirm all {allCount}</button>
+          <button type="button" className="rv-all" disabled={saving} onClick={confirmAll}><CheckIcon size={18} />{`Confirm all ${allCount}`}</button>
         </div>
       )}
       <div className="rv-list">
@@ -230,7 +230,7 @@ export default function Review() {
         {leftOut.length > 0 && (
           <>
             <button type="button" className="rv-left" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-              {leftOut.length} left out: their quote wasn’t in the transcript<span>Add anyway</span>
+              {`${leftOut.length} left out: their quote wasn’t in the transcript`}<span>Add anyway</span>
             </button>
             {open && leftOut.map((item) => (
               <article key={item.id} className="rv-card">

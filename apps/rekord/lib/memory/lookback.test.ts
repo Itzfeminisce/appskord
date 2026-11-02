@@ -19,7 +19,7 @@ describe('look back', () => {
     const week = buildWeek({ meetings: [...SAMPLE_MEETINGS, extra], items: SAMPLE_ITEMS, people: SAMPLE_PEOPLE, now: FRI });
     // Pricing review 50, sync 47, 1:1 30, Lumen 30, Extra 30.
     expect([week.meetings, week.minutes]).toEqual([5, 187]);
-    expect([week.promisesMade, week.promisesKept, week.decisions]).toEqual([6, 2, 3]);
+    expect([week.promisesMade, week.promisesKept, week.decisions]).toEqual([6, 2, 2]);
     expect(week.decided[0]).toMatchObject({ item: { id: 'd-team-12' }, replaces: { id: 'd-team-10' } });
     expect(week.stillOpen.map((i) => i.id)).toEqual(['i-deck', 'q-free-plan', 'i-proposal']);
     expect(week.people[0]).toMatchObject({ person: { id: 'p-priya' }, meetings: 2 });

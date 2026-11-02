@@ -6,8 +6,9 @@ export const SearchIcon = () => (
 export const SlidersIcon = () => (
   <svg {...base} width="18" height="18" strokeWidth="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
 );
-export const BackIcon = () => (
-  <svg {...base} width="18" height="18" strokeWidth="2"><path d="M15 6l-6 6 6 6" /></svg>
+// Frames draw two back chevrons: the 6-unit one and a 7-unit `wide` one.
+export const BackIcon = ({ size = 18, wide = false }: { size?: number; wide?: boolean }) => (
+  <svg {...base} width={size} height={size} strokeWidth="2"><path d={wide ? 'M15 5l-7 7 7 7' : 'M15 6l-6 6 6 6'} /></svg>
 );
 export const CheckIcon = ({ size = 14 }: { size?: number }) => (
   <svg {...base} width={size} height={size} strokeWidth="2.4"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>

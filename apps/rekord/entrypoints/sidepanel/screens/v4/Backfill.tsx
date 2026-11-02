@@ -73,7 +73,7 @@ export default function Backfill() {
         <button type="button" className="v4-icon bf-back" aria-label="Back" onClick={() => (canGoBack ? back() : replace('home'))}><BackIcon /></button>
         <div className="bf-head-text">
           <h1>Building memory</h1>
-          {total > 0 && <span>{done} of {total} meetings</span>}
+          {total > 0 && <span>{`${done} of ${total} meetings`}</span>}
         </div>
       </header>
       {total > 0 && (
@@ -82,8 +82,8 @@ export default function Backfill() {
             <div style={{ width: `${Math.round((done / total) * 100)}%` }} />
           </div>
           <div className="bf-sofar">
-            <span className="bf-mono">{done} of {total}</span>
-            {t && <span>So far: {t.promises} promises, {t.decisions} decisions, {t.people} people</span>}
+            <span className="bf-mono">{`${done} of ${total}`}</span>
+            {t && <span>{`So far: ${t.promises} promises, ${t.decisions} decisions, ${t.people} people`}</span>}
           </div>
         </div>
       )}
@@ -92,7 +92,7 @@ export default function Backfill() {
           <span className="bf-paused-icon"><PauseIcon /></span>
           <span className="bf-paused-text">
             <span className="bf-paused-title">Paused for now</span>
-            <span>{ai}’s free limit is used up for now. Rekord carries on at {clock(progress!.resumeAt!)} by itself.</span>
+            <span>{`${ai}’s free limit is used up for now. Rekord carries on at ${clock(progress!.resumeAt!)} by itself.`}</span>
           </span>
         </section>
       )}
@@ -118,7 +118,7 @@ export default function Backfill() {
       <p className="bf-note">You can close Rekord. It keeps going in the background.</p>
       {finished && t && (
         <button type="button" className="bf-toast" onClick={() => replace('home')}>
-          <CheckIcon size={16} /><span>Memory is ready: {t.promises} promises, {t.decisions} decisions, {t.people} people</span>
+          <CheckIcon size={16} /><span>{`Memory is ready: ${t.promises} promises, ${t.decisions} decisions, ${t.people} people`}</span>
         </button>
       )}
     </div>

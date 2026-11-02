@@ -41,7 +41,7 @@ export default function People() {
         {pairs[0] && (
           <button type="button" className="pp-banner" onClick={() => navigate('personMerge', { personId: pairs[0]![0].id, otherId: pairs[0]![1].id })}>
             <span className="pp-banner-icon"><PairIcon /></span>
-            <span className="pp-banner-text">{checking} people to check: are they the same person?</span>
+            <span className="pp-banner-text">{`${checking} people to check: are they the same person?`}</span>
             <span className="pp-banner-icon"><ChevronIcon /></span>
           </button>
         )}
@@ -56,7 +56,7 @@ export default function People() {
                   <span className="pp-row-line">{line}</span>
                 </span>
                 <span className="pp-row-side">
-                  {open > 0 ? <span className="pp-open">{open} open</span> : <span className="pp-none">Nothing open</span>}
+                  {open > 0 ? <span className="pp-open">{`${open} open`}</span> : <span className="pp-none">Nothing open</span>}
                   {lastMet !== undefined && <span className="pp-met">met {dayMonth(lastMet)}</span>}
                 </span>
               </button>

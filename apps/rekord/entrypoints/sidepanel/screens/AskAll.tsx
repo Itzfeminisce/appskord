@@ -213,13 +213,13 @@ function MemoryCard({ s, onOpen }: { s: MemorySource; onOpen: (s: MemorySource) 
     <article style={{ padding: '12px 14px', borderRadius: 16, background: '#FFFFFF', border: '1px solid #E8E8EB', display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ ...pillBase, padding: '0 9px 0 7px', background: bg, color: fg, gap: 5 }}>{glyph}{label}</span>
-        {s.replaces && <span style={{ fontSize: 11, color: '#44464D' }}>Replaces: {s.replaces.text} ({shortDate(s.replaces.at)})</span>}
+        {s.replaces && <span style={{ fontSize: 11, color: '#44464D' }}>{`Replaces: ${s.replaces.text} (${shortDate(s.replaces.at)})`}</span>}
         {!!s.overdue && <span style={{ ...pillBase, padding: '0 8px', background: '#FDECEC', color: '#8A1C14' }}>Overdue {s.overdue} {s.overdue === 1 ? 'day' : 'days'}</span>}
       </div>
       <h3 style={{ margin: 0, fontSize: 14, lineHeight: 1.35, fontWeight: 600 }}>{item.text}</h3>
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '2px 2px 2px 10px', borderRadius: 10, background: '#F6F6F7', borderLeft: '3px solid #D5D5DA' }}>
         <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <span style={{ fontSize: 12, lineHeight: 1.35, color: '#2A2B31' }}>{item.quote.speaker}: “{item.quote.text}”</span>
+          <span style={{ fontSize: 12, lineHeight: 1.35, color: '#2A2B31' }}>{`${item.quote.speaker}: “${item.quote.text}”`}</span>
           <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: '#6E7079' }}>{s.title} · {shortDate(s.startedAt)} · {quoteClock(s.atMs)}</span>
         </span>
         <button type="button" className="am-play" aria-label="Play from this moment" onClick={() => onOpen(s)} style={{ width: 44, height: 44, flexShrink: 0, border: 0, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4F46E5', cursor: 'pointer' }}>
@@ -241,7 +241,7 @@ function CitedText({ text, sources, onOpen }: { text: string; sources: MemorySou
         return (
           <sup key={i} style={{ margin: '0 1px 0 2px' }}>
             <button type="button" className="am-cite" aria-label={`Source ${source.n}`} onClick={() => onOpen(source)} style={{ position: 'relative', padding: 0, border: 0, background: 'transparent', color: '#4F46E5', font: '600 11px var(--mono)', cursor: 'pointer' }}>
-              <span style={{ position: 'absolute', left: '50%', top: '50%', width: 44, height: 44, transform: 'translate(-50%, -50%)' }} />[{source.n}]
+              <span style={{ position: 'absolute', left: '50%', top: '50%', width: 44, height: 44, transform: 'translate(-50%, -50%)' }} />{`[${source.n}]`}
             </button>
           </sup>
         );

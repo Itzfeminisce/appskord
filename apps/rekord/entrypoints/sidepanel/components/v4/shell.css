@@ -5,7 +5,7 @@
 .v4-head-icons { display: flex; }
 .v4-icon { width: 44px; height: 44px; border: 0; border-radius: 12px; padding: 0; background: transparent; color: #44464d; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .v4-icon:hover { background: #ececef; }
-.v4-tabs { height: 44px; flex-shrink: 0; display: flex; margin: 0 16px; border-bottom: 1px solid #e8e8eb; }
+.v4-tabs { height: 45px; flex-shrink: 0; display: flex; margin: 0 16px; border-bottom: 1px solid #e8e8eb; }
 .v4-tab { flex: 1; height: 44px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: transparent; font: inherit; font-size: 13px; font-weight: 500; color: #44464d; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
 .v4-tab[aria-current='page'] { font-weight: 600; color: #111114; border-bottom-color: #111114; cursor: default; }
 .v4-tab[aria-disabled='true'] { cursor: default; }

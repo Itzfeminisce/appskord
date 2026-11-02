@@ -78,6 +78,8 @@ async function weekWorld() {
   for (const [n, [text, when]] of kept.entries()) await db.put('items', item(`k-${n}`, 'promise', 'done', text, 'm-lb-roadmap', when - 3_600_000, { ownerId: 'me', toId: 'p-priya', personIds: ['p-priya'], updatedAt: when }));
   await db.put('items', item('d-retro', 'decision', 'open', 'Team retro moves to Fridays', 'm-lb-design', at(10, 26, 16, 10)));
   await db.put('items', item('d-design', 'decision', 'open', 'Design review every Monday', 'm-lb-design', at(10, 26, 16, 20)));
+  // The fifth decision, behind "and 3 more".
+  await db.put('items', item('d-design-notes', 'decision', 'open', 'Design review notes go in the doc', 'm-lb-design', at(10, 26, 16, 5)));
   await db.put('items', item('i-pricing-copy', 'promise', 'open', 'Update the pricing page copy', 'm-sync-10-12', at(10, 12, 10, 20), { ownerId: 'p-priya', toId: 'me', personIds: ['p-priya'], due: '2026-10-22' }));
 }
 

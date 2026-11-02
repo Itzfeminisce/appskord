@@ -108,6 +108,9 @@ export function shortPhrase(text: string): string {
 }
 const withoutArticle = (phrase: string) => phrase.replace(/^(the|a|an)\s+/i, '');
 
+// The notification is tighter still: "Q3 usage numbers" reads "Q3 numbers".
+const notePhrase = (text: string) => shortPhrase(text).replace(/\busage\s+/gi, '');
+
 export interface NoteContent { title: string; message: string; buttons: { title: string }[] }
 
 /** "Brief · 1:1 with Sarah in 5 min" / "You owe the pricing deck (4 days late). Sarah owes Q3 numbers today." */
@@ -119,8 +122,8 @@ export function briefNote(brief: Brief, now: number): NoteContent {
     return due?.tone === 'late' ? ` (${due.label})` : due?.tone === 'today' ? ' today' : '';
   };
   const parts = [
-    mine && `You owe ${shortPhrase(mine.item.text)}${suffix(mine.item)}.`,
-    theirs && `${theirs.label.replace(/ owes you$/, ' owes')} ${shortPhrase(theirs.item.text)}${suffix(theirs.item)}.`,
+    mine && `You owe ${notePhrase(mine.item.text)}${suffix(mine.item)}.`,
+    theirs && `${theirs.label.replace(/ owes you$/, ' owes')} ${notePhrase(theirs.item.text)}${suffix(theirs.item)}.`,
   ].filter(Boolean);
   return {
     title: `Brief · ${brief.event.title} in ${minutesUntil(brief.event.start, now)} min`,

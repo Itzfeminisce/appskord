@@ -57,7 +57,7 @@ export function QuoteBlock({ quote, meetings, accent = '#3730A3', variant }: { q
   return (
     <figure className={variant ? `lp-quote lp-quote-${variant}` : 'lp-quote'} style={{ borderLeftColor: accent }}>
       <div className="lp-quote-text">
-        <blockquote>“{quote.text}”</blockquote>
+        <blockquote>{`“${quote.text}”`}</blockquote>
         <figcaption>{quoteCaption(quote, meetings)}</figcaption>
       </div>
       <button type="button" className="lp-play" aria-label="Play this moment in the transcript"

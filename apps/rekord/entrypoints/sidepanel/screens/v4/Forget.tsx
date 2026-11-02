@@ -68,10 +68,10 @@ export default function Forget() {
         </div>
         <label htmlFor="pf-redact" className="pf-redact">
           <input id="pf-redact" type="checkbox" checked={redact} disabled={!canRedactPerson} onChange={(e) => setRedact(e.target.checked)} />
-          <span>Also redact {first}’s words from <span className="pp-mono">{person.meetingIds.length}</span> meetings’ transcripts and audio</span>
+          <span>{`Also redact ${first}’s words from `}<span className="pp-mono">{person.meetingIds.length}</span> meetings’ transcripts and audio</span>
         </label>
         <div className="pf-actions">
-          <button type="button" className="pf-forget" disabled={busy} onClick={() => void forget()}>Forget {first}</button>
+          <button type="button" className="pf-forget" disabled={busy} onClick={() => void forget()}>{`Forget ${first}`}</button>
           <button type="button" className="pf-keep" onClick={() => back()}>Keep</button>
         </div>
       </section>
