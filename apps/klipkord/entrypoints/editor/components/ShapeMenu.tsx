@@ -36,7 +36,23 @@ export function ShapeMenu({ shape, fit, readOnly = false, edit, onClose }: Shape
 
   return (
     <div ref={ref} role="dialog" aria-label="Shape" style={{ position: 'absolute', right: 12, bottom: 48, width: 276, zIndex: 20, padding: '12px 14px', borderRadius: 12, background: C.panel,
-      border: `1px solid ${C.line}`, boxShadow: '0 18px 44px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      border: `1px solid ${C.line}`, boxShadow: '0 18px 44px rgba(0,0,0,0.55)' }}>
+      <ShapeSection shape={shape} fit={fit} readOnly={readOnly} edit={edit} />
+    </div>
+  );
+}
+
+export interface ShapeSectionProps {
+  shape: Shape;
+  fit: VerticalFit;
+  readOnly?: boolean;
+  edit(op: (project: Project) => Project): void;
+}
+
+/** The shape picker, the 9:16 fit cards and the safe-area note. Shared by the popover and the Layout tab. */
+export function ShapeSection({ shape, fit, readOnly = false, edit }: ShapeSectionProps) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11.5, fontWeight: 600, color: C.secondary }}>
         <span>Shape</span><span style={{ fontWeight: 400, color: C.muted }}>this cut</span>
       </div>

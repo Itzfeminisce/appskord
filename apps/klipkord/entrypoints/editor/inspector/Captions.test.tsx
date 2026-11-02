@@ -73,7 +73,7 @@ describe('Captions tab', () => {
   it('shows Translate in its needs-AI state until T15 fills it', () => {
     render({ start: seed() });
     expect((find('Translate') as HTMLButtonElement).disabled).toBe(true);
-    expect(find('Translate').title).toBe('Needs AI');
+    expect(find('Translate').title).toBe('Turn on AI edits');
   });
 
   it('changes nothing when read-only', () => {

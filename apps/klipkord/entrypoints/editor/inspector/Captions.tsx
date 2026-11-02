@@ -78,7 +78,7 @@ export function CaptionsPanel({ project, cut, readOnly, edit, onTranslate }: Cap
           </select>
           <span aria-hidden="true" style={{ position: 'absolute', right: 8, top: 9, pointerEvents: 'none', color: C.secondary }}><Icon size={14}>{ICONS.down}</Icon></span>
         </div>
-        <button type="button" disabled={readOnly || !onTranslate} title={onTranslate ? undefined : 'Needs AI'} onClick={onTranslate}
+        <button type="button" disabled={readOnly || !onTranslate} title={onTranslate ? undefined : 'Turn on AI edits'} onClick={onTranslate}
           style={{ height: 32, padding: '0 12px', borderRadius: 8, background: C.raised, color: C.text, border: `1px solid ${C.line}`, fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
             display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', boxSizing: 'border-box', opacity: onTranslate && !readOnly ? 1 : 0.5, cursor: onTranslate && !readOnly ? 'pointer' : 'default' }}>
           <Icon size={15}>{ICONS.ai}</Icon>Translate

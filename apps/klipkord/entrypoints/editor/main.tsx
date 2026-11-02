@@ -14,7 +14,7 @@ import { transcriptSlots } from './transcript';
 const slots: EditorSlots = {
   ...transcriptSlots,
   ...timelineSlots,
-  inspector: (p) => ({ ...timelineSlots.inspector?.(p), panels: { ...captionsSlots.inspector?.(p).panels } }),
+  inspector: (p) => ({ ...timelineSlots.inspector?.(p), panels: { ...timelineSlots.inspector?.(p).panels, ...captionsSlots.inspector?.(p).panels } }),
 };
 
 // The editor tab: editor.html#/<recordingId>, opened from the side panel's Saved screen and Library.
