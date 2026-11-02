@@ -38,4 +38,12 @@ describe('quoteFound', () => {
     const split = [seg(10_000, 'Fine, the launch email'), seg(15_000, 'goes out on the 14th.')];
     expect(quoteFound(quote('Fine, the launch email goes out on the 14th.', 12_000), split)).toBe(true);
   });
+
+  it('never drops a negation word', () => {
+    const heard = [seg(10_000, 'Honestly I will send the revised pricing deck to Sarah on Friday.')];
+    expect(quoteFound(quote('I will not send the revised pricing deck to Sarah on Friday.', 12_000), heard)).toBe(false);
+    expect(quoteFound(quote('I won’t send the revised pricing deck to Sarah on Friday.', 12_000), heard)).toBe(false);
+    const said = [seg(10_000, 'I will not send the revised pricing deck to Sarah on Friday.')];
+    expect(quoteFound(quote('I will not send the revised pricing deck to Sarah on Friday.', 12_000), said)).toBe(true);
+  });
 });

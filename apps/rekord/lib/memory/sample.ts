@@ -132,6 +132,35 @@ function filler(): MemoryItem[] {
 
 export const SAMPLE_ITEMS: MemoryItem[] = [...OPEN_LOOPS, ...DECISIONS, ...filler()];
 
+const sug = (id: string, kind: MemoryItem['kind'], text: string, q: Quote, extra: Partial<MemoryItem> = {}) =>
+  item(id, kind, 'suggested', text, q, { personIds: ['p-sarah'], ...extra });
+const one = (speaker: string, text: string, m: number, s: number) => quote(speaker, text, M.sarah3, mmss(m, s));
+
+/** "What the 1:1 produced": 4 promises, 1 decision, 1 question and 2 left out, all waiting for review. */
+export const SAMPLE_ONE_ON_ONE_ITEMS: MemoryItem[] = [
+  sug('n-deck', 'promise', 'Send the revised pricing deck', one('Sarah', 'Can you send the deck today?', 16, 5),
+    { ownerId: 'me', toId: 'p-sarah', due: '2026-11-03' }),
+  sug('n-demo', 'promise', 'Join Thursday’s rollout demo', one('Alex', 'I’ll join the rollout demo on Thursday.', 17, 20),
+    { ownerId: 'me', toId: 'p-sarah', due: '2026-11-05' }),
+  sug('n-seats', 'promise', 'Northwind seat count', one('Sarah', 'I’ll get you the Northwind seat count by Friday.', 24, 10),
+    { ownerId: 'p-sarah', toId: 'me', due: '2026-11-06' }),
+  sug('n-intro', 'promise', 'Intro to Northwind’s IT lead', one('Sarah', 'I’ll introduce you to our IT lead.', 26, 45),
+    { ownerId: 'p-sarah', toId: 'me' }),
+  sug('n-rollout-16', 'decision', 'Northwind rollout starts 16 Nov', one('Sarah', 'Let’s start the rollout on the 16th instead.', 19, 2),
+    { replacesId: 'd-rollout-9' }),
+  sug('n-yearly', 'question', 'Can Northwind pay yearly?', one('Sarah', 'Can Northwind pay yearly?', 21, 30)),
+  // Quotes the transcript does not hold: shown under "left out".
+  sug('n-left-1', 'promise', 'Review the security questionnaire', one('Alex', 'I’ll review the security questionnaire.', 12, 40),
+    { ownerId: 'me', toId: 'p-sarah', leftOut: true }),
+  sug('n-left-2', 'promise', 'Book the follow-up call', one('Sarah', 'I’ll book the follow-up call.', 28, 30),
+    { ownerId: 'p-sarah', toId: 'me', leftOut: true }),
+];
+
+/** The person suggestion from the invite: "Is “Tom” Tom Becker (tom@northwind.co)?" */
+export const SAMPLE_PERSON_SUGGESTION: Pick<Person, 'name' | 'email' | 'aliases'> = {
+  name: 'Tom Becker', email: 'tom@northwind.co', aliases: ['Tom'],
+};
+
 /** The 1:1 agenda: "4 items · 25 of 30 min". */
 export const SAMPLE_AGENDA: Agenda = {
   meetingKey: SAMPLE_EVENT.id,
@@ -160,7 +189,7 @@ export const SAMPLE_LEDGER: LedgerEntry[] = [
 
 /** One transcript segment per quote, so the quote checker finds every sample quote. */
 export function sampleSegments(items: MemoryItem[] = SAMPLE_ITEMS): Segment[] {
-  const quotes = items.flatMap((i) => [i.quote, ...i.history, ...(i.evidence ? [i.evidence] : [])]);
+  const quotes = items.filter((i) => !i.leftOut).flatMap((i) => [i.quote, ...i.history, ...(i.evidence ? [i.evidence] : [])]);
   return quotes.map((q) => ({
     id: `s-${q.meetingId}-${q.atMs}`, meetingId: q.meetingId, speaker: q.speaker === 'Alex' ? 'you' : 'others',
     startMs: q.atMs - 1_000, endMs: q.atMs + 6_000, text: q.text, chunkId: 'sample',
@@ -176,9 +205,9 @@ export async function seedSample(db: SampleDB, moment: 'before' | 'after' = 'bef
   const all = (store: SampleStore, values: unknown[]) => values.map((v) => [store, v] as const);
   const writes = [
     ...all('meetings', after ? [...SAMPLE_MEETINGS, SAMPLE_ONE_ON_ONE] : SAMPLE_MEETINGS),
-    ...all('segments', sampleSegments()),
+    ...all('segments', sampleSegments(after ? [...SAMPLE_ITEMS, ...SAMPLE_ONE_ON_ONE_ITEMS] : SAMPLE_ITEMS)),
     ...all('people', SAMPLE_PEOPLE),
-    ...all('items', SAMPLE_ITEMS),
+    ...all('items', after ? [...SAMPLE_ITEMS, ...SAMPLE_ONE_ON_ONE_ITEMS] : SAMPLE_ITEMS),
     ...all('agendas', [SAMPLE_AGENDA]),
     ...all('ledger', after ? SAMPLE_LEDGER : []),
   ];

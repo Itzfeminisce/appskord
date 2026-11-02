@@ -1,4 +1,4 @@
-import { ledgerForMeeting, listLedger, putLedgerEntry } from './memory/store';
+import { getDB } from './db';
 import type { LedgerEntry } from './memory/types';
 
 export interface LedgerCall { meetingId?: string; service: LedgerEntry['service']; what: string; at?: number }
@@ -21,10 +21,12 @@ export function record(call: LedgerCall): Promise<LedgerEntry> {
 let queue: Promise<unknown> = Promise.resolve();
 
 async function write(call: LedgerCall): Promise<LedgerEntry> {
-  const rows = call.meetingId
-    ? await ledgerForMeeting(call.meetingId)
-    : (await listLedger()).filter((r) => !r.meetingId);
-  const entry = mergeCall(rows, call, call.at ?? Date.now(), () => crypto.randomUUID());
-  await putLedgerEntry(entry);
+  // Read, merge and put in one transaction so two contexts cannot each create the row.
+  const tx = (await getDB()).transaction('ledger', 'readwrite');
+  const all = call.meetingId
+    ? await tx.store.index('meetingId').getAll(call.meetingId)
+    : (await tx.store.getAll()).filter((r) => !r.meetingId);
+  const entry = mergeCall(all, call, call.at ?? Date.now(), () => crypto.randomUUID());
+  await Promise.all([tx.store.put(entry), tx.done]);
   return entry;
 }

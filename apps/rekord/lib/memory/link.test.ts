@@ -43,6 +43,19 @@ describe('mergeSuggestions', () => {
   });
 });
 
+describe('mergeSuggestions without emails', () => {
+  it('pairs "Sam" with "Sam Lee" whichever id sorts first, once', () => {
+    for (const ids of [['a', 'z'], ['z', 'a']]) {
+      const people = [p(ids[0]!, 'Sam'), p(ids[1]!, 'Sam Lee')];
+      expect(mergeSuggestions(people).map(([x, y]) => [x.name, y.name])).toEqual([['Sam', 'Sam Lee']]);
+      expect(mergeSuggestions([...people].reverse())).toHaveLength(1);
+    }
+  });
+  it('de-duplicates two emailless people with the same name', () => {
+    expect(mergeSuggestions([p('a', 'Sam'), p('b', 'Sam')])).toHaveLength(1);
+  });
+});
+
 describe('linkItem', () => {
   const fresh = item('new');
   it('asks the AI about the best similar candidates of the same kind', async () => {

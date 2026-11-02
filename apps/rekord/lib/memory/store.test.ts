@@ -3,10 +3,10 @@ import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { closeDB, getDB, listMeetings } from '../db';
 import { quoteFound } from './check';
-import { SAMPLE_ITEMS, SAMPLE_NOW, SAMPLE_PEOPLE, sampleSegments, seedSample } from './sample';
+import { SAMPLE_ITEMS, SAMPLE_NOW, SAMPLE_ONE_ON_ONE_ITEMS, SAMPLE_PEOPLE, sampleSegments, seedSample } from './sample';
 import {
   decisionsChain, forgetAll, forgetPerson, getAgenda, getItem, getPerson, itemsByKind, itemsForMeeting, itemsForPerson,
-  listLedger, listPeople, mergePeople, openLoops, personByEmail, splitPerson,
+  listLedger, listPeople, mergePeople, openLoops, personByEmail, putItem, replaceDecision, splitPerson, undoReplaceDecision,
 } from './store';
 
 describe('memory store', () => {
@@ -88,5 +88,38 @@ describe('memory store', () => {
     expect(await getAgenda('evt-sarah-1103')).toBeUndefined();
     expect(await listMeetings()).toHaveLength(24);
     expect(SAMPLE_PEOPLE).toHaveLength(12);
+  });
+
+  it('puts owner and recipient in personIds on every save', async () => {
+    const base = SAMPLE_ITEMS.find((i) => i.id === 'i-proposal')!;
+    await putItem({ ...base, id: 'x1', ownerId: 'p-dana', toId: 'me', personIds: [] });
+    expect((await getItem('x1'))?.personIds).toEqual(['p-dana']);
+    expect((await itemsForPerson('p-dana')).map((i) => i.id)).toContain('x1');
+  });
+
+  it('replaces and undoes a replace on both decisions at once', async () => {
+    await putItem({ ...SAMPLE_ITEMS.find((i) => i.id === 'd-launch-14')!, id: 'd-launch-16', text: 'Launch email goes out on 16 Nov' });
+    expect(await replaceDecision('d-launch-14', 'd-launch-16', 5)).toBe(true);
+    expect(await getItem('d-launch-14')).toMatchObject({ status: 'replaced', replacedById: 'd-launch-16' });
+    expect(await getItem('d-launch-16')).toMatchObject({ replacesId: 'd-launch-14' });
+    expect(await replaceDecision('d-launch-14', 'd-launch-16', 6)).toBe(false);
+    expect(await undoReplaceDecision('d-launch-14', 7)).toBe(true);
+    expect(await getItem('d-launch-14')).toMatchObject({ status: 'open', replacedById: undefined });
+    expect((await getItem('d-launch-16'))?.replacesId).toBeUndefined();
+    expect(await undoReplaceDecision('d-launch-14', 8)).toBe(false);
+  });
+
+  it('holds what the 1:1 produced after the recording', async () => {
+    await seedSample(await getDB(), 'after');
+    const made = await itemsForMeeting('m-sarah-11-03');
+    const kept = made.filter((i) => !i.leftOut);
+    expect(made).toHaveLength(8);
+    expect(kept.filter((i) => i.kind === 'promise')).toHaveLength(4);
+    expect(kept.filter((i) => i.kind === 'decision' && i.replacesId === 'd-rollout-9')).toHaveLength(1);
+    expect(kept.filter((i) => i.kind === 'question')).toHaveLength(1);
+    expect(made.filter((i) => i.leftOut)).toHaveLength(2);
+    const { getDB: db } = await import('../db');
+    const segs = await (await db()).getAllFromIndex('segments', 'meetingId', 'm-sarah-11-03');
+    for (const i of SAMPLE_ONE_ON_ONE_ITEMS) expect(quoteFound(i.quote, segs), i.id).toBe(!i.leftOut);
   });
 });

@@ -33,4 +33,10 @@ describe('record', () => {
     expect(await ledgerForMeeting('m')).toEqual([expect.objectContaining({ count: 3, firstAt: 1000, lastAt: 3000 })]);
     expect((await listLedger()).find((r) => !r.meetingId)).toMatchObject({ count: 2, firstAt: 5, lastAt: 6 });
   });
+
+  it('keeps one row when another context writes at the same time', async () => {
+    const { getDB } = await import('./db');
+    await Promise.all([record({ meetingId: 'm', service: 'groq', what: 'Clash checks', at: 1 }), record({ meetingId: 'm', service: 'groq', what: 'Clash checks', at: 2 })]);
+    expect((await (await getDB()).getAll('ledger'))).toHaveLength(1);
+  });
 });

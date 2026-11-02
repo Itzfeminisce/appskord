@@ -36,6 +36,9 @@ function sameWord(a: string, b: string): boolean {
   return editDistance(a, b) <= (len >= 8 ? 2 : 1);
 }
 
+// A dropped "not" flips a promise into its opposite, so negations must be heard exactly.
+const NEGATIONS = new Set(['not', 'never', 'no', 'dont', 'wont', 'cant', 'didnt', 'isnt', 'wasnt', 'arent', 'doesnt']);
+
 function commonInOrder(quote: string[], heard: string[]): number {
   let prev = new Array<number>(heard.length + 1).fill(0);
   for (let i = 1; i <= quote.length; i++) {
@@ -62,7 +65,9 @@ export function quoteFound(quote: Pick<Quote, 'text' | 'atMs'>, segments: QuoteS
   const firstWords = words.slice(0, words.length - need + 1);
   for (let start = 0; start + need <= heard.length; start++) {
     if (!firstWords.some((w) => sameWord(w, heard[start]!))) continue;
-    if (commonInOrder(words, heard.slice(start, start + span)) >= need) return true;
+    const window = heard.slice(start, start + span);
+    if (!words.every((w) => !NEGATIONS.has(w) || window.includes(w))) continue;
+    if (commonInOrder(words, window) >= need) return true;
   }
   return false;
 }

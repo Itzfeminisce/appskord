@@ -7,6 +7,7 @@ import {
   DB_VERSION, deleteRecording, getRecordingMeta, listAsks, listRecordingParts, putAsk, putRecordingMeta, putRecordingPart,
 } from './db';
 import { openDB } from 'idb';
+import type { MemoryItem } from './memory/types';
 import type { Chunk, Meeting } from './types';
 
 const meeting = (id: string, startedAt: number): Meeting => ({ id, title: id, startedAt, status: 'done', language: 'en' });
@@ -181,5 +182,20 @@ describe('db v3', () => {
     expect(await db.get('vectors', 'v')).toBeUndefined();
     expect(await db.get('ledger', 'l')).toBeUndefined();
     expect(await db.getAll('agendas')).toEqual([]);
+  });
+
+  it('deleteMeeting drops the meeting from people and reopens decisions that pointed at its items', async () => {
+    const db = await getDB();
+    const base: Omit<MemoryItem, 'id' | 'status' | 'meetingId'> = { kind: 'decision', text: 't', quote: { speaker: 'A', text: 't', meetingId: 'm', atMs: 0 }, personIds: [], history: [], createdAt: 0, updatedAt: 0 };
+    await db.put('people', { id: 'p', name: 'P', aliases: [], meetingIds: ['m', 'k'], createdAt: 0, updatedAt: 0 });
+    await db.put('items', { ...base, id: 'new', status: 'open', meetingId: 'm', replacesId: 'old' });
+    await db.put('items', { ...base, id: 'old', status: 'replaced', meetingId: 'k', replacedById: 'new' });
+    await db.put('items', { ...base, id: 'prev', status: 'open', meetingId: 'k', replacesId: 'gone' });
+    await deleteMeeting('m');
+    expect((await db.get('people', 'p'))?.meetingIds).toEqual(['k']);
+    const old = await db.get('items', 'old');
+    expect(old).toMatchObject({ status: 'open' });
+    expect(old?.replacedById).toBeUndefined();
+    expect(await db.get('items', 'new')).toBeUndefined();
   });
 });

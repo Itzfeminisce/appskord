@@ -28,15 +28,16 @@ export function matchPerson(seen: Seen, people: Person[]): PersonMatch {
 
 /** Pairs that may be one person: someone without an email whose name is another's first name or full name. */
 export function mergeSuggestions(people: Person[]): [Person, Person][] {
-  const pairs: [Person, Person][] = [];
+  const pairs = new Map<string, [Person, Person]>();
   for (const loose of people.filter((p) => !p.email)) {
     const name = clean(loose.name);
     for (const other of people) {
-      if (other === loose || (!other.email && other.id < loose.id)) continue;
-      if (clean(other.name) === name || firstName(other.name) === name) pairs.push([loose, other]);
+      if (other === loose || !(clean(other.name) === name || firstName(other.name) === name)) continue;
+      const key = [loose.id, other.id].sort().join('\u0000');
+      if (!pairs.has(key)) pairs.set(key, [loose, other]);
     }
   }
-  return pairs;
+  return [...pairs.values()];
 }
 
 export interface ItemCandidate { item: MemoryItem; score: number }

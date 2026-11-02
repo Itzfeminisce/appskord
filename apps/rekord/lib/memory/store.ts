@@ -1,5 +1,6 @@
 import { getDB } from '../db';
 import { planForget, mergedPerson, relinkItem, type ForgetPlan } from './link';
+import { canApply, transition } from './promise';
 import { isOpenLoop } from './rank';
 import type { Agenda, ItemKind, ItemStatus, LedgerEntry, MemoryItem, Person, VectorRow } from './types';
 
@@ -13,7 +14,38 @@ export async function personByEmail(email: string): Promise<Person | undefined> 
 
 // Items
 export async function getItem(id: string): Promise<MemoryItem | undefined> { return (await getDB()).get('items', id); }
-export async function putItem(i: MemoryItem): Promise<void> { await (await getDB()).put('items', i); }
+/** Owner and recipient always sit in `personIds`, so the person index finds the item. */
+export function withPeople(i: MemoryItem): MemoryItem {
+  const ids = [i.ownerId, i.toId].filter((id): id is string => !!id && id !== 'me');
+  return ids.every((id) => i.personIds.includes(id)) ? i : { ...i, personIds: [...new Set([...i.personIds, ...ids])] };
+}
+export async function putItem(i: MemoryItem): Promise<void> { await (await getDB()).put('items', withPeople(i)); }
+/** Marks `oldId` replaced by `newId` and links both ways, in one transaction. False when the pair does not allow it. */
+export async function replaceDecision(oldId: string, newId: string, now: number): Promise<boolean> {
+  const tx = (await getDB()).transaction('items', 'readwrite');
+  const [old, fresh] = [await tx.store.get(oldId), await tx.store.get(newId)];
+  if (!old || !fresh || oldId === newId || !canApply(old, { type: 'replace', byId: newId })) { await tx.done; return false; }
+  await Promise.all([
+    tx.store.put(transition(old, { type: 'replace', byId: newId }, now)),
+    tx.store.put({ ...fresh, replacesId: oldId, updatedAt: now }),
+    tx.done,
+  ]);
+  return true;
+}
+
+/** Undoes a replace: the old decision is open again and neither side points at the other. */
+export async function undoReplaceDecision(oldId: string, now: number): Promise<boolean> {
+  const tx = (await getDB()).transaction('items', 'readwrite');
+  const old = await tx.store.get(oldId);
+  if (!old || !canApply(old, { type: 'undoReplace' })) { await tx.done; return false; }
+  const fresh = old.replacedById ? await tx.store.get(old.replacedById) : undefined;
+  await Promise.all([
+    tx.store.put(transition(old, { type: 'undoReplace' }, now)),
+    ...(fresh && fresh.replacesId === oldId ? [tx.store.put({ ...fresh, replacesId: undefined, updatedAt: now })] : []),
+    tx.done,
+  ]);
+  return true;
+}
 export async function deleteItem(id: string): Promise<void> { await (await getDB()).delete('items', id); }
 export async function listItems(): Promise<MemoryItem[]> { return (await getDB()).getAll('items'); }
 export async function itemsForMeeting(meetingId: string): Promise<MemoryItem[]> {

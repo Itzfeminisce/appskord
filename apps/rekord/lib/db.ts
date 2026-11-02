@@ -77,7 +77,7 @@ export async function listMeetings(): Promise<Meeting[]> {
 export async function deleteMeeting(id: string): Promise<void> {
   const db = await getDB();
   const meeting = await db.get('meetings', id);
-  const tx = db.transaction(['meetings', 'recordingMeta', 'agendas', ...CHILD_STORES, ...MEMORY_STORES], 'readwrite');
+  const tx = db.transaction(['meetings', 'recordingMeta', 'agendas', 'people', ...CHILD_STORES, ...MEMORY_STORES], 'readwrite');
   const ops: Promise<unknown>[] = [
     tx.objectStore('meetings').delete(id),
     tx.objectStore('recordingMeta').delete(id),
@@ -85,10 +85,26 @@ export async function deleteMeeting(id: string): Promise<void> {
   ];
   // The agenda may be keyed by the calendar event instead of the meeting.
   if (meeting?.event?.id) ops.push(tx.objectStore('agendas').delete(meeting.event.id));
+  const gone = new Set<string>();
   for (const name of [...CHILD_STORES, ...MEMORY_STORES]) {
     const store = tx.objectStore(name as 'segments');
     const keys = await store.index('meetingId').getAllKeys(id);
+    if (name === 'items') for (const key of keys) gone.add(key as string);
     for (const key of keys) ops.push(store.delete(key));
+  }
+  // People lose the meeting; decisions that pointed at a deleted item reopen.
+  const people = tx.objectStore('people');
+  for (const p of await people.getAll()) {
+    if (p.meetingIds.includes(id)) ops.push(people.put({ ...p, meetingIds: p.meetingIds.filter((m) => m !== id) }));
+  }
+  for (const i of await tx.objectStore('items').getAll()) {
+    if (gone.has(i.id)) continue;
+    const orphan = (i.replacedById && gone.has(i.replacedById)) || (i.replacesId && gone.has(i.replacesId));
+    if (!orphan) continue;
+    const next = { ...i };
+    if (next.replacedById && gone.has(next.replacedById)) { delete next.replacedById; if (next.status === 'replaced') next.status = 'open'; }
+    if (next.replacesId && gone.has(next.replacesId)) delete next.replacesId;
+    ops.push(tx.objectStore('items').put(next));
   }
   await Promise.all([...ops, tx.done]);
 }
