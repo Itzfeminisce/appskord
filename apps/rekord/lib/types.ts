@@ -1,3 +1,4 @@
+import type { OffRecordState } from './live/offRecord';
 import type { MemorySettings } from './memory/types';
 export type * from './memory/types';
 
@@ -112,7 +113,7 @@ export type ConnectionState =
 
 export type RecordingState =
   | { status: 'idle' }
-  | { status: 'starting' | 'recording' | 'stopping'; meetingId: string; startedAt: number; micLevel: number; tabLevel: number; micUnavailable?: boolean; sources?: { mic: boolean; tab: boolean } }; // sources: what was asked to record; micUnavailable: recording the tab only
+  | { status: 'starting' | 'recording' | 'stopping'; meetingId: string; startedAt: number; micLevel: number; tabLevel: number; micUnavailable?: boolean; sources?: { mic: boolean; tab: boolean }; offRecord?: OffRecordState }; // sources: what was asked to record; micUnavailable: recording the tab only; offRecord: v4 off the record
 
 // runtime messages (chrome.runtime.sendMessage); all plain JSON, never Blobs
 export type Message =
@@ -122,6 +123,8 @@ export type Message =
   | { type: 'recording/get-state' }
   | { type: 'offscreen/start'; streamId: string; meetingId: string; startedAt: number; sources?: { mic: boolean; tab: boolean } } // background → offscreen
   | { type: 'offscreen/stop' }
+  | { type: 'recording/off-record'; on: boolean }      // side panel → background (also Alt+Shift+O)
+  | { type: 'offscreen/off-record'; on: boolean }      // background → offscreen
   | { type: 'offscreen/levels'; micLevel: number; tabLevel: number }              // offscreen → background, ~4/s
   | { type: 'segment/added'; segment: Segment }         // offscreen/transcriber → all
   | { type: 'connection/state'; state: ConnectionState }
