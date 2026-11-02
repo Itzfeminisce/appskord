@@ -63,6 +63,19 @@ describe('defineAppConfig', () => {
     expect(await run(['node', 'wxt', 'zip'])).toEqual(['sidepanel']);
   });
 
+  it('keeps public/store out of every build', async () => {
+    const files = [
+      { relativeDest: 'icon/16.png' },
+      { relativeDest: 'store/screenshot-1.png' },
+      { relativeDest: 'store/STORE.md' },
+    ];
+    await (defineAppConfig(base).hooks as Record<string, (...a: unknown[]) => unknown>)['build:publicAssets']?.(
+      {},
+      files,
+    );
+    expect(files).toEqual([{ relativeDest: 'icon/16.png' }]);
+  });
+
   it("runs the app's own entrypoints:found hook after the shared one", async () => {
     const seen: string[] = [];
     const config = defineAppConfig({

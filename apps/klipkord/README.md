@@ -98,7 +98,7 @@ npm run zip        # store-ready zip in .output/
   It fixes the extension ID, and so the Penv Cloud redirect URL. Plain builds work without it.
 - The release zip leaves out the developer machine check. See [CHECK.md](CHECK.md).
 - `node scripts/make-icons.mjs` rewrites the icons in `public/icon/`.
-- Store listing text is in [STORE.md](STORE.md).
+- Store listing text is in [public/store/STORE.md](public/store/STORE.md).
 
 ## Plans and specs
 

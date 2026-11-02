@@ -1,7 +1,7 @@
 import { manifestChecks } from '@appskord/config/checks';
 import { describe, expect, it, vi } from 'vitest';
 
-const V1_PERMISSIONS = ['sidePanel', 'offscreen', 'desktopCapture', 'storage', 'unlimitedStorage', 'identity', 'activeTab', 'scripting'];
+const V1_PERMISSIONS = ['sidePanel', 'desktopCapture', 'storage', 'unlimitedStorage', 'identity', 'activeTab', 'scripting'];
 
 manifestChecks({
   load: () => import('./wxt.config'),

@@ -35,6 +35,9 @@ export function isStoreBuild(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.APPSKORD_STORE === '1';
 }
 
+/** `public/store/` holds Web Store listing art and notes; never shipped in the extension. */
+export const STORE_FOLDER = 'store/';
+
 /** The WXT config of one app. `WXT_EXTENSION_KEY` overrides the key (CI and tests only). */
 export function defineAppConfig(options: AppConfigOptions): UserConfig {
   const { name, description, publicKey, icons, permissions, optionalHostPermissions, hostPermissions } = options;
@@ -56,6 +59,12 @@ export function defineAppConfig(options: AppConfigOptions): UserConfig {
           }
         }
         await (extraHooks['entrypoints:found'] as ((...a: unknown[]) => unknown) | undefined)?.(wxt, infos);
+      },
+      'build:publicAssets': async (wxt, files) => {
+        for (let at = files.length - 1; at >= 0; at--) {
+          if (files[at]?.relativeDest.replaceAll('\\', '/').startsWith(STORE_FOLDER)) files.splice(at, 1);
+        }
+        await (extraHooks['build:publicAssets'] as ((...a: unknown[]) => unknown) | undefined)?.(wxt, files);
       },
     },
     manifest: {
