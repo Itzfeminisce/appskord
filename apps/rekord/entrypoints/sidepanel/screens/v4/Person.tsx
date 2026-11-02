@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
-import { putPerson } from '@/lib/memory/store';
+import { getPerson, itemsForPerson, mergePeople, putItem, putPerson } from '@/lib/memory/store';
 import { nextMeeting, seriesLine } from '@/lib/memory/series';
 import type { MemoryItem, Person as PersonT } from '@/lib/memory/types';
 import type { Meeting } from '@/lib/types';
 import { RecordBar } from '../../components/v4/Shell';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
-import { Avatar, BackArrow, CalIcon, DecisionIcon, HandOffIcon, MoreDots, useEvents, usePeopleData, type PeopleData } from './PeopleParts';
+import { Avatar, BackArrow, CalIcon, DecisionIcon, HandOffIcon, MoreDots, refreshBadge, useEvents, usePeopleData, type PeopleData } from './PeopleParts';
+import { PickSheet, RenameSheet, type PersonDetails } from './PersonSheets';
+import { ToastBar } from './parts';
 import { dayMonth, dueBadge, suggestionFor, firstName, lastQuoteBy, openPromises, quoteMeta, soonLabel } from './peopleView';
 
-/** Dev frame routes open the page with its menu showing (V4Person). */
-export const personView = { menuOpen: false };
+/** Dev frame routes open the page with its menu (V4Person) or a sheet (V4PersonRename, V4PersonPick) showing. */
+export const personView: { menuOpen: boolean; sheet?: 'rename' | 'pick'; picked?: string } = { menuOpen: false };
+
+type Undo = () => Promise<void>;
 
 function ItemRow({ item, meeting, now, kind }: { item: MemoryItem; meeting?: Meeting; now: number; kind: 'promise' | 'decision' }) {
   const { navigate } = useRouter();
@@ -46,8 +50,13 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
     if (open) personView.menuOpen = false;
     return open;
   });
-  const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState(person.name);
+  const [sheet, setSheet] = useState(() => {
+    const open = inert ? undefined : personView.sheet;
+    personView.sheet = undefined;
+    return open;
+  });
+  const [picked] = useState(() => { const id = personView.picked; personView.picked = undefined; return id; });
+  const [toast, setToast] = useState<{ text: string; undo: Undo }>();
   const [saveFailed, setSaveFailed] = useState(false);
   const now = world.now();
   const first = firstName(person.name);
@@ -73,18 +82,40 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
     return () => document.removeEventListener('keydown', close);
   }, [menu]);
 
-  const saveName = async () => {
-    const clean = name.trim();
-    setRenaming(false);
-    if (!clean || clean === person.name) return setName(person.name);
+  const closeSheet = () => setSheet(undefined);
+  const saveDetails = async (d: PersonDetails) => {
+    setSheet(undefined);
+    const aliases = d.name === person.name ? person.aliases : [...new Set([...person.aliases, person.name])].filter((a) => a !== d.name);
     try {
-      await putPerson({ ...person, name: clean, aliases: [...new Set([...person.aliases, person.name])].filter((a) => a !== clean), updatedAt: world.now() });
+      await putPerson({ ...person, name: d.name, email: d.email, company: d.company, aliases, updatedAt: world.now() });
     } catch (error) {
       console.error('Rekord: could not rename', error);
-      setName(person.name);
       return setSaveFailed(true);
     }
     setSaveFailed(false);
+    onChanged();
+  };
+  // The other person's page and items are kept, so Undo puts them back as they were.
+  const merge = async (other: PersonT) => {
+    setSheet(undefined);
+    try {
+      const [before, moved] = await Promise.all([getPerson(person.id), itemsForPerson(other.id)]);
+      if (!before || !(await mergePeople(person.id, other.id, world.now()))) throw new Error('merge did not apply');
+      refreshBadge();
+      setSaveFailed(false);
+      setToast({ text: 'Merged.', undo: async () => {
+        await Promise.all([putPerson(before), putPerson(other), ...moved.map(putItem)]);
+        refreshBadge();
+      } });
+    } catch (error) {
+      console.error('Rekord: could not merge people', error);
+      setSaveFailed(true);
+    }
+    onChanged();
+  };
+  const undo = async (u: Undo) => {
+    setToast(undefined);
+    await u().catch((error) => { console.error('Rekord: could not undo', error); setSaveFailed(true); });
     onChanged();
   };
 
@@ -96,22 +127,17 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
     <div className="pp-page" aria-hidden={inert || undefined} inert={inert || undefined}>
       <header className="pp-head">
         <button type="button" className="v4-icon pp-dark" aria-label="Back to People" onClick={() => back()}><BackArrow /></button>
-        {renaming ? (
-          <input
-            className="pp-rename" aria-label="Rename" value={name} autoFocus onChange={(e) => setName(e.target.value)} onBlur={() => void saveName()}
-            onKeyDown={(e) => { if (e.key === 'Enter') void saveName(); if (e.key === 'Escape') { setName(person.name); setRenaming(false); } }}
-          />
-        ) : <span className="pp-head-title">{person.name}</span>}
+        <span className="pp-head-title">{person.name}</span>
         <button
           type="button" className="v4-icon pp-dark" aria-label={`More for ${first}`} aria-haspopup="menu" aria-expanded={menu}
           onClick={() => setMenu(!menu)}
         ><MoreDots /></button>
         {menu && (
           <div role="menu" aria-label={person.name} className="pp-menu">
-            <button type="button" role="menuitem" onClick={() => { setMenu(false); setRenaming(true); }}>Rename</button>
+            <button type="button" role="menuitem" onClick={() => { setMenu(false); setSheet('rename'); }}>Rename</button>
             <button
-              type="button" role="menuitem" aria-disabled={!pair || undefined}
-              onClick={() => { if (pair) { setMenu(false); navigate('personMerge', { personId: pair[0].id, otherId: pair[1].id }); } }}
+              type="button" role="menuitem"
+              onClick={() => { setMenu(false); if (pair) navigate('personMerge', { personId: pair[0].id, otherId: pair[1].id }); else setSheet('pick'); }}
             >Merge with someone</button>
             <button type="button" role="menuitem" onClick={() => { setMenu(false); navigate('personMerge', { personId: person.id }); }}>Split meetings out</button>
             <button type="button" role="menuitem" className="pp-menu-danger" onClick={() => { setMenu(false); navigate('forget', { personId: person.id }); }}>{`Forget ${first}`}</button>
@@ -165,6 +191,9 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
         </div>
       </main>
       <RecordBar />
+      {toast && <div className="lp-toast-wrap"><ToastBar text={toast.text} onUndo={() => void undo(toast.undo)} /></div>}
+      {sheet === 'rename' && <RenameSheet person={person} onSave={(d) => void saveDetails(d)} onClose={closeSheet} />}
+      {sheet === 'pick' && <PickSheet person={person} data={data} picked={picked} onMerge={(o) => void merge(o)} onClose={closeSheet} />}
     </div>
   );
 }

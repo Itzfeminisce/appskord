@@ -4,11 +4,13 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDB, getDB } from '@/lib/db';
 import { SAMPLE_EVENT, SAMPLE_ITEMS, SAMPLE_NOW, seedSample } from '@/lib/memory/sample';
-import { getItem, putItem } from '@/lib/memory/store';
+import { getAgenda, getItem, putItem } from '@/lib/memory/store';
 import { mount, settle } from '../../../../test/mountRouter';
 import { sidepanel } from '../../App';
 import { world } from '../../components/v4/world';
 import { changedPart, decisionLog, dueChip, snoozeTimes, weekdayDate } from './loops';
+import { addToNextAgenda, answeredLately } from './Questions';
+import { openTab } from './Home';
 
 const byId = (id: string) => SAMPLE_ITEMS.find((i) => i.id === id)!;
 const click = (el: Element | null | undefined) => act(() => (el as HTMLElement).click());
@@ -53,6 +55,7 @@ describe('open loops screens', () => {
     world.now = () => SAMPLE_NOW;
     world.events = [SAMPLE_EVENT];
     send = vi.spyOn(browser.runtime, 'sendMessage').mockResolvedValue(undefined);
+    openTab('youOwe');
   });
   afterEach(() => { world.now = () => Date.now(); world.events = undefined; });
 
@@ -113,16 +116,99 @@ describe('open loops screens', () => {
     expect(button(view.host, 'Before my next meeting with Sarah')).toBeUndefined();
   });
 
-  it('drops a promise with a reason', async () => {
+  it('drops a promise with a reason from its sheet, with "Dropped. Undo"', async () => {
     const view = await mount(sidepanel, 'home');
     act(() => view.router.navigate('promise', { itemId: 'i-proposal' }));
     await settle();
     click(button(view.host, 'Drop this promise'));
-    click(button(view.host, 'Someone else took it'));
     await settle();
-    const dropped = (await getItem('i-proposal'))!;
-    expect(dropped).toMatchObject({ status: 'dropped', dropReason: 'someoneElse' });
+    expect(view.router.route).toMatchObject({ screen: 'promiseDrop', params: { itemId: 'i-proposal' } });
+    const sheet = view.host.querySelector('[role="dialog"]')!;
+    expect(sheet.textContent).toContain('You owe Dana Ruiz · Intro with Lumen · 29 Oct');
+    expect(sheet.textContent).toContain('Dropped promises leave Open loops. You can find them in Dana’s page.');
+    expect([...sheet.querySelectorAll('input[type="radio"]')].map((r) => (r as HTMLInputElement).checked)).toEqual([true, false, false]);
+    click(sheet.querySelector('#lp-why-notAPromise'));
+    click(button(view.host, 'Drop'));
+    await settle();
+    expect(await getItem('i-proposal')).toMatchObject({ status: 'dropped', dropReason: 'notAPromise' });
+    expect(view.router.route.screen).toBe('home');
     expect(rows(view.host)).not.toContain('A short proposal');
+    expect(view.host.querySelector('.lp-toast')?.textContent).toBe('Dropped.Undo');
+    click(button(view.host, 'Undo'));
+    await settle();
+    expect((await getItem('i-proposal'))!.status).toBe('open');
+    expect(rows(view.host)).toContain('A short proposal');
+  });
+
+  it('Keep it leaves the promise open', async () => {
+    const view = await mount(sidepanel, 'home');
+    act(() => view.router.navigate('promise', { itemId: 'i-proposal' }));
+    await settle();
+    click(button(view.host, 'Drop this promise'));
+    await settle();
+    click(button(view.host, 'Keep it'));
+    await settle();
+    expect((await getItem('i-proposal'))!.status).toBe('open');
+    expect(view.router.route.screen).toBe('promise');
+  });
+
+  it('a promise owed to you leads with the nudge and keeps snooze behind a button', async () => {
+    const view = await mount(sidepanel, 'home');
+    act(() => view.router.navigate('promise', { itemId: 'i-q3' }));
+    await settle();
+    expect([...view.host.querySelectorAll('.lp-actions button')].map((b) => b.textContent)).toEqual(['Nudge Sarah', 'Mark done', 'Snooze', 'Edit', 'Send to Google Tasks']);
+    expect(view.host.querySelector('.lp-fromto')?.textContent).toBe('SCSarah Chenowes youADue todayTue 3 Nov');
+    expect(button(view.host, 'Tomorrow')).toBeUndefined();
+    expect(view.host.querySelector('.lp-drop-hint')).toBeNull();
+    click(button(view.host, 'Snooze'));
+    click(button(view.host, 'Tomorrow'));
+    await settle();
+    expect((await getItem('i-q3'))!.snoozedUntil).toBe(snoozeTimes(SAMPLE_NOW).tomorrow);
+    act(() => view.router.navigate('promise', { itemId: 'i-q3' }));
+    await settle();
+    click(button(view.host, 'Nudge Sarah'));
+    await settle();
+    expect(view.router.route).toMatchObject({ screen: 'nudge', params: { itemId: 'i-q3' } });
+  });
+
+  it('questions: the open question with its quote, Mark answered, and Answered lately collapsed', async () => {
+    const answered = { ...byId('q-free-plan'), id: 'q-old', text: 'Who owns the pricing page?', status: 'answered' as const, updatedAt: SAMPLE_NOW - 86_400_000,
+      history: [{ speaker: 'Priya', text: 'I own the pricing page.', meetingId: byId('q-free-plan').meetingId, atMs: 1000 }] };
+    await putItem(answered);
+    const view = await mount(sidepanel, 'home');
+    click(button(view.host, 'Questions1'));
+    await settle();
+    expect(view.host.querySelector('.lp-looks')).toBeNull();
+    const card = view.host.querySelector('.lp-question')!;
+    expect(card.textContent).toContain('Do we keep the free plan?Asked by Priya');
+    expect(card.textContent).toContain('Priya · Pricing review · 26 Oct · 40:18');
+    const toggle = view.host.querySelector('.lp-answered-toggle')!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.textContent).toBe('Answered lately2');
+    expect(view.host.textContent).not.toContain('I own the pricing page.');
+    click(toggle);
+    expect(view.host.textContent).toContain('Who owns the pricing page?“I own the pricing page.”');
+    click(button(view.host, 'Mark answered'));
+    await settle();
+    expect((await getItem('q-free-plan'))!.status).toBe('answered');
+  });
+
+  it('Add to next agenda puts the question on the 1:1 agenda once and opens the brief', async () => {
+    world.events = [SAMPLE_EVENT];
+    const view = await mount(sidepanel, 'home');
+    click(button(view.host, 'Questions1'));
+    await settle();
+    click(button(view.host, 'Add to next agenda'));
+    await settle();
+    expect(view.router.route.screen).toBe('brief');
+    expect((await addToNextAgenda(byId('q-free-plan'), SAMPLE_NOW))).toBe(true);
+    const agenda = await getAgenda(SAMPLE_EVENT.id);
+    expect(agenda!.items.filter((i) => i.id === 'a-q-free-plan')).toEqual([{ id: 'a-q-free-plan', text: 'Do we keep the free plan?', source: 'question', minutes: 5 }]);
+  });
+
+  it('answered lately keeps the two newest from the last 30 days', () => {
+    const q = (id: string, daysAgo: number) => ({ ...byId('q-free-plan'), id, status: 'answered' as const, updatedAt: SAMPLE_NOW - daysAgo * 86_400_000 });
+    expect(answeredLately([q('a', 40), q('b', 3), q('c', 1), q('d', 10)], SAMPLE_NOW).map((i) => i.id)).toEqual(['c', 'b']);
   });
 
   it('Send to Google Tasks and Edit open their screens', async () => {

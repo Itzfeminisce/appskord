@@ -196,36 +196,62 @@ const MEANING_CSS = `
 .am-chip:focus-visible span { outline: 2px solid #4F46E5; outline-offset: 2px; }
 `;
 const pillBase: CSSProperties = { height: 22, borderRadius: 999, fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center' };
-const icon = (d: string[]) => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d.map((p) => <path key={p} d={p} />)}</svg>
+const icon = (d: string[], ring = false) => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ring && <circle cx="12" cy="12" r="9" />}{d.map((p) => <path key={p} d={p} />)}</svg>
 );
 const quoteClock = (ms: number) => citationClock(ms);
 
-function MemoryCard({ s, onOpen }: { s: MemorySource; onOpen: (s: MemorySource) => void }) {
+const firstWord = (name: string) => name.trim().split(/\s+/)[0] ?? name;
+type MeetingRef = Pick<Meeting, 'id' | 'title' | 'startedAt'>;
+
+function QuoteRow({ speaker, text, caption, onPlay }: { speaker: string; text: string; caption: string; onPlay: () => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '2px 2px 2px 10px', borderRadius: 10, background: '#F6F6F7', borderLeft: '3px solid #D5D5DA' }}>
+      <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <span style={{ fontSize: 12, lineHeight: 1.35, color: '#2A2B31' }}>{`${speaker}: “${text}”`}</span>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: '#6E7079' }}>{caption}</span>
+      </span>
+      <button type="button" className="am-play" aria-label="Play from this moment" onClick={onPlay} style={{ width: 44, height: 44, flexShrink: 0, border: 0, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4F46E5', cursor: 'pointer' }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 5l11 7-11 7z" /></svg>
+      </button>
+    </div>
+  );
+}
+
+/** A decision, promise or question Ask cited; a question shows who asked, whether it is still open, and the answer. */
+export function MemoryCard({ s, onOpen, meetings = [] }: { s: MemorySource; onOpen: (s: MemorySource) => void; meetings?: MeetingRef[] }) {
   const item = s.item!;
   const decision = item.kind === 'decision';
+  const question = item.kind === 'question';
+  const asker = question && item.quote.speaker ? ` · asked by ${firstWord(item.quote.speaker)}` : '';
   const [label, bg, fg, glyph] = decision
     ? ['Decision', '#EAF6EF', '#1A6B40', icon(['M12 3l9 9-9 9-9-9z', 'M8.5 12l2.5 2.5 4.5-5'])]
     : item.kind === 'promise'
       ? ['Promise', '#EEF0FF', '#3730A3', icon(['M4 12h13M12 6l6 6-6 6'])]
-      : ['Question', '#F1F1F3', '#2A2B31', icon(['M9 9a3 3 0 1 1 4.5 2.6c-.9.5-1.5 1.2-1.5 2.4', 'M12 17.5v.5'])];
+      : [`${item.status === 'open' ? 'Open question' : 'Question'}${asker}`, '#FFF4E5', '#8A4B00', icon(['M9.5 9.5a2.5 2.5 0 015 .5c0 1.6-2.5 2-2.5 3.5M12 17v.5'], true)];
+  const answer = question && item.status === 'answered' ? item.history.at(-1) : undefined;
+  const meetingOf = (id: string): MeetingRef | undefined => (id === s.meetingId ? { id, title: s.title, startedAt: s.startedAt } : meetings.find((m) => m.id === id));
+  const answeredIn = answer && meetingOf(answer.meetingId);
   return (
     <article style={{ padding: '12px 14px', borderRadius: 16, background: '#FFFFFF', border: '1px solid #E8E8EB', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: question ? 'wrap' : undefined }}>
         <span style={{ ...pillBase, padding: '0 9px 0 7px', background: bg, color: fg, gap: 5 }}>{glyph}{label}</span>
         {s.replaces && <span style={{ fontSize: 11, color: '#44464D' }}>{`Replaces: ${s.replaces.text} (${shortDate(s.replaces.at)})`}</span>}
         {!!s.overdue && <span style={{ ...pillBase, padding: '0 8px', background: '#FDECEC', color: '#8A1C14' }}>Overdue {s.overdue} {s.overdue === 1 ? 'day' : 'days'}</span>}
+        {question && item.status === 'open' && <span style={{ ...pillBase, padding: '0 8px', background: '#FFF4E5', color: '#8A4B00', border: '1px solid #F3D9AE', boxSizing: 'border-box' }}>Still open</span>}
+        {question && item.status === 'answered' && (
+          <span style={{ ...pillBase, padding: '0 8px', background: '#EAF6EF', color: '#1A6B40', gap: 4 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
+            {`Answered ${shortDate(answeredIn?.startedAt ?? item.updatedAt)}`}
+          </span>
+        )}
       </div>
       <h3 style={{ margin: 0, fontSize: 14, lineHeight: 1.35, fontWeight: 600 }}>{item.text}</h3>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '2px 2px 2px 10px', borderRadius: 10, background: '#F6F6F7', borderLeft: '3px solid #D5D5DA' }}>
-        <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <span style={{ fontSize: 12, lineHeight: 1.35, color: '#2A2B31' }}>{`${item.quote.speaker}: “${item.quote.text}”`}</span>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: '#6E7079' }}>{s.title} · {shortDate(s.startedAt)} · {quoteClock(s.atMs)}</span>
-        </span>
-        <button type="button" className="am-play" aria-label="Play from this moment" onClick={() => onOpen(s)} style={{ width: 44, height: 44, flexShrink: 0, border: 0, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4F46E5', cursor: 'pointer' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 5l11 7-11 7z" /></svg>
-        </button>
-      </div>
+      <QuoteRow speaker={item.quote.speaker} text={item.quote.text} caption={`${s.title} · ${shortDate(s.startedAt)} · ${quoteClock(s.atMs)}`} onPlay={() => onOpen(s)} />
+      {answer && answeredIn && (
+        <QuoteRow speaker={answer.speaker} text={answer.text} caption={`${answeredIn.title} · ${shortDate(answeredIn.startedAt)} · ${quoteClock(answer.atMs)}`}
+          onPlay={() => onOpen({ ...s, meetingId: answer.meetingId, title: answeredIn.title, startedAt: answeredIn.startedAt, atMs: answer.atMs })} />
+      )}
     </article>
   );
 }
@@ -250,7 +276,7 @@ function CitedText({ text, sources, onOpen }: { text: string; sources: MemorySou
   );
 }
 
-function MemoryAnswer({ turn, onOpen, onRetry }: { turn: AskMemoryResult; onOpen: (s: MemorySource) => void; onRetry: () => void }) {
+function MemoryAnswer({ turn, onOpen, onRetry, meetings }: { turn: AskMemoryResult; onOpen: (s: MemorySource) => void; onRetry: () => void; meetings?: MeetingRef[] }) {
   const box: CSSProperties = { padding: 14, borderRadius: 16, background: '#FFFFFF', border: '1px solid #E8E8EB', boxShadow: '0 1px 2px rgba(16,16,20,0.04)', fontSize: 13.5, lineHeight: 1.55 };
   if (turn.status === 'error') {
     return (
@@ -265,7 +291,7 @@ function MemoryAnswer({ turn, onOpen, onRetry }: { turn: AskMemoryResult; onOpen
   return (
     <>
       <div style={box}><CitedText text={turn.answer ?? ''} sources={sources} onOpen={onOpen} /></div>
-      {sources.filter((s) => s.kind === 'item').map((s) => <MemoryCard key={s.item!.id} s={s} onOpen={onOpen} />)}
+      {sources.filter((s) => s.kind === 'item').map((s) => <MemoryCard key={s.item!.id} s={s} onOpen={onOpen} meetings={meetings} />)}
       {sources.filter((s) => s.kind === 'meeting').map((s) => (
         <button key={s.meetingId} type="button" className="am-src" style={sourceRow} aria-label={`${s.title}, open transcript at ${citationClock(s.atMs)}`} onClick={() => onOpen(s)}>
           <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>{s.title}</span>
@@ -277,55 +303,95 @@ function MemoryAnswer({ turn, onOpen, onRetry }: { turn: AskMemoryResult; onOpen
   );
 }
 
+const MB = 1024 * 1024;
+
+/** "Downloading the search model · 9 of 22 MB" with its bar; keyword search answers meanwhile. */
+export function ModelDownloading({ loaded, total }: { loaded: number; total: number }) {
+  const max = Math.round(total / MB) || 22;
+  const now = Math.min(max, Math.round(loaded / MB));
+  return (
+    <div role="status" style={{ padding: '12px 14px', borderRadius: 16, background: '#EEF0FF', border: '1px solid #D9D7FB', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 14, fontWeight: 600, color: '#1E1B5C' }}>
+        <span>Downloading the search model</span>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 500, color: '#3730A3', whiteSpace: 'nowrap' }}>{`${now} of ${max} MB`}</span>
+      </div>
+      <div role="progressbar" aria-label="Search model download" aria-valuemin={0} aria-valuemax={max} aria-valuenow={now} style={{ height: 6, borderRadius: 99, background: '#D9D7FB', overflow: 'hidden' }}>
+        <div style={{ width: `${total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0}%`, height: '100%', background: '#4F46E5' }} />
+      </div>
+      <span style={{ fontSize: 12.5, lineHeight: 1.45, color: '#3730A3' }}>Keyword search works meanwhile.</span>
+    </div>
+  );
+}
+
+/** The download failed: keyword search still answers, and "Try again" downloads once more. */
+export function ModelFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div role="alert" style={{ padding: '12px 14px', borderRadius: 16, background: '#FFF4E5', border: '1px solid #F3D9AE', color: '#8A4B00', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <span style={{ marginTop: 1, flexShrink: 0, display: 'flex' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17v.5" /></svg>
+      </span>
+      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>The search model didn’t download</span>
+          <span style={{ fontSize: 13, lineHeight: 1.45 }}>Keyword search still works.</span>
+        </span>
+        <button type="button" className="am-btn" onClick={onRetry} style={{ alignSelf: 'flex-start', height: 44, padding: '0 18px', border: 'none', borderRadius: 12, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Try again</button>
+      </span>
+    </div>
+  );
+}
+
 function ModelCard({ onReady, onKeep }: { onReady: () => void; onKeep: () => void }) {
-  const [percent, setPercent] = useState<number | null>(null);
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [failed, setFailed] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
   async function download() {
     setFailed(false);
-    setPercent(0);
-    const ok = await ensureModel((p) => alive.current && setPercent(p.total ? Math.round((p.loaded / p.total) * 100) : 0));
+    setSaveFailed(false);
+    setProgress({ loaded: 0, total: 22 * MB });
+    const ok = await ensureModel((p) => alive.current && setProgress({ loaded: p.loaded, total: p.total || 22 * MB }));
     if (!alive.current) return;
-    setPercent(null);
+    setProgress(null);
     if (!ok) { setFailed(true); return; }
     try {
       await updateSettings({ memory: { ...(await getSettings()).memory, searchModel: 'ready' } });
     } catch (error) {
       console.error('Rekord: could not save the search model choice', error);
-      if (alive.current) setFailed(true);
+      if (alive.current) setSaveFailed(true);
       return;
     }
     void embedPending();
     onReady();
   }
   async function keep() {
-    setFailed(false);
+    setSaveFailed(false);
     try {
       await updateSettings({ memory: { ...(await getSettings()).memory, searchModel: 'asked' } });
     } catch (error) {
       console.error('Rekord: could not save the search model choice', error);
-      if (alive.current) setFailed(true);
+      if (alive.current) setSaveFailed(true);
       return;
     }
     onKeep();
   }
 
-  const downloading = percent !== null;
+  if (progress) return <div style={{ margin: '0 16px', flexShrink: 0 }}><ModelDownloading loaded={progress.loaded} total={progress.total} /></div>;
+  if (failed) return <div style={{ margin: '0 16px', flexShrink: 0 }}><ModelFailed onRetry={() => void download()} /></div>;
   return (
     <section aria-label="Search model" style={{ margin: '0 16px', padding: '12px 14px', borderRadius: 16, background: '#EEF0FF', border: '1px solid #D9D7FB', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1E1B5C' }}>Search by meaning?</h2>
         <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.45, color: '#3730A3' }}>Rekord downloads a 22 MB search model once from huggingface.co. Your meetings never leave this computer.</p>
       </div>
-      {failed && <p role="alert" style={{ margin: 0, fontSize: 12.5, color: '#8A1C14' }}>Rekord couldn’t download the search model.</p>}
+      {saveFailed && <p role="alert" style={{ margin: 0, fontSize: 12.5, color: '#8A1C14' }}>Rekord couldn’t save that change. Try again.</p>}
       <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" className="am-btn" disabled={downloading} aria-busy={downloading} onClick={() => void download()} style={{ position: 'relative', overflow: 'hidden', flexGrow: 1, height: 44, border: 0, borderRadius: 12, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 14, fontWeight: 600, cursor: downloading ? 'default' : 'pointer' }}>
-          {downloading && <span aria-hidden="true" style={{ position: 'absolute', left: 0, bottom: 0, height: 3, width: `${percent}%`, background: '#8B85F0' }} />}
+        <button type="button" className="am-btn" onClick={() => void download()} style={{ flexGrow: 1, height: 44, border: 0, borderRadius: 12, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
           Download (22 MB)
         </button>
-        <button type="button" className="am-btn" disabled={downloading} onClick={() => void keep()} style={{ height: 44, padding: '0 14px', borderRadius: 12, background: '#FFFFFF', border: '1px solid #D9D7FB', boxSizing: 'border-box', color: '#2A2B31', font: 'inherit', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Keep keyword search</button>
+        <button type="button" className="am-btn" onClick={() => void keep()} style={{ height: 44, padding: '0 14px', borderRadius: 12, background: '#FFFFFF', border: '1px solid #D9D7FB', boxSizing: 'border-box', color: '#2A2B31', font: 'inherit', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Keep keyword search</button>
       </div>
     </section>
   );
@@ -410,7 +476,7 @@ function MeaningAskAll({ model, onKeep }: { model: 'none' | 'ready'; onKeep: () 
         {turns.map((t, i) => (
           <Fragment key={i}>
             <div style={bubble}>{t.question}</div>
-            <MemoryAnswer turn={t} onOpen={open} onRetry={() => void run(t.question, i)} />
+            <MemoryAnswer turn={t} onOpen={open} onRetry={() => void run(t.question, i)} meetings={meetings} />
           </Fragment>
         ))}
         {busy && (

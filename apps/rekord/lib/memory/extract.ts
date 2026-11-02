@@ -267,7 +267,7 @@ async function extractOnce(meetingId: string, deps: ExtractDeps): Promise<Extrac
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_OPEN_PROMISES);
   const notPromises = items
-    .filter((i) => i.status === 'dismissed' && i.dismissReason === 'notAPromise')
+    .filter((i) => (i.status === 'dismissed' && i.dismissReason === 'notAPromise') || (i.status === 'dropped' && i.dropReason === 'notAPromise'))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_NOT_PROMISES);
   const service = LEDGER_SERVICE[settings.summary.provider];

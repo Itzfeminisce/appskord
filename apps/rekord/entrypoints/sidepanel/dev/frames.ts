@@ -24,6 +24,7 @@ import { putRecordingPart } from '@/lib/db';
 import { settingsDev } from '../screens/v4/SettingsMemory';
 import { folderDev } from '../screens/v4/Folder';
 import { moveDev } from '../screens/v4/Move';
+import { openTab } from '../screens/v4/Home';
 
 const MB = 1024 * 1024;
 const at = (month: number, day: number, h: number, m: number) => new Date(2026, month - 1, day, h, m).getTime();
@@ -211,8 +212,11 @@ async function sentTwo() {
 }
 
 export const DEV_FRAMES: Record<string, DevFrame> = {
-  V4Home: { screen: 'home' },
+  V4Home: { screen: 'home', setup: async () => { openTab('youOwe'); } },
+  V4HomeQuestions: { screen: 'home', setup: async () => { openTab('questions'); } },
   V4Promise: { screen: 'promise', params: { itemId: 'i-deck' } },
+  V4PromiseOwed: { screen: 'promise', params: { itemId: 'i-q3' } },
+  V4PromiseDrop: { screen: 'promiseDrop', params: { itemId: 'i-proposal' } },
   V4LooksDone: { screen: 'looksDone', params: { itemId: 'i-checklist' } },
   V4Nudge: {
     screen: 'nudge', params: { itemId: 'i-q3' },
@@ -232,6 +236,10 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
   },
   V4Review: { screen: 'review', params: { meetingId: M.sarah3 }, moment: 'after', setup: afterOneOnOne },
   V4ReviewEdit: { screen: 'reviewEdit', params: { meetingId: M.sarah3, itemId: 'n-intro' }, moment: 'after', setup: afterOneOnOne },
+  V4ReviewEditMore: {
+    screen: 'reviewEdit', params: { meetingId: M.sarah3, itemId: 'n-rollout-16' }, moment: 'after', setup: afterOneOnOne,
+    page: async () => (await import('./ReviewEditBoard')).default,
+  },
   V4Summary: { screen: 'summary', params: { meetingId: M.sarah3 }, moment: 'after', setup: afterOneOnOne },
   V4Backfill: {
     screen: 'backfill',
@@ -244,6 +252,11 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
   V4Person: {
     screen: 'person', params: { personId: 'p-sarah' },
     setup: async () => { personView.menuOpen = true; },
+  },
+  V4PersonRename: { screen: 'person', params: { personId: 'p-sarah' }, setup: async () => { personView.sheet = 'rename'; } },
+  V4PersonPick: {
+    screen: 'person', params: { personId: 'p-sarah' },
+    setup: async () => { Object.assign(personView, { sheet: 'pick', picked: 'p-dana' }); },
   },
   V4PersonMerge: { screen: 'personMerge', params: { personId: 'p-sam-guest', otherId: 'p-sam' } },
   V4Forget: {
@@ -268,6 +281,7 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
       askMemorySession.turns = [result];
     },
   },
+  V4AskAllStates: { screen: 'askall', page: async () => (await import('./AskAllStatesBoard')).default },
   V4Redact: { screen: 'redact', moment: 'after', params: { meetingId: M.sarah3, ...redactParams() }, setup: redactWorld },
   V4RedactAfter: {
     screen: 'redact', moment: 'after', params: { meetingId: M.sarah3, ...redactParams() },

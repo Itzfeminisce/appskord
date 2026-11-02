@@ -40,6 +40,14 @@ describe('promise state machine', () => {
     expect(transition(dismissed, { type: 'undo' }, 2).status).toBe('suggested');
   });
 
+  it('drops an open promise that was never a promise, and never drops it as the wrong person', () => {
+    expect(transition(base(), { type: 'drop', reason: 'notAPromise' }, 1)).toMatchObject({ status: 'dropped', dropReason: 'notAPromise' });
+    const open = base();
+    expect(transition(open, { type: 'drop', reason: 'wrongPerson' }, 1)).toBe(open);
+    const suggested = base({ status: 'suggested' });
+    expect(transition(suggested, { type: 'drop', reason: 'notNeeded' }, 1)).toBe(suggested);
+  });
+
   it('moves to looks done with evidence, and back on not yet', () => {
     const looks = transition(base(), { type: 'looksDone', evidence: q }, 1);
     expect(looks).toMatchObject({ status: 'looksDone', evidence: q });

@@ -25,7 +25,7 @@ export interface MemoryItem {
   history: Quote[];                  // later mentions ("I'm still finishing the deck")
   evidence?: Quote;                  // the "Looks done" quote
   sentTo?: { service: 'gtasks' | 'notion' | 'linear'; url: string; at: number }[];
-  dropReason?: 'notNeeded' | 'someoneElse';
+  dropReason?: 'notNeeded' | 'someoneElse' | 'notAPromise';
   dismissReason?: 'notAPromise' | 'wrongPerson';
   leftOut?: boolean;                 // quote not found; shown under "left out"
   createdAt: number; updatedAt: number;

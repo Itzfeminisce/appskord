@@ -5,15 +5,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDB, getDB, listMeetings } from '@/lib/db';
 import { detectSeries, nextMeeting, seriesLine } from '@/lib/memory/series';
 import { SAMPLE_EVENT, SAMPLE_ITEMS, SAMPLE_MEETINGS, SAMPLE_NOW, SAMPLE_PEOPLE, seedSample } from '@/lib/memory/sample';
-import { getPerson, itemsByKind, itemsForPerson, listItems, listPeople } from '@/lib/memory/store';
+import { getItem, getPerson, itemsByKind, itemsForPerson, listItems, listPeople } from '@/lib/memory/store';
 import { mount, settle, waitFor } from '../../../../test/mountRouter';
 import { sidepanel } from '../../App';
 import { world } from '../../components/v4/world';
 import { dueBadge, personRows } from './peopleView';
+import { pickList } from './PersonSheets';
 
 const person = (id: string) => SAMPLE_PEOPLE.find((p) => p.id === id)!;
 const click = (el: Element | null | undefined) => act(() => (el as HTMLElement).click());
 const button = (host: HTMLElement, text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === text);
+const type = (el: Element | null, value: string) => act(() => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, value);
+  el!.dispatchEvent(new Event('input', { bubbles: true }));
+});
 
 describe('people view', () => {
   it('sorts by next meeting, then last met, and words each row like the frame', () => {
@@ -100,6 +105,75 @@ describe('people screens', () => {
     const merged = await getPerson('p-sam');
     expect(merged?.aliases).toContain('Sam');
     expect(merged?.meetingIds).toHaveLength(5);
+  });
+
+  it('Rename saves name, email and company in one sheet', async () => {
+    const view = await mount(sidepanel, 'person', '/person?person=p-sarah');
+    await settle();
+    click(view.host.querySelector('[aria-label="More for Sarah"]'));
+    click(button(view.host, 'Rename'));
+    const sheet = view.host.querySelector('[role=dialog]')!;
+    expect(sheet.querySelector('h1')?.textContent).toBe('Rename Sarah Chen');
+    expect([...sheet.querySelectorAll('input')].map((i) => i.value)).toEqual(['Sarah Chen', 'sarah@northwind.co', 'Northwind']);
+    expect(sheet.textContent).toContain('Rekord uses this name in briefs, follow-ups and your Rekord folder.');
+    type(sheet.querySelector('#ps-name'), 'Sarah Chen-Li');
+    type(sheet.querySelector('#ps-company'), '');
+    click(button(view.host, 'Save'));
+    await settle();
+    expect(view.host.querySelector('[role=dialog]')).toBeNull();
+    const saved = await getPerson('p-sarah');
+    expect(saved).toMatchObject({ name: 'Sarah Chen-Li', email: 'sarah@northwind.co', company: undefined });
+    expect(saved?.aliases).toContain('Sarah Chen');
+    expect(view.host.querySelector('.pp-head-title')?.textContent).toBe('Sarah Chen-Li');
+  });
+
+  it('Cancel renames nothing', async () => {
+    const view = await mount(sidepanel, 'person', '/person?person=p-sarah');
+    await settle();
+    click(view.host.querySelector('[aria-label="More for Sarah"]'));
+    click(button(view.host, 'Rename'));
+    type(view.host.querySelector('#ps-name'), 'Someone else');
+    click(button(view.host, 'Cancel'));
+    await settle();
+    expect((await getPerson('p-sarah'))?.name).toBe('Sarah Chen');
+  });
+
+  it('Merge with someone, with no suggestion, picks a person, merges and undoes', async () => {
+    const view = await mount(sidepanel, 'person', '/person?person=p-sarah');
+    await settle();
+    click(view.host.querySelector('[aria-label="More for Sarah"]'));
+    const menuItem = button(view.host, 'Merge with someone')!;
+    expect(menuItem.getAttribute('aria-disabled')).toBeNull();
+    click(menuItem);
+    const sheet = view.host.querySelector('[role=dialog]')!;
+    expect(sheet.querySelector('h1')?.textContent).toBe('Merge Sarah Chen with…');
+    expect(sheet.textContent).toContain('Their meetings, promises and decisions move to Sarah Chen. You can split them out again.');
+    const merge = button(view.host, 'Merge into Sarah Chen')!;
+    expect(merge.disabled).toBe(true);
+    type(sheet.querySelector('input[type=search]'), 'lumen');
+    expect([...sheet.querySelectorAll('.ps-person-name')].map((n) => n.textContent)).toEqual(['Dana Ruiz']);
+    expect(sheet.querySelector('.ps-person')?.textContent).toBe('DRDana Ruizdana@lumen.io1 meeting');
+    click(sheet.querySelector('#ps-p-p-dana'));
+    expect(merge.disabled).toBe(false);
+    click(merge);
+    await settle();
+    expect(await getPerson('p-dana')).toBeUndefined();
+    expect((await getPerson('p-sarah'))?.meetingIds).toContain('m-intro-lumen');
+    expect((await getItem('i-proposal'))?.toId).toBe('p-sarah');
+    expect(view.host.querySelector('.lp-toast')?.textContent).toBe('Merged.Undo');
+    click(button(view.host, 'Undo'));
+    await settle();
+    expect(await getPerson('p-dana')).toMatchObject({ name: 'Dana Ruiz', meetingIds: ['m-intro-lumen'] });
+    expect((await getPerson('p-sarah'))?.meetingIds).not.toContain('m-intro-lumen');
+    expect((await getItem('i-proposal'))?.toId).toBe('p-dana');
+    expect(view.host.querySelector('.lp-toast')).toBeNull();
+  });
+
+  it('the pick list leaves the person out, most meetings first, and names a guest’s meeting', () => {
+    const list = pickList(person('p-sarah'), SAMPLE_PEOPLE, '');
+    expect(list.map((p) => p.id).slice(0, 3)).toEqual(['p-priya', 'p-sam', 'p-sam-guest']);
+    expect(list.some((p) => p.id === 'p-sarah')).toBe(false);
+    expect(pickList(person('p-sarah'), SAMPLE_PEOPLE, 'sam').map((p) => p.id)).toEqual(['p-sam', 'p-sam-guest']);
   });
 
   it('Different people stops suggesting the pair', async () => {

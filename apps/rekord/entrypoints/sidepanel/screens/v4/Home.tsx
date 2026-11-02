@@ -13,6 +13,7 @@ import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
 import { appLabel, counterpartId, dueChip, meetingLine, setPendingToast, takePendingToast, weekdayShort, type Toast } from './loops';
 import { Avatar, BigCheck, ChevronIcon, DecisionIcon, DueChip, refreshBadge, ToastBar, useMemoryView, type MemoryView } from './parts';
+import { QuestionsList } from './Questions';
 
 const SECTION: Record<LoopSection, string> = { overdue: 'Overdue', today: 'Today', thisWeek: 'This week', noDate: 'No date' };
 const TABS: { id: LoopTab; label: string }[] = [
@@ -22,6 +23,8 @@ const TOAST_MS = 6000;
 
 // The tab survives a trip to a sheet and back.
 let lastTab: LoopTab = 'youOwe';
+/** Opens Open loops on a tab (dev frame routes). */
+export const openTab = (t: LoopTab) => { lastTab = t; };
 // Within a section, promises that look done wait below the ones still open.
 const lastDone = (items: MemoryItem[]) => [...items.filter((i) => i.status !== 'looksDone'), ...items.filter((i) => i.status === 'looksDone')];
 
@@ -107,7 +110,7 @@ export function LoopsHome({ tab: forced, sheet = false, children }: { tab?: Loop
         <div className="lp-home">
           <BriefCard />
           <HomeStates />
-          {looksDone.length > 0 && (
+          {looksDone.length > 0 && tab !== 'questions' && (
             <button type="button" className="lp-looks" onClick={() => navigate('looksDone', { itemId: looksDone[0]!.id })}>
               <BigCheck size={16} />
               <span className="lp-looks-text">{looksDone.length === 1 ? '1 promise looks done' : `${looksDone.length} promises look done`}</span>
@@ -127,6 +130,8 @@ export function LoopsHome({ tab: forced, sheet = false, children }: { tab?: Loop
           </div>
           {empty ? (
             <EmptyCard title="Nothing open. Every promise is kept." body="New promises from your meetings will show up here." />
+          ) : tab === 'questions' ? (
+            <QuestionsList items={loops.sections.flatMap((s) => s.items)} view={view} onAnswer={(x) => void check(x)} />
           ) : (
             <div className="lp-list">
               {loops.sections.map((s) => (

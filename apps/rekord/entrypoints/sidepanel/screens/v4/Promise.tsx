@@ -7,8 +7,8 @@ import { useCalendar } from '../../components/CalendarCard';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
 import { LoopsHome, toastOnHome } from './Home';
-import { counterpartId, dueChip, firstName, fromIso, meetingLine, nextMeetingWith, snoozeTimes, weekdayDate } from './loops';
-import { Avatar, BigCheck, CloseButton, DueChip, KindTag, QuoteBlock, refreshBadge, Sheet, useCloseSheet, useMemoryView, type MemoryView } from './parts';
+import { counterpartId, dueChip, firstName, fromIso, initials, meetingLine, myName, nextMeetingWith, snoozeTimes, weekdayDate } from './loops';
+import { Avatar, BigCheck, CloseButton, DueChip, KindTag, PromiseIcon, QuoteBlock, refreshBadge, Sheet, useCloseSheet, useMemoryView, type MemoryView } from './parts';
 
 /** The item a sheet route names, loaded fresh (it may be snoozed or closed). */
 export function useSheetItem(): [MemoryItem | undefined, (i: MemoryItem) => void] {
@@ -39,14 +39,15 @@ export function FromTo({ item, view, size = 28 }: { item: MemoryItem; view: Memo
   if (item.ownerId === 'me') {
     return <><Avatar name={me} me size={size} /><span className="lp-owe">You owe</span>{person && <><Avatar name={person.name} size={size} /><span className="lp-who">{person.name}</span></>}</>;
   }
-  return <>{person && <><Avatar name={person.name} size={size} /><span className="lp-who">{person.name}</span></>}<span className="lp-owe">owes you</span></>;
+  const mine = myName(view.items) ?? 'You';
+  return <>{person && <><Avatar name={person.name} size={size} /><span className="lp-who">{person.name}</span></>}<span className="lp-owe">owes you</span><Avatar name={mine} me size={size} /></>;
 }
 
-function PromiseSheet({ item, view, onChange }: { item: MemoryItem; view: MemoryView; onChange: (i: MemoryItem) => void }) {
+function PromiseSheet({ item, view }: { item: MemoryItem; view: MemoryView }) {
   const { navigate, has } = useRouter();
   const close = useCloseSheet();
   const calendar = useCalendar();
-  const [dropping, setDropping] = useState(false);
+  const [snoozing, setSnoozing] = useState(false);
   const now = world.now();
   const person = view.people.get(counterpartId(item) ?? '');
   const events = world.events ?? (calendar.status === 'ready' ? calendar.events : []);
@@ -69,10 +70,6 @@ function PromiseSheet({ item, view, onChange }: { item: MemoryItem; view: Memory
     toastOnHome(`Marked “${item.text}” as done`, item);
     close();
   };
-  const drop = async (reason: 'notNeeded' | 'someoneElse') => {
-    const next = await apply(item, { type: 'drop', reason });
-    if (next) { onChange(next); close(); }
-  };
 
   return (
     <Sheet label="Promise detail" onClose={close}>
@@ -90,7 +87,7 @@ function PromiseSheet({ item, view, onChange }: { item: MemoryItem; view: Memory
       {mention && (
         <p className="lp-mention"><strong>Mentioned again</strong>{` in ${meetingLine(mention.meetingId, view.meetings)}: “${mention.text}”`}</p>
       )}
-      {canSnooze && (
+      {canSnooze && (!owedToYou || snoozing) && (
         <div className="lp-snooze">
           <span className="lp-label">Snooze</span>
           <div className="lp-pills">
@@ -104,43 +101,99 @@ function PromiseSheet({ item, view, onChange }: { item: MemoryItem; view: Memory
           )}
         </div>
       )}
-      <div className="lp-actions">
-        <button type="button" className="lp-primary" onClick={() => void done()}><BigCheck />Mark done</button>
-        <div className="lp-actions-grid">
-          <button type="button" className="lp-secondary" aria-disabled={!has(edit) || undefined}
-            onClick={() => { if (has(edit)) navigate(edit, { itemId: item.id }); }}>Edit</button>
-          <button type="button" className="lp-secondary" aria-disabled={!has(tasks) || undefined}
-            onClick={() => { if (has(tasks)) navigate(tasks, { itemId: item.id }); }}>Send to Google Tasks</button>
+      {owedToYou && person ? (
+        <div className="lp-actions">
+          <button type="button" className="lp-primary" onClick={() => navigate('nudge', { itemId: item.id })}><PromiseIcon size={18} />{`Nudge ${firstName(person.name)}`}</button>
+          <div className="lp-actions-grid lp-actions-even">
+            <button type="button" className="lp-secondary" onClick={() => void done()}>Mark done</button>
+            <button type="button" className="lp-secondary" aria-expanded={snoozing} disabled={!canSnooze} onClick={() => setSnoozing(!snoozing)}>Snooze</button>
+            <button type="button" className="lp-secondary" aria-disabled={!has(edit) || undefined}
+              onClick={() => { if (has(edit)) navigate(edit, { itemId: item.id }); }}>Edit</button>
+            <button type="button" className="lp-secondary" aria-disabled={!has(tasks) || undefined}
+              onClick={() => { if (has(tasks)) navigate(tasks, { itemId: item.id }); }}>Send to Google Tasks</button>
+          </div>
         </div>
-        {owedToYou && person && (
-          <button type="button" className="lp-secondary" onClick={() => navigate('nudge', { itemId: item.id })}>{`Nudge ${firstName(person.name)}`}</button>
-        )}
-      </div>
+      ) : (
+        <div className="lp-actions">
+          <button type="button" className="lp-primary" onClick={() => void done()}><BigCheck />Mark done</button>
+          <div className="lp-actions-grid">
+            <button type="button" className="lp-secondary" aria-disabled={!has(edit) || undefined}
+              onClick={() => { if (has(edit)) navigate(edit, { itemId: item.id }); }}>Edit</button>
+            <button type="button" className="lp-secondary" aria-disabled={!has(tasks) || undefined}
+              onClick={() => { if (has(tasks)) navigate(tasks, { itemId: item.id }); }}>Send to Google Tasks</button>
+          </div>
+        </div>
+      )}
       {item.kind === 'promise' && (
         <div className="lp-drop">
-          {dropping ? (
-            <>
-              <button type="button" className="lp-drop-link" onClick={() => void drop('notNeeded')}>No longer needed</button>
-              <button type="button" className="lp-drop-link" onClick={() => void drop('someoneElse')}>Someone else took it</button>
-            </>
-          ) : (
-            <>
-              <button type="button" className="lp-drop-link" aria-expanded={false} onClick={() => setDropping(true)}>Drop this promise</button>
-              <span className="lp-drop-hint">No longer needed · Someone else took it</span>
-            </>
-          )}
+          <button type="button" className="lp-drop-link" onClick={() => navigate('promiseDrop', { itemId: item.id })}>Drop this promise</button>
+          {!owedToYou && <span className="lp-drop-hint">No longer needed · Someone else took it</span>}
         </div>
       )}
     </Sheet>
   );
 }
 
-export default function PromiseScreen() {
-  const [item, setItem] = useSheetItem();
+const DROP_REASONS: { id: NonNullable<MemoryItem['dropReason']>; label: string }[] = [
+  { id: 'notNeeded', label: 'No longer needed' }, { id: 'someoneElse', label: 'Someone else took it' }, { id: 'notAPromise', label: 'It was never a promise' },
+];
+
+/** "You owe Dana Ruiz · Intro with Lumen · 29 Oct" or "Sarah Chen owes you · …". */
+function dropLine(item: MemoryItem, view: MemoryView): string {
+  const person = view.people.get(counterpartId(item) ?? '');
+  const who = item.ownerId === 'me' ? (person ? `You owe ${person.name}` : 'You owe') : `${person?.name ?? 'They'} owes you`;
+  return `${who} · ${meetingLine(item.meetingId, view.meetings)}`;
+}
+
+/** V4PromiseDrop: why the promise goes; it leaves Open loops with "Dropped. Undo". */
+function DropSheet({ item, view }: { item: MemoryItem; view: MemoryView }) {
+  const { back, replace } = useRouter();
+  const [reason, setReason] = useState<NonNullable<MemoryItem['dropReason']>>('notNeeded');
+  const person = view.people.get(counterpartId(item) ?? '');
+  const drop = async () => {
+    if (!(await apply(item, { type: 'drop', reason }))) return;
+    toastOnHome('Dropped.', item);
+    replace('home');
+  };
+  return (
+    <Sheet label="Drop this promise?" onClose={back} className="lp-sheet-form">
+      <h1 className="lp-drop-title">Drop this promise?</h1>
+      <div className="lp-drop-item">
+        {person && <span aria-hidden="true" className="lp-avatar lp-drop-avatar">{initials(person.name)}</span>}
+        <span className="lp-drop-item-text"><span className="lp-drop-item-title">{item.text}</span><span className="lp-drop-item-line">{dropLine(item, view)}</span></span>
+      </div>
+      <div role="radiogroup" aria-label="Why drop it" className="lp-reasons">
+        {DROP_REASONS.map((r) => (
+          <label key={r.id} htmlFor={`lp-why-${r.id}`} className={r.id === reason ? 'lp-reason lp-reason-on' : 'lp-reason'}>
+            <input id={`lp-why-${r.id}`} name="lp-why" type="radio" value={r.id} checked={r.id === reason} onChange={() => setReason(r.id)} />{r.label}
+          </label>
+        ))}
+      </div>
+      <p className="lp-drop-note">{`Dropped promises leave Open loops.${person ? ` You can find them in ${firstName(person.name)}’s page.` : ''}`}</p>
+      <div className="lp-actions">
+        <button type="button" className="lp-danger" onClick={() => void drop()}>Drop</button>
+        <button type="button" className="lp-secondary" onClick={back}>Keep it</button>
+      </div>
+    </Sheet>
+  );
+}
+
+export function PromiseDrop() {
+  const [item] = useSheetItem();
   const [view] = useMemoryView();
   return (
     <LoopsHome tab={item ? tabOf(item) : undefined} sheet>
-      {item && view.ready && <PromiseSheet item={item} view={view} onChange={setItem} />}
+      {item && view.ready && <DropSheet item={item} view={view} />}
+    </LoopsHome>
+  );
+}
+
+export default function PromiseScreen() {
+  const [item] = useSheetItem();
+  const [view] = useMemoryView();
+  return (
+    <LoopsHome tab={item ? tabOf(item) : undefined} sheet>
+      {item && view.ready && <PromiseSheet item={item} view={view} />}
     </LoopsHome>
   );
 }
