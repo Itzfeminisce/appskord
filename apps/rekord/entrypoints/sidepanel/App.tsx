@@ -23,6 +23,8 @@ import Settings from './screens/Settings';
 import ErrorScreen from './screens/Error';
 import WhatsNew from './screens/v4/WhatsNew';
 import Backfill from './screens/v4/Backfill';
+import Review from './screens/v4/Review';
+import ReviewEdit from './screens/v4/ReviewEdit';
 import { Shell } from './components/v4/Shell';
 import Connections from './screens/Connections';
 import Share from './screens/Share';
@@ -70,6 +72,8 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   notionPage: NotionPage,
   home: Home,
   backfill: Backfill,
+  review: Review,
+  reviewEdit: ReviewEdit,
 };
 
 /** First screen: onboarding until the user has finished it, then Open loops. */
