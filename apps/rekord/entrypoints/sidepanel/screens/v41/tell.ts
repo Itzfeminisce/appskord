@@ -81,7 +81,7 @@ export function pickedOf(meeting: Pick<Meeting, 'title' | 'startedAt' | 'endedAt
 
 /** What you answered: the typed text, or the voice answer's lines (from its `atMs` to the next part). */
 export function answerText(meeting: Pick<Meeting, 'told'> | undefined, segments: readonly Segment[], questionId: string): string | undefined {
-  const answer = meeting?.told?.answers?.find((a) => a.questionId === questionId);
+  const answer = meeting?.told?.answers?.findLast((a) => a.questionId === questionId);
   if (!answer || answer.skipped) return undefined;
   if (answer.text) return answer.text;
   if (answer.atMs === undefined) return undefined;

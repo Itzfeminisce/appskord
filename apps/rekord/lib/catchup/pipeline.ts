@@ -1,5 +1,5 @@
 // After a telling: the one follow-up questions call, then the v3/v4 summary and extraction (CONTRACT "Where a catch-up differs").
-import { getMeeting, pendingChunks, putMeeting } from '../db';
+import { deleteChunk, deleteSegment, deleteTellingAudioFrom, getMeeting, listSegments, pendingChunks, putMeeting } from '../db';
 import { record } from '../ledger';
 import { chat, LLMError, type FetchLike } from '../llm';
 import { readQueue } from '../memory/backfill';
@@ -141,6 +141,18 @@ export async function reopenCatchup(meetingId: string): Promise<void> {
   if (!isCatchup(meeting)) return;
   if (await isExtracted(meetingId)) await extractAgain(meetingId);
   if (meeting?.summary) await browser.storage.local.set({ [summaryStaleKey(meetingId)]: true });
+}
+
+/** The telling as it stood before a part that is being thrown away: its length, part count and status. */
+export type ToldBefore = { ms: number; parts: number; status: Meeting['status'] };
+
+/** "Discard" (or a skipped voice answer): the meeting goes back to the telling it had before. Stop with `discard` first. */
+export async function trimTelling(meetingId: string, before: ToldBefore): Promise<void> {
+  for (const c of await pendingChunks(meetingId)) if (c.startMs >= before.ms) await deleteChunk(c.id);
+  await deleteTellingAudioFrom(meetingId, before.parts);
+  for (const s of await listSegments(meetingId)) if (s.startMs >= before.ms) await deleteSegment(s.id);
+  const m = await getMeeting(meetingId);
+  if (m?.told) await putMeeting({ ...m, status: before.status, told: { ...m.told, ms: before.ms, parts: m.told.parts.slice(0, before.parts) } });
 }
 
 /** "Skip": the question stays open. A voice or typed answer is saved by the telling itself (`questionId`). */

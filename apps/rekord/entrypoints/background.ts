@@ -231,7 +231,7 @@ export default defineBackground(() => {
           return run;
         });
       case 'recording/stop':
-        return ready.then(stopRecording);
+        return ready.then(() => stopRecording(msg));
       case 'recording/pause':
         return ready.then(() => pauseCatchup(msg.on));
       case 'catchup/typed':
@@ -339,10 +339,11 @@ async function setOffRecord(on: boolean): Promise<{ ok: boolean }> {
   return { ok: true };
 }
 
-async function stopRecording(): Promise<RecordingReply> {
+async function stopRecording(opts: StopOptions = {}): Promise<RecordingReply> {
   if (state.status === 'starting' && starting) await starting.catch(() => undefined); // stop as soon as start reaches 'recording' (or aborts)
-  if (state.status !== 'recording') return { ok: true };
-  if (state.tell) return stopCatchup();
+  // No telling left to stop (the worker restarted): the typed text still saves as its own telling.
+  if (state.status !== 'recording') return opts.typed && !opts.discard ? typeCatchup(opts.typed.catchup, opts.typed.text) : { ok: true };
+  if (state.tell) return stopCatchup(opts);
   const { meetingId, startedAt } = state;
   // An open span closes at the stop; the spans are kept on the meeting for the saved transcript.
   const offSpans = state.offRecord ? goOn(state.offRecord, Date.now(), startedAt).spans : [];
@@ -431,8 +432,14 @@ async function pauseCatchup(on: boolean): Promise<{ ok: boolean; error?: string;
   return { ok: true };
 }
 
-/** Ends a telling: its part joins the meeting, whose times stay the meeting's. No speaker names for a catch-up. */
-async function stopCatchup(): Promise<RecordingReply> {
+type StopOptions = { typed?: { catchup: CatchupStart; text: string }; discard?: true };
+
+/**
+ * Ends a telling: its part joins the meeting, whose times stay the meeting's. No speaker names for a catch-up.
+ * `typed` joins as a typed part after it, before the questions are asked; `discard` saves nothing and asks nothing
+ * (the panel trims the telling back).
+ */
+async function stopCatchup({ typed, discard }: StopOptions = {}): Promise<RecordingReply> {
   if (state.status !== 'recording' || !state.tell) return { ok: true };
   const { meetingId, tell, startedAt } = state;
   const now = Date.now();
@@ -442,15 +449,20 @@ async function stopCatchup(): Promise<RecordingReply> {
   const answer = start?.questionId ? { questionId: start.questionId, atMs: tell.offsetMs } : undefined;
   // The offscreen clock times the part, so parts never overlap; this clock is the fallback when it did not answer.
   const part = stopped?.ok ? stopped.voicePart ?? null : await fallbackPart(meetingId, tell, startedAt, now);
-  await endCatchupPart(meetingId, part, answer, stopped?.ok === true && stopped.recorded === true)
-    .catch((error) => console.error('Rekord: could not save the catch-up', error));
+  if (!discard) {
+    await endCatchupPart(meetingId, part, answer, stopped?.ok === true && stopped.recorded === true)
+      .catch((error) => console.error('Rekord: could not save the catch-up', error));
+  }
   catchup = null;
   if (drainedWhileStopping === meetingId) drainedWhileStopping = null;
   else setCloseAfterDrain(meetingId);
   setState({ status: 'idle' });
   await closeOffscreen();
+  if (discard) return { ok: true, meetingId };
+  let reply: RecordingReply = { ok: true, meetingId };
+  if (typed) reply = await saveTyped(typed.catchup, typed.text);
   afterTelling(meetingId, start);
-  return { ok: true, meetingId };
+  return reply;
 }
 
 /** The last voice part by this worker's clock: from the last start or resume, less the parts pauses already saved. */
@@ -469,10 +481,16 @@ function afterTelling(meetingId: string, start: CatchupStart | null): void {
 /** Typed or pasted text: saved as one typed part, then processed like a telling. */
 async function typeCatchup(start: CatchupStart, text: string): Promise<RecordingReply> {
   if (state.status !== 'idle') return { ok: false, error: 'Rekord is already recording.' };
+  const reply = await saveTyped(start, text);
+  if (reply.ok) afterTelling(start.meetingId, start);
+  return reply;
+}
+
+/** Saves typed text as one typed part; the caller asks the questions. */
+async function saveTyped(start: CatchupStart, text: string): Promise<RecordingReply> {
   try {
     const settings = await getSettings();
     if (!(await saveTypedPart(start, text, settings.language, Date.now(), () => crypto.randomUUID()))) return { ok: false, error: 'Nothing to save.' };
-    afterTelling(start.meetingId, start);
     return { ok: true, meetingId: start.meetingId };
   } catch (error) {
     console.error('Rekord: could not save the typed catch-up', error);

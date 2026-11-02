@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CatchupStatus, QuestionsState } from '@/lib/catchup/pipeline';
+import { trimTelling, type CatchupStatus, type QuestionsState, type ToldBefore } from '@/lib/catchup/pipeline';
 import { TELL_PORT } from '@/lib/catchup/session';
 import { getMeeting, listSegments } from '@/lib/db';
 import { mergeSegment } from '@/lib/live';
@@ -30,6 +30,7 @@ export default function FollowUps() {
   const [draft, setDraft] = useState(followUpsDev.draft ?? '');
   const [voiceFor, setVoiceFor] = useState<string | undefined>();
   const [voiceFrom, setVoiceFrom] = useState(0);
+  const voiceBefore = useRef<ToldBefore | undefined>(undefined);
   const [levels, setLevels] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const port = useRef<ReturnType<typeof browser.runtime.connect> | undefined>(undefined);
@@ -94,6 +95,8 @@ export default function FollowUps() {
   async function startVoice(id: string) {
     if (!picked || busy) return;
     setBusy(true);
+    const m = await getMeeting(meetingId).catch(() => undefined);
+    voiceBefore.current = m?.told ? { ms: m.told.ms, parts: m.told.parts.length, status: m.status } : undefined;
     const reply = await send<RecordingReply>({ type: 'recording/start', tabId: -1, catchup: { meetingId, picked, append: true, questionId: id } }).catch(() => undefined);
     setBusy(false);
     if (reply?.ok) {
@@ -105,9 +108,12 @@ export default function FollowUps() {
     } else if (reply && !reply.ok && reply.micBlocked) void openPermissionTab();
   }
 
-  async function stopVoice() {
+  /** Ends a voice answer; `discard` ("Skip") keeps none of it and the telling goes back to how it was. */
+  async function stopVoice(discard = false) {
     setBusy(true);
-    await send({ type: 'recording/stop' }).catch(() => undefined);
+    await send({ type: 'recording/stop', ...(discard && { discard: true as const }) }).catch(() => undefined);
+    if (discard && voiceBefore.current) await trimTelling(meetingId, voiceBefore.current).catch((error) => console.error('Rekord: could not discard the answer', error));
+    voiceBefore.current = undefined;
     port.current?.disconnect();
     port.current = undefined;
     setVoiceFor(undefined);
@@ -116,7 +122,7 @@ export default function FollowUps() {
   }
 
   async function skip(id: string) {
-    if (voiceFor) await stopVoice();
+    if (voiceFor) await stopVoice(true);
     const st = await send<CatchupStatus>({ type: 'catchup/skip', meetingId, questionId: id }).catch(() => undefined);
     if (st) setStatus(st);
     setReopened(undefined);

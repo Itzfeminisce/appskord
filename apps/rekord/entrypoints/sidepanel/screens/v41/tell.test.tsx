@@ -3,8 +3,9 @@ import { IDBFactory } from 'fake-indexeddb';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CatchupStatus } from '@/lib/catchup/pipeline';
-import { closeDB, getDB, getMeeting } from '@/lib/db';
-import { seedSample, V41_CATCHUP, V41_QUESTIONS, V41_SEGMENTS } from '@/lib/memory/sample';
+import { addCatchupPart, beginCatchup, closeDB, getDB, getMeeting, listSegments, putSegment } from '@/lib/db';
+import { seedSample, V41_CATCHUP, V41_EVENT, V41_QUESTIONS, V41_SEGMENTS, V41_TOLD_AT } from '@/lib/memory/sample';
+import { EVENTS_KEY } from '@/lib/reminders';
 import type { Segment } from '@/lib/types';
 import { mount, settle, waitFor } from '../../../../test/mountRouter';
 import { sidepanel } from '../../App';
@@ -99,6 +100,11 @@ describe('questions: skip and change', () => {
     const voice = { told: { ...V41_CATCHUP.told!, answers: [{ questionId: 'q1', atMs: at }] } };
     expect(answerText(voice, [...V41_SEGMENTS, line(at + 99_000, 'Not this.')], 'q1')).toBe('By Friday.');
   });
+
+  it('a question answered again shows the latest answer', () => {
+    const told = { ...V41_CATCHUP.told!, answers: [{ questionId: 'q1', text: 'By Friday.' }, { questionId: 'q1', text: 'By Monday.' }] };
+    expect(answerText({ told }, V41_SEGMENTS, 'q1')).toBe('By Monday.');
+  });
 });
 
 describe('processing', () => {
@@ -171,6 +177,64 @@ describe('telling screens', () => {
     click(button(await waitFor(() => view.host.querySelector('[role="dialog"]') ?? false), 'Discard'));
     await waitFor(() => view.router.route.screen === 'home');
     expect(await getMeeting(V41_CATCHUP.id)).toBeUndefined();
+  });
+
+  it('Stop with typed text sends it with the stop, in one call, so the questions read it too', async () => {
+    tellDev.typed = 'Priya will book the venue.';
+    await browser.storage.local.set({ [EVENTS_KEY]: { savedAt: V41_TOLD_AT, events: [], past: { [V41_EVENT.id]: V41_EVENT } } });
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((async (m: { type: string }) => (m.type === 'recording/stop' ? { ok: true } : undefined)) as never);
+    const view = await open('V41Tell');
+    await waitFor(() => view.host.textContent?.includes('Q4 planning with Northwind'));
+    click(button(view.host, 'Stop'));
+    await waitFor(() => view.router.route.screen === 'catchupQuestions');
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'recording/stop', typed: { catchup: { meetingId: V41_CATCHUP.id, picked: expect.anything(), append: true }, text: 'Priya will book the venue.' },
+    });
+    expect(vi.mocked(browser.runtime.sendMessage).mock.calls.some(([m]) => (m as unknown as { type: string }).type === 'catchup/typed')).toBe(false);
+  });
+
+  it('Discard after Add more leaves the meeting exactly as it was', async () => {
+    const f = DEV_FRAMES.V41Tell!;
+    world.now = () => f.now!;
+    await f.setup!();
+    const was = await getMeeting(V41_CATCHUP.id);
+    const segs = await listSegments(V41_CATCHUP.id);
+    const start = { meetingId: V41_CATCHUP.id, picked: pickedOf(was!)!, append: true };
+    const view = await mount(sidepanel, 'catchupTell', `/catchupTell?meeting=${V41_CATCHUP.id}`);
+    await waitFor(() => view.host.textContent?.includes('Q4 planning with Northwind'));
+    await settle();
+    // What the worker saved of the new telling: a paused part and its words.
+    await beginCatchup(start, 'en', f.now!);
+    await addCatchupPart(V41_CATCHUP.id, { at: f.now!, ms: 30_000, kind: 'voice' });
+    await putSegment({ ...line(was!.told!.ms + 1_000, 'Thrown away.'), meetingId: V41_CATCHUP.id });
+    click(view.host.querySelector('[aria-label="Back"]'));
+    click(button(await waitFor(() => view.host.querySelector('[role="dialog"]') ?? false), 'Discard'));
+    await waitFor(() => view.router.route.screen !== 'catchupTell');
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'recording/stop', discard: true });
+    expect(await getMeeting(V41_CATCHUP.id)).toEqual(was);
+    expect(await listSegments(V41_CATCHUP.id)).toEqual(segs);
+  });
+
+  it('Skip during a voice answer keeps none of it', async () => {
+    const view = await open('V41Questions');
+    const was = await getMeeting(V41_CATCHUP.id);
+    const segs = await listSegments(V41_CATCHUP.id);
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((async (m: { type: string; catchup?: Parameters<typeof beginCatchup>[0] }) => {
+      if (m.type !== 'recording/start') return undefined;
+      await beginCatchup(m.catchup!, 'en', V41_CATCHUP.told!.at);
+      await addCatchupPart(V41_CATCHUP.id, { at: V41_CATCHUP.told!.at, ms: 20_000, kind: 'voice' });
+      await putSegment({ ...line(was!.told!.ms + 1_000, 'Half an answer.'), meetingId: V41_CATCHUP.id });
+      return { ok: true, meetingId: V41_CATCHUP.id };
+    }) as never);
+    vi.spyOn(browser.runtime, 'connect').mockReturnValue({ disconnect: () => undefined } as never);
+    const card = await waitFor(() => view.host.querySelector('[aria-label="Question 3"]') ?? false);
+    click(card.querySelector('[aria-label="Answer by voice"]'));
+    await waitFor(() => view.host.querySelector('[aria-label="Stop answering by voice"]') ?? false);
+    click(button(view.host.querySelector('[aria-label="Question 3"]')!, 'Skip'));
+    await waitFor(() => vi.mocked(browser.runtime.sendMessage).mock.calls.some(([m]) => (m as unknown as { type: string }).type === 'catchup/skip'));
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'recording/stop', discard: true });
+    expect(await getMeeting(V41_CATCHUP.id)).toEqual(was);
+    expect(await listSegments(V41_CATCHUP.id)).toEqual(segs);
   });
 
   it('Change reopens an answer with Cancel; Skip sends the skip', async () => {

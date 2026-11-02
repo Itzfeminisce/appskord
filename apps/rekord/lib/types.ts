@@ -123,7 +123,7 @@ export type RecordingState =
 // runtime messages (chrome.runtime.sendMessage); all plain JSON, never Blobs
 export type Message =
   | { type: 'recording/start'; tabId: number; sources?: { mic: boolean; tab: boolean }; catchup?: CatchupStart } // side panel → background
-  | { type: 'recording/stop' }                          // side panel → background
+  | { type: 'recording/stop'; typed?: { catchup: CatchupStart; text: string }; discard?: true } // side panel → background; typed: text typed during a telling, saved after its voice part; discard: keep nothing, ask nothing
   | { type: 'recording/state'; state: RecordingState }  // background → all (also on request)
   | { type: 'recording/get-state' }
   | { type: 'offscreen/start'; streamId: string; meetingId: string; startedAt: number; sources?: { mic: boolean; tab: boolean }; catchup?: { offsetMs: number; part: number } } // background → offscreen; catchup: mic only, times are telling time after offsetMs; part: index in told.parts (audio seq base)
