@@ -12,27 +12,27 @@ import { criticStatus, LookSection } from './Settings';
 const base: S = { ...DEFAULT_SETTINGS, provider: 'openai', ai: 'cloud', models: { openai: 'gpt-4o' } } as S;
 
 function mount(s: S) {
-  const set = vi.fn(); const onImageKey = vi.fn();
+  const set = vi.fn(); const onPrivacy = vi.fn();
   const el = document.createElement('div'); document.body.append(el);
-  act(() => createRoot(el).render(<LookSection s={s} set={set} onImageKey={onImageKey} />));
-  return { el, set, onImageKey };
+  act(() => createRoot(el).render(<LookSection s={s} set={set} onPrivacy={onPrivacy} />));
+  return { el, set, onPrivacy };
 }
 const sw = (el: HTMLElement, i: number) => el.querySelectorAll<HTMLInputElement>('input[role=switch]')[i]!;
 
 describe('Look and quality', () => {
   it('saves each switch and shows On/Off', () => {
-    const { el, set, onImageKey } = mount(base);
+    const { el, set, onPrivacy } = mount(base);
     expect(el.textContent).toContain('Look and quality');
     act(() => sw(el, 0).click()); expect(set).toHaveBeenLastCalledWith({ critic: false });
     act(() => sw(el, 1).click()); expect(set).toHaveBeenLastCalledWith({ beatSync: true });
-    expect(onImageKey).not.toHaveBeenCalled();
     act(() => sw(el, 2).click()); expect(set).toHaveBeenLastCalledWith({ aiImages: true });
-    expect(onImageKey).toHaveBeenCalledOnce();
+    expect(onPrivacy).not.toHaveBeenCalled();
   });
-  it('turning AI images off does not open the key screen', () => {
-    const { el, set, onImageKey } = mount({ ...base, aiImages: true });
-    act(() => sw(el, 2).click()); expect(set).toHaveBeenLastCalledWith({ aiImages: false });
-    expect(onImageKey).not.toHaveBeenCalled();
+  it('turning AI images off saves it and the data row opens Privacy', () => {
+    const { el, set, onPrivacy } = mount({ ...base, aiImages: false });
+    act(() => sw(el, 2).click()); expect(set).toHaveBeenLastCalledWith({ aiImages: true });
+    act(() => [...el.querySelectorAll('a')].find((a) => a.textContent === 'Where your data goes')!.click());
+    expect(onPrivacy).toHaveBeenCalledOnce();
   });
   it('saves the default style and pace', () => {
     const { el, set } = mount(base);
@@ -45,6 +45,10 @@ describe('Look and quality', () => {
   it('says whether the model can see images', () => {
     expect(criticStatus(base)).toEqual({ ready: true, text: "OpenAI's model can see images · Ready" });
     expect(criticStatus({ ...base, models: { openai: 'whisper-1' } }).text).toBe("OpenAI's model can't see images. The layout check still runs.");
+    const groq = { ...DEFAULT_SETTINGS, ai: 'cloud', provider: 'groq', models: {} } as S;
+    expect(criticStatus(groq)).toEqual({ ready: true, text: "Groq's model can see images · Ready" });
+    expect(criticStatus({ ...groq, models: { groq: 'llama-3.3-70b-versatile' } }).ready).toBe(true);
+    expect(criticStatus({ ...groq, ai: 'local' }).ready).toBe(false);
     expect(criticStatus({ ...base, models: { openai: 'whisper-1' } }).ready).toBe(false);
     expect(criticStatus({ ...base, ai: 'local' }).ready).toBe(false);
   });

@@ -15,13 +15,16 @@
     "accent": "#F97316",
     "accent2": "#14B8A6"
   },
+  "label": {
+    "bg": "#0F766E",
+    "ink": "#FFFFFF"
+  },
   "background": {
     "kind": "blobs",
     "colours": [
       "#FFF7ED",
-      "#FDBA74",
-      "#5EEAD4",
-      "#CCFBF1"
+      "#FED7AA",
+      "#99F6E4"
     ],
     "drift": true
   },

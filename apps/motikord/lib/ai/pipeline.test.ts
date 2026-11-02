@@ -8,7 +8,7 @@ import { AiError } from './errors';
 import { SCENE_EXAMPLES, pickExamples } from './examples';
 import { allowedTemplates, beatMs, planStoryboard, readStoryboard, sceneCount, StoryboardFailed, type StoryboardInput } from './storyboard';
 import { fillScene, readSlots } from './fillScene';
-import { criticScenes, criticSkip, readCriticNotes } from './critic';
+import { criticModel, criticScenes, criticSkip, readCriticNotes } from './critic';
 import { regenerateScene, restyle, writeClip, type ClipInput } from './writeRecipe';
 
 const ok = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
@@ -121,6 +121,25 @@ describe('critic', () => {
     expect(criticSkip(true, groq('meta-llama/llama-4-scout-17b-16e-instruct'))).toBeUndefined();
   });
 
+  it("asks the provider's vision model when the chat model can't see images, and keeps a chat model that can", async () => {
+    const scout = 'meta-llama/llama-4-scout-17b-16e-instruct';
+    const cloud = { ai: 'cloud' as const, provider: 'groq' as const, models: {} };
+    expect(await criticModel({ ...cloud, models: { groq: 'moonshotai/kimi-k2-instruct-0905' } })).toEqual({ ai: 'cloud', provider: 'groq', model: scout });
+    expect(await criticModel({ ...cloud, models: { groq: 'meta-llama/llama-4-maverick-17b-128e-instruct' } })).toMatchObject({ model: 'meta-llama/llama-4-maverick-17b-128e-instruct' });
+    expect(await criticModel({ ...cloud, provider: 'openai', models: { openai: 'gpt-3.5-turbo' } })).toMatchObject({ model: 'gpt-3.5-turbo' });
+    const listed: FetchLike = async () => new Response(JSON.stringify({ data: [{ id: 'moonshotai/kimi-k2-instruct-0905', active: true }] }), { status: 200 });
+    expect(await criticModel(cloud, { key: 'gsk_test', fetch: listed })).toMatchObject({ model: scout });
+  });
+
+  it('writes with the chosen blind model and sends only the frames to the vision model', async () => {
+    const g = fake({ storyboard: [SB(FOUR)], fill: fillAll });
+    await writeClip(input(), g.opts, { frames: async (_r, t) => t.map(() => 'data:image/jpeg;base64,AAAA') });
+    const bodies = vi.mocked(g.fetch).mock.calls.map(([, init]) => JSON.parse(String(init?.body)) as { model: string; messages: { content: unknown }[] });
+    const critic = bodies.filter((b) => JSON.stringify(b.messages[0]!.content).includes('checking small frames'));
+    expect(critic.map((b) => b.model)).toEqual(['meta-llama/llama-4-scout-17b-16e-instruct']);
+    expect(new Set(bodies.filter((b) => !critic.includes(b)).map((b) => b.model))).toEqual(new Set(['llama-3.3-70b-versatile']));
+  });
+
   it('looks at 2 to 4 scenes and keeps notes only for scenes it saw', () => {
     const r = (n: number) => ({ scenes: Array.from({ length: n }, (_, i) => ({ id: `s${i}`, durationMs: 3000, slots: { a: 'x '.repeat(i % 3 + 1) } })) }) as unknown as Recipe;
     expect(criticScenes(r(3))).toEqual([0, 1, 2]);
@@ -140,14 +159,14 @@ describe('the v2 pipeline', () => {
     const g = fake({ storyboard: [SB(FOUR)], fill: fillAll });
     const steps: string[] = [];
     const filled: number[] = [];
-    const out = await writeClip(input(), g.opts, { onStep: (s) => steps.push(s), onFilled: (n) => filled.push(n) });
+    const out = await writeClip(input(), g.opts, { frames, onStep: (s) => steps.push(s), onFilled: (n) => filled.push(n) });
     expect(validateRecipe(out.recipe)).toEqual([]);
     expect(out.recipe).toMatchObject({ version: 2, style: 'bold', pace: 'normal' });
     expect(out.recipe.scenes.map((s) => s.template)).toEqual(['title-hook', 'big-statement', 'list', 'end-card']);
     expect(out.recipe.scenes[1]!.transition).toBeDefined();
-    expect(steps).toEqual(['plan', 'fill', 'check']);
+    expect(steps).toEqual(['plan', 'fill', 'check', 'critic']);
     expect(filled).toEqual([1, 2, 3, 4]);
-    expect(out.criticSkipped).toBe('critic-not-available');
+    expect(out.criticSkipped).toBeUndefined();
   });
 
   it('runs the critic on a vision model and remakes the scenes it flags, once', async () => {

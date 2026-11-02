@@ -171,6 +171,9 @@ function checkBackground(where: string, b: unknown, bad: (m: string) => void) {
   if (bg.angle !== undefined && !isNum(bg.angle)) bad(`${where} angle must be a number.`);
   if (bg.grain !== undefined && (!isNum(bg.grain) || bg.grain < 0 || bg.grain > 1)) bad(`${where} grain must be between 0 and 1.`);
   if (bg.drift !== undefined && !isBool(bg.drift)) bad(`${where} drift must be true or false.`);
+  if (bg.shapes !== undefined && (!isObj(bg.shapes) || !Object.values(bg.shapes).every((p) => Array.isArray(p) && p.every((pt) => Array.isArray(pt) && pt.length === 2 && pt.every(isNum))))) {
+    bad(`${where} shapes must list [x, y] points for each size.`);
+  }
 }
 
 /** Checks a style pack file (lib/templates/packs/<id>.json). An empty list means it is valid. */
@@ -187,6 +190,7 @@ export function validatePack(value: unknown): string[] {
   const pal = isObj(p.palette) ? p.palette : {};
   for (const k of ['bg', 'bg2', 'ink', 'muted', 'accent']) if (!isColour(pal[k])) bad(`${at} ${k} colour must be a hex colour.`);
   if (pal.accent2 !== undefined && !isColour(pal.accent2)) bad(`${at} accent2 colour must be a hex colour.`);
+  if (p.label !== undefined && !(isObj(p.label) && isColour(p.label.bg) && isColour(p.label.ink))) bad(`${at} label needs a hex bg and ink colour.`);
   checkBackground(`${at} background`, p.background, bad);
   if (!oneOf(FEELS, p.feel)) bad(`${at} feel must be one of ${FEELS.join(', ')}.`);
   if (!isNum(p.motionMs) || p.motionMs <= 0) bad(`${at} motion must last longer than 0 ms.`);
@@ -301,10 +305,13 @@ function checkLayer(
       if (!oneOf(['left', 'center', 'right'], l.align)) bad(`${where} align must be left, center or right.`);
       if (!isNum(l.lineHeight) || l.lineHeight <= 0) bad(`${where} line height must be more than 0.`);
       if (l.background !== undefined && !isColour(l.background)) bad(`${where} background must be a hex colour.`);
+      if (l.pill !== undefined && !isBool(l.pill)) bad(`${where} pill must be true or false.`);
       if (l.letterSpacing !== undefined && !isNum(l.letterSpacing)) bad(`${where} letter spacing must be a number.`);
       if (l.highlight !== undefined && !(isObj(l.highlight) && Number.isInteger(l.highlight.word) && (l.highlight.word as number) >= 0 && isColour(l.highlight.colour))) bad(`${where} highlight needs a word number and a hex colour.`);
       if (l.shadow !== undefined && !isBool(l.shadow)) bad(`${where} shadow must be true or false.`);
       if (l.stagger !== undefined && !oneOf(['word', 'line'], l.stagger)) bad(`${where} stagger must be word or line.`);
+      if (l.scaleAt !== undefined && !(isObj(l.scaleAt) && Object.entries(l.scaleAt).every(([k, v]) => oneOf(ASPECTS, k) && isNum(v) && v > 0))) bad(`${where} scaleAt needs a number above 0 for each size it names.`);
+      if (l.valign !== undefined && l.valign !== 'top') bad(`${where} valign must be top.`);
       break;
     case 'shape':
       if (!oneOf(['rect', 'circle', 'line'], l.shape)) bad(`${where} shape must be rect, circle or line.`);

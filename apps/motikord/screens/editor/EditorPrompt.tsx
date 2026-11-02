@@ -148,7 +148,7 @@ export function PromptBox() {
   })();
 
   return (
-    <div style={{ position: 'relative', width: '100%', maxWidth: 620, display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+    <div data-prompt-box style={{ position: 'relative', width: '100%', maxWidth: 620, display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
       {card && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(100% + 8px)', zIndex: 7 }}>{card}</div>}
       {ui.kind === 'working'
         ? <PromptWorking onStop={() => stop.current?.abort()} />

@@ -34,6 +34,7 @@ const groq = (...replies: (string | Response | Error)[]) => {
   const fetch: FetchLike = async (u, init) => own(init) ?? counted(u, init);
   return { fetch: counted, hooks: { ai: 'cloud' as const, key: KEY, fetch, settings } };
 };
+const tinyFrames = async (_r: unknown, t: number[]) => t.map(() => 'data:image/jpeg;base64,AAAA');
 const photo: Asset = { id: 'p1', kind: 'image', name: 'loaf.jpg', mime: 'image/jpeg', bytes: 5, opfsPath: 'media/p1.jpg' };
 const extra: Asset = { id: 'p2', kind: 'image', name: 'other.jpg', mime: 'image/jpeg', bytes: 5, opfsPath: 'media/p2.jpg' };
 
@@ -76,11 +77,11 @@ describe('makeClip', () => {
   it('makes a version 2 recipe in the look Auto picks, every scene templated', async () => {
     const g = groq(storyboard());
     const steps: string[] = [];
-    const r = await makeClip({ prompt: 'x', aspect: '9:16', type: 'promo', assets: [] }, { ...g.hooks, save: async () => {}, onStep: (s) => steps.push(s) });
+    const r = await makeClip({ prompt: 'x', aspect: '9:16', type: 'promo', assets: [] }, { ...g.hooks, frames: tinyFrames, save: async () => {}, onStep: (s) => steps.push(s) });
     expect(r.clip.recipe).toMatchObject({ version: 2, style: 'bold', pace: 'normal', mood: 'upbeat' });
     expect(r.clip.recipe.scenes.every((s) => s.template)).toBe(true);
-    expect(steps).toEqual(['plan', 'fill', 'check', 'open']);
-    expect(r.criticSkipped).toBe('critic-not-available');
+    expect(steps).toEqual(['plan', 'fill', 'check', 'critic', 'open']);
+    expect(r.criticSkipped).toBeUndefined();
   });
 
   const fails = async (replies: (string | Response | Error)[], s: Settings = settings) => {
@@ -309,12 +310,13 @@ describe('runner: v2 Making', () => {
   afterEach(async () => { await closeDB(); indexedDB.deleteDatabase('motikord'); });
   const two = `Plan.\n${JSON.stringify({ name: 'Bread', hook: 'Fresh', beats: [{ template: 'title-hook', line: 'Fresh sourdough' }, { template: 'big-statement', line: 'Baked before sunrise' }, { template: 'end-card', line: 'Order today' }] })}`;
 
-  it('shows the plan, fill count, fixes and skipped critic, and the look pill', async () => {
+  it("shows the plan, fill count, fixes, the critic on Groq's vision model, and the look pill", async () => {
     const g = groq(two);
-    const runner = createRunner(deps({ hooks: g.hooks }));
+    const runner = createRunner(deps({ hooks: { ...g.hooks, frames: tinyFrames } }));
     await runner.start({ prompt: 'Bread', attached: [], type: 'promo' });
+    expect(runner.get().criticSkipped).toBeUndefined();
     expect(runner.get()).toMatchObject({
-      status: 'done', step: 'open', filled: 3, total: 3, criticSkipped: 'critic-not-available', criticModel: 'openai/gpt-oss-120b',
+      status: 'done', step: 'open', filled: 3, total: 3, critic: { scenes: [0, 1, 2], frames: 3, notes: [] },
       look: { style: 'bold', pace: 'normal', mood: 'upbeat' }, paused: false,
     });
     expect(runner.get().storyboard?.beats).toHaveLength(3);

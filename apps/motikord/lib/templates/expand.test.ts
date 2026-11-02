@@ -105,3 +105,25 @@ describe('expandScene', () => {
     expect(expandScene(v1, getPack('clean')!)).toBe(v1);
   });
 });
+
+describe('title hook kicker and sizes (FormatsV2)', () => {
+  const hook = (style: string) => expandScene({ id: 's', durationMs: 3000, background: '#000000', layout: 'center', layers: [], template: 'title-hook', slots: { kicker: 'Rise Bakery', headline: 'Fresh sourdough' } }, getPack(style)!);
+  const slot = (s: Scene, id: string) => s.layers.find((l): l is TextLayer => l.type === 'text' && l.slot === id)!;
+
+  it('draws the kicker as an uppercase line at weight 600 and 0.12 em, teal in Playful', () => {
+    for (const p of STYLE_PACKS) {
+      const k = slot(hook(p.id), 'kicker');
+      expect([k.text, k.weight, k.letterSpacing]).toEqual(['RISE BAKERY', 600, 0.12]);
+    }
+    expect(slot(hook('playful'), 'kicker').colour).toBe('#0F766E');
+    expect(hook('bold').slots?.kicker).toBe('Rise Bakery');
+  });
+
+  it('gives Bold at 1:1 the full 0.35 side panel, and starts the headline at the top of its box', () => {
+    const s = hook('bold');
+    const xs = s.bg!.shapes!['1:1']!.map((p) => p[0]);
+    expect(1 - Math.min(...xs)).toBeCloseTo(0.35, 3);
+    expect(slot(s, 'headline').valign).toBe('top');
+    expect(slot(s, 'headline').scaleAt).toEqual({ '1:1': 0.68 });
+  });
+});

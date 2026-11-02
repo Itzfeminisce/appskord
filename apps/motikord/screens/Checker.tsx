@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { criticModel, criticSkip, runCritic, type CriticRun, type FrameRenderer } from '../lib/ai/critic';
 import { splitSummary } from '../lib/editor/changes';
 import { reverted, takeBack } from '../lib/editor/history';
-import { autoFixEdits, layoutText, repeatRun } from '../lib/editor/checks';
+import { autoFixEdits, layoutText, liveNotes, repeatRun, toLookAt } from '../lib/editor/checks';
 import { HOSTS, requestHost, type HostAccess } from '../lib/hostAccess';
 import { PROVIDERS } from '../lib/providers';
 import { renderFrames } from '../lib/render/frames';
@@ -87,6 +87,10 @@ export function cardText(card: Card, r: Recipe): CardText {
     case 'overflow':
       return { where, title: `${name} is too big for its box`, body: `Part of “${text}” would be cut off.`, action: 'Shrink to fit' };
     case 'contrast': {
+      const put = card.fix[0];
+      if (put?.path.endsWith('/bg')) return { where, title: `${name} runs onto the block behind it`, body: `Part of “${text}” sits on a colour it can't be read on.`, action: 'Keep it off the block' };
+      if (put?.path.endsWith('/background')) return { where, title: `${name} crosses two backgrounds`, body: `No one colour reads on both, so “${text}” needs a backing.`, action: 'Give it a backing' };
+      if (put?.path.endsWith('/shadow')) return { where, title: `${name} sits on a picture`, body: `“${text}” has nothing behind it to stand out from the photo.`, action: 'Add a shadow' };
       // The fix is the colour that reads best, so the trouble is text and background both being the other tone.
       const value = (card.fix[0] as { value?: unknown } | undefined)?.value;
       const tone = lightness(String(value ?? '#FFFFFF')) === 'light' ? 'dark' : 'light';
@@ -133,6 +137,21 @@ const AUTO_BY = 'check' as const;
 
 /** The visual critic's last run per clip, for this editor tab (the critic only runs on a make or on Check again). */
 const critics = new Map<string, CriticRun & { provider: Provider }>();
+const criticListeners = new Set<() => void>();
+const setCriticRun = (clipId: string, run: CriticRun & { provider: Provider }) => {
+  critics.set(clipId, run);
+  criticListeners.forEach((f) => f());
+};
+const onCritic = (f: () => void) => { criticListeners.add(f); return () => { criticListeners.delete(f); }; };
+/** Keeps a critic run for a clip in this tab, as Check again does. */
+export const keepCritic = setCriticRun;
+/** The count the Check badge and the panel headline share. */
+export function useLookCount(): number {
+  const { state } = useEditor();
+  const { cards } = useIssues();
+  const run = useSyncExternalStore(onCritic, () => critics.get(state.clip.id));
+  return toLookAt(cards.length, run?.notes ?? [], state.clip.recipe);
+}
 const v2Kinds: readonly Issue['kind'][] = ['overlap', 'crowding', 'empty', 'align', 'words', 'template-repeat'];
 
 export function CheckerPanel() {
@@ -158,15 +177,15 @@ export function CheckerPanel() {
     const run = critics.get(clipId);
     if (!run) return;
     const next = { ...run, notes: run.notes.filter((x) => x.sceneIndex !== si) };
-    critics.set(clipId, next);
+    setCriticRun(clipId, next);
     setCritic(next);
   };
   const fixOne = (card: Card, action: string) => edit({ ops: card.fix, summary: action }, { toast: true });
   // Critic notes still about a scene that exists; each is fixed by remaking its scene with the note as the request.
-  const notes = (critic?.notes ?? []).filter((x) => r.scenes[x.sceneIndex]);
+  const notes = liveNotes(critic?.notes ?? [], r);
   const gone = reverted(state.clip.history);
   const fixed = state.clip.history.filter((c) => c.by === AUTO_BY && !gone.has(c.id));
-  const total = cards.length + notes.length;
+  const total = toLookAt(cards.length, notes, r);
   const fixAll = () => {
     if (cards.length) edit({ ops: mergeFixes(cards), summary: `Fixed ${noun(cards.length)}` }, { toast: true });
     // Each critic scene is remade in turn, as its own Change; notes on one scene go in one request.
@@ -208,7 +227,7 @@ export function CheckerPanel() {
         const render: FrameRenderer = (rec, times) => renderFrames(rec, times, { cache });
         const run = await runCritic(current(), render, { signal: ac.signal });
         const out = { ...run, provider: model.provider };
-        critics.set(state.clip.id, out);
+        setCriticRun(state.clip.id, out);
         if (!ac.signal.aborted) setCritic(out);
       } catch (error) {
         if (!ac.signal.aborted) console.error('Motikord: could not run the visual check', error);
@@ -228,86 +247,109 @@ export function CheckerPanel() {
     }
     const v = v2Kinds.includes(card.kind) ? layoutText(card.kind, r, card.sceneId, card.layerId, card.aspects[0] ?? r.aspect, card.fix, card.note) : undefined;
     const t = v ?? cardText(card, r);
-    const size = thumbSize(card.aspects[0] ?? r.aspect, 64);
     return (
-      <div key={card.id} data-kind={card.kind} style={{ padding: 12, borderRadius: 12, border: '1px solid var(--warning-line)', background: 'var(--warning-bg)', display: 'flex', gap: 10 }}>
-        {si >= 0 && <SceneThumb recipe={r} aspect={card.aspects[0] ?? r.aspect} timeMs={restTime(r, si)} w={size.w} h={size.h} />}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flexGrow: 1 }}>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--warning-ink)' }}>{v ? where : cardText(card, r).where}</span>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{t.title}</span>
-          {t.body && <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)' }}>{t.body}</span>}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {card.fix.length > 0 && t.action && <button type="button" onClick={() => fixOne(card, t.action)} style={solid}>{t.action}</button>}
-            <button type="button" onClick={() => show(card.sceneId, card.layerId, card.aspects)} style={plain}>Show me</button>
-          </div>
-        </div>
-      </div>
+      <IssueCard key={card.id} kind={card.kind} thumb={si >= 0 ? <SceneThumb recipe={r} aspect={card.aspects[0] ?? r.aspect} timeMs={restTime(r, si)} {...thumbSize(card.aspects[0] ?? r.aspect, 64)} /> : undefined}
+        where={v ? where : cardText(card, r).where} title={t.title} body={t.body}
+        action={card.fix.length > 0 && t.action ? { label: t.action, run: () => fixOne(card, t.action) } : undefined}
+        onShow={() => show(card.sceneId, card.layerId, card.aspects)} />
     );
   };
 
   return (
-    <section role="dialog" aria-label="Quality check" data-screen="Checker" style={{ position: 'absolute', top: 64, right: 12, bottom: 12, width: 380, zIndex: 20, padding: 16, display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, boxShadow: '0 12px 32px rgba(16,16,20,0.12)', overflowY: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Quality check</h1>
-        <button type="button" className="icon-btn" aria-label="Close" onClick={() => go('Editor')} style={{ width: 32, height: 32 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-        </button>
-      </div>
-      {!v2 && cards.length === 0 && <AllGood />}
-      {!v2 && cards.length > 0 && <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>{`${noun(cards.length)} to fix before you export. Motikord checks every size after each change.`}</p>}
-      {v2 && <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>{`${noun(total)} to look at · ${fixed.length} fixed for you`}</p>}
-      {v2 && total === 0 && <AllGood />}
-      {v2 && fixed.length > 0 && (
-        <>
-          <span style={head}><span style={{ fontSize: 13, fontWeight: 600 }}>Fixed for you</span><span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)' }}>{`${fixed.length} done`}</span></span>
-          {[...fixed].reverse().map((c) => {
-            const { title, detail } = splitSummary(c.summary);
-            return (
-              <div key={c.id} style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid var(--success-line)', background: 'var(--success-bg)', display: 'flex', gap: 10, alignItems: 'center' }}>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{title}</span>
-                  {detail && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{detail}</span>}
-                </span>
-                <button type="button" onClick={() => undoFix(c.id)} style={plain}>Undo</button>
-              </div>
-            );
-          })}
-        </>
-      )}
-      {v2 && cards.length > 0 && <span style={head}><span style={{ fontSize: 13, fontWeight: 600 }}>Layout</span><span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)' }}>{`${cards.length} found`}</span></span>}
-      {cards.map(layoutCard)}
-      {v2 && critic && (
-        <>
-          <span style={head}><span style={{ fontSize: 13, fontWeight: 600 }}>{`Visual critic · ${PROVIDERS[critic.provider].label} looked at ${critic.frames} frames`}</span><span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)' }}>{`${notes.length} found`}</span></span>
-          {notes.map((x) => {
-            const scene = r.scenes[x.sceneIndex]!;
-            const size = thumbSize(r.aspect, 64);
-            return (
-              <div key={`${scene.id}-${x.problem}`} data-kind="critic" style={{ padding: 12, borderRadius: 12, border: '1px solid var(--line)', display: 'flex', gap: 10 }}>
-                <SceneThumb recipe={r} aspect={r.aspect} timeMs={restTime(r, x.sceneIndex)} w={size.w} h={size.h} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flexGrow: 1 }}>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)' }}>{`Scene ${x.sceneIndex + 1} · ${r.aspect}`}</span>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>{x.problem}</span>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" onClick={() => { remake(scene.id, x.fix, () => dropNotes(x.sceneIndex)); go('Editor'); }} style={solid}>{`Fix scene ${x.sceneIndex + 1}`}</button>
-                    <button type="button" onClick={() => show(scene.id, '', [r.aspect])} style={plain}>Show me</button>
+    <section role="dialog" aria-label="Quality check" data-screen="Checker" style={{ position: 'fixed', top: 52, right: 0, bottom: 0, width: 400, zIndex: 30, display: 'flex', flexDirection: 'column', background: '#F6F6F7', borderLeft: '1px solid var(--line)', boxShadow: '-12px 0 32px rgba(16,16,20,0.08)' }}>
+      <header style={{ flexShrink: 0, background: 'var(--surface)', borderBottom: '1px solid var(--line)', padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>Quality check</h1>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={() => go('Editor')} style={{ width: 36, height: 36, marginRight: -8, color: 'var(--muted)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+        {!v2 && cards.length > 0 && <span style={{ fontSize: 14, color: 'var(--muted)' }}>{`${noun(cards.length)} to fix before you export. Motikord checks every size after each change.`}</span>}
+        {v2 && (total > 0 || fixed.length > 0) && <span style={{ fontSize: 14, color: 'var(--muted)' }}>{`${noun(total)} to look at · ${fixed.length} fixed for you`}</span>}
+      </header>
+      <div style={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px' }}>
+        {total === 0 && fixed.length === 0 && <AllGood />}
+        {v2 && fixed.length > 0 && (
+          <>
+            <span style={head}><span style={{ fontSize: 15, fontWeight: 600 }}>Fixed for you</span><span style={{ fontSize: 12, fontWeight: 600, color: 'var(--success-ink)' }}>{`${fixed.length} done`}</span></span>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: '2px 14px' }}>
+              {[...fixed].reverse().map((c, i) => {
+                const { title, detail } = splitSummary(c.summary);
+                return (
+                  <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 0', borderTop: i ? '1px solid var(--line)' : 0 }}>
+                    <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: '50%', background: '#DCFCE7', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--success-ink)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                    </span>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{title}</span>
+                      {detail && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{detail}</span>}
+                    </span>
+                    <button type="button" onClick={() => undoFix(c.id)} style={plain}>Undo</button>
                   </div>
-                </div>
-              </div>
-            );
-          })}
-          <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--faint)' }}>
-            {`${critic.frames} small frames went to ${PROVIDERS[critic.provider].label} to check how the clip looks. You can turn the visual critic off in `}
+                );
+              })}
+            </div>
+          </>
+        )}
+        {v2 && cards.length > 0 && <span style={head}><span style={{ fontSize: 15, fontWeight: 600 }}>Layout</span><span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)' }}>{`${cards.length} found`}</span></span>}
+        {cards.map(layoutCard)}
+        {v2 && critic && (
+          <>
+            <span style={head}><span style={{ fontSize: 15, fontWeight: 600 }}>{`Visual critic · ${PROVIDERS[critic.provider].label} looked at ${critic.frames} frames`}</span><span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)', flexShrink: 0 }}>{`${notes.length} found`}</span></span>
+            {notes.map((x) => {
+              const scene = r.scenes[x.sceneIndex]!;
+              return (
+                <IssueCard key={`${scene.id}-${x.problem}`} kind="critic" thumb={<SceneThumb recipe={r} aspect={r.aspect} timeMs={restTime(r, x.sceneIndex)} {...thumbSize(r.aspect, 64)} />}
+                  where={`Scene ${x.sceneIndex + 1} · ${r.aspect}`} title={x.problem} body=""
+                  action={{ label: `Fix scene ${x.sceneIndex + 1}`, run: () => { remake(scene.id, x.fix, () => dropNotes(x.sceneIndex)); go('Editor'); } }}
+                  onShow={() => show(scene.id, '', [r.aspect])} />
+              );
+            })}
+          </>
+        )}
+        {v2 && (
+          <span style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--muted)', padding: '0 2px' }}>
+            {critic ? `${critic.frames} small frames went to ${PROVIDERS[critic.provider].label} to check how the clip looks. You can turn the visual critic off in ` : 'The layout check runs on this computer after every change. Turn the visual critic on or off in '}
             <button type="button" onClick={openSettings} style={{ padding: 0, border: 0, background: 'none', font: 'inherit', color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }}>Settings</button>.
           </span>
-        </>
+        )}
+        {!v2 && cards.length > 0 && <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>Each fix is one step you can undo.</span>}
+      </div>
+      {(total > 0 || v2) && (
+        <footer style={{ flexShrink: 0, background: 'var(--surface)', borderTop: '1px solid var(--line)', padding: '14px 16px', display: 'flex', gap: 8 }}>
+          {total > 0 && (
+            <button type="button" className="btn btn-primary" onClick={fixAll} style={{ flexGrow: 1, height: 48, borderRadius: 12, fontSize: 14, fontWeight: 600 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
+              {`Fix all ${total}`}
+            </button>
+          )}
+          {v2 && <button type="button" className="btn" disabled={checking} onClick={checkAgain} style={{ flexGrow: total > 0 ? 0 : 1, height: 48, padding: '0 16px', borderRadius: 12, border: '1px solid var(--line-strong)', background: 'var(--surface)', fontSize: 14 }}>Check again</button>}
+        </footer>
       )}
-      <div style={{ flexGrow: 1 }} />
-      {total > 0 && <button type="button" className="btn btn-primary btn-block" onClick={fixAll}>{`Fix all ${total}`}</button>}
-      {v2
-        ? <button type="button" className="btn btn-block" disabled={checking} onClick={checkAgain}>Check again</button>
-        : cards.length > 0 && <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--faint)' }}>Each fix is one step you can undo.</span>}
     </section>
+  );
+}
+
+/** One problem: a sketch of the scene, the scene and size tag, what is wrong, the fix and "Show me" (CheckerV2). */
+function IssueCard({ kind, thumb, where, title, body, action, onShow }: { kind: string; thumb?: ReactNode; where: string; title: string; body: string; action?: { label: string; run: () => void }; onShow: () => void }) {
+  return (
+    <div data-kind={kind} style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        {thumb && <span aria-hidden="true" style={{ width: 96, height: 84, flexShrink: 0, borderRadius: 10, background: '#F1F1F3', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>{thumb}</span>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+          <span style={{ alignSelf: 'flex-start', height: 20, padding: '0 7px', borderRadius: 6, background: '#F1F1F3', color: 'var(--muted)', fontFamily: 'var(--mono)', fontSize: 11, display: 'flex', alignItems: 'center' }}>{where}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.3 }}>{title}</span>
+          {body && <span style={{ fontSize: 13, lineHeight: 1.4, color: 'var(--muted)' }}>{body}</span>}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {action && <button type="button" onClick={action.run} style={{ height: 40, padding: '0 16px', border: 0, borderRadius: 10, background: 'var(--accent)', boxShadow: '0 1px 2px rgba(190,24,93,0.25)', color: '#fff', font: '600 13px/1 var(--font)', cursor: 'pointer' }}>{action.label}</button>}
+        <button type="button" onClick={onShow} style={{ height: 40, padding: '0 14px', border: '1px solid var(--line-strong)', borderRadius: 10, background: 'var(--surface)', color: 'var(--ink)', font: '500 13px/1 var(--font)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
+          Show me
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -138,8 +138,8 @@ export function ModelInput({ value, look = 'plain', yours, busy, open, onChange,
 }) {
   return (
     <div role="combobox" aria-expanded={!!open} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 10px 0 12px', borderRadius: 10, background: 'var(--surface)', boxSizing: 'border-box', ...FIELD[look] }}>
-      <input id="model" aria-label="Model" value={value} spellCheck={false} autoComplete="off" onChange={(e) => onChange?.(e.target.value)} onKeyDown={onKeyDown} onBlur={onBlur} readOnly={!onChange}
-        style={{ flexGrow: 1, border: 0, outline: 'none', font: '13px var(--mono)', color: 'var(--ink)', background: 'transparent', minWidth: 0 }} />
+      <input id="model" aria-label="Model" value={value} title={value || undefined} spellCheck={false} autoComplete="off" onChange={(e) => onChange?.(e.target.value)} onKeyDown={onKeyDown} onBlur={onBlur} readOnly={!onChange}
+        style={{ flexGrow: 1, border: 0, outline: 'none', font: '13px var(--mono)', color: 'var(--ink)', background: 'transparent', minWidth: 0, textOverflow: 'ellipsis' }} />
       {yours && <span style={tag(true)}>Your choice</span>}
       {!hideChevron && (busy
         ? <span style={{ width: 28, height: 28, display: 'grid', placeItems: 'center' }}><Spin /></span>

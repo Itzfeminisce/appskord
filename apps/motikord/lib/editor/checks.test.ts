@@ -4,7 +4,7 @@ import { applyPatch } from '../patch';
 import { expandScene } from '../templates/expand';
 import { getPack, getSceneTemplate } from '../templates/scenes';
 import type { Layer, Recipe, Scene, SlotValue, TemplateId } from '../types';
-import { autoFixEdits, fixedLine, layoutText, repeatRun } from './checks';
+import { autoFixEdits, fixedLine, layoutText, repeatRun, toLookAt } from './checks';
 import { initState, reducer } from './store';
 
 const measure = (t: string, s: number) => t.length * s * 0.5;
@@ -90,5 +90,15 @@ describe('checker v2 cards', () => {
     expect(s.clip.recipe.scenes[2]!.template).toBe('steps');
     for (let k = 0; k < edits.length; k++) s = reducer(s, { type: 'undo', at: 99 });
     expect(s.clip.recipe).toEqual(r);
+  });
+});
+
+describe('toLookAt', () => {
+  it('counts layout cards plus critic notes on scenes that still exist, as the Check badge and panel headline show', () => {
+    const r = v2([free([]), { ...free([]), id: 's2' }, { ...free([]), id: 's3' }]);
+    const note = (sceneIndex: number) => ({ sceneIndex, problem: 'p', fix: 'f' });
+    expect(toLookAt(3, [note(2)], r)).toBe(4);
+    expect(toLookAt(3, [note(2), note(5)], r)).toBe(4);
+    expect(toLookAt(0, [], r)).toBe(0);
   });
 });

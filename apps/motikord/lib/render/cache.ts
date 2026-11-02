@@ -5,7 +5,10 @@ import type { Fit } from './textFit';
 export interface VideoSource { frameAt(ms: number): CanvasImageSource | undefined; close?(): void }
 
 /** How bytes become drawable things. Injected so the cache runs in a page, a worker or a test. */
+/** The parts of a FontFaceSet the cache uses. */
+export interface FontSet { check(f: string): boolean; load?(f: string): Promise<unknown> }
 export interface Decoders {
+  fonts?: FontSet;   // the page's font faces, so bundled faces load before canvas text measures on fallbacks
   read(asset: Asset): Promise<Blob | undefined>;
   image?(blob: Blob): Promise<CanvasImageSource & { close?(): void }>;
   video?(asset: Asset, blob: Blob): Promise<VideoSource>;
@@ -82,14 +85,22 @@ export class MediaCache {
     return this.scratchCtx ?? undefined;
   }
 
-  /** True once the family is usable, so fits measured on fallback metrics are not reused. */
-  fontReady(family: string): boolean {
+  /** True once the family's face at this weight is usable, so fits measured on fallback metrics are not reused. */
+  fontReady(family: string, weight: number): boolean {
     if (this.families.has(family)) return true;
     try {
-      const fonts = (globalThis as unknown as { fonts?: { check(f: string): boolean } }).fonts;
-      return !!fonts?.check(`16px "${family.replace(/"/g, '')}"`);
+      const fonts = this.decoders?.fonts ?? (globalThis as unknown as { fonts?: FontSet }).fonts;   // a page passes its own; a worker has self.fonts
+      const name = `"${family.replace(/"/g, '')}"`;
+      if (fonts?.check(`${weight} 16px ${name}`)) return true;
+      // A bundled face loads only when asked for; canvas text never asks, so the first draw does (pages redraw on loadingdone).
+      if (fonts?.load && !this.asked.has(family)) {
+        this.asked.add(family);
+        for (const w of [400, 500, 600, 700]) fonts.load(`${w} 16px ${name}`).catch(() => undefined);
+      }
+      return false;
     } catch { return false; }
   }
+  private asked = new Set<string>();
 
   fit(key: string, make: () => Fit): Fit {
     let f = this.fits.get(key);

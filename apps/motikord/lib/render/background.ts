@@ -1,6 +1,7 @@
 import type { Background } from '../types';
 import type { MediaCache } from './cache';
 import type { Ctx } from './drawFrame';
+import { aspectOf } from '../templates/blocks';
 import { DRIFT_AMOUNT, DRIFT_MS, GRAIN_SEED, GRAIN_TILE } from './tokens';
 
 /** Hex colour with an alpha, for gradient stops that fade a colour out without darkening it. */
@@ -20,8 +21,9 @@ export function driftAt(bg: Background, localMs: number, short: number, phase = 
 }
 
 // Blob centres and radii as fractions of the canvas; fixed so every frame and machine agree.
+// ChangesV2 Playful: a peach blob off the top-right corner and a mint one off the bottom-left, on plain cream.
 const BLOBS = [
-  { x: 0.18, y: 0.2, r: 0.55 }, { x: 0.86, y: 0.42, r: 0.5 }, { x: 0.32, y: 0.88, r: 0.6 }, { x: 0.9, y: 0.95, r: 0.45 },
+  { x: 0.86, y: 0.08, r: 0.26 }, { x: 0.16, y: 0.92, r: 0.25 },
 ];
 
 /** Fills the whole canvas with a v2 scene background. `alpha` is the scene's opacity during a transition. */
@@ -43,10 +45,22 @@ export function drawBackground(ctx: Ctx, bg: Background, w: number, h: number, l
     ctx.fillRect(0, 0, w, h);
   }
   if (bg.kind === 'blobs') {
-    // Soft blobs have no detail, so they are painted once at quarter size and drawn scaled; drift moves the whole layer.
+    // Blobs are plain discs, so they are painted once at half size and drawn scaled; drift moves the whole layer.
     const layer = blobLayer(cache, colours, w, h, m);
     if (layer) ctx.drawImage(layer, -m + d.x, -m + d.y, w + m * 2, h + m * 2);
     else paintBlobs(ctx, cache, colours, w, h, 0, 0, d);
+  } else if (bg.kind === 'blocks' && bg.shapes) {
+    // The slab the template placed for this size, off every text slot; edge points reach past the edge for drift.
+    const poly = bg.shapes[aspectOf(w, h)] ?? [];
+    if (poly.length >= 3 && colours[1]) {
+      const at = (v: number, size: number, off: number) => (v <= 0 ? -m : v >= 1 ? size + m : v * size + off);
+      ctx.fillStyle = colours[1];
+      ctx.beginPath();
+      poly.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, at(x, w, d.x), at(y, h, d.y)));
+      ctx.closePath();
+      ctx.fill();
+      ringOnPanel(ctx, poly, colours[0]!, w, h, d);
+    }
   } else if (bg.kind === 'blocks') {
     // Full-bleed slabs: the first spans the lower third on a slant, the next caps the top corner.
     for (let i = 1; i < colours.length; i++) {
@@ -69,7 +83,22 @@ export function drawBackground(ctx: Ctx, bg: Background, w: number, h: number, l
   if ((bg.grain ?? 0) > 0) drawGrain(ctx, cache, bg.grain!, w, h, localMs, alpha);
 }
 
-const BLOB_SCALE = 0.25;
+// FormatsV2 1:1: a full-height side panel carries an 8 px (at 340 px) ring in the ground colour at its centre.
+function ringOnPanel(ctx: Ctx, poly: [number, number][], colour: string, w: number, h: number, d: { x: number; y: number }) {
+  if (aspectOf(w, h) !== '1:1') return;
+  const xs = poly.map((p) => p[0]);
+  const ys = poly.map((p) => p[1]);
+  const [x0, x1] = [Math.max(0, Math.min(...xs)), Math.min(1, Math.max(...xs))];
+  if (Math.min(...ys) > 0 || Math.max(...ys) < 1 || x1 - x0 < 0.25) return;
+  const short = Math.min(w, h);
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = short * (8 / 340);
+  ctx.beginPath();
+  ctx.arc(((x0 + x1) / 2) * w + d.x, h * 0.49 + d.y, short * (25 / 340), 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+const BLOB_SCALE = 0.5;
 
 function blobLayer(cache: MediaCache, colours: string[], w: number, h: number, m: number): OffscreenCanvas | undefined {
   if (typeof OffscreenCanvas === 'undefined') return undefined;
@@ -96,7 +125,8 @@ function paintBlobs(ctx: Ctx, cache: MediaCache, colours: string[], w: number, h
     const g = cache.paint(`blob|${colour}|${r}|${key}`, () => {
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
       // Stand-in contexts (tests, a headless measure pass) may return no gradient; the blob is skipped there.
-      g?.addColorStop(0, withAlpha(colour, 0.85));
+      g?.addColorStop(0, withAlpha(colour, 1));
+      g?.addColorStop(0.97, withAlpha(colour, 1));
       g?.addColorStop(1, withAlpha(colour, 0));
       return g;
     });
@@ -133,7 +163,8 @@ function drawGrain(ctx: Ctx, cache: MediaCache, amount: number, w: number, h: nu
   const ox = (step * 37) % GRAIN_TILE;
   const oy = (step * 71) % GRAIN_TILE;
   ctx.save();
-  ctx.globalAlpha = alpha * Math.min(1, amount * 2.5);
+  // Grain is drawn at pixel size, so on a thumbnail it would read as speckle: it fades out below a 540 px short side.
+  ctx.globalAlpha = alpha * Math.min(1, amount * 2.5) * Math.min(1, Math.min(w, h) / 540);
   ctx.fillStyle = pattern;
   ctx.translate(-ox, -oy);
   ctx.fillRect(ox, oy, w, h);

@@ -4,6 +4,8 @@ import { findLayer, setBox, setField, type Found } from '../../lib/editor/store'
 import { applyPatch } from '../../lib/patch';
 import { activeLayers, clipDuration, drawFrame, fontFor, sceneAt } from '../../lib/render/drawFrame';
 import { boxFor, safeBox } from '../../lib/render/reflow';
+import { sizeOn } from '../../lib/render/textFit';
+import { aspectOf } from '../../lib/templates/blocks';
 import type { Box, Layer, Recipe, Scene, TextLayer } from '../../lib/types';
 import { countLabel, layerSlotText, overflowAt, setSlot, slotCount, slotOfLayer, slotWith, type LayerSlot } from '../../lib/editor/v2';
 import { frameReady, useEditor } from './Editor';
@@ -113,7 +115,10 @@ export function Canvas() {
     // A paused preview waits on a video seek; draw again once the frame is there.
     const redraw = () => { live.current.dirty = true; };
     frameReady.addEventListener('frame', redraw);
-    return () => { cancelAnimationFrame(raf); frameReady.removeEventListener('frame', redraw); };
+    // Text drawn before its face loaded used fallback metrics; draw again once it is in.
+    const fonts = globalThis.document?.fonts;
+    fonts?.addEventListener('loadingdone', redraw);
+    return () => { cancelAnimationFrame(raf); frameReady.removeEventListener('frame', redraw); fonts?.removeEventListener('loadingdone', redraw); };
   }, [cache, playhead]);
 
   const { W, H } = size;
@@ -182,7 +187,7 @@ export function Canvas() {
   const safe = safeBox(r.aspect);
 
   return (
-    <div ref={wrap} style={{ flex: 1, minHeight: 0, width: '100%', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+    <div ref={wrap} style={{ flex: 1, minHeight: 0, width: '100%', display: 'grid', placeItems: 'center var(--stage-justify, center)', overflow: 'hidden' }}>
       <div style={{ position: 'relative', width: W, height: H, boxShadow: '0 6px 20px rgba(16,16,20,0.12)', background: 'var(--surface)' }}>
         <canvas ref={canvas} aria-label={r.name} style={{ display: 'block', width: W, height: H }} />
         <div
@@ -231,7 +236,7 @@ function TextEditor({ found, box, W, H, onText, onDone, value, overflow }: { fou
   useEffect(() => { const el = ref.current; if (el) { el.focus(); el.select(); } }, []);
   const text = value ?? l.text;
   const shared: CSSProperties = {
-    ...place(box, W, H), margin: 0, padding: l.background ? 16 * unit : 0, border: 0, overflow: 'hidden', font: fontFor(l, l.sizePx * unit),
+    ...place(box, W, H), margin: 0, padding: l.background ? 16 * unit : 0, border: 0, overflow: 'hidden', font: fontFor(l, sizeOn(l, aspectOf(W, H)) * unit),
     lineHeight: l.lineHeight, textAlign: l.align, whiteSpace: 'pre-wrap', overflowWrap: 'break-word',
   };
   return (

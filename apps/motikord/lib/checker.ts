@@ -1,11 +1,12 @@
-import type { Aspect, Box, BrandKit, Issue, Layer, LicenceId, PatchOp, Recipe, Scene, SlotDef, SlotValue, TemplateId, TextLayer } from './types';
+import type { Aspect, Background, Box, BrandKit, Issue, Layer, LicenceId, PatchOp, Recipe, Scene, SlotDef, SlotValue, TemplateId, TextLayer } from './types';
 import { applyPatch } from './patch';
 import { cutWords, expandScene } from './templates/expand';
 import { getPack, getSceneTemplate, insideSafeArea, isBackgroundBox, SAFE_AREA, STYLE_PACKS } from './templates/scenes';
 import { ASPECTS } from './recipe/validate';
 import { getPreset } from './render/presets';
 import { boxFor, canvasSize, clampToSafe, insideSafe, isFullBleed, safeBox } from './render/reflow';
-import { fitText, type Measure } from './render/textFit';
+import { estimateFor, fitText, sizeOn, type Measure } from './render/textFit';
+import { polyHitsBox, type Poly } from './templates/blocks';
 
 const ATTRIBUTION: readonly LicenceId[] = ['cc-by', 'cc-by-sa', 'cc-by-nc'];
 const MIN_MOTION_MS = 200;
@@ -24,14 +25,18 @@ const layerPath = (si: number, li: number) => `/scenes/${si}/layers/${li}`;
 
 /** Every problem in the recipe on every size, each with a patch that fixes it. Pure. */
 export function check(recipe: Recipe, opts: CheckOptions = {}): Issue[] {
-  const measure = opts.measure ?? estimateMeasure;
   const issues: Issue[] = [];
   recipe.scenes.forEach((scene, si) => {
     scene.layers.forEach((layer, li) => {
       const at = { recipe, scene, layer, si, li };
-      if (layer.type === 'text') { overflow(at, measure, issues); tooSmall(at, measure, issues); }
+      if (layer.type === 'text') {
+        // Without a real measure, the layer's own face sets the glyph width, so a long word in a wide face is not under-measured.
+        const m = opts.measure ?? estimateFor(layer.font, layer.letterSpacing);
+        overflow(at, m, issues);
+        tooSmall(at, m, issues);
+      }
       for (const aspect of ASPECTS) safeArea(at, aspect, issues);
-      if (layer.type === 'text') contrast(at, issues);
+      if (layer.type === 'text') contrast(at, opts, issues);
       tooFast(at, issues);
       credit(at, issues);
     });
@@ -50,16 +55,16 @@ interface At { recipe: Recipe; scene: Scene; layer: Layer; si: number; li: numbe
 
 function overflow({ recipe, scene, layer, si, li }: At, measure: Measure, out: Issue[]) {
   const l = layer as TextLayer;
-  const pad = l.background ? 32 : 0;
+  const pad = l.background && !l.pill ? 32 : 0;
   const fits = ASPECTS.map((aspect) => {
     const b = boxFor(l, aspect, recipe.aspect, scene.layout);
     const { w, h } = canvasSize(aspect, 1080);
-    return { aspect, fit: fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize: l.sizePx, lineHeight: l.lineHeight, measure }) };
+    return { aspect, fit: fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize: sizeOn(l, aspect), lineHeight: l.lineHeight, measure }) };
   });
-  const bad = fits.filter(({ fit }) => !fit.fits || fit.sizePx < Math.floor(l.sizePx));
+  const bad = fits.filter(({ aspect, fit }) => !fit.fits || fit.sizePx < Math.floor(sizeOn(l, aspect)));
   if (!bad.length) return;
   // One size for every aspect: the smallest fit, so no fix undoes another.
-  const sizePx = Math.min(...fits.map(({ fit }) => fit.sizePx));
+  const sizePx = Math.min(...fits.map(({ aspect, fit }) => fit.sizePx / (l.scaleAt?.[aspect] ?? 1)));
   for (const { aspect } of bad) {
     out.push({
       id: id('overflow', scene.id, l.id, aspect), sceneId: scene.id, layerId: l.id, aspect, kind: 'overflow',
@@ -74,14 +79,16 @@ function tooSmall({ recipe, scene, layer, si, li }: At, measure: Measure, out: I
   const fitAt = (aspect: Aspect, maxSize: number) => {
     const b = boxFor(l, aspect, recipe.aspect, scene.layout);
     const { w, h } = canvasSize(aspect, 1080);
-    const pad = l.background ? 32 : 0;
+    const pad = l.background && !l.pill ? 32 : 0;
     return fitText({ text: l.text, width: b.w * w - pad, height: b.h * h - pad, maxSize, lineHeight: l.lineHeight, measure });
   };
-  if (l.sizePx >= MIN_TEXT_PX && fitAt('9:16', l.sizePx).sizePx >= MIN_TEXT_PX) return;
-  if (!ASPECTS.every((aspect) => fitAt(aspect, MIN_TEXT_PX).sizePx >= MIN_TEXT_PX)) return;
+  const on = sizeOn(l, '9:16');
+  if (on >= MIN_TEXT_PX && fitAt('9:16', on).sizePx >= MIN_TEXT_PX) return;
+  const raised = MIN_TEXT_PX / (l.scaleAt?.['9:16'] ?? 1);
+  if (!ASPECTS.every((aspect) => fitAt(aspect, sizeOn({ ...l, sizePx: raised }, aspect)).sizePx >= Math.floor(sizeOn({ ...l, sizePx: raised }, aspect)))) return;
   out.push({
     id: id('too-small', scene.id, l.id, '9:16'), sceneId: scene.id, layerId: l.id, aspect: '9:16', kind: 'too-small',
-    fix: [{ op: 'replace', path: `${layerPath(si, li)}/sizePx`, value: MIN_TEXT_PX }],
+    fix: [{ op: 'replace', path: `${layerPath(si, li)}/sizePx`, value: raised }],
   });
 }
 
@@ -168,37 +175,106 @@ function over(fill: string, alpha: number, base: Rgb | undefined): Rgb | undefin
 const contains = (o: Box, i: Box) => o.x <= i.x && o.y <= i.y && o.x + o.w >= i.x + i.w && o.y + o.h >= i.y + i.h;
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** The solid colour behind layer li (below its own fill), or undefined when a picture or nothing solid is behind it. */
-function under(recipe: Recipe, scene: Scene, li: number): Rgb | undefined {
+/** What is behind a layer on one size: the solid colours it may sit on, or a picture; undefined when the checker cannot tell. */
+interface Behind { colours: Rgb[]; picture: boolean }
+
+/** What is behind layer li (below its own fill) on `aspect`: layers first, then the scene background where the box sits. */
+function behind(recipe: Recipe, scene: Scene, li: number, aspect: Aspect): Behind | undefined {
   const l = scene.layers[li]!;
-  const box = boxFor(l, recipe.aspect, recipe.aspect, scene.layout);
+  const box = boxFor(l, aspect, recipe.aspect, scene.layout);
   for (let k = li - 1; k >= 0; k--) {
     const below = scene.layers[k]!;
-    const bb = boxFor(below, recipe.aspect, recipe.aspect, scene.layout);
+    const bb = boxFor(below, aspect, recipe.aspect, scene.layout);
     if (below.startMs >= l.endMs || below.endMs <= l.startMs || !overlaps(bb, box)) continue;
-    if (below.type === 'shape' && below.shape === 'rect' && contains(bb, box)) return over(below.fill, below.opacity, under(recipe, scene, k));
-    // A picture, chart or partly covering shape: the checker cannot tell the colour behind.
+    if (below.type === 'image' || below.type === 'video') return { colours: [], picture: true };
+    if (below.type === 'shape' && below.shape === 'rect' && contains(bb, box)) {
+      const base = behind(recipe, scene, k, aspect);
+      if (base?.picture) return below.opacity >= 1 && (parseRgba(below.fill)?.[3] ?? 0) >= 1 ? { colours: [over(below.fill, 1, undefined)!], picture: false } : base;
+      const cs = (base?.colours.length ? base.colours : [undefined]).map((c) => over(below.fill, below.opacity, c)).filter((c): c is Rgb => !!c);
+      return cs.length ? { colours: cs, picture: false } : undefined;
+    }
+    // A chart or a partly covering shape: the checker cannot tell the colour behind.
     return undefined;
   }
-  return scene.background === 'transparent' ? undefined : over(scene.background, 1, undefined);
+  const colours = scene.bg ? backgroundUnder(scene.bg, box, aspect) : scene.background === 'transparent' ? [] : [over(scene.background, 1, undefined)];
+  const solid = colours.filter((c): c is Rgb => !!c);
+  return solid.length ? { colours: solid, picture: false } : undefined;
 }
 
-function contrast({ recipe, scene, layer, si, li }: At, out: Issue[]) {
+// Blob spots and the slabs of a blocks background drawn before shapes were planned (lib/render/background).
+const BLOB_SPOTS = [{ x: 0.18, y: 0.2, r: 0.55 }, { x: 0.86, y: 0.42, r: 0.5 }, { x: 0.32, y: 0.88, r: 0.6 }, { x: 0.9, y: 0.95, r: 0.45 }];
+const OLD_BLOCKS: Poly[] = [[[0, 0.7], [1, 0.6], [1, 1], [0, 1]], [[0.62, 0], [1, 0], [1, 0.18]]];
+
+/** Every colour of a scene background that shows inside `box` on `aspect`. */
+function backgroundUnder(bg: Background, box: Box, aspect: Aspect): (Rgb | undefined)[] {
+  const cs = bg.colours.length ? bg.colours : ['#000000'];
+  const first = over(cs[0]!, 1, undefined);
+  if (bg.kind === 'gradient' || bg.kind === 'grain') return cs.map((c) => over(c, 1, undefined));
+  if (bg.kind === 'blobs') {
+    const { w, h } = canvasSize(aspect, 1080);
+    const long = Math.max(w, h);
+    const near = cs.slice(1).filter((_, i) => {
+      const s = BLOB_SPOTS[i % BLOB_SPOTS.length]!;
+      const cx = Math.max(box.x, Math.min(s.x, box.x + box.w)) * w - s.x * w;
+      const cy = Math.max(box.y, Math.min(s.y, box.y + box.h)) * h - s.y * h;
+      return Math.hypot(cx, cy) < s.r * long * 0.6;   // past 60% of the radius a blob has faded out
+    });
+    return [first, ...near.map((c) => over(c, 0.85, first))];
+  }
+  if (bg.kind === 'blocks') {
+    const shapes: Poly[] = bg.shapes ? [bg.shapes[aspect] ?? []] : OLD_BLOCKS;
+    const hit = shapes.map((p, i) => (cs[i + 1] && polyHitsBox(p, box) ? over(cs[i + 1]!, 1, undefined) : undefined)).filter(Boolean);
+    return [first, ...hit];
+  }
+  return [first];
+}
+
+const worst = (ink: Rgb, colours: Rgb[]) => Math.min(...colours.map((c) => ratioOf(ink, c)));
+
+/** A plate the ink reads on: the base colour, else near-black or near-white, else a near-black plate with near-white ink. */
+function plate(l: TextLayer, path: string, base: string, need: number): PatchOp[] {
+  const reads = (p: string) => { const ink = over(l.colour, l.opacity, parseHex(p)); return !!ink && ratioOf(ink, parseHex(p)!) >= need; };
+  const fill = [base, DARK, LIGHT].find(reads);
+  if (fill) return [{ op: 'add', path: `${path}/background`, value: fill }];
+  return [{ op: 'add', path: `${path}/background`, value: DARK }, { op: 'replace', path: `${path}/colour`, value: LIGHT }];
+}
+
+function contrast({ recipe, scene, layer, si, li }: At, opts: CheckOptions, out: Issue[]) {
   const l = layer as TextLayer;
-  const base = under(recipe, scene, li);
-  const bgRgb = l.background ? over(l.background, 1, base) : base;
-  if (!bgRgb) return;
-  const bg = toHex(bgRgb);
-  const ink = over(l.colour, l.opacity, bgRgb);
-  if (!ink) return;
-  const ratio = ratioOf(ink, bgRgb);
-  const large = l.role === 'title' || l.sizePx >= 48;
-  if (ratio >= (large ? 3 : 4.5)) return;
-  const colour = (contrastRatio(LIGHT, bg) ?? 0) >= (contrastRatio(DARK, bg) ?? 0) ? LIGHT : DARK;
-  out.push({
-    id: id('contrast', scene.id, l.id, recipe.aspect), sceneId: scene.id, layerId: l.id, aspect: recipe.aspect, kind: 'contrast',
-    fix: [{ op: 'replace', path: `${layerPath(si, li)}/colour`, value: colour }],
-  });
+  const path = layerPath(si, li);
+  // The clip's own size first, so one issue names the size the user is looking at.
+  for (const aspect of [recipe.aspect, ...ASPECTS.filter((a) => a !== recipe.aspect)]) {
+    const under = behind(recipe, scene, li, aspect);
+    if (!under) continue;
+    const push = (fix: PatchOp[], note: string) => out.push({ id: id('contrast', scene.id, l.id, aspect), sceneId: scene.id, layerId: l.id, aspect, kind: 'contrast', fix, note });
+    const n = si + 1;
+    const name = (l.name || 'Text').toLowerCase();
+    if (under.picture && !l.background) {
+      if (l.shadow) continue;   // white text with a shadow on a photo is the template's treatment; the visual critic judges the photo
+      push([{ op: 'add', path: `${path}/shadow`, value: true }], `Scene ${n} ${name} sits on a picture with nothing behind it`);
+      return;
+    }
+    const colours = l.background ? [over(l.background, 1, under.colours[0])!].filter(Boolean) : under.colours;
+    if (!colours.length) continue;
+    const ink = over(l.colour, l.opacity, colours[0]);
+    if (!ink) continue;
+    const large = l.role === 'title' || l.sizePx >= 48;
+    const need = large ? 3 : 4.5;
+    if (worst(ink, colours) >= need) continue;
+    // Split across two backgrounds that no one colour reads on: lay the template out again, else give it a plate.
+    const pick = [LIGHT, DARK].map((c) => ({ c, r: worst(parseHex(c)!, colours) })).sort((a, b) => b.r - a.r)[0]!;
+    if (colours.length > 1 && pick.r < need) {
+      // One relayout fixes every layer of the scene, so the scene gets one issue for it.
+      if (out.some((i) => i.kind === 'contrast' && i.sceneId === scene.id && i.fix[0]?.path === `/scenes/${si}/bg`)) return;
+      const again = scene.template ? reexpand(recipe, scene, opts) : undefined;
+      const relaid = again?.bg && JSON.stringify(again.bg) !== JSON.stringify(scene.bg);
+      push(relaid ? [{ op: 'replace', path: `/scenes/${si}/bg`, value: again!.bg }, ...ASPECTS.flatMap((a) => templateBoxes(recipe, scene, si, a, opts))] : plate(l, path, toHex(colours[0]!), need),
+        `Scene ${n} ${name} runs onto a block it can't be read on`);
+    } else {
+      push([{ op: 'replace', path: `${path}/colour`, value: pick.c }], `Scene ${n} ${name} is hard to read on its background`);
+    }
+    return;
+  }
 }
 
 /** Time to read text once: a short base plus a quarter second a word. */
@@ -386,8 +462,8 @@ function layout(recipe: Recipe, scene: Scene, si: number, opts: CheckOptions, ou
 function inkArea(v: Vis, aspect: Aspect, measure: Measure): number {
   const l = v.layer as TextLayer;
   const { w, h } = canvasSize(aspect, 1080);
-  const pad = l.background ? 32 : 0;
-  const fit = fitText({ text: l.text, width: v.box.w * w - pad, height: v.box.h * h - pad, maxSize: l.sizePx, lineHeight: l.lineHeight, measure });
+  const pad = l.background && !l.pill ? 32 : 0;
+  const fit = fitText({ text: l.text, width: v.box.w * w - pad, height: v.box.h * h - pad, maxSize: sizeOn(l, aspect), lineHeight: l.lineHeight, measure });
   const widest = Math.max(0, ...fit.lines.map((line) => measure(line, fit.sizePx)));
   return Math.min(area(v.box), (widest * fit.lines.length * fit.sizePx * l.lineHeight) / (w * h));
 }

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { stateFor } from '../lib/ai/errors';
 import { reasonFor } from './MakingFailed';
 import { penvKeysLine } from './Settings';
-import SettingsModel, { checkProblemFor, listOnOpen, modelCheckProblemLine, ModelOptions, seconds } from './SettingsModel';
+import SettingsModel, { checkProblemFor, listOnOpen, modelCheckProblemLine, ModelInput, ModelOptions, seconds } from './SettingsModel';
 
 describe('SettingsModel', () => {
   const html = renderToStaticMarkup(<SettingsModel />).replace(/&quot;/g, '"');
@@ -20,6 +20,12 @@ describe('SettingsModel', () => {
       'Chrome picks its own built-in model. There’s nothing to choose.',
     ]) expect(html).toContain(text);
   });
+  it('shows a long model name whole in its tooltip when the field cuts it', () => {
+    const html = renderToStaticMarkup(<ModelInput value="meta-llama/llama-4-scout-17b-16e-instruct" />);
+    expect(html).toContain('title="meta-llama/llama-4-scout-17b-16e-instruct"');
+    expect(html).toContain('text-overflow:ellipsis');
+  });
+
   it('drops the old warning states', () => {
     expect(html).not.toContain('Couldn’t load');
     expect(html).not.toContain('Loading OpenAI’s models');
@@ -53,8 +59,13 @@ describe('the live list on open', () => {
 
 describe('Settings Penv Cloud row', () => {
   it('names the chosen provider first, then the other keys and Pexels', () => {
-    expect(penvKeysLine('openai', { OPENAI_API_KEY: 'sk-test', GROQ_API_KEY: 'gsk_test' })).toBe('OpenAI, Groq and Pexels keys');
-    expect(penvKeysLine('groq', {})).toBe('Groq and Pexels keys');
+    expect(penvKeysLine('openai', { GROQ_API_KEY: 'gsk_test', OPENAI_API_KEY: 'sk-test', PEXELS_API_KEY: 'px-test' }, true)).toBe('OpenAI, Groq and Pexels keys');
+    expect(penvKeysLine('groq', { GROQ_API_KEY: 'gsk_test' }, true)).toBe('Groq key');
+  });
+  it('claims no keys it does not have: a fresh profile is not connected', () => {
+    expect(penvKeysLine('groq', {}, false)).toBe('Not connected');
+    expect(penvKeysLine('groq', { GROQ_API_KEY: 'gsk_test' }, false)).toBe('Not connected');
+    expect(penvKeysLine('groq', {}, true)).toBe('No keys yet');
   });
 });
 

@@ -5,7 +5,7 @@ import { getPack } from '../templates/scenes';
 import type { Clip, Recipe, Scene, SlotValue, TemplateId } from '../types';
 import { initState, reducer, type EditorState, type Edit } from './store';
 import {
-  isV1Clip, nearestTemplate, newLook, noOtherFit, originalOf, overflowAt, pourSlots, remakeEdit, setSlot, setTransition, slotCount, swapGroups,
+  devSampleV2, isV1Clip, nearestTemplate, newLook, noOtherFit, originalOf, overflowAt, pourSlots, remakeEdit, setSlot, setTransition, slotCount, swapGroups,
   swapTemplate, transitionGroups, transitionLabel,
 } from './v2';
 import { getSceneTemplate } from '../templates/scenes';
@@ -89,6 +89,23 @@ describe('swap template', () => {
     expect(next.template).toBe('stat-reveal');
     expect(out.shortened).toBe(true);
     expect(next.original).toBeDefined();
+  });
+
+  it('counts a template as a fit when the joined words stay within its limit, so swap-no-fit is not shown', () => {
+    const hook = scene('h', 'title-hook', { kicker: 'New release', headline: 'Meet the faster way to ship' });
+    expect(swapGroups(hook).fits).toContain('big-statement');
+    expect(noOtherFit(hook)).toBe(false);
+    expect(pourSlots(hook, 'big-statement', true)).toEqual({ statement: 'New release. Meet the faster way to ship' });
+    const stat = scene('s', 'stat-reveal', { number: '1,200', label: 'loaves a week', source: 'Since 2019' });
+    expect(swapGroups(stat).fits).toContain('big-statement');
+  });
+
+  it('puts templates that need words the scene lacks under other templates', () => {
+    const title = devSampleV2('d').scenes[0]!;
+    const { fits, others } = swapGroups(title);
+    expect(fits).toEqual(expect.arrayContaining(['title-hook', 'big-statement']));
+    expect(others).toEqual(expect.arrayContaining(['stat-reveal', 'chart', 'steps']));
+    expect(fits.filter((id) => others.includes(id))).toEqual([]);
   });
 
   it('reports swap-no-fit when only the current template fits', () => {

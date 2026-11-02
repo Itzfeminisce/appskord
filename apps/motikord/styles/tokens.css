@@ -6,6 +6,10 @@
   --accent-press: #831843;
   --tint: #FDF2F8;
   --tint-strong: #FCE7F3;
+  --tint-line: #FBCFE8;
+  --line-soft: #EFEFF1;
+  --line-input: #E0E0E4;
+  --fill: #F7F7F8;
   --stage: #EDEDF0;
   --warning-bg: #FFFBEB;
   --warning-line: #FDE68A;
@@ -35,6 +39,8 @@ a:hover { color: var(--accent-hover); }
   font: 500 14px/1 var(--font); cursor: pointer; user-select: none;
   transition: background-color 120ms, border-color 120ms, color 120ms, transform 80ms;
 }
+/* An icon beside the label sits on the label's centre line, not its baseline. */
+.btn-with-icon .btn-label { display: inline-flex; align-items: center; gap: 8px; }
 .btn:focus-visible, .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn:active:not(:disabled):not(.is-busy) { transform: scale(0.97); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -47,6 +53,11 @@ a:hover { color: var(--accent-hover); }
 .btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line); }
 .btn-secondary:hover:not(:disabled):not(.is-busy) { border-color: var(--line-strong); background: #FAFAFB; }
 .btn-secondary:active:not(:disabled):not(.is-busy) { background: var(--stage); }
+.btn-tall { height: 48px; border-radius: 12px; font-weight: 600; }
+.btn-tall.btn-secondary { border-color: var(--line-input); }
+.btn-tint { background: var(--tint); color: var(--accent-hover); border-color: var(--tint-line); }
+.btn-tint:hover:not(:disabled):not(.is-busy) { background: var(--tint-strong); }
+.btn-tint:active:not(:disabled):not(.is-busy) { background: var(--tint-line); }
 .btn-ghost { background: transparent; color: var(--muted); }
 .btn-ghost:hover:not(:disabled):not(.is-busy) { color: var(--ink); background: #ECECEF; }
 .btn-ghost:active:not(:disabled):not(.is-busy) { background: #E2E2E6; }
@@ -92,3 +103,6 @@ a:hover { color: var(--accent-hover); }
   background: var(--surface); font: 11px/1 var(--mono); opacity: 0.85;
 }
 .dev-switcher select { font: inherit; }
+
+.beat-card:focus-within { border-color: var(--accent) !important; }
+.beat-card input:focus { border-color: var(--accent) !important; }

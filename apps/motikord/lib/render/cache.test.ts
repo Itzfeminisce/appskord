@@ -57,8 +57,16 @@ describe('MediaCache', () => {
 
   it('reports a font family ready only after it loads', async () => {
     const cache = new MediaCache(decoders());
-    expect(cache.fontReady('f')).toBe(false);
+    expect(cache.fontReady('f', 400)).toBe(false);
     await cache.load(recipe([asset('f', 'font')]));
-    expect(cache.fontReady('f')).toBe(true);
+    expect(cache.fontReady('f', 400)).toBe(true);
+  });
+  it('reports a bundled face ready per weight, not per family', () => {
+    const loaded = new Set(['400 16px "Geist"']);
+    const cache = new MediaCache({ ...decoders(), fonts: { check: (f) => loaded.has(f), load: async () => undefined } });
+    expect(cache.fontReady('Geist', 400)).toBe(true);
+    expect(cache.fontReady('Geist', 700)).toBe(false);
+    loaded.add('700 16px "Geist"');
+    expect(cache.fontReady('Geist', 700)).toBe(true);
   });
 });

@@ -31,6 +31,7 @@ export function reasonFor(failure: MakeState, provider: Provider, model: string)
 
 /** Failures that keep their own card, with its action first and "Try again" second. */
 const OWN_CARD: MakeState[] = ['key-needed', 'penv-disconnected', 'provider-access'];
+const V2_STEPS = ['plan', 'fill', 'check', 'critic', 'open'] as const;
 
 /** Every failure while making lands here: what was kept, the step that failed and why, and "Try again". */
 export default function MakingFailed() {
@@ -40,8 +41,10 @@ export default function MakingFailed() {
   const provider = settings?.provider ?? 'groq';
   const failure: MakeState = run.status === 'failed' && run.failure ? run.failure : 'making-failed';
   const model = settings?.models[provider] ?? FALLBACK_MODEL[provider];
-  const failedAt = Math.min(run.steps, 3);
-  const scenes = run.recipe?.scenes.length;
+  const scenes = run.recipe?.scenes.length ?? run.storyboard?.beats.length;
+  // v2 runs report the step under way; v1 runs count finished steps.
+  const failedAt = run.step ? V2_STEPS.indexOf(run.step) : Math.min(run.steps, 3);
+  const title = run.storyboard?.name || run.storyboard?.hook || draft.get().prompt.split(/\s+/).slice(0, 4).join(' ');
 
   // Same prompt, picks, type and size. Chrome only asks for the host inside the click, before anything is awaited.
   const again = () => {
@@ -51,7 +54,13 @@ export default function MakingFailed() {
   };
   const changePrompt = () => { runner.reset(); replace('Home'); };
 
-  const labels: ReactNode[] = [
+  const labels: ReactNode[] = run.step ? [
+    'Planning the story',
+    scenes ? `Filling ${scenes} scene${scenes === 1 ? '' : 's'}` : 'Filling scenes',
+    'Checking the layout',
+    'Looking at a few frames',
+    'Opening the editor',
+  ] : [
     <>Clip type{run.type ? <>: <strong style={{ fontWeight: 600 }}>{TYPE_NAMES[run.type]}</strong></> : null}</>,
     scenes ? `Writing ${scenes} scene${scenes === 1 ? '' : 's'}` : 'Writing scenes',
     'Choosing motion and layout',
@@ -75,8 +84,13 @@ export default function MakingFailed() {
       </div>
 
       <div style={{ margin: '20px auto 0', width: 132, height: 234, borderRadius: 14, background: '#F4F4F5', position: 'relative', overflow: 'hidden', opacity: 0.7 }}>
-        {run.recipe && <RecipeThumb recipe={run.recipe} height={234} />}
-        <span style={{ position: 'absolute', left: 0, bottom: 0, height: 4, width: `${Math.max(failedAt, 1) / 4 * 100}%`, background: '#DC2626' }} />
+        {run.recipe ? <RecipeThumb recipe={run.recipe} height={234} /> : (
+          <>
+            <span style={{ position: 'absolute', left: 12, right: 12, top: 30, height: 90, borderRadius: 10, background: '#E4E4E7' }} />
+            {title && <span style={{ position: 'absolute', left: 12, right: 12, top: 136, fontSize: 17, fontWeight: 700, lineHeight: 1.05, color: '#A1A1AA' }}>{title}</span>}
+          </>
+        )}
+        <span style={{ position: 'absolute', left: 0, bottom: 0, height: 4, width: `${Math.max(failedAt + 0.5, 1) / labels.length * 100}%`, background: '#DC2626' }} />
       </div>
 
       {card && <div style={{ margin: '16px 16px 0' }}>{card}</div>}
@@ -100,7 +114,7 @@ export default function MakingFailed() {
         <button type="button" onClick={again} style={own ? outlined : { ...big, border: 0, background: 'var(--accent)', color: '#fff' }}>{retry}Try again</button>
         {(failure === 'model-not-found' || failure === 'model-not-for-text') && <button type="button" onClick={() => navigate('Settings')} style={outlined}>Change model</button>}
         <button type="button" onClick={changePrompt} style={outlined}>Change the prompt</button>
-        <button type="button" onClick={() => navigate('Templates')} style={{ border: 0, background: 'none', font: '500 13px var(--font)', color: 'var(--accent)', cursor: 'pointer' }}>Start from a template instead</button>
+        <button type="button" onClick={() => navigate('Templates')} style={{ height: 32, border: 0, background: 'none', font: '500 13px var(--font)', color: 'var(--accent)', cursor: 'pointer' }}>Start from a template instead</button>
       </div>
     </main>
   );

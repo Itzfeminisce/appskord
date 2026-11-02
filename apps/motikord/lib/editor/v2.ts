@@ -1,6 +1,6 @@
 import { restyle } from '../ai/writeRecipe';
 import { cutWords, expandScene } from '../templates/expand';
-import { paceMs } from '../templates/pick';
+import { paceMs, transitionFor } from '../templates/pick';
 import { autoStyle, getPack, getSceneTemplate, SCENE_TEMPLATES, STYLE_PACKS } from '../templates/scenes';
 import type {
   BrandKit, Layer, Pace, PatchOp, Recipe, Scene, SceneTemplate, SlotDef, SlotValue, StyleId, StylePack, TemplateId, TextLayer,
@@ -87,8 +87,8 @@ function wordsOf(scene: Scene, src: SceneTemplate): Words {
 }
 
 /**
- * The scene's words poured into another template's slots. `strict` returns undefined unless every word fits whole;
- * otherwise leftover text joins the last text slot and lists are trimmed, for expandScene to shorten.
+ * The scene's words poured into another template's slots. Leftover text joins the last text slot. `strict` returns
+ * undefined unless every word fits whole; otherwise lists are trimmed and long text is left for expandScene to shorten.
  */
 export function pourSlots(scene: Scene, to: TemplateId, strict: boolean): Record<string, SlotValue> | undefined {
   // A free-layer scene is read as its nearest template first, so its words still move.
@@ -130,10 +130,12 @@ export function pourSlots(scene: Scene, to: TemplateId, strict: boolean): Record
       out[d.id] = p;
     }
   }
-  if (strict && (texts.length || lists.length || pics.length || chart)) return undefined;
-  if (!strict && texts.length) {
+  if (strict && (lists.length || pics.length || chart)) return undefined;
+  // Leftover text joins the last filled text slot; strict still fits when the joined text is within its limit.
+  if (texts.length) {
     const last = [...textDefs].reverse().find((d) => typeof out[d.id] === 'string');
-    if (last) out[last.id] = [out[last.id] as string, ...texts].join(' ');
+    if (!last) return strict ? undefined : out;
+    out[last.id] = [out[last.id] as string, ...texts].reduce((a, b) => (/[.!?:;,–—]$/.test(a) || /^\p{Ll}/u.test(b) ? `${a} ${b}` : `${a}. ${b}`));
   }
   if (strict) for (const d of textDefs) if (slotCount(d, out[d.id]).over) return undefined;
   return out;
@@ -308,4 +310,26 @@ export function slotWith(scene: Scene, ls: LayerSlot, text: string): SlotValue {
   const list = Array.isArray(v) ? (v as unknown[]).map(String) : [];
   list[ls.item] = text;
   return list;
+}
+
+// ---- Dev sample ----
+
+const SAMPLE: [TemplateId, Scene['slots']][] = [
+  ['title-hook', { kicker: 'Rise Bakery', headline: 'Fresh sourdough' }],
+  ['hero', { headline: 'Baked at 5am', line: 'Crackling crust and a soft, open crumb' }],
+  ['stat-reveal', { number: '1,200', label: 'loaves a week', source: 'Since 2019' }],
+  ['steps', { title: 'How we bake', steps: ['Mix the dough', 'Rest for a day', 'Bake at dawn'] }],
+  ['list', { title: 'In the case today', items: ['Classic', 'Rye', 'Seeded', 'Olive'] }],
+  ['quote', { quote: '“Best bread in town, every single morning.”', name: 'Ada Obi', role: 'Regular since 2020' }],
+  ['end-card', { cta: 'Open 7 to 3', handle: 'rise.bakery' }],
+];
+
+/** Dev only: the frames' bakery clip as a v2 recipe (seven templates, Bold, 16:9). */
+export function devSampleV2(id: string): Recipe {
+  const pack = getPack('bold')!;
+  const r: Recipe = { version: 2, id, name: 'Fresh sourdough', type: 'promo', aspect: '16:9', assets: {}, style: 'bold', pace: 'normal', mood: 'upbeat', scenes: [] };
+  r.scenes = SAMPLE.map(([template, slots], i) => expandScene({ id: `s${i + 1}`, durationMs: 3000, background: pack.palette.bg, layout: 'center', layers: [], template, slots }, pack));
+  // Each cut after the first comes in with the pack's transitions in turn, as a made clip does.
+  r.scenes.forEach((s, i) => { if (i) s.transition = transitionFor(pack, i, r.pace); });
+  return r;
 }

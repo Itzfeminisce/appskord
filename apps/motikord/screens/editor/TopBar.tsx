@@ -5,7 +5,7 @@ import { ASPECTS } from '../../lib/recipe/validate';
 import { goInSidePanel, useWindowId } from '../../lib/sidepanelGo';
 import { getPack } from '../../lib/templates/scenes';
 import { useEditor } from './Editor';
-import { useIssues } from '../Checker';
+import { useLookCount } from '../Checker';
 import { SaveStatusLine } from './StatesEditor';
 
 const linkStyle = {
@@ -25,7 +25,8 @@ export function TopBar() {
   // Your clips live in the side panel; it opens inside the click.
   const win = useWindowId();
   const shown = focused ? name : r.name;
-  const count = useIssues().cards.length;
+  const count = useLookCount();
+  const pack = r.style ? getPack(r.style) : undefined;
   const dot = brand?.colours.find((c) => c.role === 'primary')?.hex ?? brand?.colours[0]?.hex;
 
   const commitName = (v: string) => {
@@ -68,14 +69,19 @@ export function TopBar() {
         })}
       </div>
       <button type="button" style={linkStyle} onClick={() => go('Formats')}>All sizes</button>
-      <button type="button" style={linkStyle} onClick={() => openPanel({ kind: 'look' })} aria-label={r.style ? `Look · ${getPack(r.style)?.name ?? r.style}` : 'Look'}>
-        Look{r.style && <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{getPack(r.style)?.name ?? r.style}</span>}
+      <button type="button" title="New look, same words" style={{ ...linkStyle, padding: '0 10px 0 8px', gap: 7, fontWeight: 400 }} onClick={() => openPanel({ kind: 'look' })} aria-label={pack ? `Look · ${pack.name}` : 'Look'}>
+        {pack && (
+          <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 5, background: pack.palette.bg, border: '1px solid rgba(16,16,20,0.08)', display: 'grid', placeItems: 'center' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: pack.palette.accent }} />
+          </span>
+        )}
+        <span style={{ color: 'var(--muted)' }}>Look</span>{pack && <span style={{ fontWeight: 600 }}>{pack.name}</span>}
       </button>
       <button type="button" style={linkStyle} onClick={() => go('BrandKit')}>
-        {dot && <span style={{ width: 12, height: 12, borderRadius: '50%', background: dot }} />}Brand
+        <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', background: dot ?? 'transparent', border: dot ? 0 : '1.5px dashed var(--line-strong)' }} />Brand
       </button>
       <button type="button" data-slot="check-count" style={linkStyle} onClick={() => go('Checker')}>
-        Check{count > 0 && <span aria-label={`${count} to fix`} style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, background: 'var(--accent)', color: '#fff', font: '600 11px/18px var(--font)', textAlign: 'center' }}>{count}</span>}
+        Check{count > 0 && <span aria-label={`${count} to fix`} style={{ minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: '#FEF3C7', color: '#92400E', font: '600 11px/18px var(--font)', textAlign: 'center' }}>{count}</span>}
       </button>
       <button type="button" className="btn btn-primary" onClick={() => go('Export')} style={{ height: 36, padding: '0 16px', borderRadius: 9, fontSize: 13, fontWeight: 600, gap: 6 }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14" /></svg>Export

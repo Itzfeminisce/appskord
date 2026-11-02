@@ -1,4 +1,4 @@
-import { PROVIDERS as API_PROVIDERS, type ProviderKeyName } from '@appskord/llm';
+import { canSeeImages, PROVIDERS as API_PROVIDERS, type ProviderKeyName } from '@appskord/llm';
 import type { Provider } from './types';
 
 /** What each cloud AI provider is called and where its keys come from. Strings are FRAMES.md "AI provider and model". */
@@ -35,6 +35,16 @@ export const SUGGESTED_MODELS: Record<Provider, { models: string[]; faster: stri
   anthropic: { models: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1'], faster: 'claude-haiku-4-5' },
   openrouter: { models: ['anthropic/claude-sonnet-4.5', 'openai/gpt-4.1', 'openai/gpt-4.1-mini'], faster: 'openai/gpt-4.1-mini' },
 };
+
+/** A model of the provider that can see images, for the visual critic when the chat model can't; absent = keep the chat model. */
+export const VISION_MODEL: Partial<Record<Provider, string>> = {
+  groq: 'meta-llama/llama-4-scout-17b-16e-instruct',
+};
+
+/** The model the critic asks for `chat`: the chat model when it can see images, else the provider's vision model, else the blind chat model. */
+export function criticModelFor(provider: Provider, chat: string): string {
+  return canSeeImages(provider, chat) ? chat : (VISION_MODEL[provider] ?? chat);
+}
 
 /** "a Groq key", "an OpenAI key". */
 export const withArticle = (name: string) => `${/^[AEIOU]/i.test(name) ? 'an' : 'a'} ${name}`;

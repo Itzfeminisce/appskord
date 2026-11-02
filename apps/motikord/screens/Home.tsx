@@ -20,6 +20,8 @@ import { useVoice } from '../lib/voice/useVoice';
 import { MIC_PATHS, VoiceFooter, VoiceStateCard } from './StatesVoice';
 import { HomeListening, VOICE_MAKE_HINT } from './VoicePrompt';
 import { lookLine } from './LookSheet';
+import { PackSwatch } from './makeParts';
+import { autoStyle } from '../lib/templates/scenes';
 import { updateSettings } from '../lib/settings';
 
 const ASPECTS: Aspect[] = ['9:16', '1:1', '16:9'];
@@ -93,6 +95,7 @@ export default function Home({ preview }: { preview?: { settled: string; interim
   const aspect = d.aspect ?? settings?.defaultAspect ?? '9:16';
   const forced = d.type ?? settings?.defaultType;
   const type = forced ?? guessType(d.prompt);
+  const look = d.look ?? settings?.look ?? { style: 'auto', pace: 'normal', mood: 'upbeat' };
   const ready = canMake(d) && !listening;
   const templates = STRIP.map(getTemplate).filter((t) => t !== undefined);
 
@@ -143,17 +146,26 @@ export default function Home({ preview }: { preview?: { settled: string; interim
       )}
 
       {settings && !settings.lookCardSeen && (
-        <div style={{ margin: '12px 16px 0', padding: 14, borderRadius: 16, background: 'var(--tint)', border: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexGrow: 1 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent-hover)' }}>New</span>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>Clips now look designed</span>
-            <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>Pick a style, pace and music mood, or let Motikord choose.</span>
-            <button type="button" style={{ ...link, alignSelf: 'flex-start', marginTop: 4 }} onClick={() => navigate('LookSheet')}>Choose the look</button>
+        <section aria-label="New in Motikord" style={{ margin: '14px 16px 0', padding: '14px 14px 14px 16px', borderRadius: 16, background: 'var(--tint)', border: '1px solid var(--tint-strong)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div aria-hidden="true" style={{ display: 'flex', gap: 4, flexShrink: 0, paddingTop: 2 }}>
+            <span style={{ width: 14, height: 26, borderRadius: 3, background: '#0A0A0A', display: 'flex', alignItems: 'flex-end', overflow: 'hidden' }}><span style={{ width: '100%', height: 8, background: '#FACC15' }} /></span>
+            <span style={{ width: 14, height: 26, borderRadius: 3, background: '#FFF7ED', border: '1px solid #FED7AA', display: 'grid', placeItems: 'center' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F97316' }} /></span>
+            <span style={{ width: 14, height: 26, borderRadius: 3, background: '#0F2A4A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ width: 8, height: 2, background: '#38BDF8' }} /></span>
           </div>
-          <IconButton aria-label="Dismiss" onClick={() => { updateSettings({ lookCardSeen: true }).catch((error: unknown) => console.error('Motikord: could not save settings', error)); }} style={{ width: 32, height: 32 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexGrow: 1 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: 'var(--accent)', padding: '2px 7px', borderRadius: 999 }}>New</span>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>Clips now look designed</span>
+            </span>
+            <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>Pick a style, pace and music mood, or let Motikord choose.</span>
+            <button type="button" onClick={() => navigate('LookSheet')} style={{ marginTop: 8, alignSelf: 'flex-start', height: 36, padding: '0 12px 0 14px', gap: 6, borderRadius: 10, background: 'var(--surface)', border: '1px solid #F9A8D4', boxShadow: '0 1px 2px rgba(190,24,93,0.08)', color: 'var(--accent-hover)', font: '600 13px var(--font)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+              Choose the look<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </button>
+          </div>
+          <button type="button" aria-label="Dismiss" onClick={() => { updateSettings({ lookCardSeen: true }).catch((error: unknown) => console.error('Motikord: could not save settings', error)); }} style={{ width: 36, height: 36, margin: '-8px -8px 0 0', border: 0, borderRadius: 8, background: 'transparent', color: 'var(--muted)', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </IconButton>
-        </div>
+          </button>
+        </section>
       )}
 
       {listening ? (
@@ -206,9 +218,10 @@ export default function Home({ preview }: { preview?: { settled: string; interim
           {!forced && d.prompt.trim() !== '' && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent-hover)', background: 'var(--tint-strong)', padding: '2px 8px', borderRadius: 999 }}>Detected</span>}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
         </button>
-        <button type="button" onClick={() => navigate('LookSheet')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', border: 0, borderBottom: '1px solid #EFEFF1', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
-          <span style={{ fontSize: 13 }}>Look</span>
-          <span style={{ fontSize: 13, fontWeight: 600, flexGrow: 1, textAlign: 'right' }}>{lookLine(d.look ?? settings?.look ?? { style: 'auto', pace: 'normal', mood: 'upbeat' })}</span>
+        <button type="button" aria-label={`Look: ${lookLine(look).replaceAll(' · ', ', ')}. Change the look`} onClick={() => navigate('LookSheet')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', border: 0, borderBottom: '1px solid #EFEFF1', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+          <span style={{ fontSize: 13, flexGrow: 1 }}>Look</span>
+          <PackSwatch style={look.style === 'auto' ? autoStyle(type) : look.style} w={14} h={22} />
+          <span style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>{lookLine(look)}</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #EFEFF1' }}>
@@ -231,7 +244,7 @@ export default function Home({ preview }: { preview?: { settled: string; interim
       <span style={{ margin: '6px 20px 0', fontSize: 12, color: 'var(--faint)' }}>Every clip comes in all three sizes. This is the one you see first.</span>
 
       <div style={{ padding: '14px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <Button block disabled={!ready} aria-disabled={!ready} onClick={make} style={{ height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}>
+        <Button block className="btn-with-icon" disabled={!ready} aria-disabled={!ready} onClick={make} style={{ height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>Make clip
         </Button>
         {listening
@@ -263,6 +276,7 @@ export default function Home({ preview }: { preview?: { settled: string; interim
                 <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.recipe.name}</span>
                 <span style={{ fontSize: 12, color: 'var(--muted)' }}>{TYPE_NAMES[c.recipe.type]} · {formatLength(c.recipe.scenes.reduce((s, x) => s + x.durationMs, 0))} · {when(c.updatedAt)}</span>
               </span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: 4, flexShrink: 0 }}><path d="M9 6l6 6-6 6" /></svg>
             </button>
           ))}
         </div>

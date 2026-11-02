@@ -36,7 +36,7 @@ function plan(layout: string, recipe: Recipe): Plan {
 /** Text height as a fraction of the canvas, at the layer's own size. */
 function textHeight(l: TextLayer, width: number, recipe: Recipe, measure: Measure): number {
   const { w, h } = canvasSize(recipe.aspect, 1080);
-  const pad = l.background ? 32 : 0;
+  const pad = l.background && !l.pill ? 32 : 0;
   const lines = wrap(l.text, width * w - pad, l.sizePx, measure).length;
   return (lines * l.sizePx * l.lineHeight + pad) * SLACK / h;
 }
