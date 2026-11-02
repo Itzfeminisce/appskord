@@ -18,7 +18,7 @@ Build the store zip with `pnpm zip:store`; it leaves `key` out of the manifest, 
   - Use Groq, OpenAI, Anthropic, OpenRouter, Deepgram or your own Ollama, with keys from Penv Cloud (https://penv.cloud) or your own.
   - Open source.
 - **Category:** Productivity. **Language:** English.
-- **Privacy policy URL:** the public URL of `docs/privacy.md`.
+- **Privacy policy URL:** https://github.com/Itzfeminisce/appskord/blob/main/apps/rekord/docs/privacy.md
 
 ## Single purpose
 Record meetings and turn them into a transcript, summary and action items.
@@ -34,10 +34,24 @@ Record meetings and turn them into a transcript, summary and action items.
 - Remote code: none is loaded.
 - Data use: disclose audio and transcript text, sent only to the services the user turns on; none sold; none used for unrelated purposes.
 
-## Assets to prepare
-- Icons: `public/icon/` (16, 32, 48, 128).
-- Screenshots 1280x800, at least one: start, live transcript, ask all meetings, share.
-- Small promo tile 440x280.
+## Store assets
+All in `store/` (not `public/`, which would ship inside the extension). 24-bit PNG, no alpha.
+- **Icon:** `public/icon/128.png`.
+- **Global promo video:** leave blank.
+- **Screenshots (1280x800), upload in this order:**
+  1. `store/screenshot-1.png`: Record any meeting.
+  2. `store/screenshot-2.png`: A live transcript as people talk.
+  3. `store/screenshot-3.png`: Ask all your meetings.
+  4. `store/screenshot-4.png`: Share in one click.
+- **Small promo tile (440x280):** `store/small-promo-tile.png`.
+- **Marquee promo tile (1400x560):** `store/marquee-promo-tile.png`.
+
+## Additional fields
+- **Official URL:** None (no site of ours is verified in Search Console).
+- **Homepage URL:** https://github.com/Itzfeminisce/appskord/tree/main/apps/rekord
+- **Support URL:** https://github.com/Itzfeminisce/appskord/issues
+- **Mature content:** No.
+- **Item support:** On.
 
 ## Release steps
 - Bump `version` in `apps/rekord/package.json`, merge to `main`, then tag from `main`: `git tag rekord@x.y.z && git push origin rekord@x.y.z`.
