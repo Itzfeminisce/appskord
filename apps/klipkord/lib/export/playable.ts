@@ -72,6 +72,7 @@ const read = (store: VideoStore, id: string, s: Source) => store.read(id, s.file
 // recording removes the last one's copy.
 let cached: { id: string; blob: Promise<Blob>; free(): Promise<void> } | null = null;
 let seq = 0;
+let hooked = false;
 
 /** The recording as one playable file: v1/v2's own 'video'; a v3 recording's screen with its voice. */
 export function readPlayable(rec: Pick<Recording, 'id' | 'mime' | 'v3'>, store: VideoStore = videoStore, files: Store = browserStore): Promise<Blob> {
@@ -79,13 +80,21 @@ export function readPlayable(rec: Pick<Recording, 'id' | 'mime' | 'v3'>, store: 
   if (cached?.id === rec.id) return cached.blob;
   void cached?.free();
   let made: { name: string; release(): void } | null = null;
+  let freed = false;
   const free = async () => {
+    freed = true;
     if (made) await drop(files, DIR, made.name, made.release);
   };
   const out = async (ext: string) => {
+    if (freed) throw new Error('Klipkord: the recording moved on');
     await sweep(files, DIR);
+    if (freed) throw new Error('Klipkord: the recording moved on');
     const name = stamped(files, ++seq, `${rec.id}.${ext}`);
     made = { name, release: await hold(files, DIR, name) };
+    if (freed) {
+      await drop(files, DIR, made.name, made.release);
+      throw new Error('Klipkord: the recording moved on');
+    }
     return (await folder(files, DIR)).getFileHandle(name, { create: true });
   };
   const blob = (async () => {
@@ -97,13 +106,19 @@ export function readPlayable(rec: Pick<Recording, 'id' | 'mime' | 'v3'>, store: 
     const screenBlob = await read(store, rec.id, screen);
     const soundBlob = sound ? await read(store, rec.id, sound) : null;
     try {
-      return await remux({ blob: screenBlob, offset: screen.offset }, soundBlob?.size ? { blob: soundBlob, offset: sound!.offset } : null, out);
+      const joined = await remux({ blob: screenBlob, offset: screen.offset }, soundBlob?.size ? { blob: soundBlob, offset: sound!.offset } : null, out);
+      if (freed) await free();
+      return joined;
     } catch (error) {
       console.error('Klipkord: could not join the screen and voice', error);
       await free();
       return screenBlob;
     }
   })();
+  if (!hooked && typeof addEventListener === 'function') {
+    hooked = true;
+    addEventListener('pagehide', () => { void cached?.free(); });
+  }
   cached = { id: rec.id, blob, free };
   blob.catch(() => { if (cached?.blob === blob) cached = null; });
   return blob;

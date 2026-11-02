@@ -26,7 +26,7 @@ export const folder = async (store: Store, dir: string): Promise<FileSystemDirec
   (await store.root()).getDirectoryHandle(dir, { create: true });
 
 /** "1730505600000-3-Invite your team.mp4": the time lets a sweep without Web Locks tell its age. */
-export const stamped = (store: Store, seq: number, name: string): string => `${store.now()}-${seq}-${name}`;
+export const stamped = (store: Store, seq: number, name: string): string => `${store.now()}-${seq}-${Math.random().toString(36).slice(2, 6)}-${name}`;
 
 /** Takes this tab's lock on `dir/name`; resolves once it is held, with the function that lets it go. */
 export async function hold(store: Store, dir: string, name: string): Promise<() => void> {

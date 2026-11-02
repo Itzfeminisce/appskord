@@ -140,10 +140,17 @@ async function audioWriter(target: Target) {
 
 async function runVideo(id: number, job: VideoJob): Promise<void> {
   const { canvas, renderer } = setup(job);
-  await loadFont();
   const length = cutLength(job.cut);
   const total = frameCount(length, job.fps);
-  const { stream, handle } = await open(job.target);
+  let opened: Awaited<ReturnType<typeof open>>;
+  try {
+    await loadFont();
+    opened = await open(job.target);
+  } catch (error) {
+    renderer.dispose();
+    throw error;
+  }
+  const { stream, handle } = opened;
   let writer: Writer | null = null;
   let m4a: Awaited<ReturnType<typeof audioWriter>> | null = null;
   try {
@@ -216,13 +223,13 @@ function readback(canvas: OffscreenCanvas): { scratch: OffscreenCanvas; ctx: Off
 
 async function runGif(id: number, job: GifJob): Promise<void> {
   const { canvas, renderer } = setup(job);
-  await loadFont();
   const length = cutLength(job.cut);
   const list = [...frameSchedule(job.cut, length, job.fps, job.from, job.to)];
   // GIF delays are whole hundredths of a second; each frame ends where its time rounds to, so the total stays exact.
   const delay = (i: number) => (Math.round((100 * (i + 1)) / job.fps) - Math.round((100 * i) / job.fps)) * 10;
   const gif = GIFEncoder();
   try {
+    await loadFont();
     for (const [i, f] of list.entries()) {
       check(id);
       await renderer.render(renderPlan(job.project, job.cut, f.out, job.events, job.captions), job.cut.shape);
@@ -244,8 +251,8 @@ async function runGif(id: number, job: GifJob): Promise<void> {
 
 async function runStill(id: number, job: StillJob): Promise<void> {
   const { canvas, renderer } = setup(job);
-  await loadFont();
   try {
+    await loadFont();
     await renderer.render(renderPlan(job.project, job.cut, job.out, job.events, job.captions), job.cut.shape);
     check(id);
     const { scratch, ctx } = readback(canvas);

@@ -244,19 +244,27 @@ async function runExport(p: SlotProps, plan: ExportPlan, dir: FileSystemDirector
       return null;
     });
   const main = await target(dir, plan.name);
-  // A cut with no sound gets no M4A.
-  const audioOnly = plan.audioOnly && audio ? await target(dir, sibling(plan.name, 'm4a')) : null;
-  const job: Job = {
-    kind: 'video', project, cut, captions: plan.burn ? captionsOf(recording, project) : undefined, events: media.events,
-    sources: renderSources(project, media.blobs), width: plan.width, height: plan.height, fps: plan.fps, container: plan.container,
-    bitrate: plan.bitrate, hardware: plan.hardware, audio: !!audio, target: main.target, audioOnly: audioOnly?.target,
-  };
-  const started = performance.now();
-  const r = runJob(job, {
-    worker: exportDeps.worker(), audio: audio?.chunks,
-    onProgress: (done, total) => { if (state.running) setExport({ running: { ...state.running, done, total } }); },
-  });
-  setExport({ running: { title: plan.title, done: 0, total: 1, lengthMs: plan.lengthMs, started, cancel: r.cancel } });
+  let audioOnly: Out | null = null;
+  let r!: ReturnType<typeof runJob>;
+  try {
+    // A cut with no sound gets no M4A.
+    audioOnly = plan.audioOnly && audio ? await target(dir, sibling(plan.name, 'm4a')) : null;
+    const job: Job = {
+      kind: 'video', project, cut, captions: plan.burn ? captionsOf(recording, project) : undefined, events: media.events,
+      sources: renderSources(project, media.blobs), width: plan.width, height: plan.height, fps: plan.fps, container: plan.container,
+      bitrate: plan.bitrate, hardware: plan.hardware, audio: !!audio, target: main.target, audioOnly: audioOnly?.target,
+    };
+    const started = performance.now();
+    r = runJob(job, {
+      worker: exportDeps.worker(), audio: audio?.chunks,
+      onProgress: (done, total) => { if (state.running) setExport({ running: { ...state.running, done, total } }); },
+    });
+    setExport({ running: { title: plan.title, done: 0, total: 1, lengthMs: plan.lengthMs, started, cancel: r.cancel } });
+  } catch (error) {
+    audio?.dispose();
+    await Promise.all([main.discard(), audioOnly?.discard()]);
+    throw error;
+  }
   let result: Awaited<typeof r.done> = null;
   try {
     result = await r.done;
@@ -303,11 +311,17 @@ export function startGif(p: SlotProps, plan: GifPlan, dir: FileSystemDirectoryHa
     const cut = renderCut(p.cut, {});
     const media = await exportDeps.loadMedia(p.project);
     const main = await target(dir, plan.name);
-    const r = runJob({
+    let r!: ReturnType<typeof runJob>;
+    try {
+    r = runJob({
       kind: 'gif', project: p.project, cut, captions: captionsOf(p.recording, p.project), events: media.events, sources: renderSources(p.project, media.blobs),
       width: plan.width, height: plan.height, fps: plan.fps, from: plan.from, to: plan.to, target: main.target,
     }, { worker: exportDeps.worker(), onProgress: (done, total) => { if (state.running) setExport({ running: { ...state.running, done, total } }); } });
     setExport({ running: { title: plan.title, done: 0, total: 1, lengthMs: plan.to - plan.from, started: performance.now(), cancel: r.cancel } });
+    } catch (error) {
+      await main.discard();
+      throw error;
+    }
     let result: Awaited<typeof r.done> = null;
     try {
       result = await r.done;

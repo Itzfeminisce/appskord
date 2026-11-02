@@ -24,6 +24,11 @@ function fakeStore(names: string[], withLocks: boolean, now = 10 * 86_400_000) {
 }
 
 describe('kept files', () => {
+  it('gives two names stamped in the same millisecond different names', () => {
+    const { store } = fakeStore([], false);
+    expect(stamped(store, 1, 'a.mp4')).not.toBe(stamped(store, 1, 'a.mp4'));
+  });
+
   it('sweeps only files no tab holds', async () => {
     const { store, files } = fakeStore([], true);
     const mine = stamped(store, 1, 'a.mp4');
