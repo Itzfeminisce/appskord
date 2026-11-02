@@ -85,10 +85,14 @@ export function buildRows(project: Project, cut: Cut, clipSpans: readonly Span[]
     rows.push({ key: 'voiceover', name: 'Voiceover', tracks: ['voiceovers'], mute: true, hint: { text: HINTS.voiceover, add: 'voiceover' },
       blocks: layerBlocks(clipSpans, view, cut.voiceovers.map((v) => ({ id: v.id, at: v.at, end: placedEnd(v), label: '' })), 'voiceovers', 'voiceover', false) });
   }
-  // AddMedia: each added file sits on its own track, named after the file.
+  // AddMedia: each added file sits on its own track, "Media" or "Sound" then "Media 2"; the file name is on the block.
+  const counts = { Media: 0, Sound: 0 };
   for (const m of cut.media) {
+    const source = project.sources.find((x) => x.id === m.source);
+    const base = source && !source.video && source.audio ? 'Sound' : 'Media';
+    const n = ++counts[base];
     const name = sourceName(project, m.source);
-    rows.push({ key: 'media', name, tracks: ['media'], mute: true, hint: { text: HINTS.media, add: 'media' },
+    rows.push({ key: 'media', name: n === 1 ? base : `${base} ${n}`, tracks: ['media'], mute: true, hint: { text: HINTS.media, add: 'media' },
       blocks: layerBlocks(clipSpans, view, [{ id: m.id, at: m.at, end: placedEnd(m), label: name }], 'media', 'media', false) });
   }
   rows.push({
@@ -125,4 +129,16 @@ export function itemsOf(cut: Cut, kind: SelectKind): { id: string }[] {
     case 'music': return cut.audio.music ? [{ id: cut.audio.music.source }] : [];
     case 'chapters': return [];
   }
+}
+
+const SELECTED_NOUNS: Partial<Record<string, [string, string]>> = {
+  clip: ['clip', 'clips'], zoom: ['zoom', 'zooms'], text: ['text', 'texts'], card: ['card', 'cards'], blur: ['blur', 'blurs'],
+};
+
+/** Multi-select header: "3 clips selected", "2 blurs selected"; a mix, or blocks without a name, is "{n} items selected". */
+export function selectedHeader(kinds: readonly string[]): string {
+  const n = kinds.length;
+  const nouns = kinds.every((k) => k === kinds[0]) ? SELECTED_NOUNS[kinds[0] ?? ''] : undefined;
+  const [one, many] = nouns ?? ['item', 'items'];
+  return `${n} ${n === 1 ? one : many} selected`;
 }

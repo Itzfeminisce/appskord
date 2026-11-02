@@ -1,8 +1,13 @@
 import RenderWorker from '@/lib/render/render.worker?worker';
+import { deleteRecording, getRecording, putRecording } from '@/lib/db';
 import { send } from '@/lib/messages';
+import { duplicateProject } from '@/lib/project/duplicate';
+import { newId } from '@/lib/project/ops';
+import { flushProjects, putProject } from '@/lib/project/store';
 import { videoStore } from '@/lib/videoStore';
 import type { EditorDeps } from './deps';
 import { loadMedia } from './media';
+import { openEditor } from './open';
 import { workerPreview } from './preview';
 import { joinSession } from './session';
 
@@ -43,5 +48,15 @@ export function browserDeps(): EditorDeps {
     },
     closeTab: () => window.close(),
     putFile: (id, name, file) => videoStore.put(id, name, file),
+    openEditor(recordingId) {
+      openEditor(recordingId).catch((error) => console.error('Klipkord: could not open the editor', error));
+    },
+    duplicateProject: (project) => duplicateProject(project, {
+      getRecording, putRecording, deleteRecording,
+      copyFiles: (from, to) => videoStore.copy(from, to),
+      removeFiles: (id) => videoStore.remove(id),
+      saveProject: async (copy) => { const saved = putProject(copy); await flushProjects(); await saved; },
+      newId,
+    }),
   };
 }

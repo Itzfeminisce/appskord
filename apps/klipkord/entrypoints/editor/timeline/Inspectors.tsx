@@ -11,8 +11,8 @@ import { ChaptersEdit } from '../dialogs/ChaptersEdit';
 import { deleteSelected } from './actions';
 import { chaptersInCut } from './chapters';
 import { Btn, Heading, Help, Seg, Slider, TL_ICONS } from './controls';
-import { itemsOf, times } from './rows';
-import { select, setTimeline, timelineState, type Selected } from './store';
+import { itemsOf, selectedHeader, times } from './rows';
+import { select, setTimeline, timelineState, type SelectKind, type Selected } from './store';
 
 const MULTI_HELP = (n: number) => `Changes apply to all ${n}. Shift+click adds one; drag on empty space to box-select.`;
 const TRANSITIONS = [{ value: 'none', label: 'None' }, { value: 'fade', label: 'Cross-fade' }, { value: 'zoom', label: 'Zoom' }] as const;
@@ -39,7 +39,7 @@ function ClipPanel({ p, clips }: { p: SlotProps; clips: Clip[] }) {
   };
   return (
     <>
-      <Heading>{one ? 'Clip' : `${clips.length} clips selected`}</Heading>
+      <Heading>{one ? 'Clip' : selectedHeader(clips.map(() => 'clip'))}</Heading>
       {one && (
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 14px', fontSize: 12.5 }}>
           <span style={{ color: C.secondary }}>Source</span><span>{p.project.name}{source ? ` · ${source.kind === 'baked' ? 'screen' : source.kind}` : ''}</span>
@@ -74,7 +74,7 @@ function ZoomsPanel({ p, zooms }: { p: SlotProps; zooms: Zoom[] }) {
     : group(project, LABELS.changedMany(n, 'zooms'), (q) => zooms.reduce((r, z) => updateLayer(r, { kind: 'zooms', id: z.id, patch }), q))));
   return (
     <>
-      {n > 1 && <Heading>{`${n} zooms selected`}</Heading>}
+      {n > 1 && <Heading>{selectedHeader(zooms.map(() => 'zoom'))}</Heading>}
       <Slider label="Depth" min={1.1} max={3} step={0.1} value={shown} text={`${shown.toFixed(1)}x`} onInput={setDepth}
         onCommit={(v) => { setDepth(null); patchAll({ depth: v }); }} />
       <Seg options={FEELS} value={feel} onChange={(v) => patchAll({ feel: v })} />
@@ -108,6 +108,13 @@ export function liveSelection(project: Project, selected: Selected | null): Sele
   return ids.length ? { kind: selected.kind, ids } : null;
 }
 
+/** One noun per selected item, for the multi-select header. */
+function selectedKinds(cut: SlotProps['cut'], selected: Selected): string[] {
+  if (selected.kind === 'overlays') return cut.overlays.filter((o) => selected.ids.includes(o.id)).map((o) => o.kind);
+  const noun = ({ clips: 'clip', zooms: 'zoom', cards: 'card' } as Partial<Record<SelectKind, string>>)[selected.kind] ?? selected.kind;
+  return selected.ids.map(() => noun);
+}
+
 /** The inspector slot: the timeline's selection swaps the tabs for that item. */
 export function timelineInspector(p: SlotProps): Pick<InspectorProps, 'selection'> {
   const selected = liveSelection(p.project, timelineState().selected);
@@ -132,7 +139,7 @@ export function timelineInspector(p: SlotProps): Pick<InspectorProps, 'selection
   else if (selected.kind === 'zooms') body = <ZoomsPanel p={p} zooms={p.cut.zooms.filter((z) => selected.ids.includes(z.id))} />;
   const selection: Selection = {
     name: n > 1 ? many : one, icon: <Icon>{KIND_ICONS[selected.kind]}</Icon>, index: first + 1, count: all.length,
-    ...(n > 1 && { place: `${n} selected` }),
+    ...(n > 1 && { place: selectedHeader(selectedKinds(p.cut, selected)) }),
     onBack,
     onDelete: () => { select(null); p.edit((project) => deleteSelected(project, selected)); },
     body: <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{body}</div>,

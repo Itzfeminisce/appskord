@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import { EVENTS_FILE } from '@/lib/events';
 import { MARKER_LABEL } from '@/lib/markers';
 import { recordingLength } from '@/lib/project/cuts';
-import { group } from '@/lib/project/history';
+import { currentCut, group } from '@/lib/project/history';
 import { addChapter, addLayer, LABELS, newId, quote, setTrack, split, updateChapter } from '@/lib/project/ops';
 import { recAtEdge, snapPoints, snapRec, trimClip, type Edge, type SnapPoint } from '@/lib/project/snap';
 import { spanAt, spans, toRec } from '@/lib/project/time';
@@ -145,30 +145,58 @@ export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO
     return Math.max(0, tOf(clientX - left, view, width));
   }, [view, width]);
   const threshold = msPerPx(view, width) * SNAP_PX;
+  /** The snap distance in recording ms where `out` falls: a 2x clip covers twice the recording per pixel. */
+  const recThreshold = (out: number) => {
+    const span = spanAt(cut, out);
+    return threshold * (span && !span.clip.gap ? span.clip.speed : 1);
+  };
   const locked = (name: string) => !!cut.tracks[name]?.locked;
   const lockedKind = (b: Block) => (b.kind === 'clips' ? locked('screen') : b.kind === 'overlays' || b.kind === 'cards' ? locked('overlays') : locked(LAYERS[b.kind] ?? b.kind));
   const snapHint = (point: SnapPoint | null) => (point ? `Snapped to ${quote(point.label)}` : '');
 
+  const finish = () => { setDrag(null); setHint(''); };
+  // The drag in progress; dropped without committing on pointercancel or unmount.
+  const stopDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopDrag.current?.(), []);
+
   /** Follows the pointer until it is released; `move` gets the output time and whether the drag has started. */
-  const follow = useCallback((e: ReactPointerEvent, move: (ev: PointerEvent, moved: boolean) => void, up: (ev: PointerEvent, moved: boolean) => void) => {
+  const follow = (e: ReactPointerEvent, move: (ev: PointerEvent, moved: boolean) => void, up: (ev: PointerEvent, moved: boolean) => void) => {
+    stopDrag.current?.();
     const x0 = e.clientX;
     const y0 = e.clientY;
+    const id = e.pointerId;
+    const target = e.target as Element;
+    // Captured, the drag keeps its pointer when it leaves the window or crosses an iframe.
+    try { target.setPointerCapture?.(id); } catch { /* the pointer is already gone */ }
     let moved = false;
+    const stop = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      if (target.hasPointerCapture?.(id)) target.releasePointerCapture(id);
+      stopDrag.current = null;
+    };
     const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return;
       if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < DRAG_PX) return;
       moved = true;
       move(ev, moved);
     };
     const onUp = (ev: PointerEvent) => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+      if (ev.pointerId !== id) return;
+      stop();
       up(ev, moved);
     };
+    const onCancel = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return;
+      stop();
+      finish();
+    };
+    stopDrag.current = stop;
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, []);
-
-  const finish = () => { setDrag(null); setHint(''); };
+    window.addEventListener('pointercancel', onCancel);
+  };
 
   const onBlockDown = (e: ReactPointerEvent, b: Block, part: Part) => {
     e.stopPropagation();
@@ -190,7 +218,8 @@ export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO
         const edge: Edge = part;
         follow(e, (ev) => {
           const rec = recAtEdge(cut.clips, span.index, xToOut(ev.clientX)) ?? 0;
-          const s = snapRec(points, rec, threshold * (span.clip.gap ? 1 : span.clip.speed), ev.altKey || !tl.snap);
+          // A gap has no recording under it, so its edge never snaps.
+          const s = snapRec(points, rec, threshold * (span.clip.gap ? 1 : span.clip.speed), ev.altKey || !tl.snap || !!span.clip.gap);
           const at = span.start + (s.rec - span.clip.in) / (span.clip.gap ? 1 : span.clip.speed);
           setDrag({ type: 'trim', id: b.id, index: span.index, edge, start: edge === 'start' ? Math.min(at, span.end - 1) : span.start, end: edge === 'end' ? Math.max(at, span.start + 1) : span.end, rec: s.rec });
           setHint(snapHint(s.point));
@@ -205,7 +234,7 @@ export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO
         finish();
         if (!moved) return;
         const dropped = span.start + (xToOut(ev.clientX) - startOut) + (span.end - span.start) / 2;
-        edit((proj) => moveClip(proj, { id: b.id, at: dropAt(cut, b.id, dropped), words }));
+        edit((proj) => moveClip(proj, { id: b.id, at: dropAt(currentCut(proj), b.id, dropped), words }));
       });
       return;
     }
@@ -215,7 +244,7 @@ export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO
       const edge: Edge = part;
       follow(e, (ev) => {
         const o = xToOut(ev.clientX);
-        const s = snapRec(points, toRec(cut, o) ?? 0, threshold, ev.altKey || !tl.snap);
+        const s = snapRec(points, toRec(cut, o) ?? 0, recThreshold(o), ev.altKey || !tl.snap);
         setDrag({ type: 'edge', block: b, edge, out: o, rec: s.rec });
         setHint(snapHint(s.point));
       }, (_ev, moved) => {
@@ -230,7 +259,7 @@ export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO
     follow(e, (ev) => {
       const d = xToOut(ev.clientX) - startOut;
       const target = toRec(cut, b.start + d);
-      const s = snapRec(points, target ?? item.at + d, threshold, ev.altKey || !tl.snap);
+      const s = snapRec(points, target ?? item.at + d, recThreshold(b.start + d), ev.altKey || !tl.snap);
       setDrag({ type: 'layer', block: b, ids, d, dRec: s.rec - item.at });
       setHint(snapHint(s.point));
     }, (_ev, moved) => {

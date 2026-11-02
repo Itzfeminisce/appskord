@@ -79,9 +79,13 @@ export function runMenu(project: Project, action: MenuAction, ids: readonly stri
     case 'detach': {
       const source = audioSource(project.sources);
       if (!source) return { project };
-      const items: Omit<Placed, 'id'>[] = chosen.filter((s) => !s.clip.gap).map((s) => ({
-        source: source.id, at: s.clip.in, trim: [s.clip.in - source.offset, s.clip.out - source.offset], volume: 1, muted: false, muteOriginal: true,
-      }));
+      // Placed media runs on recording time, so a sped-up clip plays its sound at the clip's speed: the
+      // trim covers the clip's recording ms, clamped to where the sound file starts and ends.
+      const items: Omit<Placed, 'id'>[] = chosen.filter((s) => !s.clip.gap).flatMap((s) => {
+        const start = Math.max(s.clip.in, source.offset);
+        const end = Math.min(s.clip.out, source.offset + source.duration);
+        return end > start ? [{ source: source.id, at: start, trim: [start - source.offset, end - source.offset] as [number, number], volume: 1, muted: false, muteOriginal: true }] : [];
+      });
       return { project: addLayer(project, { kind: 'media', items }) };
     }
     case 'newCut': {

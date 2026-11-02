@@ -10,12 +10,12 @@ export interface Tip {
   place: 'right' | 'above' | 'below';
 }
 
-/** FirstRunTour, in order: transcript, timeline, Ask AI, Export. Ask AI and Export have no copy in the frame yet, so they are skipped. */
+/** FirstRunTour, in order: transcript, timeline, Ask AI, Export. */
 export const TIPS: Tip[] = [
   { id: 'transcript', target: 'section[aria-label="Transcript"]', place: 'right', title: 'Edit like a document', body: 'Select words and press Delete. The video follows. Click a word to jump there.' },
   { id: 'timeline', target: 'section[aria-label="Timeline"]', place: 'above', title: 'Fine-tune on the timeline', body: 'Zooms, text and music are blocks. Drag, stretch or delete them. Press ? for every shortcut.' },
-  { id: 'ask', target: '[data-tour="ask-ai"]', place: 'below' },
-  { id: 'export', target: '[data-tour="export"]', place: 'below' },
+  { id: 'ask', target: '[data-tour="ask-ai"]', place: 'below', title: 'Ask for an edit', body: 'Type what you want, like “cut the retakes and add a title”. You see every change before it happens, and one Undo takes it all back.' },
+  { id: 'export', target: '[data-tour="export"]', place: 'below', title: 'Share it', body: 'Pick YouTube, Shorts, LinkedIn or a GIF. Export keeps going while you edit.' },
 ];
 
 /** The tips that can show now, in tour order: their copy exists and `has(target)` finds what they point at. */
@@ -23,7 +23,7 @@ export const tourTips = (tips: readonly Tip[], has: (selector: string) => boolea
 
 const has = (selector: string) => !!document.querySelector(selector);
 
-/** FirstRunTour: four tips in order, "Skip the tour", "Next". `onDone` turns it off for this project. */
+/** FirstRunTour: four tips in order, "Skip the tour", "Next" ("Done" on the last). `onDone` turns it off for this project. */
 export function FirstRunTour({ onDone }: { onDone: () => void }) {
   const [tips] = useState(() => tourTips(TIPS, has));
   const [step, setStep] = useState(0);
@@ -56,7 +56,7 @@ export function FirstRunTour({ onDone }: { onDone: () => void }) {
           <button type="button" onClick={onDone} style={{ border: 0, background: 'transparent', color: '#3F3F46', fontFamily: 'inherit', fontSize: 12.5, padding: 0, cursor: 'pointer' }}>Skip the tour</button>
           <span style={{ flexGrow: 1 }} />
           <button type="button" onClick={() => (last ? onDone() : setStep(step + 1))}
-            style={{ height: 30, padding: '0 12px', borderRadius: 8, background: C.ground, color: '#FFFFFF', border: 0, fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>Next</button>
+            style={{ height: 30, padding: '0 12px', borderRadius: 8, background: C.ground, color: '#FFFFFF', border: 0, fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>{last ? 'Done' : 'Next'}</button>
         </div>
       </div>
     </>

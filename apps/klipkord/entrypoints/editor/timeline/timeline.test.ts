@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { currentCut, steps } from '@/lib/project/history';
 import { fromRecording } from '@/lib/project/migrate';
-import { addLayer, split } from '@/lib/project/ops';
+import { addLayer, setSpeed, split } from '@/lib/project/ops';
 import type { Project } from '@/lib/project/types';
 import type { Recording } from '@/lib/types';
 import { TIPS, tourTips } from '../dialogs/FirstRunTour';
@@ -11,7 +11,7 @@ import { deleteSelected, moveClip, runMenu, silencesIn, speedClips } from './act
 import { chaptersInCut, youtubeChapters, youtubeText } from './chapters';
 import { clampView, fitView, pieces, ticks } from './geometry';
 import { passOrder, thumbStep } from './filmstrip';
-import { buildRows, HINTS } from './rows';
+import { buildRows, HINTS, selectedHeader } from './rows';
 import { spans } from '@/lib/project/time';
 
 const rec = { id: 'r', title: 'Demo', createdAt: 1, duration: 10_000, mime: 'video/webm', quality: '1080p', edits: [], transcript: [], markers: [] } as unknown as Recording;
@@ -78,6 +78,14 @@ describe('TimelineMenu actions map to ops', () => {
     expect(currentCut(r.project).media).toMatchObject([{ source: 'mic', at: 5000, trim: [5000, 10_000], muteOriginal: true }]);
   });
 
+  it('Detach audio covers a sped-up clip in recording time and starts where the sound file starts', () => {
+    const base = twoClips();
+    const fast = setSpeed(base, { ids: [clips(base)[0]!.id], speed: 2 });
+    const p = { ...fast, sources: [...fast.sources, { id: 'mic', kind: 'mic' as const, file: 'mic.webm', mime: 'audio/webm', offset: 1000, duration: 3000, video: false, audio: true }] };
+    const r = runMenu(p, 'detach', [clips(p)[0]!.id], ctx);
+    expect(currentCut(r.project).media).toMatchObject([{ source: 'mic', at: 1000, trim: [0, 3000] }]);
+  });
+
   it('drag to reorder moves a clip with a named step, and to the end', () => {
     const p = twoClips();
     const [a, b] = clips(p);
@@ -115,8 +123,8 @@ describe('chapters for YouTube', () => {
 describe('the first-run tour', () => {
   it('runs transcript, then timeline, then Ask AI and Export; tips without copy or target are skipped', () => {
     expect(TIPS.map((t) => t.id)).toEqual(['transcript', 'timeline', 'ask', 'export']);
-    expect(tourTips(TIPS, () => true).map((t) => t.id)).toEqual(['transcript', 'timeline']);
-    expect(tourTips(TIPS, (s) => !s.includes('Transcript')).map((t) => t.id)).toEqual(['timeline']);
+    expect(tourTips(TIPS, () => true).map((t) => t.id)).toEqual(['transcript', 'timeline', 'ask', 'export']);
+    expect(tourTips(TIPS, (s) => !s.includes('Transcript')).map((t) => t.id)).toEqual(['timeline', 'ask', 'export']);
   });
 });
 
@@ -160,5 +168,26 @@ describe('a long recording stays light', () => {
     expect(ticks(fitView(60_000), 600)).toEqual([0, 10_000, 20_000, 30_000, 40_000, 50_000, 60_000]);
     const s = spans(currentCut(twoClips()));
     expect(pieces(s, 4000, 6000)).toEqual([{ start: 4000, end: 5000 }, { start: 5000, end: 6000 }]);
+  });
+});
+
+describe('timeline labels', () => {
+  it('names a multi-selection by kind, singular for one, and "items" for a mix', () => {
+    expect(selectedHeader(['clip', 'clip', 'clip'])).toBe('3 clips selected');
+    expect(selectedHeader(['zoom'])).toBe('1 zoom selected');
+    expect(selectedHeader(['blur', 'blur'])).toBe('2 blurs selected');
+    expect(selectedHeader(['text', 'blur'])).toBe('2 items selected');
+    expect(selectedHeader(['arrow', 'arrow'])).toBe('2 items selected');
+  });
+
+  it('names added files Media, Media 2 and Sound, with the file name on the block', () => {
+    const base = fromRecording(rec);
+    const src = (id: string, video: boolean) => ({ id, kind: 'media', file: id, mime: '', offset: 0, duration: 1000, video, audio: true, name: `${id}.file` });
+    const placed = (id: string) => ({ id, source: id, at: 0, trim: [0, 1000] as [number, number], volume: 1, muted: false });
+    const p = { ...base, sources: [...base.sources, src('a', true), src('b', false), src('c', true)] } as unknown as Project;
+    const cut = { ...currentCut(p), media: [placed('a'), placed('b'), placed('c')] };
+    const media = buildRows(p, cut, spans(cut), { start: 0, end: 10_000 }).filter((r) => r.key === 'media');
+    expect(media.map((r) => r.name)).toEqual(['Media', 'Sound', 'Media 2']);
+    expect(media[1]!.blocks[0]!.label).toBe('b.file');
   });
 });

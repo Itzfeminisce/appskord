@@ -17,6 +17,8 @@ export interface VideoStore {
   put(id: string, name: string, data: Blob): Promise<void>;
   /** Bytes across every track; 0 when the recording has no files. */
   size(id: string): Promise<number>;
+  /** Copies every file of `from` into `to` a chunk at a time, so a long recording never sits in memory whole. */
+  copy(from: string, to: string): Promise<void>;
   remove(id: string): Promise<void>;
   usage(): Promise<StorageUsage>;
 }
@@ -77,6 +79,26 @@ export function createVideoStore({ root, estimate, now = Date.now }: VideoStoreD
     await segment.writable.write(chunk);
   }
 
+  async function copyDir(from: FileSystemDirectoryHandle, to: FileSystemDirectoryHandle): Promise<void> {
+    // The DOM typings here lack the async iterator that every browser with OPFS has.
+    const entries = (from as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries();
+    for await (const [name, handle] of entries) {
+      if (handle.kind === 'directory') {
+        await copyDir(handle as FileSystemDirectoryHandle, await to.getDirectoryHandle(name, { create: true }));
+        continue;
+      }
+      const reader = (await (handle as FileSystemFileHandle).getFile()).stream().getReader();
+      const writable = await (await to.getFileHandle(name, { create: true })).createWritable();
+      try {
+        for (let part = await reader.read(); !part.done; part = await reader.read()) await writable.write(part.value);
+        await writable.close();
+      } catch (error) {
+        await writable.abort().catch(() => undefined);
+        throw error;
+      }
+    }
+  }
+
   async function files(id: string, track: Track): Promise<File[]> {
     const folder = await dir(id, false);
     const get = async (name: string) => {
@@ -135,6 +157,9 @@ export function createVideoStore({ root, estimate, now = Date.now }: VideoStoreD
         if (!isNotFound(error)) throw error;
       }
       return total;
+    },
+    async copy(from, to) {
+      await copyDir(await dir(from, false), await dir(to, true));
     },
     async remove(id) {
       // Not queued: a stuck write must never hold up a delete.
