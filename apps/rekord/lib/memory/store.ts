@@ -97,6 +97,12 @@ export async function vectorsForMeeting(meetingId: string): Promise<VectorRow[]>
   return (await getDB()).getAllFromIndex('vectors', 'meetingId', meetingId);
 }
 export async function listVectors(): Promise<VectorRow[]> { return (await getDB()).getAll('vectors'); }
+/** Swaps a meeting's vectors for `rows` in one transaction (re-embedding never leaves stale windows). */
+export async function replaceVectors(meetingId: string, rows: VectorRow[]): Promise<void> {
+  const tx = (await getDB()).transaction('vectors', 'readwrite');
+  const old = await tx.store.index('meetingId').getAllKeys(meetingId);
+  await Promise.all([...old.map((k) => tx.store.delete(k)), ...rows.map((r) => tx.store.put(r)), tx.done]);
+}
 
 export async function putLedgerEntry(e: LedgerEntry): Promise<void> { await (await getDB()).put('ledger', e); }
 export async function listLedger(): Promise<LedgerEntry[]> { return (await getDB()).getAll('ledger'); }
