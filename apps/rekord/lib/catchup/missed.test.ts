@@ -35,6 +35,13 @@ describe('isMatched', () => {
     expect(isMatched(e, [{ ...m(e.start), title: 'Intro with Lumen' }])).toBe(false);
     expect(isMatched(e, [m(e.end)])).toBe(false);
   });
+  it('treats a form catch-up (event id form:…) as unlinked: title and time decide', () => {
+    const e = ev('e', 1);
+    const form = (startedAt: number, title = 'e'): Meeting => ({ ...m(startedAt, { ...e, id: 'form:m' }), title });
+    expect(isMatched(e, [form(e.start)])).toBe(true);
+    expect(isMatched(e, [form(e.start, 'Other')])).toBe(false);
+    expect(isMatched(e, [form(e.end + 60_000)])).toBe(false);
+  });
 });
 
 describe('recentForPicker', () => {

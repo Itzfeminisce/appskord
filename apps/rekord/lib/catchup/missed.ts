@@ -1,5 +1,6 @@
 // Calendar meetings Rekord missed: the Home card (last 24 h) and the picker (last 7 days). Pure.
 import type { CalendarEvent, Meeting } from '../types';
+import { FORM_EVENT_PREFIX } from './session';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -8,10 +9,13 @@ export const PICKER_WINDOW_MS = 7 * 24 * HOUR;
 /** A recording without an attached event matches one it started within (or just before). */
 const EARLY_START_MS = 10 * MIN;
 
-/** A meeting covers an event when it holds that event, or (no event attached) has its title and started during it. */
+/**
+ * A meeting covers an event when it holds that event, or (no calendar event attached: none, or a form catch-up's
+ * attendees) has its title and started during it.
+ */
 export function isMatched(event: CalendarEvent, meetings: readonly Meeting[]): boolean {
   const title = sameTitle(event.title);
-  return meetings.some((m) => m.event
+  return meetings.some((m) => m.event && !m.event.id.startsWith(FORM_EVENT_PREFIX)
     ? m.event.id === event.id
     : sameTitle(m.title) === title && m.startedAt >= event.start - EARLY_START_MS && m.startedAt < event.end);
 }

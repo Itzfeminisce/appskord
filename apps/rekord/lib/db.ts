@@ -1,5 +1,7 @@
 import { createDB, type DBSchema, type IDBPDatabase } from '@appskord/platform';
-import type { Agenda, AskTurn, Chunk, LedgerEntry, Marker, Meeting, MemoryItem, Note, Person, RecordingMeta, RecordingPart, Segment, VectorRow } from './types';
+import type { Agenda, AskTurn, CatchupStart, Chunk, LedgerEntry, Marker, Meeting, MemoryItem, Note, Person, RecordingMeta, RecordingPart, Segment, VectorRow } from './types';
+import { addPart, locateTelling, newCatchupMeeting, partOfSeq, tellSeqBase, typedPart } from './catchup/session';
+import type { CatchupAnswer, TellPart } from './catchup/types';
 
 export interface RekordDB extends DBSchema {
   meetings: { key: string; value: Meeting };
@@ -73,6 +75,109 @@ export async function listMeetings(): Promise<Meeting[]> {
   const all = await (await getDB()).getAll('meetings');
   return all.sort((a, b) => b.startedAt - a.startedAt);
 }
+// v4.1 catch-up: one meeting, many parts
+/**
+ * Opens a telling: a new catch-up for the picked meeting, or (append) the same one again. Resolves the telling so far
+ * (`offsetMs`), the index the new part will take in `told.parts` (`part`, its audio's seq base) and, on append, the
+ * meeting's status before (`status`, for `undoCatchup`).
+ */
+export async function beginCatchup(start: CatchupStart, language: Meeting['language'], now: number): Promise<{ offsetMs: number; part: number; status?: Meeting['status'] }> {
+  const existing = await getMeeting(start.meetingId);
+  if (start.append) {
+    if (existing?.source !== 'catchup' || !existing.told) throw new Error('No catch-up to add to.');
+    const part = existing.told.parts.length;
+    await deleteTellingAudioFrom(start.meetingId, part); // audio of a telling that never became a part
+    await putMeeting({ ...existing, status: 'recording' });
+    return { offsetMs: existing.told.ms, part, status: existing.status };
+  }
+  if (existing) throw new Error('This catch-up already exists.');
+  await putMeeting(newCatchupMeeting(start.meetingId, start.picked, language, now));
+  return { offsetMs: 0, part: 0 };
+}
+
+/** A telling that failed: a first one leaves no meeting behind; "Add more" puts back the meeting's `status`. */
+export async function undoCatchup(start: CatchupStart, status: Meeting['status'] | undefined): Promise<void> {
+  if (!start.append) return deleteMeeting(start.meetingId);
+  const meeting = await getMeeting(start.meetingId);
+  if (meeting && status) await putMeeting({ ...meeting, status });
+}
+
+/** One voice part's audio: `offsetMs` into the joined telling, `ms` long, one file. */
+export interface TellingAudio { part: number; offsetMs: number; ms: number; blob: Blob }
+
+/** Every voice part of a catch-up that still has audio, in telling order. Empty after "Delete audio of your telling". */
+export async function listTellingAudio(meetingId: string): Promise<TellingAudio[]> {
+  const [meeting, slices] = await Promise.all([getMeeting(meetingId), listRecordingParts(meetingId)]);
+  const told = meeting?.told;
+  if (!told) return [];
+  const out: TellingAudio[] = [];
+  let offsetMs = 0;
+  for (const [part, p] of told.parts.entries()) {
+    const mine = p.kind === 'voice' ? slices.filter((r) => partOfSeq(r.seq) === part) : [];
+    if (mine.length > 0) out.push({ part, offsetMs, ms: p.ms, blob: new Blob(mine.map((r) => r.blob), { type: mine[0]!.mimeType }) });
+    offsetMs += p.ms;
+  }
+  return out;
+}
+
+/** "Play your telling at atMs": the voice part's file and where to seek in it (ms). Null in a typed part or with no audio. */
+export async function tellingAudioAt(meetingId: string, atMs: number): Promise<(TellingAudio & { seekMs: number }) | null> {
+  const told = (await getMeeting(meetingId))?.told;
+  const at = told && locateTelling(told.parts, atMs);
+  if (!at) return null;
+  const audio = (await listTellingAudio(meetingId)).find((a) => a.part === at.part);
+  return audio ? { ...audio, seekMs: at.seekMs } : null;
+}
+
+/** "Delete audio of your telling": removes every voice part's audio, keeps the segments and sets `told.audioDeleted` (a later voice part with audio clears it). */
+export async function deleteTellingAudio(meetingId: string): Promise<void> {
+  await deleteRecording(meetingId);
+  const meeting = await getMeeting(meetingId);
+  if (meeting?.told) await putMeeting({ ...meeting, told: { ...meeting.told, audioDeleted: true } });
+}
+
+/** Removes the audio of voice part `part` and every later one (a failed write, or a telling that was never kept). */
+export async function deleteTellingAudioFrom(meetingId: string, part: number): Promise<void> {
+  const tx = (await getDB()).transaction('recordings', 'readwrite');
+  const rows = await tx.store.index('meetingId').getAll(meetingId);
+  await Promise.all([...rows.filter((r) => r.seq >= tellSeqBase(part)).map((r) => tx.store.delete(r.id)), tx.done]);
+}
+
+/** A pause ends a voice part: it joins the telling and the meeting keeps recording. `audio`: the part kept audio. */
+export async function addCatchupPart(meetingId: string, part: TellPart, audio = false): Promise<void> {
+  const meeting = await getMeeting(meetingId);
+  if (!meeting?.told) return;
+  await putMeeting({ ...meeting, told: addPart(meeting.told, part, undefined, audio) });
+}
+
+/**
+ * Ends a telling: its last part (none when it ended paused) and voice answer join the meeting, which then goes to
+ * processing. Times stay the meeting's.
+ */
+export async function endCatchupPart(meetingId: string, part: TellPart | null, answer?: CatchupAnswer, audio = false): Promise<void> {
+  const meeting = await getMeeting(meetingId);
+  if (!meeting?.told) return;
+  await putMeeting({ ...meeting, status: 'processing', told: addPart(meeting.told, part, answer, audio) });
+}
+
+/** Typed or pasted text: one typed part of `you` segments after the telling so far. False when the text is empty. */
+export async function saveTypedPart(start: CatchupStart, text: string, language: Meeting['language'], now: number, newId: () => string): Promise<boolean> {
+  const existing = start.append ? await getMeeting(start.meetingId) : undefined;
+  const offsetMs = existing?.told?.ms ?? 0;
+  const typed = typedPart(start.meetingId, text, offsetMs, now, newId);
+  if (!typed) return false;
+  const { status } = await beginCatchup(start, language, now);
+  try {
+    for (const s of typed.segments) await putSegment(s);
+    await endCatchupPart(start.meetingId, typed.part, start.questionId ? { questionId: start.questionId, text: typed.segments.map((s) => s.text).join(' ') } : undefined);
+  } catch (error) {
+    if (start.append) await Promise.all(typed.segments.map((s) => deleteSegment(s.id))).catch(() => undefined);
+    await undoCatchup(start, status).catch(() => undefined);
+    throw error;
+  }
+  return true;
+}
+
 /** Deletes the meeting, its segments, notes, markers, chunks, asks and audio, and its memory items, vectors, ledger rows and agenda. */
 export async function deleteMeeting(id: string): Promise<void> {
   const db = await getDB();

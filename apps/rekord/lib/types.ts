@@ -1,6 +1,7 @@
 import type { OffRecordState, OffSpan } from './live/offRecord';
 import type { MemorySettings } from './memory/types';
-import type { Told } from './catchup/types';
+import type { PickedMeeting, Told } from './catchup/types';
+import type { TellClock } from './catchup/session';
 export type * from './memory/types';
 
 export type Speaker = 'you' | 'others';                 // UI labels: "You", "Others"
@@ -117,15 +118,18 @@ export type ConnectionState =
 
 export type RecordingState =
   | { status: 'idle' }
-  | { status: 'starting' | 'recording' | 'stopping'; meetingId: string; startedAt: number; micLevel: number; tabLevel: number; micUnavailable?: boolean; sources?: { mic: boolean; tab: boolean }; offRecord?: OffRecordState }; // sources: what was asked to record; micUnavailable: recording the tab only; offRecord: v4 off the record
+  | { status: 'starting' | 'recording' | 'stopping'; meetingId: string; startedAt: number; micLevel: number; tabLevel: number; micUnavailable?: boolean; sources?: { mic: boolean; tab: boolean }; offRecord?: OffRecordState; tell?: TellClock }; // sources: what was asked to record; micUnavailable: recording the tab only; offRecord: v4 off the record; tell: v4.1 catch-up clock
 
 // runtime messages (chrome.runtime.sendMessage); all plain JSON, never Blobs
 export type Message =
-  | { type: 'recording/start'; tabId: number; sources?: { mic: boolean; tab: boolean } } // side panel → background
+  | { type: 'recording/start'; tabId: number; sources?: { mic: boolean; tab: boolean }; catchup?: CatchupStart } // side panel → background
   | { type: 'recording/stop' }                          // side panel → background
   | { type: 'recording/state'; state: RecordingState }  // background → all (also on request)
   | { type: 'recording/get-state' }
-  | { type: 'offscreen/start'; streamId: string; meetingId: string; startedAt: number; sources?: { mic: boolean; tab: boolean } } // background → offscreen
+  | { type: 'offscreen/start'; streamId: string; meetingId: string; startedAt: number; sources?: { mic: boolean; tab: boolean }; catchup?: { offsetMs: number; part: number } } // background → offscreen; catchup: mic only, times are telling time after offsetMs; part: index in told.parts (audio seq base)
+  | { type: 'recording/pause'; on: boolean }           // side panel → background: pause or resume a catch-up telling
+  | { type: 'offscreen/pause'; on: boolean; at: number } // background → offscreen; at: the click (epoch ms)
+  | { type: 'catchup/typed'; catchup: CatchupStart; text: string } // side panel → background: typed or pasted telling; reply RecordingReply
   | { type: 'offscreen/stop' }
   | { type: 'recording/off-record'; on: boolean }      // side panel → background (also Alt+Shift+O)
   | { type: 'offscreen/off-record'; on: boolean; at: number } // background → offscreen; at: the click (epoch ms)
@@ -143,6 +147,9 @@ export type Message =
   | { type: 'app-audio/silent' }                         // desktop-app capture hears nothing
   | { type: 'app-audio/ended' }                          // desktop-app capture stopped
   | { type: 'rekord.badge.refresh' };                    // pages → background: recount the toolbar badge after an item write
+
+/** v4.1 catch-up start: mic only, no tab. `append`: "Add more" or a voice answer on the same meeting; `questionId`: the voice answer's question. */
+export interface CatchupStart { meetingId: string; picked: PickedMeeting; append?: boolean; questionId?: string }
 
 /** Reply to `transcriber/config` (the offscreen document has no storage API). Keys are never persisted by the caller. */
 export interface TranscriberConfig { settings: Settings; keys: Record<string, string> }
