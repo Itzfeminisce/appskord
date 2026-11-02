@@ -1,6 +1,7 @@
-import { appSources, tabRefusedReply, type AppFlag } from '@/lib/capture';
+import { appSources, CATCHUP_SOURCES, MIC_BLOCKED, micBlockedReply, tabRefusedReply, type AppFlag } from '@/lib/capture';
+import { cappedPartMs, limitState, pauseClock, resumeClock, startClock } from '@/lib/catchup/session';
 import { resolveSources, type Sources } from '@/lib/sources';
-import { getMeeting, pendingChunks, putMeeting } from '@/lib/db';
+import { beginCatchup, deleteMeeting, endCatchupPart, getMeeting, pendingChunks, putMeeting, saveTypedPart } from '@/lib/db';
 import { loadKeys } from '@/lib/penv';
 import { onMessage, send, type MessageOf } from '@/lib/messages';
 import { getSettings } from '@/lib/settings';
@@ -15,19 +16,21 @@ import {
 import { isStreamRequest, tokenReply } from '@/lib/transcribe/stream';
 import { record as recordCall } from '@/lib/ledger';
 import { goOff, goOn, OFF_RECORD_COMMAND, OFF_RECORD_WHAT } from '@/lib/live/offRecord';
-import type { Meeting, RecordingState, TranscriberConfig } from '@/lib/types';
+import type { CatchupStart, Meeting, RecordingState, TranscriberConfig } from '@/lib/types';
 import type { OffscreenReply } from './offscreen/main';
 
 /** Reply to `recording/start` and `recording/stop`. */
-export type RecordingReply = { ok: true; meetingId?: string } | { ok: false; error: string };
+export type RecordingReply = { ok: true; meetingId?: string } | { ok: false; error: string; micBlocked?: true };
 
 const OFFSCREEN_PATH = '/offscreen.html';
 const START_ERROR = "Rekord couldn’t start recording. Click the Rekord icon on your meeting tab, then try again.";
 
 const STORE_KEY = 'rekord:recorder'; // storage.session survives service-worker restarts
-type Persisted = { state: RecordingState; closeAfterDrain: string | null };
+type Persisted = { state: RecordingState; closeAfterDrain: string | null; catchup?: CatchupStart | null };
 
 let state: RecordingState = { status: 'idle' };
+/** The catch-up being told, kept for its stop (the voice answer's question). */
+let catchup: CatchupStart | null = null;
 /** Meeting whose transcription must finish before the offscreen document may close. */
 let closeAfterDrain: string | null = null;
 /** The in-flight start, so a Stop sent while starting takes effect once it finishes. */
@@ -44,6 +47,7 @@ async function rehydrate(): Promise<void> {
     const saved = (await browser.storage.session.get(STORE_KEY))[STORE_KEY] as Persisted | undefined;
     if (!saved) return;
     closeAfterDrain = saved.closeAfterDrain;
+    catchup = saved.catchup ?? null;
     // A start or stop cut short by the restart: 'starting' never reached the recorder; 'stopping' can be stopped again.
     if (saved.state.status === 'starting') state = { status: 'idle' };
     else if (saved.state.status === 'stopping') state = { ...saved.state, status: 'recording' };
@@ -54,7 +58,7 @@ async function rehydrate(): Promise<void> {
 }
 
 function persist(): void {
-  const value: Persisted = { state, closeAfterDrain };
+  const value: Persisted = { state, closeAfterDrain, catchup };
   browser.storage.session.set({ [STORE_KEY]: value }).catch((error) => console.error('Rekord: could not save recording state', error));
 }
 
@@ -206,6 +210,12 @@ export default defineBackground(() => {
       case 'recording/start':
         return ready.then(() => {
           if (state.status !== 'idle') return { ok: false, error: 'Rekord is already recording.' } as RecordingReply;
+          // v4.1: a catch-up records the microphone only; no tab capture and no tab grant.
+          if (msg.catchup) {
+            const run = startCatchup(msg.catchup);
+            starting = run.finally(() => (starting = null));
+            return run;
+          }
           // v3: an app start (`app: true`) records the shared screen audio instead of the tab.
           const app = appSources(msg as typeof msg & AppFlag);
           const run = startRecording(msg.tabId, app ?? resolveSources(msg.sources), app !== null);
@@ -214,6 +224,10 @@ export default defineBackground(() => {
         });
       case 'recording/stop':
         return ready.then(stopRecording);
+      case 'recording/pause':
+        return ready.then(() => pauseCatchup(msg.on));
+      case 'catchup/typed':
+        return ready.then(() => typeCatchup(msg.catchup, msg.text));
       case 'recording/off-record':
         return ready.then(() => setOffRecord(msg.on));
       case 'offscreen/levels':
@@ -303,7 +317,7 @@ async function startRecording(tabId: number, sources: Sources, app = false): Pro
  * The ledger keeps one "nothing sent" row per span: its first and last times are when it began and ended.
  */
 async function setOffRecord(on: boolean): Promise<{ ok: boolean }> {
-  if (state.status !== 'recording' || (state.offRecord?.since !== undefined) === on) return { ok: state.status === 'recording' };
+  if (state.status !== 'recording' || state.tell || (state.offRecord?.since !== undefined) === on) return { ok: state.status === 'recording' };
   const { meetingId, startedAt } = state;
   // The click: the recorder drops everything heard from here, and the span starts here too.
   const now = Date.now();
@@ -320,6 +334,7 @@ async function setOffRecord(on: boolean): Promise<{ ok: boolean }> {
 async function stopRecording(): Promise<RecordingReply> {
   if (state.status === 'starting' && starting) await starting.catch(() => undefined); // stop as soon as start reaches 'recording' (or aborts)
   if (state.status !== 'recording') return { ok: true };
+  if (state.tell) return stopCatchup();
   const { meetingId, startedAt } = state;
   // An open span closes at the stop; the spans are kept on the meeting for the saved transcript.
   const offSpans = state.offRecord ? goOn(state.offRecord, Date.now(), startedAt).spans : [];
@@ -344,6 +359,86 @@ async function stopRecording(): Promise<RecordingReply> {
   setState({ status: 'idle' });
   await closeOffscreen();
   return { ok: true, meetingId };
+}
+
+/** A catch-up telling: the meeting record first (picked times, `source: 'catchup'`), then the microphone. */
+async function startCatchup(start: CatchupStart): Promise<RecordingReply> {
+  const now = Date.now();
+  const { meetingId } = start;
+  setState({ status: 'starting', meetingId, startedAt: now, micLevel: 0, tabLevel: 0 });
+  let begun = false;
+  try {
+    const settings = await getSettings();
+    if (start.append) {
+      const told = (await getMeeting(meetingId))?.told;
+      if (told && limitState(told.ms) === 'stop') throw new Error('This catch-up already has 60 minutes.');
+    }
+    const offsetMs = await beginCatchup(start, settings.language, now);
+    begun = true;
+    await ensureOffscreen();
+    const reply = await send<OffscreenReply>({ type: 'offscreen/start', streamId: '', meetingId, startedAt: now, sources: CATCHUP_SOURCES, catchup: { offsetMs } });
+    if (!reply?.ok) throw new Error(reply?.error ?? START_ERROR);
+    if (reply.micUnavailable) throw new Error(MIC_BLOCKED);
+    catchup = start;
+    setState({ status: 'recording', meetingId, startedAt: now, micLevel: 0, tabLevel: 0, sources: CATCHUP_SOURCES, tell: startClock(Date.now(), offsetMs) });
+    return { ok: true, meetingId };
+  } catch (error) {
+    console.error('Rekord: could not start the catch-up', error);
+    // A failed first telling leaves no meeting behind; a failed "Add more" keeps the meeting as it was.
+    if (begun && !start.append) await deleteMeeting(meetingId).catch(() => undefined);
+    if (begun && start.append) {
+      const meeting = await getMeeting(meetingId).catch(() => undefined);
+      if (meeting) await putMeeting({ ...meeting, status: 'processing' }).catch(() => undefined);
+    }
+    setState({ status: 'idle' });
+    await send({ type: 'offscreen/stop' }).catch(() => undefined);
+    await closeOffscreen(true);
+    const message = error instanceof Error && error.message ? error.message : START_ERROR;
+    return message === MIC_BLOCKED ? micBlockedReply() : { ok: false, error: message };
+  }
+}
+
+/** Pause or resume a telling: the microphone is off while paused and the clock counts telling time only. */
+async function pauseCatchup(on: boolean): Promise<{ ok: boolean }> {
+  if (state.status !== 'recording' || !state.tell) return { ok: false };
+  const at = Date.now();
+  const reply = await send<{ ok?: boolean }>({ type: 'offscreen/pause', on, at });
+  if (reply?.ok !== true || state.status !== 'recording' || !state.tell) return { ok: false };
+  setState({ ...state, tell: on ? pauseClock(state.tell, at) : resumeClock(state.tell, at) });
+  persist();
+  return { ok: true };
+}
+
+/** Ends a telling: its part joins the meeting, whose times stay the meeting's. No speaker names for a catch-up. */
+async function stopCatchup(): Promise<RecordingReply> {
+  if (state.status !== 'recording' || !state.tell) return { ok: true };
+  const { meetingId, tell, startedAt } = state;
+  const now = Date.now();
+  const start = catchup;
+  setState({ ...state, status: 'stopping' });
+  await send<OffscreenReply>({ type: 'offscreen/stop' });
+  const answer = start?.questionId ? { questionId: start.questionId, atMs: tell.offsetMs } : undefined;
+  await endCatchupPart(meetingId, { at: startedAt, ms: cappedPartMs(tell, now), kind: 'voice' }, answer)
+    .catch((error) => console.error('Rekord: could not save the catch-up', error));
+  catchup = null;
+  if (drainedWhileStopping === meetingId) drainedWhileStopping = null;
+  else setCloseAfterDrain(meetingId);
+  setState({ status: 'idle' });
+  await closeOffscreen();
+  return { ok: true, meetingId };
+}
+
+/** Typed or pasted text: saved as one typed part, then processed like a telling. */
+async function typeCatchup(start: CatchupStart, text: string): Promise<RecordingReply> {
+  if (state.status !== 'idle') return { ok: false, error: 'Rekord is already recording.' };
+  try {
+    const settings = await getSettings();
+    if (!(await saveTypedPart(start, text, settings.language, Date.now(), () => crypto.randomUUID()))) return { ok: false, error: 'Nothing to save.' };
+    return { ok: true, meetingId: start.meetingId };
+  } catch (error) {
+    console.error('Rekord: could not save the typed catch-up', error);
+    return { ok: false, error: error instanceof Error && error.message ? error.message : START_ERROR };
+  }
 }
 
 /**

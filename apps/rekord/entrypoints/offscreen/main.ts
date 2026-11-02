@@ -5,7 +5,8 @@ import { rms, toLevel } from '@/lib/audio/levels';
 import { mediaRecorder, pickMimeType } from '@/lib/audio/recorder';
 import { ContinuousRecording, shouldRecord, sliceRecorder } from '@/lib/audio/recording';
 import { resolveSources, type Sources } from '@/lib/sources';
-import { appSources, type AppFlag } from '@/lib/capture';
+import { appSources, MIC_BLOCKED, type AppFlag } from '@/lib/capture';
+import { clockMs, isPaused, limitState, pauseClock, resumeClock, startClock, type TellClock } from '@/lib/catchup/session';
 import { APP_AUDIO_PORT, receiveAppAudio, SilenceWatch } from '@/lib/audio/appAudio';
 import { drain, drainAll, enqueue, startTranscriber } from '@/lib/transcribe';
 import { isStreamRequest, mediaRecorderAudio, RealtimeSession, requestToken, wantsRealtime, type SocketLike, type StreamRequest } from '@/lib/transcribe/stream';
@@ -43,6 +44,8 @@ interface Session {
   offAsked: boolean;
   /** An earlier real-time session (before an off-the-record span) streamed lines. */
   hadRealtime: boolean;
+  /** v4.1 catch-up: chunk times are telling time, which stops while paused; `ended` once 60:00 asked for the stop. */
+  tell?: { clock: TellClock; ended: boolean };
 }
 
 interface AppSession {
@@ -74,9 +77,10 @@ void drainAll().then(() => {
 onMessage((msg) => {
   if (msg.type === 'offscreen/start') {
     const app = appSources(msg as typeof msg & AppFlag);
-    return (busy = busy.then(() => start(msg.streamId, msg.meetingId, msg.startedAt, app ?? resolveSources(msg.sources), app !== null)));
+    return (busy = busy.then(() => start(msg.streamId, msg.meetingId, msg.startedAt, app ?? resolveSources(msg.sources), app !== null, msg.catchup?.offsetMs)));
   }
   if (msg.type === 'offscreen/stop') return (busy = busy.then(() => stop()));
+  if (msg.type === 'offscreen/pause') return (busy = busy.then(() => pauseTelling(msg.on, msg.at)));
   if (msg.type === 'offscreen/off-record') {
     // Judged at once (not behind `busy`), so no tick, chunk or line from after the click slips through.
     const s = session;
@@ -109,7 +113,7 @@ browser.runtime.onConnect.addListener((port) => {
   });
 });
 
-async function start(streamId: string, meetingId: string, startedAt: number, sources: Sources, app = false): Promise<OffscreenReply> {
+async function start(streamId: string, meetingId: string, startedAt: number, sources: Sources, app = false, tellOffsetMs?: number): Promise<OffscreenReply> {
   if (session) await stop();
   let tab: MediaStream | undefined;
   let mic: MediaStream | undefined;
@@ -131,9 +135,13 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
     console.warn('Rekord: microphone unavailable, recording the tab only', error);
   }
 
+  const telling = tellOffsetMs !== undefined;
+  if (telling && !mic) return { ok: false, error: MIC_BLOCKED };
   if (!tab && !mic && !app) return { ok: false, error: "Rekord can’t reach your microphone. Allow it in your browser, or also record this tab." };
 
-  const realtime = await realtimeSession(meetingId, startedAt);
+  // A catch-up uses the chunk transcriber only: its times are telling time, which real time can't follow across a pause.
+  const realtime = telling ? null : await realtimeSession(meetingId, startedAt);
+  const tell = telling ? { clock: startClock(Date.now(), tellOffsetMs), ended: false } : undefined;
   const ctx = new AudioContext();
   const tabSource = tab && ctx.createMediaStreamSource(tab);
   tabSource?.connect(ctx.destination); // keep the meeting audible while it is captured
@@ -154,7 +162,8 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
     analyser.fftSize = 2048;
     source.connect(analyser);
     const newChunker = () => new Chunker({
-      meetingId, speaker, startedAt,
+      meetingId, speaker,
+      ...(tell ? { startedAt: 0, now: () => clockMs(tell.clock, Date.now()) } : { startedAt }),
       createRecorder: () => mediaRecorder(stream, mimeType),
       saveChunk,
       onPending,
@@ -213,7 +222,11 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
 
   let n = 0;
   const timer = setInterval(() => {
-    const off = session?.offAsked === true;
+    const off = session?.offAsked === true || (tell !== undefined && isPaused(tell.clock));
+    if (tell && !tell.ended && limitState(clockMs(tell.clock, Date.now())) === 'stop') {
+      tell.ended = true; // 60:00: stop and keep everything said
+      void send({ type: 'recording/stop' });
+    }
     const level = (t: Track | undefined) => {
       if (!t) return 0;
       t.analyser.getFloatTimeDomainData(t.buffer);
@@ -253,8 +266,28 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
       (await s.recording)?.resume();
     },
   });
-  session = { meetingId, ctx, tracks, timer, recording, gate, offAsked: false, hadRealtime: false, ...(appSession && { app: appSession }), ...(realtime && { realtime }) };
+  session = { meetingId, ctx, tracks, timer, recording, gate, offAsked: false, hadRealtime: false, ...(appSession && { app: appSession }), ...(realtime && { realtime }), ...(tell && { tell }) };
   return mic || !sources.mic ? { ok: true } : { ok: true, micUnavailable: true };
+}
+
+/** Catch-up pause: the microphone's chunkers stop (the last one is kept) and the clock holds; resume starts new ones. */
+async function pauseTelling(on: boolean, at: number): Promise<OffscreenReply> {
+  const s = session;
+  if (!s?.tell) return { ok: false, error: 'Nothing to pause.' };
+  if (on === isPaused(s.tell.clock)) return { ok: true };
+  if (on) {
+    s.tell.clock = pauseClock(s.tell.clock, at);
+    await Promise.all(s.tracks.map((t) => { t.running = false; return t.chunker.stop(); }));
+  } else {
+    s.tell.clock = resumeClock(s.tell.clock, at);
+    for (const t of s.tracks) {
+      if (t.running) continue;
+      t.chunker = t.newChunker();
+      t.chunker.start();
+      t.running = true;
+    }
+  }
+  return { ok: true };
 }
 
 async function stop(): Promise<OffscreenReply> {

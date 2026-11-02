@@ -1,5 +1,7 @@
 import { createDB, type DBSchema, type IDBPDatabase } from '@appskord/platform';
-import type { Agenda, AskTurn, Chunk, LedgerEntry, Marker, Meeting, MemoryItem, Note, Person, RecordingMeta, RecordingPart, Segment, VectorRow } from './types';
+import type { Agenda, AskTurn, CatchupStart, Chunk, LedgerEntry, Marker, Meeting, MemoryItem, Note, Person, RecordingMeta, RecordingPart, Segment, VectorRow } from './types';
+import { addPart, newCatchupMeeting, typedPart } from './catchup/session';
+import type { CatchupAnswer, TellPart } from './catchup/types';
 
 export interface RekordDB extends DBSchema {
   meetings: { key: string; value: Meeting };
@@ -73,6 +75,39 @@ export async function listMeetings(): Promise<Meeting[]> {
   const all = await (await getDB()).getAll('meetings');
   return all.sort((a, b) => b.startedAt - a.startedAt);
 }
+// v4.1 catch-up: one meeting, many parts
+/** Opens a telling: a new catch-up for the picked meeting, or (append) the same one again. Resolves the telling so far (ms). */
+export async function beginCatchup(start: CatchupStart, language: Meeting['language'], now: number): Promise<number> {
+  const existing = await getMeeting(start.meetingId);
+  if (start.append) {
+    if (existing?.source !== 'catchup' || !existing.told) throw new Error('No catch-up to add to.');
+    await putMeeting({ ...existing, status: 'recording' });
+    return existing.told.ms;
+  }
+  if (existing) throw new Error('This catch-up already exists.');
+  await putMeeting(newCatchupMeeting(start.meetingId, start.picked, language, now));
+  return 0;
+}
+
+/** Ends a telling: its part (and voice answer) joins the meeting, which then goes to processing. Times stay the meeting's. */
+export async function endCatchupPart(meetingId: string, part: TellPart, answer?: CatchupAnswer): Promise<void> {
+  const meeting = await getMeeting(meetingId);
+  if (!meeting?.told) return;
+  await putMeeting({ ...meeting, status: 'processing', told: addPart(meeting.told, part, answer) });
+}
+
+/** Typed or pasted text: one typed part of `you` segments after the telling so far. False when the text is empty. */
+export async function saveTypedPart(start: CatchupStart, text: string, language: Meeting['language'], now: number, newId: () => string): Promise<boolean> {
+  const existing = start.append ? await getMeeting(start.meetingId) : undefined;
+  const offsetMs = existing?.told?.ms ?? 0;
+  const typed = typedPart(start.meetingId, text, offsetMs, now, newId);
+  if (!typed) return false;
+  await beginCatchup(start, language, now);
+  for (const s of typed.segments) await putSegment(s);
+  await endCatchupPart(start.meetingId, typed.part, start.questionId ? { questionId: start.questionId, text: typed.segments.map((s) => s.text).join(' ') } : undefined);
+  return true;
+}
+
 /** Deletes the meeting, its segments, notes, markers, chunks, asks and audio, and its memory items, vectors, ledger rows and agenda. */
 export async function deleteMeeting(id: string): Promise<void> {
   const db = await getDB();
