@@ -13,6 +13,9 @@ import { SwapNoFit } from './StatesV2';
 const head = { fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)' } as const;
 const TOP = 64;
 /** Portrait tiles in six columns; square and wide clips get tiles of their own shape. */
+/** Tile that looks picked: a hovered tile other than Current, else the real pick. Hover never changes what "Use" applies. */
+export const litTemplate = (picked: TemplateId | undefined, hovered: TemplateId | undefined, current: TemplateId | undefined) =>
+  hovered && hovered !== current ? hovered : picked;
 const tileOf = (a: Aspect) => (a === '16:9' ? { w: 96, h: 54, cols: 4 } : a === '1:1' ? { w: 60, h: 60, cols: 6 } : { w: 56, h: 100, cols: 6 });
 
 /** Where an element sits on screen, read again when the window resizes. */
@@ -46,8 +49,8 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
     return out;
   }, [r, si, scene, groups, brand]);
   const [picked, setPicked] = useState<TemplateId | undefined>(undefined);
-  const [pointed, setPointed] = useState<TemplateId>();
-  const shown = pointed ?? picked;
+  const [hovered, setHovered] = useState<TemplateId>();
+  const shown = hovered ?? picked;
   const btn = useRect(swapButton);
   const stage = useRect(stageCanvas);
 
@@ -75,17 +78,17 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
     }
     onClose();
   };
+  const lit = litTemplate(picked, hovered, scene.template);
   const ts = tileOf(r.aspect);
   const pack = packOf(r);
   const tile = (id: TemplateId, muted: boolean) => {
     const t = getSceneTemplate(id)!;
     const current = id === scene.template;
-    const on = id === picked;
-    // Pointing at a tile picks it too, so "Use" still names it once the pointer moves to the button.
-    const point = () => { setPointed(id); if (!current) setPicked(id); };
+    const on = id === lit;
+    const pick = () => setPicked(current ? undefined : id);
     return (
-      <button key={id} type="button" aria-label={t.name} aria-pressed={on} title={t.line} onClick={() => setPicked(current ? undefined : id)}
-        onPointerEnter={point} onPointerLeave={() => setPointed(undefined)} onFocus={point} onBlur={() => setPointed(undefined)}
+      <button key={id} type="button" aria-label={t.name} aria-pressed={on} title={t.line} onClick={pick}
+        onPointerEnter={() => setHovered(id)} onPointerLeave={() => setHovered(undefined)} onFocus={() => setHovered(id)} onBlur={() => setHovered(undefined)}
         style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 0, border: 0, background: 'transparent', font: 'inherit', textAlign: 'left', cursor: 'pointer', opacity: muted && !on ? 0.62 : 1 }}>
         <span style={{ position: 'relative', width: ts.w, height: ts.h, borderRadius: 6, overflow: 'hidden', background: pack.palette.bg, display: 'flex', outline: on ? '2px solid var(--accent)' : 'none', outlineOffset: 2 }}>
           <TemplateMini id={id} pack={pack} w={ts.w} h={ts.h} />
@@ -97,7 +100,7 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
     );
   };
   const grid = { display: 'grid', gridTemplateColumns: `repeat(${ts.cols}, ${ts.w + 4}px)`, justifyContent: 'space-between', rowGap: 10 } as const;
-  const name = picked ? getSceneTemplate(picked)?.name : undefined;
+  const name = lit ? getSceneTemplate(lit)?.name : undefined;
   const caretTop = btn ? Math.max(16, Math.min(btn.top + btn.height / 2 - TOP - 6, 400)) : 174;
   const shownName = shown && shown !== scene.template ? getSceneTemplate(shown)?.name : undefined;
   return (
@@ -131,7 +134,7 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 4 }}>
           <span style={{ fontSize: 12, color: 'var(--muted)', flexGrow: 1, lineHeight: 1.4 }}>Point at one to preview it on the stage.</span>
           <button type="button" className="btn btn-secondary" onClick={onClose} style={{ height: 40, padding: '0 14px', borderRadius: 10, fontSize: 13, borderColor: '#E0E0E4', flexShrink: 0 }}>Cancel</button>
-          <button type="button" className="btn btn-primary" disabled={!picked} onClick={use} style={{ height: 40, padding: '0 16px', borderRadius: 10, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>{name ? `Use ${name}` : 'Use'}</button>
+          <button type="button" className="btn btn-primary" disabled={!lit} onClick={use} style={{ height: 40, padding: '0 16px', borderRadius: 10, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>{name ? `Use ${name}` : 'Use'}</button>
         </div>
       </div>
     </>
