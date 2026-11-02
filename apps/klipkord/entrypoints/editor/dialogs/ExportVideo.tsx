@@ -4,6 +4,8 @@ import { clock } from '../format';
 import { StateCard } from '../states/StateCard';
 import { Seg, Switch, TL_ICONS, useEscape } from '../timeline/controls';
 import { C, Icon, iconButton } from '../ui';
+import { ask } from '../ai/actions';
+import { openAsk, useUnits } from '../ai/store';
 import { getExport, openExport, exportDeps, type Thumb } from '../components/Exporting';
 import { estimateExport, estimateLine, minShort, minutesText } from '@/lib/export/estimate';
 import { exportName } from '@/lib/export/files';
@@ -112,6 +114,8 @@ export function thumbJob(p: SlotProps, shape: Shape, thumb: Thumb): ExportPlan['
 }
 
 /** ExportVideo: preset, quality, format, extra files and the Drive switch. */
+const limitText = (ms: number) => (ms < 60_000 || ms % 60_000 ? `${Math.round(ms / 1000)} s` : `${ms / 60_000} min`);
+
 export function ExportVideo({ p, onClose, onStart }: { p: SlotProps; onClose: () => void; onStart: (plan: ExportPlan, dir: FileSystemDirectoryHandle | null) => void }) {
   const [c, setC] = useState<Choice>(remembered);
   const set = (patch: Partial<Choice>) => setC((prev) => (remembered = { ...prev, ...patch }));
@@ -120,6 +124,14 @@ export function ExportVideo({ p, onClose, onStart }: { p: SlotProps; onClose: ()
   const [needDrive, setNeedDrive] = useState(false);
   const length = cutLength(p.cut);
   const preset = presetById(c.preset);
+  const units = useUnits(p.recording);
+  // Over the limit: close the box and let Ask AI make a cut that fits.
+  const makeHighlight = () => {
+    if (!preset.limitMs || !preset.limitName) return;
+    onClose();
+    openAsk();
+    void ask(`Make a ${limitText(preset.limitMs)} highlight for ${preset.limitName}`, { project: () => p.project, units, edit: p.edit });
+  };
   const shape = shapeFor(preset, p.cut.shape);
   const sizes = useMemo(() => Object.fromEntries(QUALITIES.map((q) => [q.id, outputSize(shape, shortSide(preset, q.id))])) as Record<QualityId, { width: number; height: number }>, [shape, preset]);
   const size = sizes[c.quality];
@@ -194,7 +206,8 @@ export function ExportVideo({ p, onClose, onStart }: { p: SlotProps; onClose: ()
       </div>
       {over > 0 && preset.limitName && (
         <StateCard state="export-over-limit" compact title={`Over the ${preset.limitName} limit by ${clock(over)}`}
-          body={`It will still export. ${preset.limitName} may cut it short or refuse it.`} />
+          body={`It will still export. ${preset.limitName} may cut it short or refuse it.`}
+          actions={preset.limitMs ? [{ label: `Make a ${limitText(preset.limitMs)} highlight`, tone: 'secondary', onClick: makeHighlight }] : []} />
       )}
       {here && !here.hardware && c.quality === 'best' && (
         <StateCard state="export-slow" compact title="Exports take longer here"

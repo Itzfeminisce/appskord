@@ -29,3 +29,23 @@ The "v2 checks" table at the bottom of the same page tests the four risky parts 
 
 Press Copy v2 results and paste the JSON into the project thread; it goes into the Log of
 `apps/klipkord/v2/HANDOFF.md`, with one line for each of the four answers in this file.
+
+## v3 quality check (T16)
+
+Update steps for the owner, one action per line:
+1. Unzip the new build over the same folder.
+2. Open `chrome://extensions`.
+3. Press Reload on the Klipkord card.
+4. Record a short tab with camera and voice, then press Open in the editor.
+5. Open the "Klipkord machine check" page (Extension options) and run the preview checks for the numbers below.
+
+Passed: every quoted string in the v3 FRAMES.md, and the visible strings of the frames' states, was matched against the build; copy that differed was fixed. Compile, all tests, build, lint and format pass.
+
+Known gaps:
+- Cards: Title hook, End card and Logo sting, "Style pack" and "Kicker · optional" wait for Motikord's scene templates (`cards-not-ready`).
+- The side panel's v2 GIF screen (`GifClip`) still says "Show in folder"; v3's editor uses "Open".
+
+Known limits:
+- The zoom "why" has no element names: recorded events carry no element label.
+- "Open" opens the exported file in a tab, because Klipkord has no downloads permission.
+- Preview performance numbers come from the owner's laptop, through the machine check page.

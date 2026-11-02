@@ -63,13 +63,25 @@ There is no account, no analytics and no telemetry.
 
 | Data | Where it stays | What can leave, and when |
 | --- | --- | --- |
-| Screen video and camera video | Your computer (browser storage, then your folder) | Nothing. Leaves only inside a video file you export or share yourself. |
-| Your voice and computer sound | Your computer | Voice audio chunks go to Groq or another provider only if you turn on cloud AI. |
-| Transcript, notes, markers, comments | Your computer | Transcript text goes to the cloud AI you chose, only if you turn it on. |
-| Keys | `chrome.storage.session`, cleared when Chrome closes | Fetched from Penv Cloud after "Connect Penv Cloud", or pasted. Never printed, logged or committed. |
-| Shared copy (later) | Your Google Drive | Only the one video you choose to share. |
+| Screen, camera, mic and tab audio tracks | Your computer (browser storage, or the folder you chose) | Nothing, unless you share a cut to Drive. |
+| Events (cursor, clicks, shortcuts, scrolls, page changes) | Your computer, inside the recording | Nothing, ever. Recorded only on a tab Klipkord may see, only while recording. No typed characters are stored, only "typing" or a shortcut name such as Ctrl+C. Nothing at all in password fields. |
+| Project (edits, layouts, zooms, overlays, captions) | Your computer (IndexedDB) | Nothing. |
+| Media you add (videos, images, music) | Copied into the project on your computer | Nothing. |
+| Bundled music | Ships inside the extension, CC0 | Nothing. |
+| Transcript | Your computer | Audio goes to Groq only if you turned on cloud transcript. |
+| Ask the AI to edit, highlights, suggested edits | Your computer when no cloud AI is set | Transcript text, word or segment ids, chapter titles and your request go to the AI you chose. Never video, audio, images or events. |
+| Translate captions | Your computer when no cloud AI is set | Caption text and the target language go to the AI you chose. |
+| Camera background blur, noise removal, loudness | Your computer | Nothing. MediaPipe and RNNoise run locally; the models ship with the extension, never from a third-party CDN. |
+| Brand kit | Your computer, shared with Motikord in the same Appskord settings store | Nothing. |
+| Exported files | Your folder | Nothing, unless you press "Share link" to upload to Google Drive. |
+| Keys | `chrome.storage.session`, cleared when Chrome closes | Fetched from Penv Cloud after "Connect Penv Cloud", or pasted. They never leave the browser except to the provider they belong to. Never printed, logged or committed. |
 
 The first time on-device Whisper runs, Chrome downloads its model files from Hugging Face.
+The AI only ever receives words, never audio or video, and only the provider you chose. Drive upload happens only when you press "Share link".
+
+Bundled code, models and fonts keep their licences:
+Mediabunny (MPL-2.0), MediaPipe (Apache-2.0), web-noise-suppressor (MIT), Geist and the other bundled fonts (OFL), bundled music (CC0).
+
 The full policy is in [docs/privacy.md](docs/privacy.md).
 
 ## Development
