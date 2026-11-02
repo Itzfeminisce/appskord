@@ -176,7 +176,7 @@ export function beatPreview(beat: Beat, style: StyleId, aspect: Aspect = '9:16',
   const t = getSceneTemplate(beat.template);
   const pack = getPack(style);
   if (!t || !pack) return undefined;
-  const text = t.slots.find((d) => d.kind === 'text');
+  const text = t.slots.find((d) => d.kind === 'text' && d.id !== 'kicker') ?? t.slots.find((d) => d.kind === 'text');
   const list = t.slots.find((d) => d.kind === 'items');
   const slots: Record<string, string | string[]> = {};
   if (list) {
