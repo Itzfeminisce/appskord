@@ -30,7 +30,10 @@ export function cardSlots(template: string): CardSlot[] {
 /** The template's name ("Title hook"), else the id in words. */
 export const cardTemplateName = (template: string): string => getSceneTemplate(template)?.name ?? template.replace(/[-_]+/g, ' ');
 /** The template's own length, ms. */
-export const cardDefaultMs = (template: string): number => getSceneTemplate(template)?.defaultMs ?? 3000;
+// The panel's logo sting is a short beat, shorter than the template's default.
+export const LOGO_STING_MS = 1500;
+export const cardDefaultMs = (template: string): number =>
+  template === 'logo-sting' ? LOGO_STING_MS : (getSceneTemplate(template)?.defaultMs ?? 3000);
 
 /** Keeps the first `words` words, leaving a trailing space so typing the next word still works. */
 export function capWords(text: string, words: number): string {

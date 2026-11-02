@@ -6,7 +6,6 @@ import { addChapter, addLayer, deleteWords, LABELS, MAX_SPEED, MIN_SPEED, moveRa
 import { cutLength, isKept, spans, toOut } from '../project/time';
 import type { AiOp, CaptionStyle, Cut, Draft, LayoutKind, Project, Shape } from '../project/types';
 import { CARD_TEMPLATES as PANEL_CARDS, capWords, cardDefaultMs, cardSlots } from '../render/layers/card';
-import { LOGO_STING_MS } from '../../entrypoints/editor/story/model';
 import { chunkTranscript, echo, editSystem, editUser, REPLY_TOKENS, repairUser, transcriptBudget, type Chunk } from './prompt';
 
 /** Why an AI request ended without a draft; each is one StatesWork state. */
@@ -262,7 +261,7 @@ export function applyOp(project: Project, units: Unit[], op: AiOp): Project {
       return addLayer(project, { kind: 'zooms', items: [{ at: first.start, end: Math.max(last.end, first.start + 800), depth: op.depth, focus: 'cursor', feel: 'smooth', auto: false }] });
     }
     case 'caption': return setCaptions(project, { patch: { style: op.style, show: true } });
-    case 'card': return addLayer(project, { kind: 'cards', items: [{ template: op.template, at: units[op.at]!.start, ms: op.template === 'logo-sting' ? LOGO_STING_MS : cardDefaultMs(op.template), slots: op.slots, pack: 'clean' }] });
+    case 'card': return addLayer(project, { kind: 'cards', items: [{ template: op.template, at: units[op.at]!.start, ms: cardDefaultMs(op.template), slots: op.slots, pack: 'clean' }] });
     case 'chapter': {
       const u = units[op.at]!;
       const index = project.chapters.findIndex((c) => c.at >= u.start - 1 && c.at <= u.end);

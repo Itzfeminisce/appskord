@@ -1,7 +1,7 @@
 import { addLayer, newId, updateLayer } from '@/lib/project/ops';
 import { toOut, toRec } from '@/lib/project/time';
 import type { Box, Card, Cut, Overlay, Project } from '@/lib/project/types';
-import { capWords, cardDefaultMs, cardSlots, type CardTemplate } from '@/lib/render/layers/card';
+import { capWords, cardDefaultMs, cardSlots, LOGO_STING_MS, type CardTemplate } from '@/lib/render/layers/card';
 
 /** A new overlay shows this long from the playhead. */
 export const OVERLAY_MS = 3000;
@@ -77,15 +77,14 @@ export const toPicture = (dxFrame: number, dyFrame: number, crop: Box, dest: Box
   dy: dest.h > 0 ? (dyFrame / dest.h) * crop.h : 0,
 });
 
-/** The Cards frame's logo sting runs 1.5 s; the others keep their template's length. */
-export const LOGO_STING_MS = 1500;
+export { LOGO_STING_MS };
 
 /**
  * A new card in output time: a title hook at the start, an end card at the finish, a logo sting at the playhead.
  * It overlays the picture for `ms`, anchored to recording time; a title hook starts with the recording's title.
  */
 export function newCard(cut: Cut, template: CardTemplate, out: number, length: number, title: string): Card {
-  const ms = template === 'logo-sting' ? LOGO_STING_MS : cardDefaultMs(template);
+  const ms = cardDefaultMs(template);
   const start = template === 'title-hook' ? 0 : template === 'end-card' ? Math.max(0, length - ms) : out;
   const headline = cardSlots(template).find((s) => s.id === 'headline');
   return {
