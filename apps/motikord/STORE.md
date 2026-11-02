@@ -1,6 +1,6 @@
 # Chrome Web Store listing
 
-Build the zip with `npm run zip`. For the first upload only, add the private key as `key.pem` at the zip root so the store keeps the id `pppjklpibpnndjfddhcedbdicfdalchl`; never commit it. The file is `.output/motikord-<version>-chrome.zip`. Raise `version` in `package.json` for every upload.
+Build the store zip with `pnpm zip:store`; it leaves `key` out of the manifest, which the store rejects. Test zips (`pnpm zip`) keep it so unpacked ids stay fixed. For the first upload only, add the private key as `key.pem` at the zip root so the store keeps the id `pppjklpibpnndjfddhcedbdicfdalchl`; never commit it. The file is `.output/motikord-<version>-chrome.zip`. Raise `version` in `package.json` for every upload.
 
 ## Listing text
 - **Name:** Motikord
