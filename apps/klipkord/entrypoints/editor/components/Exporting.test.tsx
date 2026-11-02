@@ -36,14 +36,25 @@ describe('Exporting', () => {
 
   it('shows export-failed, drive-uploading and drive-failed', () => {
     act(() => setExport({
-      failed: { pct: 62, memory: true, retry: vi.fn() },
+      failed: { pct: 62, kind: 'memory', retry: vi.fn() },
       upload: { pct: 48, left: 'About 1 min left.', cancel: vi.fn() },
       uploadFailed: { said: 'quota exceeded', item },
     }));
     const text = render(<ExportingCard />).textContent ?? '';
     for (const s of ['Export stopped at 62%', 'Chrome ran out of memory. Close other tabs or use Fast.', 'Try again', 'Try with Fast',
       'Uploading to Drive · 48%', 'About 1 min left. You can keep editing.',
-      "Couldn't upload to Drive", 'The video is saved on this computer. Google said: quota exceeded.', 'Show in folder']) expect(text).toContain(s);
+      "Couldn't upload to Drive", 'The video is saved on this computer. Google said: quota exceeded.', 'Open']) expect(text).toContain(s);
+    expect(text).not.toContain('Show in folder');
+  });
+
+  it('says what stopped an export', () => {
+    act(() => setExport({ failed: { pct: 40, kind: 'other', retry: vi.fn() } }));
+    let text = render(<ExportingCard />).textContent ?? '';
+    for (const s of ['Export stopped at 40%', 'Something went wrong while making the video. Your project is fine.', 'Try again', 'Try with Fast']) expect(text).toContain(s);
+    act(() => setExport({ failed: { pct: 40, kind: 'disk', retry: vi.fn() } }));
+    text = render(<ExportingCard />).textContent ?? '';
+    for (const s of ['This computer ran out of space.', 'Free up space', 'Try again']) expect(text).toContain(s);
+    expect(text).not.toContain('Try with Fast');
   });
 
   it('hides the pill when nothing runs', () => {

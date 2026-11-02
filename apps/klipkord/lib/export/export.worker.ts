@@ -11,6 +11,8 @@ import { cutLength } from '../project/time';
 import { renderPlan } from '../render/plan';
 import { createRenderer, type CameraMask, type FrameProvider, type Picture, type Renderer } from '../render/renderer';
 import type { RenderSource } from '../render/render.worker';
+import { exportCameraMasks } from '../render/segment';
+import SegmentWorker from '../render/segment.worker?worker';
 import type { ExportRequest, ExportResponse, GifJob, Job, StillJob, Target, VideoJob } from './protocol';
 import { frameCount, frameSchedule } from './schedule';
 import { drawTitle } from './title';
@@ -100,14 +102,10 @@ function check(id: number): void {
   if (!current || current.id !== id || current.cancelled) throw new Cancelled();
 }
 
-/**
- * SEAM (T11): "Blur behind you" in export. When T11's lib/render/segment.ts lands, return
- * `exportCameraMasks(() => new SegmentWorker())` here: its `.cameraMask` is the renderer hook, `.dispose()` runs after.
- * Until then the camera exports without the blur.
- */
+/** "Blur behind you": T11's person masks on every frame; the segmentation worker starts on the first blurred frame. */
 function cameraMasks(job: Job): { cameraMask: CameraMask; dispose(): void } | null {
   if (!job.cut.camera.blur.on) return null;
-  return null;
+  return exportCameraMasks(() => new SegmentWorker());
 }
 
 function setup(job: Job): { canvas: OffscreenCanvas; renderer: Renderer } {
@@ -221,8 +219,8 @@ async function runGif(id: number, job: GifJob): Promise<void> {
   await loadFont();
   const length = cutLength(job.cut);
   const list = [...frameSchedule(job.cut, length, job.fps, job.from, job.to)];
-  // GIF delays are whole hundredths of a second.
-  const delay = Math.round(100 / job.fps) * 10;
+  // GIF delays are whole hundredths of a second; each frame ends where its time rounds to, so the total stays exact.
+  const delay = (i: number) => (Math.round((100 * (i + 1)) / job.fps) - Math.round((100 * i) / job.fps)) * 10;
   const gif = GIFEncoder();
   try {
     for (const [i, f] of list.entries()) {
@@ -231,7 +229,7 @@ async function runGif(id: number, job: GifJob): Promise<void> {
       const { ctx } = readback(canvas);
       const rgba = ctx.getImageData(0, 0, job.width, job.height).data;
       const palette = quantize(rgba, 256);
-      gif.writeFrame(applyPalette(rgba, palette), job.width, job.height, { palette, delay });
+      gif.writeFrame(applyPalette(rgba, palette), job.width, job.height, { palette, delay: delay(i) });
       reply({ type: 'progress', id, done: i + 1, total: list.length });
     }
     gif.finish();

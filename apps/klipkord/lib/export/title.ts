@@ -1,7 +1,7 @@
 // The thumbnail's optional title: Bold (large white words on the picture) or Clean (dark words on a white card).
 import type { TitleStyle } from './protocol';
 
-type Ctx = Pick<OffscreenCanvasRenderingContext2D, 'font' | 'fillStyle' | 'textBaseline' | 'shadowColor' | 'shadowBlur' | 'measureText' | 'fillText' | 'beginPath' | 'roundRect' | 'fill'>;
+type Ctx = Pick<OffscreenCanvasRenderingContext2D, 'font' | 'fillStyle' | 'textBaseline' | 'measureText' | 'fillText' | 'beginPath' | 'roundRect' | 'fill' | 'fillRect' | 'createLinearGradient'>;
 
 /** Breaks `text` into lines no wider than `max`; at most three, the last cut with "…". */
 export function titleLines(text: string, max: number, measure: (s: string) => number, most = 3): string[] {
@@ -27,12 +27,16 @@ export function drawTitle(ctx: Ctx, text: string, style: Exclude<TitleStyle, 'no
   if (style === 'bold') {
     const size = Math.round(height * 0.11);
     ctx.font = `800 ${size}px Geist, sans-serif`;
-    const lines = titleLines(text, width * 0.72, (s) => ctx.measureText(s).width);
-    ctx.shadowColor = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur = size * 0.4;
+    const lines = titleLines(text, width * 0.72, (s) => ctx.measureText(s).width, 2);
+    // A soft dark shade over the top third keeps white words readable on any picture.
+    const shade = ctx.createLinearGradient(0, 0, 0, height / 3);
+    shade.addColorStop(0, 'rgba(0,0,0,0.55)');
+    shade.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, width, height / 3);
+    ctx.font = `800 ${size}px Geist, sans-serif`;
     ctx.fillStyle = '#FFFFFF';
     lines.forEach((l, i) => ctx.fillText(l, pad, pad + i * size * 1.1));
-    ctx.shadowBlur = 0;
     return;
   }
   const size = Math.round(height * 0.065);

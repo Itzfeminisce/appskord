@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Clip, Cut, Project } from '../project/types';
 import { renderCut } from './cut';
-import { estimateExport, estimateLine, gifBytes, minutes, minutesText, pipelineFps, remaining, sizeText, timeLeft, uploadLeft } from './estimate';
+import { estimateExport, estimateLine, gifBytes, minShort, minutes, minutesText, pipelineFps, remaining, sizeText, timeLeft, uploadLeft } from './estimate';
 import { exportName, extraFiles, sibling, youtubeChapters } from './files';
 import { PRESETS, outputSize, overLimit, presetById, shapeFor, shortSide, videoBitrate } from './presets';
 import { frameCount, frameOut, frameSchedule } from './schedule';
@@ -61,8 +61,11 @@ describe('estimate', () => {
     expect(sizeText(6_200_000)).toBe('6.2 MB');
     expect(sizeText(142_400_000)).toBe('142 MB');
     expect(minutes(20)).toBe(1);
-    expect(minutesText(540)).toBe('9 minutes');
-    expect(minutesText(50)).toBe('1 minute');
+    expect(minutesText(540)).toBe('about 9 minutes');
+    expect(minutesText(70)).toBe('about 1 minute');
+    expect(minutesText(50)).toBe('under a minute');
+    expect(minShort(50)).toBe('1 min');
+    expect(minShort(300)).toBe('5 min');
     expect(timeLeft(91)).toBe('about 1 min 30 s left');
     expect(timeLeft(42)).toBe('about 42 s left');
     expect(timeLeft(120)).toBe('about 2 min left');

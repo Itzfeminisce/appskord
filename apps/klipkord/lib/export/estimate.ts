@@ -38,8 +38,14 @@ export function estimateExport(i: EstimateInput): Estimate {
 /** Whole minutes, at least 1. */
 export const minutes = (seconds: number): number => Math.max(1, Math.round(seconds / 60));
 
-/** export-slow: "9 minutes", "1 minute". */
-export const minutesText = (seconds: number): string => (minutes(seconds) === 1 ? '1 minute' : `${minutes(seconds)} minutes`);
+/** export-slow: "about 9 minutes", "about 1 minute", "under a minute". */
+export function minutesText(seconds: number): string {
+  if (seconds < 60) return 'under a minute';
+  return minutes(seconds) === 1 ? 'about 1 minute' : `about ${minutes(seconds)} minutes`;
+}
+
+/** The short form: "1 min", "9 min". */
+export const minShort = (seconds: number): string => `${minutes(seconds)} min`;
 
 /** "6.2 MB", "142 MB". */
 export function sizeText(bytes: number): string {
@@ -50,7 +56,7 @@ export function sizeText(bytes: number): string {
 }
 
 /** ExportVideo: "About 4 min on this computer · about 140 MB". */
-export const estimateLine = (e: Estimate): string => `About ${minutes(e.seconds)} min on this computer · about ${sizeText(e.bytes)}`;
+export const estimateLine = (e: Estimate): string => `About ${minShort(e.seconds)} on this computer · about ${sizeText(e.bytes)}`;
 
 /** Exporting card: "about 1 min 30 s left"; seconds over a minute round to tens. */
 export function timeLeft(seconds: number): string {

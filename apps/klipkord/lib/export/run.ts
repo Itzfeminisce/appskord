@@ -85,14 +85,3 @@ export async function cutAudio(project: Project, cut: Cut, words: Word[], blobs:
   return { chunks: mix, dispose: () => loader.dispose() };
 }
 
-/** Removes finished exports kept in the extension's storage, except those still listed. */
-export async function cleanExports(keep: Set<string>, root: Promise<FileSystemDirectoryHandle> = navigator.storage.getDirectory()): Promise<void> {
-  try {
-    const dir = await (await root).getDirectoryHandle('exports', { create: true });
-    const names: string[] = [];
-    for await (const name of (dir as unknown as { keys(): AsyncIterable<string> }).keys()) names.push(name);
-    await Promise.all(names.filter((n) => !keep.has(n)).map((n) => dir.removeEntry(n).catch(() => undefined)));
-  } catch (error) {
-    console.error('Klipkord: could not clear old exports', error);
-  }
-}

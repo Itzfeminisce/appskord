@@ -1,5 +1,6 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import type { EditorSlots } from '../Editor';
+import { DepsContext } from '../deps';
 import { ExportVideo, saveThumbnail, type ExportPlan } from '../dialogs/ExportVideo';
 import { GifExport, type GifPlan } from '../dialogs/GifExport';
 import { ShareLink } from '../dialogs/ShareLink';
@@ -36,6 +37,8 @@ export interface DoneItem {
   folder: string | null;
 }
 
+export type FailKind = 'memory' | 'disk' | 'other';
+
 export interface Thumb { out: number; title: string; style: TitleStyle; camera: boolean }
 
 interface Active { title: string; done: number; total: number; lengthMs: number; started: number; cancel(): void }
@@ -45,9 +48,10 @@ export interface ExportState {
   thumb: Thumb | null;
   running: Active | null;
   cardOpen: boolean;
-  failed: { pct: number; memory: boolean; retry: (fast: boolean) => void } | null;
+  failed: { pct: number; kind: FailKind; retry: (fast: boolean) => void } | null;
   upload: { pct: number; left: string | null; cancel(): void } | null;
-  uploadFailed: { said: string; item: DoneItem } | null;
+  /** `release` lets the kept file go once the card is answered. */
+  uploadFailed: { said: string; item: DoneItem; release?: () => void } | null;
   done: DoneItem[];
   toast: DoneItem | null;
   share: DoneItem | null;
@@ -136,7 +140,43 @@ async function freeName(dir: FileSystemDirectoryHandle, name: string): Promise<s
 
 let chain: Promise<unknown> = Promise.resolve();
 let opfsSeq = 0;
-const kept = new Set<string>();
+let swept: Promise<void> | null = null;
+
+const EXPORTS = 'exports';
+// Chrome reads a download from the kept file after the click; 10 minutes covers the largest export.
+const HOLD_MS = 10 * 60_000;
+
+/** Exports kept in the extension's storage, by DoneItem key: removed once no download, upload or card needs them. */
+const keptFiles = new Map<string, { uses: number; discard(): Promise<void> }>();
+
+/** Marks a kept file in use; the returned function ends that use. Null when the file is already gone. */
+function use(key: string): (() => void) | null {
+  const k = keptFiles.get(key);
+  if (!k) return null;
+  k.uses++;
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    if (--k.uses > 0) return;
+    keptFiles.delete(key);
+    void k.discard();
+    // Its File no longer reads, so it leaves the Done list.
+    setExport({ done: state.done.filter((d) => d.key !== key), toast: state.toast?.key === key ? null : state.toast });
+  };
+}
+
+/** Keeps the file through its download, then lets it go. */
+function afterDownload(key: string): void {
+  const release = use(key);
+  if (release) setTimeout(release, HOLD_MS);
+}
+
+const failKind = (error: unknown): FailKind => {
+  const text = `${(error as { name?: string })?.name ?? ''} ${String((error as Error)?.message ?? error)}`;
+  if (/QuotaExceeded|no space|disk.*full|out of space/i.test(text)) return 'disk';
+  return /memory|allocat/i.test(text) ? 'memory' : 'other';
+};
 
 const words = (rec: Recording) => rec.transcript.flatMap((s) => s.words ?? []);
 const captionsOf = (rec: Recording, project: Project): Caption[] => captionLines(units(rec.transcript), project.wordFixes);
@@ -164,30 +204,48 @@ export function startExport(p: SlotProps, plan: ExportPlan, dir: FileSystemDirec
   chain = chain.then(() => runExport(p, plan, dir)).catch((error: unknown) => console.error('Klipkord: could not export', error));
 }
 
-async function target(dir: FileSystemDirectoryHandle | null, name: string): Promise<{ target: Target; opfs?: string; name: string }> {
+interface Out {
+  target: Target;
+  name: string;
+  /** The kept file's key when it waits in the extension's storage for a download. */
+  opfs?: string;
+  /** Removes the unfinished file after a cancel or a failure. */
+  discard(): Promise<void>;
+}
+
+async function target(dir: FileSystemDirectoryHandle | null, name: string): Promise<Out> {
   if (dir) {
     const free = await freeName(dir, name);
-    return { target: { kind: 'handle', handle: await dir.getFileHandle(free, { create: true }) }, name: free };
+    const discard = () => dir.removeEntry(free).catch((error: unknown) => console.error('Klipkord: could not remove an unfinished export', error));
+    return { target: { kind: 'handle', handle: await dir.getFileHandle(free, { create: true }) }, name: free, discard };
   }
-  const opfs = `${++opfsSeq}-${Date.now()}-${name}`;
-  kept.add(opfs);
-  return { target: { kind: 'opfs', name: opfs }, opfs, name };
+  const { browserStore, drop, hold, stamped, sweep } = await import('@/lib/export/opfs');
+  swept ??= sweep(browserStore, EXPORTS);
+  await swept;
+  const opfs = stamped(browserStore, ++opfsSeq, name);
+  const release = await hold(browserStore, EXPORTS, opfs);
+  const discard = () => drop(browserStore, EXPORTS, opfs, release);
+  keptFiles.set(opfs, { uses: 0, discard });
+  return {
+    target: { kind: 'opfs', name: opfs }, opfs, name,
+    discard: () => { keptFiles.delete(opfs); return discard(); },
+  };
 }
 
 async function runExport(p: SlotProps, plan: ExportPlan, dir: FileSystemDirectoryHandle | null): Promise<void> {
-  const { runJob, renderCut, cutAudio, cleanExports } = await import('@/lib/export/run');
+  const { runJob, renderCut, cutAudio } = await import('@/lib/export/run');
   const { renderSources } = await import('../media');
-  await cleanExports(kept);
   const { project, recording } = p;
   const cut = renderCut(p.cut, { shape: plan.shape, burn: plan.burn });
   const media = await exportDeps.loadMedia(project);
-  const main = await target(dir, plan.name);
-  const audioOnly = plan.audioOnly ? await target(dir, sibling(plan.name, 'm4a')) : null;
   const audio = await cutAudio(project, cut, words(recording), media.blobs, cut.audio.denoise ? await exportDeps.denoise() : undefined)
     .catch((error: unknown) => {
       console.error('Klipkord: could not mix the sound', error);
       return null;
     });
+  const main = await target(dir, plan.name);
+  // A cut with no sound gets no M4A.
+  const audioOnly = plan.audioOnly && audio ? await target(dir, sibling(plan.name, 'm4a')) : null;
   const job: Job = {
     kind: 'video', project, cut, captions: plan.burn ? captionsOf(recording, project) : undefined, events: media.events,
     sources: renderSources(project, media.blobs), width: plan.width, height: plan.height, fps: plan.fps, container: plan.container,
@@ -199,26 +257,40 @@ async function runExport(p: SlotProps, plan: ExportPlan, dir: FileSystemDirector
     onProgress: (done, total) => { if (state.running) setExport({ running: { ...state.running, done, total } }); },
   });
   setExport({ running: { title: plan.title, done: 0, total: 1, lengthMs: plan.lengthMs, started, cancel: r.cancel } });
+  let result: Awaited<typeof r.done> = null;
   try {
-    const result = await r.done;
-    if (!result) return;
-    if (!dir) exportDeps.download(result.file, main.name);
-    if (result.audio && audioOnly && !dir) exportDeps.download(result.audio, audioOnly.name);
+    result = await r.done;
+  } catch (error) {
+    const s = state.running;
+    const pct = s ? Math.floor((100 * s.done) / Math.max(1, s.total)) : 0;
+    setExport({ failed: { pct, kind: failKind(error), retry: (fast) => startExport(p, fast ? plan.fast() : plan, dir) } });
+  } finally {
+    audio?.dispose();
+    setExport({ running: null });
+  }
+  if (!result) {
+    await Promise.all([main.discard(), audioOnly?.discard()]);
+    return;
+  }
+  const item: DoneItem = { key: main.opfs ?? main.name, name: main.name, file: result.file, size: result.file.size, label: plan.label, folder: dir?.name ?? null };
+  if (!dir) {
+    exportDeps.download(result.file, main.name);
+    afterDownload(item.key);
+    if (result.audio && audioOnly?.opfs) {
+      exportDeps.download(result.audio, audioOnly.name);
+      afterDownload(audioOnly.opfs);
+    } else await audioOnly?.discard();
+  }
+  setExport({ done: [item, ...state.done], toast: item });
+  if (plan.drive) void shareItem(item, false);
+  try {
     for (const f of extraFiles(project, cut, captionsOf(recording, project), main.name, plan)) await saveSmall(dir, f.name, new Blob([f.data], { type: f.type }));
     if (plan.thumbnail) {
       const still = await renderStill(p, { ...plan.thumbnail, cut: renderCut(plan.thumbnail.cut, { burn: plan.burn }), burn: plan.burn }, media);
       if (still) await saveSmall(dir, sibling(main.name, 'jpg'), still);
     }
-    const item: DoneItem = { key: main.opfs ?? main.name, name: main.name, file: result.file, size: result.file.size, label: plan.label, folder: dir?.name ?? null };
-    setExport({ done: [item, ...state.done], toast: item });
-    if (plan.drive) void shareItem(item, false);
   } catch (error) {
-    const s = state.running;
-    const pct = s ? Math.floor((100 * s.done) / Math.max(1, s.total)) : 0;
-    setExport({ failed: { pct, memory: /memory|allocat/i.test(String((error as Error)?.message ?? error)), retry: (fast) => startExport(p, fast ? plan.fast() : plan, dir) } });
-  } finally {
-    audio?.dispose();
-    setExport({ running: null });
+    console.error('Klipkord: could not save the files beside the export', error);
   }
 }
 
@@ -236,19 +308,26 @@ export function startGif(p: SlotProps, plan: GifPlan, dir: FileSystemDirectoryHa
       width: plan.width, height: plan.height, fps: plan.fps, from: plan.from, to: plan.to, target: main.target,
     }, { worker: exportDeps.worker(), onProgress: (done, total) => { if (state.running) setExport({ running: { ...state.running, done, total } }); } });
     setExport({ running: { title: plan.title, done: 0, total: 1, lengthMs: plan.to - plan.from, started: performance.now(), cancel: r.cancel } });
+    let result: Awaited<typeof r.done> = null;
     try {
-      const result = await r.done;
-      if (!result) return;
-      if (!dir) exportDeps.download(result.file, main.name);
-      const item: DoneItem = { key: main.opfs ?? main.name, name: main.name, file: result.file, size: result.file.size, label: plan.label, folder: dir?.name ?? null };
-      setExport({ done: [item, ...state.done], toast: item });
+      result = await r.done;
     } catch (error) {
       console.error('Klipkord: could not make the GIF', error);
       const s = state.running;
-      setExport({ failed: { pct: s ? Math.floor((100 * s.done) / Math.max(1, s.total)) : 0, memory: false, retry: () => startGif(p, plan, dir) } });
+      setExport({ failed: { pct: s ? Math.floor((100 * s.done) / Math.max(1, s.total)) : 0, kind: failKind(error), retry: () => startGif(p, plan, dir) } });
     } finally {
       setExport({ running: null });
     }
+    if (!result) {
+      await main.discard();
+      return;
+    }
+    const item: DoneItem = { key: main.opfs ?? main.name, name: main.name, file: result.file, size: result.file.size, label: plan.label, folder: dir?.name ?? null };
+    if (!dir) {
+      exportDeps.download(result.file, main.name);
+      afterDownload(item.key);
+    }
+    setExport({ done: [item, ...state.done], toast: item });
   }).catch((error: unknown) => console.error('Klipkord: could not make the GIF', error));
 }
 
@@ -259,6 +338,17 @@ export async function shareItem(item: DoneItem, interactive: boolean): Promise<v
     setExport({ share: item, dialog: 'share' });
     return;
   }
+  // A folder export is not kept by Klipkord; a kept one stays until the upload ends.
+  const release = item.folder === null ? use(item.key) : () => undefined;
+  if (!release) return;
+  try {
+    await upload(item, interactive);
+  } finally {
+    release();
+  }
+}
+
+async function upload(item: DoneItem, interactive: boolean): Promise<void> {
   let token: string | undefined;
   try {
     token = await exportDeps.token(interactive);
@@ -272,6 +362,7 @@ export async function shareItem(item: DoneItem, interactive: boolean): Promise<v
   const { shareExport, googleSaid } = await import('@/lib/export/share');
   const abort = new AbortController();
   const started = performance.now();
+  state.uploadFailed?.release?.();
   setExport({ uploadFailed: null, cardOpen: true, upload: { pct: 0, left: null, cancel: () => abort.abort() } });
   try {
     const share = await shareExport({ fetch: exportDeps.fetch }, token, item.file, item.name, (sent) => {
@@ -285,7 +376,7 @@ export async function shareItem(item: DoneItem, interactive: boolean): Promise<v
     if (abort.signal.aborted) return;
     console.error('Klipkord: could not upload to Drive', error);
     if (error instanceof DriveError && error.status === 401) setExport({ share: item, dialog: 'share' });
-    else setExport({ uploadFailed: { said: googleSaid(error), item } });
+    else setExport({ uploadFailed: { said: googleSaid(error), item, release: use(item.key) ?? undefined } });
   } finally {
     setExport({ upload: null });
   }
@@ -323,8 +414,16 @@ function DoneRow({ item }: { item: DoneItem }) {
 }
 
 /** The Exporting card under the pill: progress, Cancel, Drive upload, failures and the Done list. */
+const FAILED_BODY: Record<FailKind, string> = {
+  memory: 'Chrome ran out of memory. Close other tabs or use Fast.',
+  disk: 'This computer ran out of space.',
+  other: 'Something went wrong while making the video. Your project is fine.',
+};
+
 export function ExportingCard() {
   const s = useExport();
+  // Free up space opens the side panel's Storage; the editor's deps are absent only in tests.
+  const deps = useContext(DepsContext);
   useTick(!!s.running);
   const busy = s.running || s.upload || s.failed || s.uploadFailed;
   if (!busy || !s.cardOpen) return null;
@@ -348,8 +447,10 @@ export function ExportingCard() {
       </>}
       {s.failed && (
         <StateCard state="export-failed" compact title={`Export stopped at ${s.failed.pct}%`}
-          body={s.failed.memory ? 'Chrome ran out of memory. Close other tabs or use Fast.' : ''}
-          actions={[{ label: 'Try again', tone: 'primary', onClick: () => s.failed?.retry(false) }, { label: 'Try with Fast', tone: 'secondary', onClick: () => s.failed?.retry(true) }]} />
+          body={FAILED_BODY[s.failed.kind]}
+          actions={s.failed.kind === 'disk'
+            ? [{ label: 'Free up space', tone: 'primary', onClick: () => deps?.openPanel('Storage') }, { label: 'Try again', tone: 'secondary', onClick: () => s.failed?.retry(false) }]
+            : [{ label: 'Try again', tone: 'primary', onClick: () => s.failed?.retry(false) }, { label: 'Try with Fast', tone: 'secondary', onClick: () => s.failed?.retry(true) }]} />
       )}
       {s.upload && (
         <StateCard state="drive-uploading" compact title={`Uploading to Drive · ${s.upload.pct}%`}
@@ -359,8 +460,8 @@ export function ExportingCard() {
       {s.uploadFailed && (
         <StateCard state="drive-failed" compact title="Couldn't upload to Drive"
           body={`The video is saved on this computer. Google said: ${s.uploadFailed.said}.`}
-          actions={[{ label: 'Try again', tone: 'primary', onClick: () => { const item = s.uploadFailed!.item; setExport({ uploadFailed: null }); void shareItem(item, true); } },
-            { label: 'Show in folder', tone: 'secondary', onClick: () => exportDeps.show(s.uploadFailed!.item.file) }]} />
+          actions={[{ label: 'Try again', tone: 'primary', onClick: () => { const f = s.uploadFailed!; setExport({ uploadFailed: null }); void shareItem(f.item, true); f.release?.(); } },
+            { label: 'Open', tone: 'secondary', onClick: () => exportDeps.show(s.uploadFailed!.item.file) }]} />
       )}
       {s.done.length > 0 && <>
         <span style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Done</span>
@@ -389,10 +490,10 @@ function DoneToast({ item }: { item: DoneItem }) {
   }, [item.key]);
   return (
     <div style={{ position: 'fixed', left: '50%', bottom: 20, transform: 'translateX(-50%)', zIndex: 17, width: 360 }}>
-      <StateCard state="export-done" role="status" title={`Exported · ${item.name}`}
+      <StateCard state="export-done" role="status" title={item.folder ? `Saved to ${item.folder}.` : `Exported · ${item.name}`}
         body={item.folder ? `${sizeText(item.size)} in ${item.folder}.` : `${sizeText(item.size)} in your Downloads folder.`}
         style={{ boxShadow: '0 18px 44px rgba(0,0,0,0.55)' }}
-        actions={[{ label: 'Show in folder', tone: 'secondary', onClick: () => exportDeps.show(item.file) },
+        actions={[{ label: 'Open', tone: 'secondary', onClick: () => exportDeps.show(item.file) },
           { label: 'Copy link', tone: 'secondary', icon: LINK_ICON, onClick: () => void shareItem(item, true) }]} />
     </div>
   );

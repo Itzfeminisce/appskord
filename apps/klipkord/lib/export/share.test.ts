@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DriveError } from '../drive';
-import { DRIVE_FOLDER, driveFolder, googleSaid, setAnyone, shareExport } from './share';
+import { DRIVE_FOLDER, DriveRefused, driveFolder, googleSaid, setAnyone, shareExport } from './share';
 
 const TOKEN = 'gtok_test';
 const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' }, ...init });
@@ -47,6 +47,18 @@ describe('Drive share of a finished export', () => {
     expect(progress.at(-1)).toBe(1000);
   });
 
+  it('keeps the reason of a 403 from any step', async () => {
+    const fetchFn = vi.fn(async (url: string) => {
+      if (url.includes('/files?q=')) return json({ files: [{ id: 'folder1' }] });
+      if (url.includes('uploadType=resumable')) return new Response(null, { status: 200, headers: { Location: 'https://upload.test/session' } });
+      if (url === 'https://upload.test/session') return json({ id: 'file1', webViewLink: 'https://drive.google.com/file/d/file1/view' });
+      return new Response(JSON.stringify({ error: { message: 'Rate limit.', errors: [{ reason: 'sharingRateLimitExceeded' }] } }), { status: 403 });
+    });
+    const error = await shareExport({ fetch: fetchFn as unknown as typeof fetch }, TOKEN, new Blob(['x']), 'a.mp4', () => undefined).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DriveRefused);
+    expect(googleSaid(error)).toBe('rate limit exceeded');
+  });
+
   it('switches who can watch', async () => {
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => (init.method === 'DELETE' ? new Response(null, { status: 204 }) : json({ id: 'perm2' })));
     const off = await setAnyone(fetchFn as unknown as typeof fetch, TOKEN, { fileId: 'f', link: 'l', permissionId: 'perm1' }, false);
@@ -57,7 +69,10 @@ describe('Drive share of a finished export', () => {
   });
 
   it("says what Google said", () => {
-    expect(googleSaid(new DriveError(403, 'Uploading failed with 403'))).toBe('quota exceeded');
+    expect(googleSaid(new DriveRefused(403, 'x', 'storageQuotaExceeded', ''))).toBe('quota exceeded');
+    expect(googleSaid(new DriveRefused(403, 'x', 'userRateLimitExceeded', ''))).toBe('rate limit exceeded');
+    expect(googleSaid(new DriveRefused(403, 'x', 'insufficientPermissions', ''))).toBe('permission denied');
+    expect(googleSaid(new DriveRefused(403, 'x', 'other', 'The domain blocks this.'))).toBe('the domain blocks this');
     expect(googleSaid(new DriveError(500, 'Uploading failed with 500'))).toBe('uploading failed with 500');
   });
 });

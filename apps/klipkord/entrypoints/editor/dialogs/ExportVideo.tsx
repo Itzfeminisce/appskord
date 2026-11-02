@@ -5,7 +5,7 @@ import { StateCard } from '../states/StateCard';
 import { Seg, Switch, TL_ICONS, useEscape } from '../timeline/controls';
 import { C, Icon, iconButton } from '../ui';
 import { getExport, openExport, exportDeps, type Thumb } from '../components/Exporting';
-import { estimateExport, estimateLine, minutes, minutesText } from '@/lib/export/estimate';
+import { estimateExport, estimateLine, minShort, minutesText } from '@/lib/export/estimate';
 import { exportName } from '@/lib/export/files';
 import {
   GIF_PRESET, PRESETS, QUALITIES, outputSize, overLimit, presetById, shapeFor, shortSide, videoBitrate, type ContainerId, type PresetId, type QualityId,
@@ -194,11 +194,11 @@ export function ExportVideo({ p, onClose, onStart }: { p: SlotProps; onClose: ()
       </div>
       {over > 0 && preset.limitName && (
         <StateCard state="export-over-limit" compact title={`Over the ${preset.limitName} limit by ${clock(over)}`}
-          body={`It will still export. ${preset.sites} may cut it short or refuse it.`} />
+          body={`It will still export. ${preset.limitName} may cut it short or refuse it.`} />
       )}
       {here && !here.hardware && c.quality === 'best' && (
         <StateCard state="export-slow" compact title="Exports take longer here"
-          body={`This computer has no video encoder Chrome can use, so ${clock(length)} takes about ${minutesText(est(sizes.best).seconds)}. Fast (720p) takes about ${minutes(est(sizes.fast).seconds)}.`}
+          body={`This computer has no video encoder Chrome can use, so ${clock(length)} takes ${minutesText(est(sizes.best).seconds)}. Fast (720p) takes about ${minShort(est(sizes.fast).seconds)}.`}
           actions={[{ label: 'Use Fast', tone: 'secondary', onClick: () => set({ quality: 'fast' }) }]} />
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
