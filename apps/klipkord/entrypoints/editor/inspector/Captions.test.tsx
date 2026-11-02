@@ -10,6 +10,7 @@ import type { Project } from '@/lib/project/types';
 import type { Recording } from '@/lib/types';
 import type { SlotProps } from '../components/slots';
 import { ShapeMenu } from '../components/ShapeMenu';
+import { aiState, resetAi } from '../ai/store';
 import { CaptionsPanel } from './Captions';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -70,10 +71,12 @@ describe('Captions tab', () => {
     expect(captions().language).toBe('French');
   });
 
-  it('shows Translate in its needs-AI state until T15 fills it', () => {
+  it('opens the Translate captions panel', () => {
+    resetAi();
     render({ start: seed() });
-    expect((find('Translate') as HTMLButtonElement).disabled).toBe(true);
-    expect(find('Translate').title).toBe('Turn on AI edits');
+    expect((find('Translate') as HTMLButtonElement).disabled).toBe(false);
+    act(() => find('Translate').click());
+    expect(aiState().panel).toBe('translate');
   });
 
   it('changes nothing when read-only', () => {

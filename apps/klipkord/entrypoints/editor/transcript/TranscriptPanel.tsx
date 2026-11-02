@@ -5,6 +5,7 @@ import { isKept, toRec } from '@/lib/project/time';
 import { units as unitsOf } from '@/lib/wordCuts';
 import { TranscriptFrame, type TranscriptSlotProps } from '../components/slots';
 import { SuggestedEdits } from '../dialogs/SuggestedEdits';
+import { useDraftUnits } from '../ai/store';
 import { clock } from '../format';
 import { C, Icon, iconButton, MONO } from '../ui';
 import { FindBar } from './FindBar';
@@ -92,6 +93,8 @@ export function TranscriptPanel(p: TranscriptSlotProps) {
   const lines = useMemo(() => lineViews(units, project.chapters), [units, project.chapters]);
   const kept = useMemo(() => units.map((u) => isUnitKept(cut, u)), [units, cut]);
   const finds = useMemo(() => findAll(recording.transcript, cut, ui.settings, project.wordFixes), [recording.transcript, cut, ui.settings, project.wordFixes]);
+  // A waiting AI draft shows in orange, like Clean up's finds.
+  const draft = useDraftUnits(project, recording);
   const fillerUnits = useMemo(() => new Set(finds.fillers.flatMap((f) => f.units)), [finds]);
   // Clean up open: the words of every ticked filler and retake, by find.
   const cleanBy = useMemo(() => {
@@ -117,14 +120,14 @@ export function TranscriptPanel(p: TranscriptSlotProps) {
     matches.list.forEach((m, k) => { for (let i = m.lo; i <= m.hi; i++) matchOf.set(i, k === matches.current ? 'M' : 'm'); });
     return units.map((_, i) => {
       let f = kept[i] ? '' : '-';
-      if (cleanBy.has(i)) f += 'x';
+      if (cleanBy.has(i) || draft.has(i)) f += 'x';
       if (fillerUnits.has(i)) f += 'f';
       if (search) f += matchOf.get(i) ?? '';
       if (sel && i >= sel.lo && i <= sel.hi) f += 's';
       if (drop === i) f += 'd';
       return f || '.';
     });
-  }, [units, kept, cleanBy, fillerUnits, search, matches, sel, drop]);
+  }, [units, kept, cleanBy, draft, fillerUnits, search, matches, sel, drop]);
 
   const rec = toRec(cut, out);
   const playingLine = rec === null ? -1 : lines.findIndex((l, k) => rec >= l.start && rec < (lines[k + 1]?.start ?? Infinity));

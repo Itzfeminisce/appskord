@@ -7,7 +7,7 @@ import type { PreviewClient } from './preview';
 import type { EditorSession } from './session';
 
 /** Side panel screens the editor sends people to. */
-export type PanelScreen = 'Library' | 'Storage';
+export type PanelScreen = 'Library' | 'Storage' | 'PenvConnect' | 'PasteKey';
 
 /** Everything the editor reaches outside React; tests pass fakes. */
 export interface EditorDeps {
