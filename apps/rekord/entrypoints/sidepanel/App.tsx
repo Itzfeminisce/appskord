@@ -31,6 +31,10 @@ import Review from './screens/v4/Review';
 import ReviewEdit from './screens/v4/ReviewEdit';
 import Redact from './screens/v4/Redact';
 import Ledger from './screens/v4/Ledger';
+import SettingsMemory from './screens/v4/SettingsMemory';
+import Folder from './screens/v4/Folder';
+import Move from './screens/v4/Move';
+import { flushFolder } from '@/lib/folder';
 import { Shell } from './components/v4/Shell';
 import Home from './screens/v4/Home';
 import PromiseScreen from './screens/v4/Promise';
@@ -92,6 +96,9 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   looksDone: LooksDone,
   nudge: Nudge,
   decisions: Decisions,
+  settingsMemory: SettingsMemory,
+  folder: Folder,
+  move: Move,
 };
 
 /** First screen: onboarding until the user has finished it, then Open loops. */
@@ -126,6 +133,8 @@ async function devRoute(): Promise<Route | string | undefined> {
 export default function App() {
   const [initial, setInitial] = useState<Route | string | null>(null);
   useEffect(() => {
+    // Rekord folder writes queue while the panel is closed; they go out each time it opens (never from a dev frame's sample world).
+    if (!devFrames || !(location.hash.startsWith('#/dev/') || sessionStorage.getItem('rekord.devFrame'))) void flushFolder();
     void devRoute()
       .catch((error) => console.error('Rekord: could not open the dev frame', error))
       .then(async (dev) => setInitial(dev ?? (await initialRoute())));
