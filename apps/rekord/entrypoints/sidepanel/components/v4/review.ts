@@ -1,6 +1,7 @@
 // Pure helpers for the review card and summary strip: labels, dates and person suggestions.
 import { mergeSuggestions } from '@/lib/memory/link';
 import type { ItemKind, MemoryItem, Person, Quote } from '@/lib/memory/types';
+import { itemMeta } from '@/lib/catchup/label';
 import type { Meeting } from '@/lib/types';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -26,7 +27,7 @@ export function clock(ms: number): string {
   return h ? `${h}:${mm}:${pad(s % 60)}` : `${mm}:${pad(s % 60)}`;
 }
 /** "1:1 with Sarah · 3 Nov · 16:05". */
-export const quoteMeta = (q: Quote, meeting: Pick<Meeting, 'title' | 'startedAt'>) => `${meeting.title} · ${shortDate(meeting.startedAt)} · ${clock(q.atMs)}`;
+export const quoteMeta = (q: Quote, meeting: Pick<Meeting, 'title' | 'startedAt' | 'source'>) => itemMeta(meeting, clock(q.atMs));
 
 export type DueChoice = 'today' | 'tomorrow' | 'friday' | 'nextWeek';
 export const DUE_LABEL: Record<DueChoice, string> = { today: 'Today', tomorrow: 'Tomorrow', friday: 'Friday', nextWeek: 'Next week' };

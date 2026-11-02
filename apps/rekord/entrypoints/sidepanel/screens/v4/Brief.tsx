@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FROM_CATCHUP } from '@/lib/catchup/label';
 import { getSettings } from '@/lib/settings';
 import { EmptyCard } from '../../components/v4/states';
 import { agendaMinutes, SOURCE_LABEL, withGoal, GOAL_ID } from '@/lib/memory/agenda';
@@ -7,6 +8,7 @@ import type { Agenda } from '@/lib/memory/types';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
 import { useBrief, saveAgenda } from './briefData';
+import { meetingLine, type Meetings } from './loops';
 import { BackHeader, Face, Pill, QuestionMark, RecordButton } from './briefParts';
 import '../../components/v4/shell.css';
 
@@ -44,9 +46,11 @@ export function WhenLine({ brief, now }: { brief: BriefData; now: number }) {
 }
 
 /** "You owe Sarah", "Sarah owes you" with due chips, and "Still open" questions. */
-export function OpenRows({ brief, now, className = 'bp-card' }: { brief: BriefData; now: number; className?: string }) {
+export function OpenRows({ brief, now, meetings, className = 'bp-card' }: { brief: BriefData; now: number; meetings?: Meetings; className?: string }) {
   if (!brief.rows.length) return null;
   const names = brief.who.map((w) => firstName(w.name)).join(' and ');
+  // Only a catch-up's rows carry the meeting line ("… · From your catch-up").
+  const told = (id: string) => meetings?.get(id)?.source === 'catchup';
   return (
     <section aria-label={`Open between you and ${names}`} className={className}>
       {brief.rows.map(({ item, label, kind }) => {
@@ -56,6 +60,7 @@ export function OpenRows({ brief, now, className = 'bp-card' }: { brief: BriefDa
             <span className="bp-row-text">
               <span className={kind === 'question' ? 'bp-row-label bp-row-label-q' : 'bp-row-label'}>{label}</span>
               <span className="bp-row-title">{item.text}</span>
+              {told(item.meetingId) && <span className="bp-row-meta">{meetingLine(item.meetingId, meetings!)}</span>}
             </span>
             {kind === 'question' && <Pill tone="question"><QuestionMark />Question</Pill>}
             {due && <Pill tone={due.tone === 'late' ? 'late' : due.tone === 'today' ? 'promise' : 'plain'}>{due.label}</Pill>}
@@ -66,7 +71,7 @@ export function OpenRows({ brief, now, className = 'bp-card' }: { brief: BriefDa
   );
 }
 
-function BriefKnown({ brief, agenda, lastTime }: { brief: BriefData; agenda: Agenda; lastTime?: string[] }) {
+function BriefKnown({ brief, agenda, lastTime, meetings }: { brief: BriefData; agenda: Agenda; lastTime?: string[]; meetings?: Meetings }) {
   const { back, canGoBack, replace, navigate } = useRouter();
   const record = useRecordWithAgenda();
   const now = world.now();
@@ -88,11 +93,11 @@ function BriefKnown({ brief, agenda, lastTime }: { brief: BriefData; agenda: Age
         )}
         {brief.last && !!lastTime?.length && (
           <section aria-labelledby="bp-last" className="bp-last">
-            <h2 id="bp-last" className="bp-h2">Last time · <span className="bp-mono">{dayMonth(brief.last.startedAt)}</span></h2>
+            <h2 id="bp-last" className="bp-h2">Last time · <span className="bp-mono">{dayMonth(brief.last.startedAt)}</span>{brief.last.source === 'catchup' && ` · ${FROM_CATCHUP}`}</h2>
             <ul>{lastTime.map((line) => <li key={line}>{line}</li>)}</ul>
           </section>
         )}
-        <OpenRows brief={brief} now={now} />
+        <OpenRows brief={brief} now={now} meetings={meetings} />
         <section aria-labelledby="bp-agenda" className="bp-agenda">
           <div className="bp-agenda-head">
             <h2 id="bp-agenda" className="bp-h2">
@@ -184,5 +189,5 @@ export default function Brief() {
     );
   }
   if (view.brief.firstMeeting) return <BriefNew brief={view.brief} agenda={view.agenda} />;
-  return <BriefKnown brief={view.brief} agenda={view.agenda} lastTime={view.lastTime} />;
+  return <BriefKnown brief={view.brief} agenda={view.agenda} lastTime={view.lastTime} meetings={view.meetings} />;
 }

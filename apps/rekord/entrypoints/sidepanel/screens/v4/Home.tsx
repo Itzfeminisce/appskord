@@ -55,7 +55,7 @@ function BriefCard() {
   );
 }
 
-function Row({ item, view, now, onCheck }: { item: MemoryItem; view: MemoryView; now: number; onCheck: (i: MemoryItem) => void }) {
+export function Row({ item, view, now, onCheck }: { item: MemoryItem; view: MemoryView; now: number; onCheck: (i: MemoryItem) => void }) {
   const { navigate } = useRouter();
   const person = view.people.get(counterpartId(item) ?? '');
   return (

@@ -189,3 +189,5 @@
 .lp-answered-toggle > span:first-of-type { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
 .lp-answered-count { font-family: var(--mono); font-size: 11px; font-weight: 500; }
 .lp-question-answer:focus-visible, .lp-question-agenda:focus-visible, .lp-answered-toggle:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+.lp-told { margin: 0; font-size: 12.5px; line-height: 1.45; color: #44464d; display: flex; gap: 8px; align-items: flex-start; }
+.lp-told span { display: flex; flex-shrink: 0; }

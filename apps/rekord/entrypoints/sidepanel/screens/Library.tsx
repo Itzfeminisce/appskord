@@ -1,19 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CATCHUP_TAG, isCatchup } from '@/lib/catchup/label';
 import { deleteMeeting, listMeetings, listSegments } from '@/lib/db';
-import { dateLabel, groupMeetings, joinTranscript, matchesQuery, openActions } from '@/lib/library';
-import { attendeeLine } from '@/lib/askAll';
+import { joinTranscript, matchesQuery } from '@/lib/library';
 import { formatDuration } from '@/lib/time';
 import type { Meeting } from '@/lib/types';
 import { Button, EmptyState, Spinner } from '../components';
+import { Shell } from '../components/v4/Shell';
+import { world } from '../components/v4/world';
 import { ComingUp } from '../components/CalendarCard';
 import { useRouter } from '../router';
-import { itemsForMeeting } from '@/lib/memory/store';
+import { itemsForMeeting, listItems, listPeople } from '@/lib/memory/store';
 import { StateBanner } from '../components/v4/states';
-import { CatchUpLine } from './v41/MissedCard';
+import './v41/library.css';
 
 const UNDO_MS = 8000;
 
-type Filter = 'all' | 'actions';
+const DAY = 86_400_000;
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const startOfDay = (t: number) => new Date(new Date(t).setHours(0, 0, 0, 0)).getTime();
+const startOfWeek = (t: number) => { const d = startOfDay(t); return d - ((new Date(d).getDay() + 6) % 7) * DAY; };
+const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+
+/** "Today", "Yesterday", "This week" (Monday on), "Last week", then "Earlier". */
+function groupOf(t: number, now: number): string {
+  if (startOfDay(t) === startOfDay(now)) return 'Today';
+  if (startOfDay(t) === startOfDay(now) - DAY) return 'Yesterday';
+  if (t >= startOfWeek(now)) return 'This week';
+  return t >= startOfWeek(now) - 7 * DAY ? 'Last week' : 'Earlier';
+}
+/** "With Sarah, Tom and Priya": first names, from the invite, else the people memory met in it. */
+function withLine(m: Meeting, people: { name: string; meetingIds: string[] }[]): string | undefined {
+  const names = m.event
+    ? m.event.attendees.filter((a) => !a.self).map((a) => a.name?.trim() || a.email.split('@')[0] || '')
+    : people.filter((p) => p.meetingIds.includes(m.id)).map((p) => p.name);
+  const first = [...new Set(names.filter(Boolean).map((n) => n.split(/\s+/)[0]!))];
+  if (first.length === 0) return undefined;
+  return `With ${first.length === 1 ? first[0] : `${first.slice(0, -1).join(', ')} and ${first.at(-1)}`}`;
+}
+const GROUPS = ['Today', 'Yesterday', 'This week', 'Last week', 'Earlier'];
+
+/** "13:00 · 4 h" today, "Thu 29 Oct" after that. */
+function whenOf(m: Meeting, now: number): string {
+  if (startOfDay(m.startedAt) !== startOfDay(now)) { const d = new Date(m.startedAt); return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; }
+  return [hhmm(m.startedAt), m.endedAt !== undefined && formatDuration(m.endedAt - m.startedAt)].filter(Boolean).join(' · ');
+}
 
 export default function Library() {
   const { navigate, back } = useRouter();
@@ -21,7 +52,8 @@ export default function Library() {
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
+  const [promises, setPromises] = useState<Record<string, number>>({});
+  const [people, setPeople] = useState<{ name: string; meetingIds: string[] }[]>([]);
   const [confirming, setConfirming] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -31,6 +63,12 @@ export default function Library() {
       setMeetings(list);
       const entries = await Promise.all(list.map(async (m) => [m.id, joinTranscript(await listSegments(m.id))] as const));
       setTexts(Object.fromEntries(entries));
+      const open: Record<string, number> = {};
+      for (const i of await listItems().catch(() => [])) {
+        if (i.kind === 'promise' && !i.leftOut && ['suggested', 'open', 'looksDone'].includes(i.status)) open[i.meetingId] = (open[i.meetingId] ?? 0) + 1;
+      }
+      setPromises(open);
+      setPeople(await listPeople().catch(() => []));
     } catch {
       setError(true);
       setMeetings((cur) => cur ?? []);
@@ -78,117 +116,93 @@ export default function Library() {
     setDeleted(null);
   };
 
-  const actionCount = useMemo(() => (meetings ?? []).filter((m) => openActions(m) > 0).length, [meetings]);
-  const shown = useMemo(
-    () => (meetings ?? []).filter((m) => (filter === 'all' || openActions(m) > 0) && matchesQuery(m, texts[m.id], query)),
-    [meetings, texts, query, filter],
-  );
-  const groups = useMemo(() => groupMeetings(shown), [shown]);
+  const now = world.now();
+  const shown = useMemo(() => (meetings ?? []).filter((m) => matchesQuery(m, texts[m.id], query)), [meetings, texts, query]);
+  const groups = useMemo(() => {
+    const sorted = [...shown].sort((a, b) => b.startedAt - a.startedAt);
+    return GROUPS.map((label) => ({ label, meetings: sorted.filter((m) => groupOf(m.startedAt, now) === label) })).filter((g) => g.meetings.length > 0);
+  }, [shown, now]);
 
   return (
-    <main className="screen lib">
-      <header className="lib-head">
-        <button type="button" className="icon-btn" aria-label="Back to home" onClick={back}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
-        </button>
-        <h1>Meetings</h1>
-        {meetings && <span className="lib-count">{meetings.length} saved</span>}
-      </header>
-
-      <button
-        type="button" onClick={() => navigate('askall')}
-        style={{ margin: '14px 16px 0', padding: 14, border: 0, borderRadius: 16, background: '#111114', color: '#fff', font: 'inherit', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
-      >
-        <span style={{ width: 36, height: 36, borderRadius: 11, background: '#26262E', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C7C4FF" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" /></svg>
-        </span>
-        <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>Ask all your meetings</span>
-          <span style={{ fontSize: 12, color: '#A3A3B2' }}>“What did we decide about pricing?”</span>
-        </span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A3A3B2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-      </button>
-
-      <div className="lib-tools">
+    <Shell tab="meetings" catchUp>
+      <div className="lib-body">
         <div className="lib-search">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6E7079" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
           <label htmlFor="q" className="sr-only">Search meetings</label>
-          <input id="q" type="search" placeholder="Search every meeting" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input id="q" type="search" placeholder={`Search ${meetings?.length ?? 0} meetings`} value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
-        <div role="group" aria-label="Filter" className="lib-filters">
-          <button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All</button>
-          <button type="button" aria-pressed={filter === 'actions'} onClick={() => setFilter('actions')}>Open actions · {actionCount}</button>
-        </div>
-      </div>
 
-      {error && (
-        <p className="start-warn" role="alert">
-          <span>Couldn’t load your meetings.</span>
-          <Button variant="secondary" onClick={() => void load()}>Try again</Button>
-        </p>
-      )}
+        {error && (
+          <p className="start-warn" role="alert">
+            <span>Couldn’t load your meetings.</span>
+            <Button variant="secondary" onClick={() => void load()}>Try again</Button>
+          </p>
+        )}
 
-      {meetings === undefined ? (
-        <div className="lib-wait"><Spinner label="Loading meetings" /></div>
-      ) : meetings.length === 0 ? (
-        <EmptyState title="No meetings yet" body="Meetings you record will be saved here." />
-      ) : groups.length === 0 ? (
-        <EmptyState title="No matches" body="Try a different word, or clear the search." />
-      ) : (
-        <section className="lib-list" aria-label="Meetings">
-          {groups.map((g) => (
-            <div className="lib-group" key={g.label}>
-              <h2>{g.label}</h2>
-              {g.meetings.map((m) => {
-                const n = openActions(m);
-                const live = m.status === 'recording' || m.status === 'processing';
-                return (
-                  <div className="lib-card" key={m.id}>
-                    <button type="button" className="lib-open" onClick={() => open(m)}>
-                      <span className="lib-row">
-                        <span className="lib-title">{m.title || 'Untitled meeting'}</span>
-                        <span className="lib-date">{dateLabel(m.startedAt)}</span>
-                      </span>
-                      {(attendeeLine(m) ?? m.summary?.overview) && <span className="lib-sum">{attendeeLine(m) ?? m.summary?.overview}</span>}
-                      <span className="lib-pills">
-                        {m.status === 'recording' && <span className="pill pill-live">Recording</span>}
-                        {m.status === 'processing' && <span className="pill pill-live">Processing</span>}
-                        {m.status === 'error' && <span className="pill pill-warn">Needs attention</span>}
-                        {m.summary && (n > 0
-                          ? <span className="pill pill-warn">{n} open {n === 1 ? 'action' : 'actions'}</span>
-                          : <span className="pill pill-ok">All done</span>)}
-                        {m.shares?.some((x) => x.kind === 'gdocs') && <span className="pill pill-ok">In Google Docs</span>}
-                        {m.shares?.some((x) => x.kind === 'notion') && <span className="pill">In Notion</span>}
-                        {!live && m.endedAt !== undefined && <span className="pill">{formatDuration(m.endedAt - m.startedAt)}</span>}
-                      </span>
-                    </button>
-                    {!live && (confirming === m.id ? (
-                      <div className="lib-confirm" role="alertdialog" aria-label={`Delete ${m.title || 'Untitled meeting'}`}>
-                        <span>Delete this meeting for good?</span>
-                        <Button variant="secondary" onClick={() => setConfirming(null)}>Cancel</Button>
-                        <Button onClick={() => void remove(m.id)}>Delete</Button>
-                      </div>
-                    ) : (
-                      <button type="button" className="icon-btn lib-del" aria-label={`Delete ${m.title || 'Untitled meeting'}`} onClick={() => setConfirming(m.id)}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3" /></svg>
+        {meetings === undefined ? (
+          <div className="lib-wait"><Spinner label="Loading meetings" /></div>
+        ) : meetings.length === 0 ? (
+          <EmptyState title="No meetings yet" body="Meetings you record will be saved here." />
+        ) : groups.length === 0 ? (
+          <EmptyState title="No matches" body="Try a different word, or clear the search." />
+        ) : (
+          <section className="lib-list" aria-label="Meetings">
+            {groups.map((g) => (
+              <div className="lib-group" key={g.label}>
+                <h2>{g.label}</h2>
+                {g.meetings.map((m) => {
+                  const n = promises[m.id] ?? 0;
+                  const live = m.status === 'recording' || m.status === 'processing';
+                  const who = withLine(m, people);
+                  return (
+                    <div className="lib-card" key={m.id}>
+                      <button type="button" className="lib-open" onClick={() => open(m)}>
+                        <span className="lib-row">
+                          <span className="lib-title">{m.title || 'Untitled meeting'}</span>
+                          <span className="lib-date">{whenOf(m, now)}</span>
+                        </span>
+                        {(who ?? m.summary?.overview) && <span className="lib-sum">{who ?? m.summary?.overview}</span>}
+                        <span className="lib-pills">
+                          {isCatchup(m) && (
+                            <span className="pill lib-tag">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-4 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" /></svg>{CATCHUP_TAG}
+                            </span>
+                          )}
+                          {m.status === 'recording' && <span className="pill pill-live">Recording</span>}
+                          {m.status === 'processing' && <span className="pill pill-live">Processing</span>}
+                          {m.status === 'error' && <span className="pill pill-warn">Needs attention</span>}
+                          {n > 0 && <span className="pill lib-open-n">{n} open {n === 1 ? 'promise' : 'promises'}</span>}
+                          {m.shares?.some((x) => x.kind === 'gdocs') && <span className="pill pill-ok">In Google Docs</span>}
+                          {m.shares?.some((x) => x.kind === 'notion') && <span className="pill">In Notion</span>}
+                        </span>
                       </button>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </section>
-      )}
-      <ComingUp />
-      <CatchUpLine className="cu-quiet cu-quiet-foot" />
+                      {!live && (confirming === m.id ? (
+                        <div className="lib-confirm" role="alertdialog" aria-label={`Delete ${m.title || 'Untitled meeting'}`}>
+                          <span>Delete this meeting for good?</span>
+                          <Button variant="secondary" onClick={() => setConfirming(null)}>Cancel</Button>
+                          <Button onClick={() => void remove(m.id)}>Delete</Button>
+                        </div>
+                      ) : (
+                        <button type="button" className="icon-btn lib-del" aria-label={`Delete ${m.title || 'Untitled meeting'}`} onClick={() => setConfirming(m.id)}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3" /></svg>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </section>
+        )}
+        <ComingUp />
+      </div>
       {deleted && (
-        <div style={{ position: 'sticky', bottom: 12, margin: '12px 16px 0', zIndex: 5 }}>
+        <div className="lib-undo">
           <StateBanner tone="plain" icon="done" title={`“${deleted.meeting.title || 'Untitled meeting'}” was deleted`}
             body={deleted.items ? `Its ${deleted.items} memory ${deleted.items === 1 ? 'item is' : 'items are'} gone too.` : undefined}
             action={{ label: 'Undo', kind: 'light', onClick: undo }} />
         </div>
       )}
-    </main>
+    </Shell>
   );
 }

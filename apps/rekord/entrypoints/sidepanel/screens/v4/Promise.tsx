@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
+import { isCatchup } from '@/lib/catchup/label';
+import { readQuestions } from '@/lib/catchup/pipeline';
+import { getMeeting } from '@/lib/db';
 import { transition, type ItemEvent } from '@/lib/memory/promise';
 import { tabOf } from '@/lib/memory/rank';
 import { getItem, putItem } from '@/lib/memory/store';
-import type { MemoryItem } from '@/lib/memory/types';
+import type { MemoryItem, Quote } from '@/lib/memory/types';
 import { useCalendar } from '../../components/CalendarCard';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
 import { LoopsHome, toastOnHome } from './Home';
 import { counterpartId, dueChip, firstName, fromIso, initials, meetingLine, myName, nextMeetingWith, snoozeTimes, weekdayDate } from './loops';
-import { Avatar, BigCheck, CloseButton, DueChip, KindTag, PromiseIcon, QuoteBlock, refreshBadge, Sheet, useCloseSheet, useMemoryView, type MemoryView } from './parts';
+import { AnswerBlock, Avatar, BigCheck, CloseButton, DueChip, KindTag, PromiseIcon, QuoteBlock, refreshBadge, Sheet, useCloseSheet, useMemoryView, type MemoryView } from './parts';
 
 /** The item a sheet route names, loaded fresh (it may be snoozed or closed). */
 export function useSheetItem(): [MemoryItem | undefined, (i: MemoryItem) => void] {
@@ -43,7 +46,30 @@ export function FromTo({ item, view, size = 28 }: { item: MemoryItem; view: Memo
   return <>{person && <><Avatar name={person.name} size={size} /><span className="lp-who">{person.name}</span></>}<span className="lp-owe">owes you</span><Avatar name={mine} me size={size} /></>;
 }
 
-function PromiseSheet({ item, view }: { item: MemoryItem; view: MemoryView }) {
+/** The follow-up question a catch-up answer replied to, found by the answer's words. */
+function useAnswerQuestion(meetingId: string, answer: Quote | undefined): string | undefined {
+  const [question, setQuestion] = useState<string>();
+  useEffect(() => {
+    let alive = true;
+    if (!answer || answer.meetingId !== meetingId) { setQuestion(undefined); return; }
+    void (async () => {
+      const [meeting, asked] = await Promise.all([getMeeting(meetingId), readQuestions(meetingId)]);
+      const id = meeting?.told?.answers?.find((a) => a.text === answer.text)?.questionId;
+      if (alive) setQuestion(asked?.questions.find((q) => q.id === id)?.text);
+    })().catch((error) => console.error('Rekord: could not read the question this answered', error));
+    return () => { alive = false; };
+  }, [meetingId, answer]);
+  return question;
+}
+
+const ToldNote = () => (
+  <p className="lp-told">
+    <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-4 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" /></svg></span>
+    You told Rekord this after the meeting. It was not recorded in the meeting.
+  </p>
+);
+
+export function PromiseSheet({ item, view }: { item: MemoryItem; view: MemoryView }) {
   const { navigate, has } = useRouter();
   const close = useCloseSheet();
   const calendar = useCalendar();
@@ -55,6 +81,8 @@ function PromiseSheet({ item, view }: { item: MemoryItem; view: MemoryView }) {
   const { tomorrow, nextWeek } = snoozeTimes(now);
   const chip = dueChip(item, now);
   const mention = item.history.at(-1);
+  const told = isCatchup(view.meetings.get(item.meetingId));
+  const answered = useAnswerQuestion(item.meetingId, mention);
   const edit: string = 'reviewEdit';
   const tasks: string = 'sendTasks';
   const canSnooze = item.kind === 'promise' && item.status === 'open';
@@ -84,7 +112,8 @@ function PromiseSheet({ item, view }: { item: MemoryItem; view: MemoryView }) {
         {item.due && <span className="lp-due-date">{weekdayDate(fromIso(item.due))}</span>}
       </div>
       <QuoteBlock quote={item.quote} meetings={view.meetings} />
-      {mention && (
+      {told && <ToldNote />}
+      {mention && answered ? <AnswerBlock quote={mention} question={answered} meetings={view.meetings} /> : mention && (
         <p className="lp-mention"><strong>Mentioned again</strong>{` in ${meetingLine(mention.meetingId, view.meetings)}: “${mention.text}”`}</p>
       )}
       {canSnooze && (!owedToYou || snoozing) && (

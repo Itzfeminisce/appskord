@@ -3,7 +3,8 @@ import { mergeSuggestions } from '@/lib/memory/link';
 import { isoDay, isOpenLoop } from '@/lib/memory/rank';
 import { MONTHS, nextMeeting } from '@/lib/memory/series';
 import type { MemoryItem, Person, Quote } from '@/lib/memory/types';
-import { citationClock } from '@/lib/askAll';
+import { citationCaption } from '@/lib/askAll';
+import { isCatchup } from '@/lib/catchup/label';
 import type { CalendarEvent, Meeting } from '@/lib/types';
 
 /** "SC" from "Sarah Chen", "S" from "Sam". */
@@ -89,7 +90,7 @@ export function dueBadge(item: MemoryItem, now: number): { text: string; tone: '
 
 /** "Sarah · 1:1 with Sarah · 27 Oct · 14:50". */
 export function quoteMeta(q: Quote, meeting: Meeting | undefined): string {
-  return [q.speaker, meeting?.title, meeting && dayMonth(meeting.startedAt), citationClock(q.atMs)].filter(Boolean).join(' · ');
+  return [q.speaker, meeting?.title, meeting && dayMonth(meeting.startedAt), citationCaption({ atMs: q.atMs, catchup: isCatchup(meeting) })].filter(Boolean).join(' · ');
 }
 
 /** The latest quote this person spoke, by their name or an alias. */

@@ -102,3 +102,4 @@
 .ae-bar-over span { background: #8a1c14; }
 
 .bp-link:focus-visible, .bp-record:focus-visible, .ae-grip:focus-visible, .ae-remove:focus-visible, .ae-add:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+.bp-row-meta { font-family: var(--mono); font-size: 11px; color: #6e7079; }

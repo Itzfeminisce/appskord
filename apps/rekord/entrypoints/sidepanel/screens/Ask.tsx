@@ -4,7 +4,7 @@ import { ConnectionBanner } from '../components/ConnectionBanner';
 import { useRouter } from '../router';
 import { ask, CITATION_TOLERANCE_MS, markUnfinished, parseCitations, QUICK_PROMPTS, saveAnswerAsNote } from '@/lib/ask';
 import { getMeeting, listAsks, listMeetings, listSegments } from '@/lib/db';
-import { askMemory, citationClock, shortDate, type AskMemoryResult, type MemorySource } from '@/lib/askAll';
+import { askMemory, citationCaption, citationClock, shortDate, type AskMemoryResult, type MemorySource } from '@/lib/askAll';
 import { displayName } from '@/lib/llm';
 import { PlayIcon } from './v4/liveIcons';
 import { citedUrl } from './v4/Recall';
@@ -120,11 +120,11 @@ function MemoryAnswer({ turn }: { turn: AskMemoryResult }) {
             <li key={source.n}>
               <div className="lv-cite-text">
                 <span>{text ? `“${text}”` : source.title}</span>
-                <span>{speaker && text ? `${speaker} · ${source.title} · ` : ''}<span className="mono">{shortDate(source.startedAt)} · {citationClock(source.atMs)}</span></span>
+                <span>{speaker && text ? `${speaker} · ${source.title} · ` : ''}<span className="mono">{shortDate(source.startedAt)} · {citationCaption(source)}</span></span>
               </div>
               <a
                 className="lv-play" href={citedUrl(source.meetingId, source.atMs)} target="_blank" rel="noopener"
-                aria-label={`Open ${source.title}, ${shortDate(source.startedAt)}, at ${citationClock(source.atMs)} in a new tab`}
+                aria-label={`Open ${source.title}, ${shortDate(source.startedAt)}, at ${citationCaption(source)} in a new tab`}
               ><PlayIcon /></a>
             </li>
           ))}
