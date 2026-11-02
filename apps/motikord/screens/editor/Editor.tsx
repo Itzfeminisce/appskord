@@ -119,14 +119,14 @@ const FIRST_RUN_KEY = 'editorFirstRunSeen';
 // SceneRemaking: toasts sit at the window's bottom left (over the scenes list, 12 px in), clear of the stage and prompt.
 const corner = { position: 'absolute', left: 12 - 220, bottom: 12, width: 320, zIndex: 7 } as const;
 const GREY = '#D4D4D9';
-/** Bottom-left of the stage, just above the prompt bar, so it covers neither the scene list nor the prompt. */
+/** Bottom-left of the stage, just above the play row, so it covers neither the scene list, the play row nor the prompt. */
 function StageToast({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [bottom, setBottom] = useState(12);
   useLayoutEffect(() => {
     const read = () => {
       const main = ref.current?.closest('main');
-      const prompt = main?.querySelector('[data-prompt-box]');
+      const prompt = main?.querySelector('[data-transport]') ?? main?.querySelector('[data-prompt-box]');
       if (main && prompt) setBottom(Math.max(12, main.getBoundingClientRect().bottom - prompt.getBoundingClientRect().top + 8));
     };
     read();

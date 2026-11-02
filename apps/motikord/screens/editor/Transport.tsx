@@ -45,7 +45,7 @@ export function Transport() {
   }, [until, state.playing, playhead, play, setTime]);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+    <div data-transport style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
       <button type="button" aria-label={state.playing ? 'Pause' : 'Play'} onClick={toggle} style={{ width: 34, height: 34, border: 0, borderRadius: '50%', background: 'var(--ink)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>
         <PlayIcon playing={state.playing} />
       </button>
