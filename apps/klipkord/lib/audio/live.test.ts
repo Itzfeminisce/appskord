@@ -157,14 +157,14 @@ describe('live mix', () => {
 });
 
 describe('window joins', () => {
-  it('fades equal-power at the edges so two windows sum to constant power', () => {
+  it('fades linearly at the edges so the same voice across two windows sums to unity', () => {
     const sr = 48_000, n = Math.round(0.008 * sr);
     const a = [new Float32Array(1000).fill(1)], b = [new Float32Array(1000).fill(1)];
     crossfadeEdges(a, sr, null, 500);
     crossfadeEdges(b, sr, 500, null);
     expect(a[0]![499]).toBe(1);
     expect(b[0]![499]).toBe(0);
-    for (let i = 0; i < n; i++) expect(a[0]![500 + i]! ** 2 + b[0]![500 + i]! ** 2).toBeCloseTo(1, 5);
+    for (let i = 0; i < n; i++) expect(a[0]![500 + i]! + b[0]![500 + i]!).toBeCloseTo(1, 5);
     expect(a[0]![500 + n]).toBe(0);
     expect(b[0]![500 + n]).toBe(1);
   });

@@ -36,7 +36,7 @@ const STRETCH_PAD_MS = 200;
 // A WaveShaper reads input in -1..1, so the master gain scales the mix down by this and the curve scales it back.
 const SHAPER_RANGE = 16;
 const HOP_MS = 100;
-// Natural-voice windows are stretched apart, so each joins the next through an equal-power crossfade this long.
+// Natural-voice windows are stretched apart, so each joins the next through a linear crossfade this long (same source both sides, so gains sum to 1).
 export const XFADE_MS = 8;
 
 /** Fades `out` in over `ms` from sample `head` and out over `ms` from sample `tail` (equal power), in place. */
@@ -46,11 +46,11 @@ export function crossfadeEdges(out: Float32Array[], sr: number, head: number | n
     if (head !== null) {
       for (let i = 0; i < d.length; i++) {
         if (i < head) d[i] = 0;
-        else if (i < head + n) d[i]! *= Math.sin(((i - head + 0.5) / n) * (Math.PI / 2));
+        else if (i < head + n) d[i]! *= (i - head + 0.5) / n;
       }
     }
     if (tail !== null) {
-      for (let i = Math.max(0, tail); i < d.length; i++) d[i]! *= i < tail + n ? Math.cos(((i - tail + 0.5) / n) * (Math.PI / 2)) : 0;
+      for (let i = Math.max(0, tail); i < d.length; i++) d[i]! *= i < tail + n ? 1 - (i - tail + 0.5) / n : 0;
     }
   }
 }
