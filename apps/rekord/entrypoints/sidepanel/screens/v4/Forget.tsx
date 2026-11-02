@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { planForget } from '@/lib/memory/link';
-import { canRedactPerson } from '@/lib/memory/series';
+import { personPath, removeFiles } from '@/lib/folder';
 import { forgetPerson } from '@/lib/memory/store';
+import { canRedactPerson, redactPerson } from '@/lib/redact';
 import { getSettings } from '@/lib/settings';
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
@@ -36,7 +37,10 @@ export default function Forget() {
     if (busy) return;
     setBusy(true);
     try {
+      // Redaction reads the person's names, so it runs before they are gone.
+      if (redact && canRedactPerson) await redactPerson(person.id, { now: world.now() });
       await forgetPerson(person.id, world.now());
+      if (folder) await removeFiles([personPath(person)]);
       refreshBadge();
       peopleFlash.message = `${first} is forgotten.`;
       replace('people');

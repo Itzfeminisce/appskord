@@ -339,8 +339,8 @@ export function buildMemoryMessages(sources: { n: number; text: string }[], ques
 export function checkCitations(answer: string, count: number): { text: string; order: number[] } {
   const order: number[] = [];
   const text = answer
-    .replace(/\[(\d{1,2}(?:\s*,\s*\d{1,2})+)\]/g, (_, list: string) => list.split(',').map((n) => `[${n.trim()}]`).join(''))
-    .replace(/\[(\d{1,2})\]/g, (_, raw: string) => {
+    .replace(/\[(\d+(?:\s*,\s*\d+)+)\]/g, (_, list: string) => list.split(',').map((n) => `[${n.trim()}]`).join(''))
+    .replace(/\[(\d+)\]/g, (_, raw: string) => {
       const n = Number(raw);
       if (n < 1 || n > count) return '';
       let at = order.indexOf(n);
@@ -357,7 +357,9 @@ export function checkCitations(answer: string, count: number): { text: string; o
 
 export interface AskMemoryDeps extends AskAllDeps {
   /** Hybrid search (defaults to Recall's). */
-  search?: (query: string, opts: { meetings: Meeting[]; limit: number; load?: AskAllDeps['load'] }) => Promise<SearchResult>;
+  search?: (query: string, opts: { meetings: Meeting[]; limit: number; load?: AskAllDeps['load']; itemFilter?: (i: MemoryItem) => boolean; keywordOnly?: boolean }) => Promise<SearchResult>;
+  /** Keyword search only, while the search model downloads. */
+  keywordOnly?: boolean;
   /** Reads one memory item by id (defaults to the store). */
   getItem?: (id: string) => Promise<MemoryItem | undefined>;
   /** Records the one outside call (defaults to the ledger). */
@@ -369,11 +371,13 @@ const NOT_SENT = new Set(['no-key', 'offline', 'local-unavailable', 'cancelled']
 export const MEMORY_LEDGER_WHAT = 'Meeting excerpts for an answer';
 
 /** What a scope looks at: People and Decisions search memory items only. */
+export function inScope(item: MemoryItem, scope: Scope): boolean {
+  if (item.status === 'replaced') return false;
+  return scope === 'decisions' ? item.kind === 'decision' : scope === 'people' ? item.personIds.length > 0 : true;
+}
+
 export function scoped(result: SearchResult, scope: Scope): SearchResult {
-  const items = result.items.filter(({ item }) => {
-    if (item.status === 'replaced') return false;
-    return scope === 'decisions' ? item.kind === 'decision' : scope === 'people' ? item.personIds.length > 0 : true;
-  });
+  const items = result.items.filter(({ item }) => inScope(item, scope));
   return { ...result, items, meetings: scope === 'all' ? result.meetings : [] };
 }
 
@@ -385,7 +389,8 @@ export async function askMemory(question: string, scope: Scope, all: Meeting[], 
   try {
     const finished = all.filter((m) => m.status === 'done');
     const find = deps.search ?? (await import('./recall')).search;
-    const found = scoped(await find(q, { meetings: finished, limit: 10, load: deps.load }), scope);
+    const itemFilter = (i: MemoryItem) => inScope(i, scope);
+    const found = scoped(await find(q, { meetings: finished, limit: 10, load: deps.load, itemFilter, keywordOnly: deps.keywordOnly }), scope);
     mode = found.mode;
     const load = deps.load ?? loadFromDb;
     const getOne = deps.getItem ?? (await import('./memory/store')).getItem;

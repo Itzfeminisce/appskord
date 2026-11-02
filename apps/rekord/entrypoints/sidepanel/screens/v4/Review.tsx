@@ -7,7 +7,7 @@ import type { Meeting } from '@/lib/types';
 import { BackIcon, CheckIcon } from '../../components/v4/icons';
 import { ChoiceChip, Chip, CloseIcon, EditIcon, KindPill, QuoteBlock } from '../../components/v4/memory';
 import {
-  dueChip, dueFor, firstName, GROUPS, meetingPeople, movedFrom, ownerChip, personSuggestions, quoteMeta, reviewedPeopleKey,
+  confirmable, dueChip, dueFor, firstName, GROUPS, meetingPeople, movedFrom, ownerChip, personSuggestions, quoteMeta, reviewedPeopleKey,
   reviewItems, shortDate, type PersonSuggestion,
 } from '../../components/v4/review';
 import { world } from '../../components/v4/world';
@@ -58,6 +58,7 @@ export default function Review() {
   const [dismissed, setDismissed] = useState<MemoryItem[]>([]);
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const reload = useCallback(() => {
     loadReview(meetingId)
@@ -67,7 +68,8 @@ export default function Review() {
   useEffect(reload, [reload]);
 
   const run = (step: () => Promise<unknown>) => {
-    void step().then(reload).catch((error) => console.error('Rekord: could not save your review', error));
+    setSaving(true);
+    void step().then(reload).catch((error) => console.error('Rekord: could not save your review', error)).finally(() => setSaving(false));
   };
   const leave = () => (canGoBack ? back() : replace('summary', { meetingId }));
 
@@ -80,16 +82,21 @@ export default function Review() {
   const { leftOut } = found;
   const suggestions = personSuggestions(people, meetingId, data.reviewed);
   const total = waiting.length + suggestions.length;
+  const sure = confirmable(suggestions);
+  const allCount = waiting.length + sure.length;
   const nameOf = (id?: string) => people.find((p) => p.id === id)?.name;
   const here = meetingPeople(people, meetingId, data.items);
   const play = (item: MemoryItem) => navigate('transcript', { meetingId: item.quote.meetingId, atMs: item.quote.atMs });
   const edit = (item: MemoryItem) => saveItem(item);
 
-  const confirmAll = () => run(async () => {
-    for (const item of waiting) await confirmItem(item, all, now);
-    for (const s of suggestions) await acceptPerson(meetingId, s, now);
-    replace('summary', { meetingId });
-  });
+  const confirmAll = () => {
+    if (saving) return;
+    run(async () => {
+      for (const item of waiting) await confirmItem(item, all, now);
+      for (const s of sure) await acceptPerson(meetingId, s, now);
+      if (sure.length === suggestions.length) replace('summary', { meetingId });
+    });
+  };
   const dismiss = (item: MemoryItem) => {
     setDismissed((d) => [...d, { ...item, status: 'dismissed' }]);
     run(() => saveItem({ ...item, status: 'dismissed', updatedAt: now }));
@@ -107,7 +114,7 @@ export default function Review() {
         <div className="rv-card-top">
           <h3>{item.text}</h3>
           <div className="rv-actions">
-            <button type="button" aria-label="Confirm" className="rv-act rv-confirm" onClick={() => run(() => confirmItem(item, all, now))}><CheckIcon size={18} /></button>
+            <button type="button" aria-label="Confirm" className="rv-act rv-confirm" disabled={saving} onClick={() => run(() => confirmItem(item, all, now))}><CheckIcon size={18} /></button>
             <button type="button" aria-label="Edit" className="rv-act" onClick={() => navigate('reviewEdit', { meetingId, itemId: item.id })}><EditIcon /></button>
             <button type="button" aria-label="Dismiss" className="rv-act" onClick={() => dismiss(item)}><CloseIcon /></button>
           </div>
@@ -181,7 +188,7 @@ export default function Review() {
           </h3>
           <div className="rv-actions">
             {s.type === 'new' && (
-              <button type="button" aria-label="Confirm" className="rv-act rv-confirm" onClick={() => run(() => acceptPerson(meetingId, s, now))}><CheckIcon size={18} /></button>
+              <button type="button" aria-label="Confirm" className="rv-act rv-confirm" disabled={saving} onClick={() => run(() => acceptPerson(meetingId, s, now))}><CheckIcon size={18} /></button>
             )}
             <button type="button" aria-label="Dismiss" className="rv-act" onClick={() => run(() => markReviewed(meetingId, [id]))}><CloseIcon /></button>
           </div>
@@ -207,9 +214,9 @@ export default function Review() {
         <button type="button" className="v4-icon rv-back" aria-label="Back to summary" onClick={leave}><BackIcon /></button>
         <h1>Rekord found {total} {total === 1 ? 'thing' : 'things'} in {meeting.title}</h1>
       </header>
-      {total > 0 && (
+      {allCount > 0 && (
         <div className="rv-bar">
-          <button type="button" className="rv-all" onClick={confirmAll}><CheckIcon size={18} />Confirm all {total}</button>
+          <button type="button" className="rv-all" disabled={saving} onClick={confirmAll}><CheckIcon size={18} />Confirm all {allCount}</button>
         </div>
       )}
       <div className="rv-list">

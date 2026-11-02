@@ -1,7 +1,8 @@
 import { signInWithGoogle } from '@appskord/platform';
-import { deleteMeeting, putMeeting, putSegment } from '@/lib/db';
+import { deleteMeeting, getDB, putMeeting, putSegment } from '@/lib/db';
 import { GOOGLE_CLIENT_ID } from '@/lib/googleAuth';
 import { extractedKey, extractMeeting } from '@/lib/memory/extract';
+import { listPeople, putPerson } from '@/lib/memory/store';
 import { loadKeys } from '@/lib/penv';
 import { ensureModel, timeSyntheticSearch } from '@/lib/recall';
 import { embedTexts } from '@/lib/recall/model';
@@ -91,6 +92,8 @@ const RUN: Record<number, () => Promise<void>> = {
     if (keyName && !keys[keyName]) return show({ id: 4, value: 'Add a key first' });
     const id = `check-${crypto.randomUUID()}`;
     busy(4, 'Extracting...');
+    // Extraction adds the made-up speakers to People; the finally block puts People back as it was.
+    const before = new Map((await listPeople()).map((p) => [p.id, p]));
     const t0 = performance.now();
     try {
       await putMeeting({ id, title: 'Machine check', startedAt: Date.now() - 3_600_000, endedAt: Date.now(), status: 'done', language: 'en' } as never);
@@ -101,6 +104,12 @@ const RUN: Record<number, () => Promise<void>> = {
     } finally {
       await deleteMeeting(id);
       await browser.storage.local.remove(extractedKey(id));
+      const db = await getDB();
+      for (const p of await listPeople()) {
+        const was = before.get(p.id);
+        if (!was) await db.delete('people', p.id);
+        else if (JSON.stringify(was) !== JSON.stringify(p)) await putPerson(was);
+      }
     }
   },
   async 5() {

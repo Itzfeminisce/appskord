@@ -7,8 +7,8 @@ import { folderFiles, type FolderFile, type MeetingParts } from './markdown';
 
 export * from './markdown';
 
-// `since`: when the folder was chosen; `written`: meetings already in it, so the rest count as past meetings.
-interface FolderMeta { name: string; since: number; lastWrittenAt?: number; queue: string[]; written: string[] }
+// `since`: when the folder was chosen; `written`: meetings already in it, so the rest count as past meetings; `remove`: files to delete on the next write.
+interface FolderMeta { name: string; since: number; lastWrittenAt?: number; queue: string[]; written: string[]; remove?: string[] }
 interface FolderDB extends DBSchema {
   handles: { key: string; value: FileSystemDirectoryHandle };
   meta: { key: string; value: FolderMeta };
@@ -24,6 +24,7 @@ export interface DirHandle {
   requestPermission?(o: { mode: 'readwrite' }): Promise<Permission>;
   getDirectoryHandle(name: string, o?: { create?: boolean }): Promise<DirHandle>;
   getFileHandle(name: string, o?: { create?: boolean }): Promise<FileHandle>;
+  removeEntry?(name: string): Promise<void>;
 }
 
 let dbName = 'rekord-folder';
@@ -120,6 +121,29 @@ export async function writeFiles(dir: DirHandle, files: FolderFile[]): Promise<v
   }
 }
 
+/** Deletes files; one already gone is fine. */
+export async function deleteFiles(dir: DirHandle, paths: string[]): Promise<void> {
+  for (const path of paths) {
+    const parts = path.split('/');
+    const name = parts.pop()!;
+    try {
+      let at = dir;
+      for (const part of parts) at = await at.getDirectoryHandle(part);
+      await at.removeEntry?.(name);
+    } catch (error) {
+      if ((error as { name?: string })?.name !== 'NotFoundError') throw error;
+    }
+  }
+}
+
+/** Marks files for removal (a forgotten person's page) and removes them now when the folder allows it. */
+export async function removeFiles(paths: string[]): Promise<void> {
+  const meta = await readMeta();
+  if (!meta) return;
+  await writeMeta({ ...meta, remove: [...new Set([...(meta.remove ?? []), ...paths])] });
+  await flushFolder();
+}
+
 async function partsFor(ids: string[]): Promise<MeetingParts[]> {
   const meetings = (await listMeetings()).filter((m) => ids.includes(m.id));
   return Promise.all(meetings.map(async (meeting) => {
@@ -141,8 +165,9 @@ async function write(all: boolean, now = Date.now()): Promise<boolean> {
   const changed = new Set(items.filter((i) => i.updatedAt > since).map((i) => i.meetingId));
   const ids = all ? meetings.map((m) => m.id)
     : meetings.filter((m) => meta.queue.includes(m.id) || changed.has(m.id) || m.startedAt > since || (m.endedAt ?? 0) > since).map((m) => m.id);
+  await deleteFiles(dir, meta.remove ?? []);
   await writeFiles(dir, folderFiles(await partsFor(ids), { meetings, people, items }));
-  await writeMeta({ ...meta, lastWrittenAt: now, queue: [], written: [...new Set([...meta.written, ...ids])] });
+  await writeMeta({ ...meta, lastWrittenAt: now, queue: [], written: [...new Set([...meta.written, ...ids])], remove: [] });
   return true;
 }
 

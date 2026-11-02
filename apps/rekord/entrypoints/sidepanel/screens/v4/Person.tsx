@@ -48,6 +48,7 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
   });
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(person.name);
+  const [saveFailed, setSaveFailed] = useState(false);
   const now = world.now();
   const first = firstName(person.name);
   const meetings = new Map(data.meetings.map((m) => [m.id, m]));
@@ -76,7 +77,14 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
     const clean = name.trim();
     setRenaming(false);
     if (!clean || clean === person.name) return setName(person.name);
-    await putPerson({ ...person, name: clean, aliases: [...new Set([...person.aliases, person.name])].filter((a) => a !== clean), updatedAt: world.now() });
+    try {
+      await putPerson({ ...person, name: clean, aliases: [...new Set([...person.aliases, person.name])].filter((a) => a !== clean), updatedAt: world.now() });
+    } catch (error) {
+      console.error('Rekord: could not rename', error);
+      setName(person.name);
+      return setSaveFailed(true);
+    }
+    setSaveFailed(false);
     onChanged();
   };
 
@@ -111,6 +119,7 @@ export function PersonPage({ person, data, onChanged, inert = false }: { person:
         )}
       </header>
       <main className="v4-body">
+        {saveFailed && <p className="rd-error" role="alert">Rekord couldn’t save that change. Try again.</p>}
         <div className="v4-scroll">
           <div className="pp-person">
             <section className="pp-hero">

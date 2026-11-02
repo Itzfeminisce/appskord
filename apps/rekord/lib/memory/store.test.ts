@@ -97,6 +97,12 @@ describe('memory store', () => {
     expect((await itemsForPerson('p-dana')).map((i) => i.id)).toContain('x1');
   });
 
+  it('finds an item that carries the person only as owner, even when stored without personIds', async () => {
+    const base = SAMPLE_ITEMS.find((i) => i.id === 'i-proposal')!;
+    await (await getDB()).put('items', { ...base, id: 'raw', ownerId: 'p-dana', toId: 'me', personIds: [] });
+    expect((await itemsForPerson('p-dana')).map((i) => i.id)).toContain('raw');
+  });
+
   it('replaces and undoes a replace on both decisions at once', async () => {
     await putItem({ ...SAMPLE_ITEMS.find((i) => i.id === 'd-launch-14')!, id: 'd-launch-16', text: 'Launch email goes out on 16 Nov' });
     expect(await replaceDecision('d-launch-14', 'd-launch-16', 5)).toBe(true);

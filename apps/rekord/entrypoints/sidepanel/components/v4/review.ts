@@ -85,7 +85,7 @@ export function reviewItems(items: MemoryItem[]): { waiting: MemoryItem[]; leftO
 }
 
 export type PersonSuggestion =
-  | { type: 'same'; loose: Person; person: Person }   // "Is “Tom” Tom Becker (tom@northwind.co)?"
+  | { type: 'same'; loose: Person; person: Person; ambiguous?: boolean }   // "Is “Tom” Tom Becker (tom@northwind.co)?"; ambiguous: other candidates too, so not in "Confirm all"
   | { type: 'new'; person: Person };                  // "New: Dana Ruiz · dana@lumen.io"
 
 export const reviewedPeopleKey = (meetingId: string) => `rekord.review.people.${meetingId}`;
@@ -96,10 +96,16 @@ export function personSuggestions(people: Person[], meetingId: string, reviewed:
   const done = new Set(reviewed);
   const out: PersonSuggestion[] = [];
   const paired = new Set<string>();
+  const byLoose = new Map<Person, Person[]>();
   for (const [loose, person] of mergeSuggestions(people)) {
     if (!here.includes(loose) || done.has(loose.id) || person.id === loose.id) continue;
-    paired.add(loose.id).add(person.id);
-    out.push({ type: 'same', loose, person });
+    byLoose.set(loose, [...(byLoose.get(loose) ?? []), person]);
+  }
+  // One card per loose name: a candidate with an email first, then the one met most.
+  for (const [loose, candidates] of byLoose) {
+    const [person] = [...candidates].sort((a, b) => Number(!!b.email) - Number(!!a.email) || b.meetingIds.length - a.meetingIds.length);
+    paired.add(loose.id).add(person!.id);
+    out.push({ type: 'same', loose, person: person!, ...(candidates.length > 1 ? { ambiguous: true } : {}) });
   }
   for (const p of here) {
     if (paired.has(p.id) || done.has(p.id) || p.meetingIds.length !== 1 || !p.email) continue;
@@ -107,6 +113,9 @@ export function personSuggestions(people: Person[], meetingId: string, reviewed:
   }
   return out;
 }
+
+/** Suggestions "Confirm all" may accept: not a loose name with several candidates. */
+export const confirmable = (suggestions: PersonSuggestion[]) => suggestions.filter((s) => !(s.type === 'same' && s.ambiguous));
 
 /** People to pick as owner or recipient: everyone in the meeting or its items, except a loose name awaiting a merge answer. */
 export function meetingPeople(people: Person[], meetingId: string, items: MemoryItem[] = []): Person[] {

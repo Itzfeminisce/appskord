@@ -8,7 +8,8 @@ import { getItem, getPerson } from '@/lib/memory/store';
 import type { MemoryItem } from '@/lib/memory/types';
 import { mount, settle } from '../../../../test/mountRouter';
 import { sidepanel } from '../../App';
-import { dueChip, dueFor, ownerChip } from '../../components/v4/review';
+import { confirmable, dueChip, dueFor, ownerChip, personSuggestions } from '../../components/v4/review';
+import type { Person } from '@/lib/memory/types';
 import { world } from '../../components/v4/world';
 import { DEV_FRAMES } from '../../dev/frames';
 
@@ -28,6 +29,18 @@ describe('review labels', () => {
     expect(dueChip({ ...base, due: '2026-11-03' }, SAMPLE_AFTER, { ...base, due: '2026-10-30' })).toBe('Due today (moved from Fri 30 Oct)');
     expect(dueChip(base, SAMPLE_AFTER)).toBe('No date');
     expect(dueFor('friday', SAMPLE_AFTER)).toBe('2026-11-06');
+  });
+});
+
+describe('person suggestions', () => {
+  const p = (id: string, name: string, more: Partial<Person> = {}): Person => ({ id, name, aliases: [], meetingIds: ['m'], createdAt: 0, updatedAt: 0, ...more });
+  it('shows one card per loose name, picks the likeliest candidate and keeps it out of Confirm all', () => {
+    const tom = p('tom', 'Tom', { meetingIds: ['now'] });
+    const people = [tom, p('a', 'Tom Ash', { meetingIds: ['1', '2', '3'] }), p('b', 'Tom Becker', { email: 'tom@example.test' })];
+    const out = personSuggestions(people, 'now', []);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ type: 'same', loose: tom, person: { id: 'b' }, ambiguous: true });
+    expect(confirmable(out)).toEqual([]);
   });
 });
 

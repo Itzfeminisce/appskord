@@ -11,7 +11,7 @@ vi.mock('@appskord/platform', async (original) => {
 import { closeDB, getDB } from '../db';
 import { SAMPLE_ITEMS, SAMPLE_MEETINGS, SAMPLE_ONE_ON_ONE, SAMPLE_ONE_ON_ONE_ITEMS, SAMPLE_PEOPLE, sampleSegments, seedSample } from '../memory/sample';
 import { folderFiles, meetingMarkdown, meetingPath, personPath, safeName } from './markdown';
-import { allowFolder, chooseFolder, flushFolder, folderStatus, stopFolder, useFolderDB, writeAll, writeFiles, type DirHandle } from './index';
+import { allowFolder, chooseFolder, flushFolder, folderStatus, removeFiles, stopFolder, useFolderDB, writeAll, writeFiles, type DirHandle } from './index';
 
 /** An in-memory directory that records every file written. */
 function fakeDir(files: Map<string, string>, permission: { value: 'granted' | 'prompt' }, prefix = ''): DirHandle {
@@ -20,6 +20,9 @@ function fakeDir(files: Map<string, string>, permission: { value: 'granted' | 'p
     queryPermission: async () => permission.value,
     requestPermission: async () => { permission.value = 'granted'; return 'granted'; },
     getDirectoryHandle: async (name) => fakeDir(files, permission, `${prefix}${name}/`),
+    removeEntry: async (name) => {
+      if (!files.delete(`${prefix}${name}`)) throw Object.assign(new Error('gone'), { name: 'NotFoundError' });
+    },
     getFileHandle: async (name) => ({
       createWritable: async () => {
         let text = '';
@@ -90,6 +93,18 @@ describe('Rekord folder writer', () => {
     await writeAll();
     expect([...files.keys()].filter((p) => p.startsWith('Meetings/')).length).toBeGreaterThan(0);
     expect(await folderStatus()).toMatchObject({ past: 0 });
+  });
+
+  it('removes a forgotten person’s file, now or after "Allow"', async () => {
+    await chooseFolder();
+    const sarah = personPath(SAMPLE_PEOPLE.find((p) => p.id === 'p-sarah')!);
+    expect(files.has(sarah)).toBe(true);
+    await (await getDB()).delete('people', 'p-sarah');
+    permission.value = 'prompt';
+    await removeFiles([sarah, 'People/Nobody.md']);
+    expect(files.has(sarah)).toBe(true);
+    expect(await allowFolder()).toBe(true);
+    expect(files.has(sarah)).toBe(false);
   });
 
   it('queues while permission is lost and flushes after "Allow"', async () => {

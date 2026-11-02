@@ -55,8 +55,9 @@ export async function itemsByKind(kind: ItemKind): Promise<MemoryItem[]> { retur
 export async function itemsByStatus(status: ItemStatus): Promise<MemoryItem[]> {
   return (await getDB()).getAllFromIndex('items', 'status', status);
 }
+/** Scans every item: one written without `withPeople` may carry the person only as owner or recipient. */
 export async function itemsForPerson(personId: string): Promise<MemoryItem[]> {
-  return (await getDB()).getAllFromIndex('items', 'personId', personId);
+  return (await listItems()).filter((i) => i.personIds.includes(personId) || i.ownerId === personId || i.toId === personId);
 }
 
 /** Open and looks-done promises and questions that are not snoozed. */

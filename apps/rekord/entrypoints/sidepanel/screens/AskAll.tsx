@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { askAll, askAllSession, askMemory, askMemorySession, citationClock, nothingFoundText, RANGES, SCOPES, shortDate, SUGGESTIONS, type AskAllResult, type AskMemoryResult, type MemorySource, type Range, type Scope } from '@/lib/askAll';
 import { listMeetings } from '@/lib/db';
-import { ensureModel, embedPending } from '@/lib/recall';
+import { ensureModel, embedPending, modelState } from '@/lib/recall';
 import { updateSettings } from '@/lib/settings';
 import { BackIcon } from '../components/v4/icons';
 import { world } from '../components/v4/world';
@@ -290,12 +290,25 @@ function ModelCard({ onReady, onKeep }: { onReady: () => void; onKeep: () => voi
     if (!alive.current) return;
     setPercent(null);
     if (!ok) { setFailed(true); return; }
-    await updateSettings({ memory: { ...(await getSettings()).memory, searchModel: 'ready' } });
+    try {
+      await updateSettings({ memory: { ...(await getSettings()).memory, searchModel: 'ready' } });
+    } catch (error) {
+      console.error('Rekord: could not save the search model choice', error);
+      if (alive.current) setFailed(true);
+      return;
+    }
     void embedPending();
     onReady();
   }
   async function keep() {
-    await updateSettings({ memory: { ...(await getSettings()).memory, searchModel: 'asked' } });
+    setFailed(false);
+    try {
+      await updateSettings({ memory: { ...(await getSettings()).memory, searchModel: 'asked' } });
+    } catch (error) {
+      console.error('Rekord: could not save the search model choice', error);
+      if (alive.current) setFailed(true);
+      return;
+    }
     onKeep();
   }
 
@@ -350,7 +363,8 @@ function MeaningAskAll({ model, onKeep }: { model: 'none' | 'ready'; onKeep: () 
     const q = question.trim();
     if (!q || pendingQ !== null || !meetings) return;
     setPendingQ(q);
-    const result = await askMemory(q, scope, meetings, { now: world.now() });
+    const keywordOnly = (await modelState().catch(() => 'none')) === 'downloading';
+    const result = await askMemory(q, scope, meetings, { now: world.now(), keywordOnly });
     if (alive.current) setPendingQ(null);
     keep(replaceAt === undefined ? [...askMemorySession.turns, result] : askMemorySession.turns.map((t, i) => (i === replaceAt ? result : t)));
   }

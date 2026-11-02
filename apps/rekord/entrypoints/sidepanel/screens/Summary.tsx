@@ -16,11 +16,12 @@ import { countLabel, meetingWhen, personSuggestions, reviewedPeopleKey } from '.
 import './v4/review.css';
 
 interface Memory { items: MemoryItem[]; people: Person[]; reviewed: string[] }
+const keptItems = (items: MemoryItem[]) => items.filter((i) => !i.leftOut && i.status !== 'dismissed');
 
 /** "From this meeting": what the meeting added to memory, and the way to review it. */
 function MemoryStrip({ meetingId, memory }: { meetingId: string; memory: Memory }) {
   const { navigate } = useRouter();
-  const kept = memory.items.filter((i) => !i.leftOut && i.status !== 'dismissed');
+  const kept = keptItems(memory.items);
   const people = personSuggestions(memory.people, meetingId, memory.reviewed).length;
   const waiting = kept.filter((i) => i.status === 'suggested').length + people;
   const count = (k: MemoryItem['kind']) => kept.filter((i) => i.kind === k).length;
@@ -157,7 +158,7 @@ export default function Summary() {
   const s = meeting.summary;
   const ledger: string = 'ledger';
   // The memory strip carries this meeting's promises, decisions and questions once extraction has run.
-  const hasMemory = memory.items.length > 0;
+  const hasMemory = keptItems(memory.items).length > 0;
   const decisions = normalizeDecisions(s?.decisions);
   const duration = meeting.endedAt ? formatDuration(meeting.endedAt - meeting.startedAt) : undefined;
   return (

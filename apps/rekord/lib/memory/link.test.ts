@@ -80,6 +80,16 @@ describe('people edits', () => {
     expect(plan.unlinked.every((i) => !i.personIds.includes('p-sarah') && i.updatedAt === 5)).toBe(true);
   });
 
+  it('deletes only promises the person owes or is owed; a promise that merely mentions them is unlinked', () => {
+    const plan = planForget('x', [
+      item('owes', { kind: 'promise', ownerId: 'x', personIds: [] }),
+      item('mentions', { kind: 'promise', ownerId: 'me', toId: 'y', personIds: ['x', 'y'] }),
+      item('dec', { kind: 'decision', ownerId: 'x', personIds: [] }),
+    ], 3);
+    expect(plan.deleteIds).toEqual(['owes']);
+    expect(plan.unlinked.map((i) => [i.id, i.personIds, i.ownerId])).toEqual([['mentions', ['y'], 'me'], ['dec', [], undefined]]);
+  });
+
   it('merges details and relinks items', () => {
     const merged = mergedPerson(p('k', 'Sam Ortiz', { email: 'sam@x.io', meetingIds: ['1'] }), p('d', 'Sam', { meetingIds: ['1', '2'] }), 9);
     expect(merged).toMatchObject({ id: 'k', email: 'sam@x.io', aliases: ['Sam'], meetingIds: ['1', '2'], updatedAt: 9 });

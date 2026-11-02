@@ -53,6 +53,10 @@ export interface SearchOptions {
   limit?: number;
   /** Loads a meeting's transcript and notes (defaults to the database). */
   load?: (m: Meeting) => Promise<MeetingData>;
+  /** Items in scope, applied before the limit. */
+  itemFilter?: (i: MemoryItem) => boolean;
+  /** Skips the search model (while it downloads). */
+  keywordOnly?: boolean;
 }
 export interface ItemHit { item: MemoryItem; score: number }
 /** `atMs`/`text`: the best matching window, when vectors found one. */
@@ -95,11 +99,11 @@ export async function search(query: string, opts: SearchOptions = {}): Promise<S
   const byId = new Map(meetings.map((m) => [m.id, m]));
   const [data, hits, allItems] = await Promise.all([
     Promise.all(meetings.map(opts.load ?? loadFromDb)),
-    vectorHits(q, new Set(byId.keys())),
+    opts.keywordOnly ? undefined : vectorHits(q, new Set(byId.keys())),
     listItems(),
   ]);
 
-  const items = allItems.filter((i) => searchable(i) && byId.has(i.meetingId));
+  const items = allItems.filter((i) => searchable(i) && byId.has(i.meetingId) && (opts.itemFilter?.(i) ?? true));
   const itemKeyword = items.map((i) => ({ id: i.id, s: scoreItem(i, q) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.id);
   const meetingKeyword = rankCandidates(data, q).map((c) => c.meeting.id);
   const itemById = new Map(items.map((i) => [i.id, i]));

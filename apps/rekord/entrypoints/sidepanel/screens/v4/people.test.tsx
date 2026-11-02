@@ -31,6 +31,8 @@ describe('people view', () => {
     const sarah = person('p-sarah');
     expect(seriesLine({ ...sarah, series: undefined }, SAMPLE_MEETINGS)).toEqual({ label: 'Every Tuesday 10:00', count: 6, since: 'Sep' });
     expect(detectSeries([1, 2].map((d) => new Date(2026, 9, d, 10).getTime()))).toBeUndefined();
+    expect(detectSeries([6, 13, 20].map((d) => new Date(2026, 9, d, 10, d === 13 ? 4 : 0).getTime()))?.label).toBe('Every Tuesday 10:00');
+    expect(detectSeries([6, 20, 3 + 31].map((d) => new Date(2026, 9, d, 10).getTime()))).toBeUndefined();
     expect(nextMeeting(sarah, [SAMPLE_EVENT], SAMPLE_NOW)?.title).toBe('1:1 with Sarah');
     expect(nextMeeting(person('p-dana'), [SAMPLE_EVENT], SAMPLE_NOW)).toBeUndefined();
   });
@@ -61,7 +63,7 @@ describe('people screens', () => {
     expect(text).toContain('Forget Sarah Chen?');
     expect(text).toContain('2 promises');
     expect(text).toContain('2 decision links');
-    expect(view.host.querySelector<HTMLInputElement>('#pf-redact')!.disabled).toBe(true);
+    expect(view.host.querySelector<HTMLInputElement>('#pf-redact')!.disabled).toBe(false);
     click(button(view.host, 'Forget Sarah'));
     await settle();
     expect(view.router.route.screen).toBe('people');
@@ -118,7 +120,12 @@ describe('people screens', () => {
     await settle();
     const boxes = [...view.host.querySelectorAll<HTMLInputElement>('.pm-check input')];
     expect(boxes).toHaveLength(5);
-    for (const box of boxes.slice(0, 4)) click(box);
+    expect(boxes.some((b) => b.checked)).toBe(false);
+    expect(button(view.host, 'Move 0 meetings to a new person')?.disabled).toBe(true);
+    for (const box of boxes) click(box);
+    await settle();
+    expect(button(view.host, 'Move 5 meetings to a new person')?.disabled).toBe(true);
+    for (const box of boxes.slice(1)) click(box);
     await settle();
     click(button(view.host, 'Move 1 meeting to a new person'));
     await settle();

@@ -58,10 +58,17 @@ export interface ForgetPlan { deleteIds: string[]; unlinked: MemoryItem[]; promi
 /** What forgetting a person removes: promises they owe or are owed go; other items only lose the link. */
 export function planForget(personId: string, items: MemoryItem[], now: number): ForgetPlan {
   const touched = items.filter((i) => i.personIds.includes(personId) || i.ownerId === personId || i.toId === personId);
-  const gone = touched.filter((i) => i.kind === 'promise');
+  const owesOrOwed = (i: MemoryItem) => i.kind === 'promise' && (i.ownerId === personId || i.toId === personId);
+  const gone = touched.filter(owesOrOwed);
   const unlinked = touched
-    .filter((i) => i.kind !== 'promise')
-    .map((i) => ({ ...i, personIds: i.personIds.filter((id) => id !== personId), updatedAt: now }));
+    .filter((i) => !owesOrOwed(i))
+    .map((i) => ({
+      ...i,
+      personIds: i.personIds.filter((id) => id !== personId),
+      ownerId: i.ownerId === personId ? undefined : i.ownerId,
+      toId: i.toId === personId ? undefined : i.toId,
+      updatedAt: now,
+    }));
   return {
     deleteIds: gone.map((i) => i.id),
     unlinked,

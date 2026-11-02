@@ -180,6 +180,15 @@ describe('ask by meaning', () => {
 
   it('renumbers by first mention and drops markers outside the sources', () => {
     expect(checkCitations('A [3] B [1, 3] C [7]', 3)).toEqual({ text: 'A[1] B[2][1] C', order: [3, 1] });
+    expect(checkCitations('A [123] B [2, 100]', 3)).toEqual({ text: 'A B[1]', order: [2] });
+  });
+
+  it('hands the scope and keyword-only choice to search, so the limit counts only items in scope', async () => {
+    const search = vi.fn(async () => found(all));
+    await askMemory('pricing?', 'decisions', ms, deps(found(all), 'Yes. [1]', { search, keywordOnly: true }));
+    const opts = (search.mock.calls[0] as unknown as [string, { itemFilter: (i: MemoryItem) => boolean; keywordOnly: boolean }])[1];
+    expect(opts.keywordOnly).toBe(true);
+    expect(all.filter(opts.itemFilter).map((i) => i.id)).toEqual(['d1']);
   });
 
   it('counts overdue days from the due date', () => {
