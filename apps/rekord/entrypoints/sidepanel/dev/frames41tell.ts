@@ -50,7 +50,7 @@ export const FRAMES_41_TELL = {
       await (await getDB()).put('meetings', { ...V41_CATCHUP, status: 'processing', told: { ...told, answers: told.answers!.filter((a) => a.questionId !== 'q3') } });
       const states = ['answered', 'skipped', 'open'] as const;
       followUpsDev.questions = { status: 'ready', questions: V41_QUESTIONS };
-      followUpsDev.status = { steps: [], decisions: 0, promises: 0, questions: V41_QUESTIONS.map((q, i) => ({ ...q, state: states[i]! })) } satisfies CatchupStatus;
+      followUpsDev.status = { steps: [], decisions: 0, promises: 0, found: 0, questions: V41_QUESTIONS.map((q, i) => ({ ...q, state: states[i]! })) } satisfies CatchupStatus;
       followUpsDev.draft = 'No, she was there to listen.';
     },
   },
@@ -60,7 +60,7 @@ export const FRAMES_41_TELL = {
       await seedAfter();
       processingDev.status = {
         steps: [step('text', true), step('questions', true), step('decisions', true), step('promises', false), step('summary', false)],
-        decisions: 1, promises: 0, questions: [],
+        decisions: 1, promises: 0, found: 1, questions: [],
       };
     },
   },

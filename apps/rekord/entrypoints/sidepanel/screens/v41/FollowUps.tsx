@@ -13,9 +13,15 @@ import { activeQuestion, answerText, cardState, METER_BARS, pickedOf, questionCo
 import { Banner, Meter, MicIcon, SendIcon, Tick } from './tellParts';
 
 /** Dev frame routes only: the questions and answers the frame shows, and what it has typed into the active card. */
-export const followUpsDev: { questions?: QuestionsState; status?: CatchupStatus; draft?: string } = {};
+export const followUpsDev: {
+  questions?: QuestionsState; status?: CatchupStatus; draft?: string;
+  /** A V41StatesMore card: a question reopened after Change, or answered by voice from `fromMs` of the telling. */
+  reopened?: string; voice?: { questionId: string; fromMs: number; levels: number[] };
+} = {};
 
 const POLL_MS = 1_500;
+/** The question card's meter is shorter than the telling's (V41StatesMore). */
+const VOICE_BARS = 11;
 const ASK_AGAIN_AFTER_MS = 6_000;
 
 /** V41Questions: up to three questions about gaps in the telling; answer by voice or text, or skip. "Finish" puts it together. */
@@ -26,12 +32,13 @@ export default function FollowUps() {
   const [status, setStatus] = useState<CatchupStatus | undefined>();
   const [meeting, setMeeting] = useState<Meeting | undefined>();
   const [segments, setSegments] = useState<Segment[]>([]);
-  const [reopened, setReopened] = useState<string | undefined>();
+  const [reopened, setReopened] = useState<string | undefined>(() => { const r = followUpsDev.reopened; followUpsDev.reopened = undefined; return r; });
   const [draft, setDraft] = useState(followUpsDev.draft ?? '');
-  const [voiceFor, setVoiceFor] = useState<string | undefined>();
-  const [voiceFrom, setVoiceFrom] = useState(0);
+  const [devVoice] = useState(() => { const v = followUpsDev.voice; followUpsDev.voice = undefined; return v; });
+  const [voiceFor, setVoiceFor] = useState<string | undefined>(devVoice?.questionId);
+  const [voiceFrom, setVoiceFrom] = useState(devVoice?.fromMs ?? 0);
   const voiceBefore = useRef<ToldBefore | undefined>(undefined);
-  const [levels, setLevels] = useState<number[]>([]);
+  const [levels, setLevels] = useState<number[]>(devVoice?.levels ?? []);
   const [busy, setBusy] = useState(false);
   const port = useRef<ReturnType<typeof browser.runtime.connect> | undefined>(undefined);
   const asked = useRef(false);
@@ -197,7 +204,7 @@ export default function FollowUps() {
                   onClick={() => void (voice ? stopVoice() : startVoice(q.id))}><MicIcon size={18} /></button>
                 {voice ? (
                   <>
-                    <Meter levels={levels} />
+                    <Meter levels={levels} bars={VOICE_BARS} />
                     <span className="ct-row-label">Listening</span>
                   </>
                 ) : (

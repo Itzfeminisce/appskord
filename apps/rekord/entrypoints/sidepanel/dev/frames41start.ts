@@ -8,6 +8,7 @@ import { getSettings, updateSettings } from '@/lib/settings';
 import type { CalendarEvent } from '@/lib/types';
 import { world } from '../components/v4/world';
 import { settingsDev } from '../screens/v4/SettingsMemory';
+import { pickOtherDev } from '../screens/v41/PickOther';
 import type { DevFrame } from './frames';
 
 const MB = 1024 * 1024;
@@ -21,7 +22,7 @@ const EARLIER: CalendarEvent = {
 };
 
 /** Google Calendar connected and its last 7 days cached; the missed-meeting hook reads the real clock, so it follows the frame's. */
-async function calendarWorld(events: CalendarEvent[]) {
+export async function calendarWorld(events: CalendarEvent[]) {
   const real = realNow;
   const shift = world.now() - real();
   Date.now = () => real() + shift;
@@ -45,7 +46,10 @@ export const FRAMES_41_START = {
   V41Home: { screen: 'home', now: V41_NOW, setup: () => calendarWorld(V41_EVENTS) },
   V41HomeTwoMissed: { screen: 'home', now: V41_NOW, setup: () => calendarWorld([...V41_EVENTS, EARLIER]) },
   V41Pick: { screen: 'catchupPick', now: V41_NOW, setup: () => calendarWorld(V41_EVENTS) },
-  V41PickOther: { screen: 'catchupPickOther', now: V41_NOW },
+  V41PickOther: {
+    screen: 'catchupPickOther', now: V41_NOW,
+    setup: async () => { pickOtherDev.form = { name: 'Lunch with Dana', date: '2026-10-30', start: '12:30', attendees: [{ name: 'Dana Ruiz' }] }; },
+  },
   V41Settings: {
     screen: 'settingsMemory', now: V41_NOW,
     setup: async () => {

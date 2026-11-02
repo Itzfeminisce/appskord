@@ -24,6 +24,7 @@ export const BANNER_ICONS = {
   done: <svg {...b18}><circle cx="12" cy="12" r="9" /><path d="M8 12.5l3 3 5-6" /></svg>,
   offline: <svg {...b18}><path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 4.5-2.5M19 13a10 10 0 0 0-3-2M2 9.5a15 15 0 0 1 4-2.5M22 9.5A15 15 0 0 0 11 5.5M12 20h.01" /></svg>,
   warn: <svg {...b18}><path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17v.5" /></svg>,
+  calendar: <svg {...b18}><rect x="4" y="5" width="16" height="15" rx="3" /><path d="M4 10h16M9 3v4M15 3v4" /></svg>,
   clock: <svg {...b18}><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></svg>,
 };
 
@@ -51,8 +52,8 @@ export function Banner({ tone, icon, title, body, actions = [], alert = false, c
 }
 
 /** The microphone level, newest bar last. */
-export function Meter({ levels }: { levels: number[] }) {
-  const shown = [...Array(Math.max(0, METER_BARS - levels.length)).fill(0), ...levels.slice(-METER_BARS)] as number[];
+export function Meter({ levels, bars = METER_BARS }: { levels: number[]; bars?: number }) {
+  const shown = [...Array(Math.max(0, bars - levels.length)).fill(0), ...levels.slice(-bars)] as number[];
   return (
     <span role="img" aria-label="Microphone level" className="ct-meter">
       {shown.map((l, i) => { const b = bar(l); return <span key={i} className={b.on ? 'on' : undefined} style={{ height: b.h }} />; })}

@@ -72,13 +72,16 @@ export function Row({ item, view, now, onCheck }: { item: MemoryItem; view: Memo
   );
 }
 
+/** Dev frame routes only: the missed-meeting card just dismissed (V41States toast), read once. */
+export const homeDev: { wont?: CalendarEvent } = {};
+
 /** Open loops: brief card, Looks done banner, the three tabs and their sections. Under a sheet, `tab` is the sheet item's tab. */
 export function LoopsHome({ tab: forced, sheet = false, children }: { tab?: LoopTab; sheet?: boolean; children?: ReactNode }) {
   const { navigate } = useRouter();
   const [view, reload] = useMemoryView();
   const [chosen, setChosen] = useState<LoopTab>(lastTab);
   const [toast, setToast] = useState<Toast | undefined>(() => (sheet ? undefined : takePendingToast()));
-  const [wont, setWont] = useState<CalendarEvent | undefined>();
+  const [wont, setWont] = useState<CalendarEvent | undefined>(() => { const w = sheet ? undefined : homeDev.wont; homeDev.wont = undefined; return w; });
   const tab = forced ?? chosen;
   const now = world.now();
   const loops = rankOpenLoops(view.items, now, tab);

@@ -91,6 +91,8 @@ try {
   await panel.addInitScript(stubChrome, manifest.version);
   await panel.goto(`${origin}/sidepanel.html#/dev/${devFrame}`);
   await panel.waitForLoadState('networkidle');
+  // Boards drawn from several screens say when they are done.
+  await panel.waitForFunction(() => !document.querySelector('[data-board-loading]'), null, { timeout: 60_000 });
   await panel.evaluate(() => document.fonts.ready);
   await panel.waitForTimeout(600);
   const builtPng = join(outDir, `${devFrame}.built.png`);
