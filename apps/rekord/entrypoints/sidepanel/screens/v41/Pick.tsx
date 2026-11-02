@@ -3,10 +3,10 @@ import { clock } from '@/lib/calendar';
 import { getSettings } from '@/lib/settings';
 import { useMissedMeetings } from '../../components/CalendarCard';
 import { BackIcon } from '../../components/v4/icons';
-import { EmptyCard } from '../../components/v4/states';
 import { useRouter } from '../../router';
 import { openGoogleConnect } from '../GoogleConnect';
 import { dayLabel, guestNames, lengthLabel } from './MissedCard';
+import { Banner } from './tellParts';
 import './start.css';
 
 const minutesOf = (e: { start: number; end: number }) => Math.round((e.end - e.start) / 60_000);
@@ -34,10 +34,13 @@ export default function Pick() {
       <main className="cu-body">
         <p className="cu-lead">Which meeting did Rekord miss? You tell it what happened, and it works like any meeting.</p>
         {connected === false ? (
-          <EmptyCard title="Connect Google Calendar to pick from your meetings" body="Or pick “Something else” and fill in the details."
-            action={{ label: 'Connect Google Calendar', onClick: () => openGoogleConnect(router, 'start') }} />
+          <Banner tone="plain" icon="calendar" title="Connect Google Calendar to pick from your meetings" body="Or pick “Something else” and fill in the details."
+            actions={[{ label: 'Connect Google Calendar', onClick: () => openGoogleConnect(router, 'start') }]} />
         ) : connected && recent.length === 0 ? (
-          <EmptyCard title="No missed meetings in the last 7 days" body="Rekord recorded every calendar meeting. Pick “Something else” for any other." />
+          <div className="cu-empty">
+            <span className="cu-empty-title">No missed meetings in the last 7 days</span>
+            <span>Rekord recorded every calendar meeting. Pick “Something else” for any other.</span>
+          </div>
         ) : recent.length > 0 && (
           <fieldset className="cu-group">
             <legend>From your calendar · last 7 days</legend>

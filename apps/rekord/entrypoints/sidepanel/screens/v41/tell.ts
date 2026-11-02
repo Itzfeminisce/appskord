@@ -141,6 +141,12 @@ export function processingDone(status: CatchupStatus, summaryDoneFor: number, wa
   return memory.every((s) => s?.done || s?.failed) || summaryDoneFor >= waitMs;
 }
 
+/** "Nothing to remember yet": memory finished (not failed) and kept nothing from the telling. */
+export function nothingFound(status: CatchupStatus): boolean {
+  const memory = ['decisions', 'promises'].map((k) => status.steps.find((s) => s.step === k));
+  return memory.every((s) => s?.done && !s.failed) && status.found === 0;
+}
+
 /** "12:40 of your telling and 2 answers, for “Q4 planning with Northwind”." */
 export function tellingLine(meeting: Pick<Meeting, 'title' | 'told'>): string {
   const answers = (meeting.told?.answers ?? []).filter((a) => !a.skipped).length;

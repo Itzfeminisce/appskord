@@ -110,7 +110,7 @@ describe('questions: skip and change', () => {
 describe('processing', () => {
   const status = (done: Record<string, boolean>, extra: Partial<CatchupStatus> = {}): CatchupStatus => ({
     steps: (['text', 'questions', 'decisions', 'promises', 'summary'] as const).map((step) => ({ step, done: !!done[step] })),
-    decisions: 1, promises: 2, questions: [], ...extra,
+    decisions: 1, promises: 2, found: 3, questions: [], ...extra,
   });
 
   it('done steps say what they found; the first one not done spins', () => {

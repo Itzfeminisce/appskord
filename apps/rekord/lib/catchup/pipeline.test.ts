@@ -192,7 +192,7 @@ describe('follow-up questions', () => {
         { step: 'text', done: true }, { step: 'questions', done: true }, { step: 'decisions', done: true },
         { step: 'promises', done: true }, { step: 'summary', done: true },
       ],
-      decisions: 0, promises: 1,
+      decisions: 0, promises: 1, found: 1,
       questions: [{ id: 'q1', text: 'You will send the Q4 plan draft. By when?', about: 'due', state: 'open' }],
     });
   });

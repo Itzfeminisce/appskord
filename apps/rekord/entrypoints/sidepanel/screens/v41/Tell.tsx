@@ -20,7 +20,9 @@ import { BackArrow, Banner, LeaveDialog, Meter, MicIcon, PauseBars, Prompts, Key
 import { TellType } from './TellType';
 
 /** Dev frame routes only: the telling as the frame shows it, without a microphone. */
-export const tellDev: { rec?: RecordingState; levels?: number[]; typed?: string } = {};
+export const tellDev: { rec?: RecordingState; levels?: number[]; typed?: string; state?: TellDevState } = {};
+/** Dev frame routes only: a V41States card on the real screen. */
+export interface TellDevState { micBlocked?: boolean; aiMissing?: boolean; short?: boolean; limitHit?: boolean; offline?: boolean; textFailed?: boolean; confirm?: boolean }
 
 const START_ERROR = 'Rekord couldn’t start recording. Try again in a moment.';
 const NOTHING_HEARD_MS = 8_000;
@@ -54,17 +56,18 @@ export default function Tell() {
   const [levels, setLevels] = useState<number[]>(tellDev.levels ?? []);
   const [heard, setHeard] = useState(!!tellDev.levels);
   const [now, setNow] = useState(() => world.now());
-  const [ai, setAi] = useState<'checking' | 'ready' | 'missing'>(tellDev.rec || tellDev.typed !== undefined ? 'ready' : 'checking');
-  const [micBlocked, setMicBlocked] = useState(false);
+  const dev = tellDev.state ?? {};
+  const [ai, setAi] = useState<'checking' | 'ready' | 'missing'>(dev.aiMissing ? 'missing' : tellDev.rec || tellDev.typed !== undefined || tellDev.state ? 'ready' : 'checking');
+  const [micBlocked, setMicBlocked] = useState(!!dev.micBlocked);
   const [error, setError] = useState('');
-  const [short, setShort] = useState(false);
-  const [confirm, setConfirm] = useState(false);
-  const [limitHit, setLimitHit] = useState(false);
-  const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && navigator.onLine === false);
-  const [textFailed, setTextFailed] = useState(false);
+  const [short, setShort] = useState(!!dev.short);
+  const [confirm, setConfirm] = useState(!!dev.confirm);
+  const [limitHit, setLimitHit] = useState(!!dev.limitHit);
+  const [offline, setOffline] = useState(() => !!dev.offline || (typeof navigator !== 'undefined' && navigator.onLine === false));
+  const [textFailed, setTextFailed] = useState(!!dev.textFailed);
   const [busy, setBusy] = useState(false);
   const started = useRef(adding || !!tellDev.rec);
-  const autoStarted = useRef(!!tellDev.rec || tellDev.typed !== undefined);
+  const autoStarted = useRef(!!tellDev.rec || tellDev.typed !== undefined || !!tellDev.state);
   const stopping = useRef(false);
   const before = useRef<Told | undefined>(undefined);
   const port = useRef<ReturnType<typeof browser.runtime.connect> | undefined>(undefined);
@@ -105,7 +108,7 @@ export default function Tell() {
 
   // Live state, words and levels from the background.
   useEffect(() => {
-    if (tellDev.rec || tellDev.typed !== undefined) return undefined;
+    if (tellDev.rec || tellDev.typed !== undefined || tellDev.state) return undefined;
     const off = onMessage((msg) => {
       if (msg.type === 'recording/state') {
         setRec(msg.state);

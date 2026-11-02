@@ -12,6 +12,8 @@ export const LENGTHS: { label: string; minutes: number }[] = [
 ];
 
 export interface OtherErrors { name?: string; date?: string }
+/** Dev frame routes only: the form as a V41StatesMore card shows it, with its error. */
+export const pickOtherDev: { form?: Omit<SomethingElseForm, 'lengthMin'>; date?: string; errors?: OtherErrors } = {};
 export const NAME_ERROR = 'Give the meeting a name, so you can find it later.';
 export const DATE_ERROR = 'That date hasn’t happened yet. Pick the day the meeting took place.';
 
@@ -56,13 +58,13 @@ const Warn = () => (
 /** V41PickOther: the details of a meeting that is not on the calendar. */
 export default function PickOther() {
   const { navigate, back, canGoBack, replace } = useRouter();
-  const [name, setName] = useState('');
-  const [date, setDate] = useState(() => dayKey(world.now()));
-  const [start, setStart] = useState('09:00');
+  const [name, setName] = useState(pickOtherDev.form?.name ?? '');
+  const [date, setDate] = useState(() => pickOtherDev.date ?? pickOtherDev.form?.date ?? dayKey(world.now()));
+  const [start, setStart] = useState(pickOtherDev.form?.start ?? '09:00');
   const [lengthMin, setLength] = useState(60);
-  const [attendees, setAttendees] = useState<SomethingElseForm['attendees']>([]);
+  const [attendees, setAttendees] = useState<SomethingElseForm['attendees']>(pickOtherDev.form?.attendees ?? []);
   const [typed, setTyped] = useState('');
-  const [errors, setErrors] = useState<OtherErrors>({});
+  const [errors, setErrors] = useState<OtherErrors>(pickOtherDev.errors ?? {});
   const nameRef = useRef<HTMLInputElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
 

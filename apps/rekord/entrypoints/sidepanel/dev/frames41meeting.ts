@@ -23,7 +23,7 @@ const SUMMARY = {
 };
 
 /** The catch-up with its summary and the telling's voice, as it stands once Processing is done. */
-async function meetingWorld() {
+export async function meetingWorld() {
   await seedSampleV41(await getDB(), 'after');
   const db = await getDB();
   await db.put('meetings', { ...V41_CATCHUP, summary: SUMMARY });

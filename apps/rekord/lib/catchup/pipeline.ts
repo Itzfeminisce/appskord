@@ -179,7 +179,8 @@ export async function finishCatchup(meetingId: string, deps: { fetchFn?: FetchLi
 }
 
 export type QuestionState = CatchupQuestion & { state: 'open' | 'answered' | 'skipped' };
-export interface CatchupStatus { steps: CatchupProgress[]; decisions: number; promises: number; questions: QuestionState[] }
+/** found: every memory item kept from the catch-up (promises, decisions, questions, people). */
+export interface CatchupStatus { steps: CatchupProgress[]; decisions: number; promises: number; found: number; questions: QuestionState[] }
 
 /** V41Processing: each step's state, read from what is saved, so any page (or a reopened panel) can show it. */
 export async function catchupProgress(meetingId: string, now: () => number = Date.now): Promise<CatchupStatus> {
@@ -201,6 +202,7 @@ export async function catchupProgress(meetingId: string, now: () => number = Dat
     ],
     decisions: kept.filter((i) => i.kind === 'decision').length,
     promises: kept.filter((i) => i.kind === 'promise').length,
+    found: kept.length,
     questions: (questions?.questions ?? []).map((q) => {
       const a = answers.get(q.id);
       return { ...q, state: !a ? 'open' : a.skipped ? 'skipped' : 'answered' };

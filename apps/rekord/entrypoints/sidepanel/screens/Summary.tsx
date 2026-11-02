@@ -117,7 +117,9 @@ function MoreMenu({ title, canDeleteAudio, onShare, onAudio, onDelete }: { title
 }
 
 /** Dev frame routes open the page with its menu showing (V41MeetingMore); `undoMs` is how long Undo stays, shortened in tests. */
-export const summaryView: { menuOpen: boolean; undoMs: number } = { menuOpen: false, undoMs: 8000 };
+export const summaryView: { menuOpen: boolean; undoMs: number; state?: 'confirm' | 'gone' | 'audioGone' } = { menuOpen: false, undoMs: 8000 };
+/** Dev frame routes only: a V41States card, read once when the page opens. */
+const takeState = (s: NonNullable<typeof summaryView.state>): boolean => { if (summaryView.state !== s) return false; summaryView.state = undefined; return true; };
 
 export default function Summary() {
   const { route, replace, navigate, has } = useRouter();
@@ -134,10 +136,10 @@ export default function Summary() {
   const [memory, setMemory] = useState<Memory>({ items: [], people: [], reviewed: [] });
   const [menu, setMenu] = useState(() => { const open = summaryView.menuOpen; summaryView.menuOpen = false; return open; });
   const [hasAudio, setHasAudio] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState(() => takeState('confirm'));
   // Both deletes wait for Undo to go (V41States): the audio, and the whole catch-up.
-  const [audioGone, setAudioGone] = useState(false);
-  const [gone, setGone] = useState(false);
+  const [audioGone, setAudioGone] = useState(() => takeState('audioGone'));
+  const [gone, setGone] = useState(() => takeState('gone'));
   const pending = useRef<{ kind: 'audio' | 'meeting'; timer: ReturnType<typeof setTimeout> } | null>(null);
 
   const settle = useCallback(async () => {

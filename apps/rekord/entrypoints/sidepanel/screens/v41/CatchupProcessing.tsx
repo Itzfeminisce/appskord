@@ -7,7 +7,7 @@ import { send } from '@/lib/messages';
 import { getSettings } from '@/lib/settings';
 import type { Meeting } from '@/lib/types';
 import { useRouter } from '../../router';
-import { dayOf, processingDone, stepViews, tellingLine } from './tell';
+import { dayOf, nothingFound, processingDone, stepViews, tellingLine } from './tell';
 import { Banner, Tick } from './tellParts';
 
 /** Dev frame routes only: the progress the frame shows. */
@@ -48,7 +48,8 @@ export default function CatchupProcessing() {
         const summary = st.steps.find((s) => s.step === 'summary');
         if (summary?.done && summaryAt.current === undefined) summaryAt.current = Date.now();
         if (processingDone(st, summaryAt.current === undefined ? 0 : Date.now() - summaryAt.current)) {
-          replace('summary', { meetingId });
+          // Nothing found stays here, so the user picks Add more or Keep as a note.
+          if (!nothingFound(st)) replace('summary', { meetingId });
           return;
         }
       }
@@ -61,6 +62,7 @@ export default function CatchupProcessing() {
   const steps = status ? stepViews(status) : [];
   const failed = status?.steps.find((s) => s.step === 'summary')?.failed === 'ai';
   const limit = status?.steps.find((s) => s.failed === 'limit' && s.resumesAt);
+  const empty = !!status && !!status.steps.find((s) => s.step === 'summary')?.done && nothingFound(status);
   const readTelling = () => navigate('transcript', { meetingId });
   const tryAgain = () => {
     setStatus((s) => s && { ...s, steps: s.steps.map((x) => (x.step === 'summary' ? { step: x.step, done: false } : x)) });
@@ -93,6 +95,10 @@ export default function CatchupProcessing() {
             body={<span className="ct-limit-body">{`${ai}’s free limit is used up for now. Rekord carries on at `}<span className="ct-mono">{clock(limit.resumesAt)}</span> by itself.</span>}>
             <span className="ct-limit-note">You can close the panel. Rekord finishes in the background.</span>
           </Banner>
+        )}
+        {empty && (
+          <Banner tone="plain" icon="info" title="Nothing to remember yet" body="Your catch-up is saved, but Rekord found no promises, decisions or questions in it."
+            actions={[{ label: 'Add more', dark: true, onClick: () => replace('catchupTell', { meetingId }) }, { label: 'Keep as a note', onClick: () => replace('summary', { meetingId }) }]} />
         )}
         {meeting && <p className="ct-due"><span><Calendar /></span>{`Due dates are worked out from ${dayOf(meeting.startedAt)}, the day of the meeting.`}</p>}
       </div>
