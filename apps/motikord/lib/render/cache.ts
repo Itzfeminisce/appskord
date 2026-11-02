@@ -85,13 +85,13 @@ export class MediaCache {
     return this.scratchCtx ?? undefined;
   }
 
-  /** True once the family is usable, so fits measured on fallback metrics are not reused. */
-  fontReady(family: string): boolean {
+  /** True once the family's face at this weight is usable, so fits measured on fallback metrics are not reused. */
+  fontReady(family: string, weight: number): boolean {
     if (this.families.has(family)) return true;
     try {
       const fonts = this.decoders?.fonts ?? (globalThis as unknown as { fonts?: FontSet }).fonts;   // a page passes its own; a worker has self.fonts
       const name = `"${family.replace(/"/g, '')}"`;
-      if (fonts?.check(`16px ${name}`)) return true;
+      if (fonts?.check(`${weight} 16px ${name}`)) return true;
       // A bundled face loads only when asked for; canvas text never asks, so the first draw does (pages redraw on loadingdone).
       if (fonts?.load && !this.asked.has(family)) {
         this.asked.add(family);

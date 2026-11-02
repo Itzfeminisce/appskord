@@ -313,6 +313,21 @@ describe('contrast judges what is actually behind the text', () => {
     expect(hit[0]!.note).toContain('block');
     expect(check(applyPatch(r, hit[0]!.fix).doc as Recipe, { measure }).filter((i) => i.kind === 'contrast')).toEqual([]);
   });
+  it('gives grey ink split across navy and yellow a plate it reads on', () => {
+    const r = bold(onBand, { kind: 'blocks', colours: ['#1E3A8A', '#FACC15'] });
+    r.scenes[0]!.layers[0] = { ...r.scenes[0]!.layers[0]!, colour: '#555555' } as Layer;
+    const hit = check(r, { measure }).filter((i) => i.kind === 'contrast');
+    expect(hit).toHaveLength(1);
+    const after = applyPatch(r, hit[0]!.fix).doc as Recipe;
+    expect(check(after, { measure }).filter((i) => i.kind === 'contrast')).toEqual([]);
+  });
+  it('sets a readable ink too when no plate suits grey body text', () => {
+    const r = bold(onBand, { kind: 'blocks', colours: ['#1E3A8A', '#FACC15'] });
+    r.scenes[0]!.layers[0] = { ...r.scenes[0]!.layers[0]!, colour: '#777777', role: 'body', sizePx: 32 } as Layer;
+    const hit = check(r, { measure }).filter((i) => i.kind === 'contrast');
+    expect(hit[0]!.fix.map((o) => o.path.split('/').pop())).toEqual(['background', 'colour']);
+    expect(check(applyPatch(r, hit[0]!.fix).doc as Recipe, { measure }).filter((i) => i.kind === 'contrast')).toEqual([]);
+  });
   it('passes text kept off a planned slab', () => {
     const shapes = { '9:16': [[0, 0.8], [1, 0.75], [1, 1], [0, 1]], '1:1': [[0.7, 0], [1, 0], [1, 1], [0.7, 1]], '16:9': [[0, 0.9], [1, 0.9], [1, 1], [0, 1]] } as never;
     expect(check(bold(onBand, { kind: 'blocks', colours: ['#0A0A0A', '#FACC15'], shapes }), { measure }).filter((i) => i.kind === 'contrast')).toEqual([]);
