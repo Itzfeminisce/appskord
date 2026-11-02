@@ -269,6 +269,20 @@ describe('pipeline after a stop, a restart or "Add more"', () => {
   });
 });
 
+describe('typed text with a telling', () => {
+  it('the questions draft (extraction) reads the voice part and the typed text saved with its stop', async () => {
+    await meeting('t', 'catchup');
+    const ai = fakeAI();
+    const start = { meetingId: 't', picked: { kind: 'event' as const, event: EVENT }, append: true };
+    await saveTypedPart(start, 'Priya will book the venue.', 'en', TOLD_AT + 60_000, () => crypto.randomUUID());
+    await afterTelling('t', { meetingId: 't', picked: start.picked }, { fetchFn: ai.f });
+    expect(ai.calls(QUESTIONS_SYSTEM)).toHaveLength(1);
+    const asked = ai.calls(EXTRACT_SYSTEM).map((b) => b.messages.map((m) => m.content).join('\n')).join('\n');
+    expect(asked).toContain('Priya will book the venue.');
+    expect(asked).toContain('I will send Sarah the Q4 plan draft.');
+  });
+});
+
 describe('catch-up background routes', () => {
   it('reads, asks again, skips, finishes and reports progress with no AI call from the page', async () => {
     await meeting('c', 'catchup');

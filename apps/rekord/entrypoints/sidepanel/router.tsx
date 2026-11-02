@@ -32,10 +32,11 @@ export type ScreenName =
   | 'settingsMemory' | 'folder' | 'move' // v4 settings: memory, Rekord folder, moving computers
   | 'followUp' | 'sendTasks' | 'linearConnect' // v4: after the meeting
   | 'brief' | 'agendaEdit' // v4 before the meeting: brief (or first-meeting brief) and its agenda
-  | 'catchupPick' | 'catchupPickOther' | 'catchupTell'; // v4.1 catch up: pick a missed meeting, describe another, tell it
+  | 'catchupPick' | 'catchupPickOther' | 'catchupTell' // v4.1 catch up: pick a missed meeting, describe another, tell it
+  | 'catchupQuestions' | 'catchupProcessing'; // v4.1: follow-up questions, then putting the catch-up together
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
-export interface RouteParams { meetingId?: string; itemId?: string; message?: string; atMs?: number; endMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string; eventId?: string; title?: string; date?: string; time?: string; lengthMin?: number; who?: string }
+export interface RouteParams { meetingId?: string; itemId?: string; message?: string; atMs?: number; endMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string; eventId?: string; title?: string; date?: string; time?: string; lengthMin?: number; who?: string; mode?: 'type' }
 export interface Route { screen: ScreenName; params: RouteParams }
 
 export interface Router {
@@ -61,8 +62,8 @@ export interface SurfaceOptions {
 }
 
 // Survives Back and reload in the URL hash (`#/transcript?meeting=…&at=…`); ids, times and app copy only.
-const validateSearch = searchParams({ meeting: 'string', item: 'string', at: 'number', end: 'number', message: 'string', section: 'string', person: 'string', other: 'string', event: 'string', title: 'string', date: 'string', time: 'string', length: 'number', who: 'string' });
-const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, item: p.itemId, at: p.atMs, end: p.endMs, message: p.message, section: p.section, person: p.personId, other: p.otherId, event: p.eventId, title: p.title, date: p.date, time: p.time, length: p.lengthMin, who: p.who });
+const validateSearch = searchParams({ meeting: 'string', item: 'string', at: 'number', end: 'number', message: 'string', section: 'string', person: 'string', other: 'string', event: 'string', title: 'string', date: 'string', time: 'string', length: 'number', who: 'string', mode: 'string' });
+const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, item: p.itemId, at: p.atMs, end: p.endMs, message: p.message, section: p.section, person: p.personId, other: p.otherId, event: p.eventId, title: p.title, date: p.date, time: p.time, length: p.lengthMin, who: p.who, mode: p.mode });
 // Redirects name screens built from data, which TanStack's typed `to` cannot check.
 const redirectTo = (route: Route, state?: object) =>
   redirect({ to: `/${route.screen}`, search: toSearch(route.params), replace: true, state } as unknown as Parameters<typeof redirect>[0]);
@@ -81,6 +82,7 @@ function toParams(search: Record<string, unknown>): RouteParams {
   if (s.time) params.time = s.time;
   if (s.length !== undefined) params.lengthMin = s.length;
   if (s.who) params.who = s.who;
+  if (s.mode === 'type') params.mode = 'type';
   if (s.end !== undefined) params.endMs = s.end;
   if (s.section === 'transcription' || s.section === 'assistant') params.section = s.section;
   return params;
