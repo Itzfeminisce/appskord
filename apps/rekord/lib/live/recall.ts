@@ -52,34 +52,42 @@ function theThing(text: string): string {
   return `the ${keepCase ? t : t.charAt(0).toLowerCase() + t.slice(1)}`;
 }
 
-function dueText(due: string | undefined, now: number): string {
+const DAY_MS = 86_400_000;
+function dueText(due: string | undefined, now: number, late = false): string {
   if (!due) return '';
+  const days = Math.round((fromIso(isoDay(now)) - fromIso(due)) / DAY_MS);
+  if (late && days > 0) return `, ${days} ${days === 1 ? 'day' : 'days'} late`;
   return due === isoDay(now) ? ', due today' : `, due ${shortDate(fromIso(due))}`;
 }
 
 const first = (name: string | undefined) => (name ?? '').trim().split(/\s+/)[0] ?? '';
 
-/** One sentence per item: "On 26 Oct you decided $12 a seat." / "Sarah owed the Q3 numbers, due today." */
-export function recallSentence(item: MemoryItem, meetingStart: number, people: Map<string, Person>, now: number): string | undefined {
-  if (item.kind === 'decision') return `On ${shortDate(meetingStart)} you decided ${decisionGist(item.text)}.`;
+type Made = Pick<Meeting, 'startedAt'> & { title?: string };
+
+/** "On 26 Oct you decided $12 a seat." / "Sarah owed the Q3 usage numbers, due today." /
+ *  "You owe Sarah the revised pricing deck, 4 days late. You promised it in Pricing review on 26 Oct." */
+export function recallSentence(item: MemoryItem, made: Made, people: Map<string, Person>, now: number): string | undefined {
+  if (item.kind === 'decision') return `On ${shortDate(made.startedAt)} you decided ${decisionGist(item.text)}.`;
   if (item.kind !== 'promise') return undefined;
   if (item.ownerId === 'me') {
     const to = first(people.get(item.toId ?? '')?.name);
-    return to ? `You owe ${to} ${theThing(item.text)}${dueText(item.due, now)}.` : undefined;
+    if (!to) return undefined;
+    const where = made.title ? ` You promised it in ${made.title} on ${shortDate(made.startedAt)}.` : '';
+    return `You owe ${to} ${theThing(item.text)}${dueText(item.due, now, true)}.${where}`;
   }
   const owner = first(people.get(item.ownerId ?? '')?.name);
   return owner ? `${owner} owed ${theThing(item.text)}${dueText(item.due, now)}.` : undefined;
 }
 
 /** Up to one decision and one promise, in search order, as the card. */
-export function recallCard(items: MemoryItem[], meetings: Pick<Meeting, 'id' | 'startedAt'>[], people: Person[], now: number): RecallCard | undefined {
-  const starts = new Map(meetings.map((m) => [m.id, m.startedAt]));
+export function recallCard(items: MemoryItem[], meetings: (Pick<Meeting, 'id' | 'startedAt'> & { title?: string })[], people: Person[], now: number): RecallCard | undefined {
+  const made = new Map(meetings.map((m) => [m.id, m]));
   const byId = new Map(people.map((p) => [p.id, p]));
   const decision = items.find((i) => i.kind === 'decision');
   const promise = items.find((i) => i.kind === 'promise');
   const picked = [decision, promise].filter((i): i is MemoryItem => !!i);
   const parts = picked
-    .map((i) => ({ i, s: recallSentence(i, starts.get(i.quote.meetingId) ?? i.createdAt, byId, now) }))
+    .map((i) => ({ i, s: recallSentence(i, made.get(i.quote.meetingId) ?? { startedAt: i.createdAt }, byId, now) }))
     .filter((x): x is { i: MemoryItem; s: string } => !!x.s);
   const lead = parts[0];
   if (!lead) return undefined;

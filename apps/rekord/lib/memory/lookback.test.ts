@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Meeting } from '../types';
-import { buildWeek, carriedDue, durationLabel, lookBackMarkdown, lookBackNote, weekLabel, weekStart } from './lookback';
+import { buildWeek, carriedDue, durationLabel, lookBackMarkdown, weekLabel, weekStart } from './lookback';
 import { SAMPLE_ITEMS, SAMPLE_MEETINGS, SAMPLE_PEOPLE } from './sample';
 
 const FRI = new Date(2026, 9, 30, 16, 0).getTime();
@@ -24,7 +24,6 @@ describe('look back', () => {
     expect(week.stillOpen.map((i) => i.id)).toEqual(['i-deck', 'q-free-plan', 'i-proposal']);
     expect(week.people[0]).toMatchObject({ person: { id: 'p-priya' }, meetings: 2 });
     expect(week.late).toEqual([]);
-    expect(lookBackNote(week).title).toBe('Your week · 26 to 30 Oct');
     const md = lookBackMarkdown(week, new Map(SAMPLE_PEOPLE.map((p) => [p.id, p])), FRI);
     expect(md).toContain('# Your week · 26 to 30 Oct');
     expect(md).toContain('- Team plan is $12 a seat (Replaces: Team plan is $10 a seat)');

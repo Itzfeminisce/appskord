@@ -102,3 +102,8 @@ export function minutesLeft(leftMs: number): string {
 export function skipItem(agenda: Agenda, id: string): Agenda {
   return { ...agenda, items: agenda.items.map((i) => (i.id === id ? { ...i, skipped: true } : i)) };
 }
+
+/** "Bring back": the skipped item is open again. */
+export function bringBack(agenda: Agenda, id: string): Agenda {
+  return { ...agenda, items: agenda.items.map(({ skipped, ...rest }) => (rest.id === id || !skipped ? rest : { ...rest, skipped })) };
+}

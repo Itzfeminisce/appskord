@@ -44,25 +44,29 @@ async function gql<T>(key: string, query: string, variables: Record<string, unkn
   return body.data;
 }
 
-/** The teams the key can see, in Linear's order. Also checks the key. */
-export async function listTeams(key: string, deps: LinearDeps = {}, meetingId?: string): Promise<LinearTeam[]> {
+export interface LinearViewer { id: string; email?: string }
+
+/** The teams the key can see, in Linear's order, and whose key it is, in one call. Also checks the key. */
+export async function linearWorkspace(key: string, deps: LinearDeps = {}, meetingId?: string): Promise<{ teams: LinearTeam[]; me?: LinearViewer }> {
   try {
-    const data = await gql<{ teams?: { nodes?: LinearTeam[] } }>(key, 'query Teams { teams(first: 100) { nodes { id name } } }', {}, deps);
-    return data.teams?.nodes ?? [];
+    const data = await gql<{ viewer?: LinearViewer; teams?: { nodes?: LinearTeam[] } }>(key, 'query Teams { viewer { id email } teams(first: 100) { nodes { id name } } }', {}, deps);
+    return { teams: data.teams?.nodes ?? [], ...(data.viewer?.id ? { me: data.viewer } : {}) };
   } finally {
     await (deps.record ?? recordCall)({ meetingId, service: 'linear', what: 'Team list' });
   }
 }
 
+export const listTeams = async (key: string, deps: LinearDeps = {}, meetingId?: string): Promise<LinearTeam[]> => (await linearWorkspace(key, deps, meetingId)).teams;
+
 const CREATE = `mutation Create($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { url } } }`;
 
 /** Creates one issue for a promise; resolves to its link. */
 export async function createIssue(
-  key: string, teamId: string, item: { text: string; due?: string; meetingId: string }, description: string, deps: LinearDeps = {},
+  key: string, teamId: string, item: { text: string; due?: string; meetingId: string; assigneeId?: string }, description: string, deps: LinearDeps = {},
 ): Promise<string> {
   const tracked = trackSend(deps.fetch);
   try {
-    const input = { teamId, title: item.text, description, ...(item.due ? { dueDate: item.due } : {}) };
+    const input = { teamId, title: item.text, description, ...(item.due ? { dueDate: item.due } : {}), ...(item.assigneeId ? { assigneeId: item.assigneeId } : {}) };
     const data = await gql<{ issueCreate?: { success?: boolean; issue?: { url?: string } } }>(key, CREATE, { input }, { ...deps, fetch: tracked.fetch });
     const url = data.issueCreate?.issue?.url;
     if (!data.issueCreate?.success || !url) throw new LinearError('server');

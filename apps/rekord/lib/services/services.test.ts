@@ -5,11 +5,11 @@ import { TASKS_HOSTS } from '../hosts';
 import { M, SAMPLE_AFTER, SAMPLE_EVENT, SAMPLE_ITEMS, SAMPLE_ONE_ON_ONE, SAMPLE_ONE_ON_ONE_ITEMS, SAMPLE_PEOPLE } from '../memory/sample';
 import type { MemoryItem } from '../memory/types';
 import { DEFAULT_SETTINGS } from '../settings';
-import { addDatabasePage, searchDatabases } from '../share/notion';
+import { addDatabasePage, notionAccount, searchDatabases } from '../share/notion';
 import { draftFollowUp, followUpFacts, plainDraft } from './followUp';
 import { composeUrl } from './gmail';
 import { addTask, listTaskLists, tasksTurnedOn, turnOnTasks } from './gtasks';
-import { createIssue, LinearError, listTeams } from './linear';
+import { createIssue, LinearError, linearWorkspace, listTeams } from './linear';
 import { sendable, sendItems } from './send';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
@@ -145,6 +145,37 @@ describe('Linear', () => {
     const fetch = vi.fn(async () => json({ errors: [{ extensions: { code: 'AUTHENTICATION_ERROR' } }] }, 400));
     await expect(listTeams('lin_api_bad', { fetch, record })).rejects.toMatchObject({ code: 'auth' });
     await expect(listTeams('lin_api_bad', { fetch: vi.fn(async () => { throw new TypeError('offline'); }), record })).rejects.toBeInstanceOf(LinearError);
+  });
+});
+
+describe('Assigning your own promises', () => {
+  it('Linear: one call reads the teams and whose key it is; your promises go to you', async () => {
+    const fetch = vi.fn(async (_u: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init!.body)) as { query: string };
+      return body.query.includes('teams')
+        ? json({ data: { viewer: { id: 'u-alex', email: 'alex@rekord-team.com' }, teams: { nodes: [{ id: 't1', name: 'Product' }] } } })
+        : json({ data: { issueCreate: { success: true, issue: { url: 'https://linear.app/x/issue/PRD-1' } } } });
+    });
+    expect(await linearWorkspace('lin_api_test', { fetch, record })).toEqual({ teams: [{ id: 't1', name: 'Product' }], me: { id: 'u-alex', email: 'alex@rekord-team.com' } });
+    const [mine, theirs] = [SAMPLE_ONE_ON_ONE_ITEMS.find((i) => i.id === 'n-deck')!, SAMPLE_ONE_ON_ONE_ITEMS.find((i) => i.id === 'n-seats')!];
+    await sendItems({ service: 'linear', key: 'lin_api_test', teamId: 't1', me: 'u-alex' }, [mine, theirs], () => 'note', { linear: { fetch }, record, save: async () => undefined });
+    const inputs = fetch.mock.calls.slice(1).map(([, init]) => JSON.parse(String(init!.body)).variables.input);
+    expect(inputs[0].assigneeId).toBe('u-alex');
+    expect(inputs[1]).not.toHaveProperty('assigneeId');
+  });
+
+  it('Notion: the owner’s email and user, and the database’s people property', async () => {
+    const fetch = vi.fn(async (u: string | URL | Request, _i?: RequestInit) => String(u).endsWith('/users/me')
+      ? json({ bot: { workspace_name: 'Rekord team', owner: { type: 'user', user: { id: 'u-alex', person: { email: 'alex@rekord-team.com' } } } } })
+      : String(u).endsWith('/search')
+        ? json({ results: [{ id: 'db1', title: [{ plain_text: 'Northwind tasks' }], properties: { Name: { type: 'title' }, Assignee: { type: 'people' }, Date: { type: 'date' } } }] })
+        : json({ id: 'p1', url: 'https://www.notion.so/p1' }));
+    expect(await notionAccount('ntn_test', { fetch })).toEqual({ label: 'alex@rekord-team.com', userId: 'u-alex' });
+    expect(await notionAccount('ntn_test', { fetch: vi.fn(async () => json({ bot: { workspace_name: 'Rekord team', owner: { type: 'workspace' } } })) })).toEqual({ label: 'Rekord team' });
+    const [db] = await searchDatabases('ntn_test', { fetch });
+    expect(db).toMatchObject({ dateProp: 'Date', peopleProp: 'Assignee' });
+    await addDatabasePage('ntn_test', db!, { text: 'Send the deck', assigneeId: 'u-alex' }, '', { fetch });
+    expect(JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body)).properties.Assignee).toEqual({ people: [{ id: 'u-alex' }] });
   });
 });
 

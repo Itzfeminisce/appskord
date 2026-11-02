@@ -10,9 +10,11 @@ import { putItem, putPerson } from './memory/store';
 import { saveKeys } from './penv';
 import { DEFAULT_SETTINGS } from './settings';
 import {
-  BRIEF_PREFIX, BRIEFED_KEY, DUE_ALARM, EVENTS_KEY, lastTime, lastTimeKey, LOOKBACK_ALARM, nextAt, NOTE_BRIEF, NOTE_LOOKBACK, onReminderAlarm, planAlarms, scheduleReminders,
+  BRIEF_PREFIX, BRIEFED_KEY, DUE_ALARM, EVENTS_KEY, lastTime, lastTimeKey, LOOKBACK_ALARM, nextAt, NOTE_BRIEF, NOTE_LOOKBACK, NOTE_OWE, onReminderAlarm, oweNote, oweToday,
+  planAlarms, scheduleReminders, weekNote,
 } from './reminders';
-import { SAMPLE_EVENT, SAMPLE_ITEMS, SAMPLE_MEETINGS, SAMPLE_NOW, SAMPLE_PEOPLE } from './memory/sample';
+import type { Week } from './memory/lookback';
+import { SAMPLE_EVENT, SAMPLE_ITEMS, SAMPLE_MEETINGS, SAMPLE_NOW, SAMPLE_ONE_ON_ONE, SAMPLE_ONE_ON_ONE_ITEMS, SAMPLE_PEOPLE } from './memory/sample';
 
 vi.mock('./ledger', async (original) => ({ ...(await original<typeof import('./ledger')>()), record: vi.fn(async () => undefined) }));
 
@@ -101,6 +103,36 @@ describe('reminder alarms', () => {
     expect(lookBackStart(at(3, 9))).toBe(at(2, 0));
     await onReminderAlarm(LOOKBACK_ALARM, at(2, 9));
     expect(await fakeBrowser.notifications.getAll()).toHaveProperty(NOTE_LOOKBACK + mon26);
+  });
+});
+
+describe('due-day note for a promise you owe, and the Friday look back', () => {
+  const demo = { ...SAMPLE_ONE_ON_ONE_ITEMS.find((i) => i.id === 'n-demo')!, status: 'open' as const };
+  const sarah = SAMPLE_PEOPLE.find((p) => p.id === demo.toId)!;
+
+  it('words the promise on its day, with Open and Snooze', () => {
+    expect(oweToday([demo, ...SAMPLE_ITEMS], at(5, 9)).map((i) => i.id)).toEqual(['n-demo']);
+    expect(oweToday([demo], at(4, 9))).toEqual([]);
+    expect(oweNote(demo, sarah, SAMPLE_ONE_ON_ONE)).toEqual({
+      title: 'Due today: join Thursday’s rollout demo',
+      message: 'You promised Sarah in 1:1 with Sarah.',
+      buttons: [{ title: 'Open' }, { title: 'Snooze' }],
+    });
+  });
+
+  it('sends it from the 09:00 check', async () => {
+    await putMeeting(SAMPLE_ONE_ON_ONE);
+    await putPerson(sarah);
+    await putItem(demo);
+    await onReminderAlarm(DUE_ALARM, at(5, 9));
+    const notes = await fakeBrowser.notifications.getAll();
+    expect(Object.keys(notes)).toContain(NOTE_OWE + 'n-demo');
+  });
+
+  it('sums up the week with "Open look back"', () => {
+    const week = { meetings: 9, promisesMade: 12, promisesKept: 8 } as Week;
+    expect(weekNote(week)).toEqual({ title: 'Your week in Rekord', message: '9 meetings · 8 promises kept · 4 still open', buttons: [{ title: 'Open look back' }] });
+    expect(weekNote({ meetings: 1, promisesMade: 0, promisesKept: 1 } as Week).message).toBe('1 meeting · 1 promise kept · 0 still open');
   });
 });
 

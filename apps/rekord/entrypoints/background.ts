@@ -9,7 +9,7 @@ import { BACKFILL_ALARM, BACKFILL_KEY, QUEUE_KEY, runBackfill } from '@/lib/memo
 import { rankOpenLoops } from '@/lib/memory/rank';
 import { openLoops } from '@/lib/memory/store';
 import {
-  briefTabUrl, EVENTS_KEY, lookBackTabUrl, NOTE_BRIEF, NOTE_DUE, NOTE_LOOKBACK, onReminderAlarm, scheduleReminders, setPanelRoute, snoozeFromNote,
+  briefTabUrl, EVENTS_KEY, lookBackTabUrl, NOTE_BRIEF, NOTE_DUE, NOTE_LOOKBACK, NOTE_OWE, onReminderAlarm, scheduleReminders, setPanelRoute, snoozeFromNote,
   type PanelRoute,
 } from '@/lib/reminders';
 import { isStreamRequest, tokenReply } from '@/lib/transcribe/stream';
@@ -115,7 +115,7 @@ function openTab(url: string): Promise<void> {
   });
 }
 
-/** Notification click or button: brief, due-day Nudge and Snooze, look back. The notification stays when nothing opened. */
+/** Notification click or button: brief, due-day Nudge (or Open) and Snooze, look back. The notification stays when nothing opened. */
 function onNote(id: string, button?: number): void {
   const clear = () => void browser.notifications.clear(id).catch(() => undefined);
   const kept = () => undefined;
@@ -128,6 +128,13 @@ function onNote(id: string, button?: number): void {
       snoozeFromNote(itemId).then(clear, (error) => console.error('Rekord: could not snooze the promise', error)).finally(updateBadge);
     } else {
       openPanelOn(button === 0 ? 'nudge' : 'promise', { itemId }).then(clear, kept);
+    }
+  } else if (id.startsWith(NOTE_OWE)) {
+    const itemId = id.slice(NOTE_OWE.length);
+    if (button === 1) {
+      snoozeFromNote(itemId).then(clear, (error) => console.error('Rekord: could not snooze the promise', error)).finally(updateBadge);
+    } else {
+      openPanelOn('promise', { itemId }).then(clear, kept);
     }
   } else if (id.startsWith(NOTE_LOOKBACK)) {
     openTab(lookBackTabUrl(Number(id.slice(NOTE_LOOKBACK.length)) || undefined)).then(clear, kept);

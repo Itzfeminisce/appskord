@@ -2,7 +2,7 @@
 import { record as recordCall, trackSend } from '../ledger';
 import { putItem } from '../memory/store';
 import type { MemoryItem } from '../memory/types';
-import { addDatabasePage, searchDatabases, type NotionDatabase, type NotionDeps } from '../share/notion';
+import { addDatabasePage, notionAccount, searchDatabases, type NotionAccount, type NotionDatabase, type NotionDeps } from '../share/notion';
 import { addTask, type TasksDeps } from './gtasks';
 import { createIssue, type LinearDeps } from './linear';
 import { promiseOrder } from './order';
@@ -36,10 +36,20 @@ export async function notionDatabases(token: string, meetingId: string, deps: No
   }
 }
 
+/** Who the Notion integration acts for; one call, recorded against the meeting. */
+export async function notionAccountFor(token: string, meetingId: string, deps: NotionDeps & { record?: typeof recordCall } = {}): Promise<NotionAccount> {
+  try {
+    return await notionAccount(token, deps);
+  } finally {
+    await (deps.record ?? recordCall)({ meetingId, service: 'notion', what: 'Account' });
+  }
+}
+
+/** `me` is your user in that service: your own promises are assigned to it. */
 export type SendTarget =
   | { service: 'gtasks'; listId: string }
-  | { service: 'notion'; token: string; database: NotionDatabase }
-  | { service: 'linear'; key: string; teamId: string };
+  | { service: 'notion'; token: string; database: NotionDatabase; me?: string }
+  | { service: 'linear'; key: string; teamId: string; me?: string };
 
 export interface SendDeps {
   tasks?: TasksDeps;
@@ -54,10 +64,11 @@ export interface SendDeps {
 async function sendOne(target: SendTarget, item: MemoryItem, note: string, deps: SendDeps): Promise<string> {
   const record = deps.record;
   if (target.service === 'gtasks') return addTask(target.listId, item, note, { ...deps.tasks, ...(record ? { record } : {}) });
-  if (target.service === 'linear') return createIssue(target.key, target.teamId, item, note, { ...deps.linear, ...(record ? { record } : {}) });
+  const assigneeId = item.ownerId === 'me' ? target.me : undefined;
+  if (target.service === 'linear') return createIssue(target.key, target.teamId, { ...item, assigneeId }, note, { ...deps.linear, ...(record ? { record } : {}) });
   const tracked = trackSend(deps.notion?.fetch);
   try {
-    return await addDatabasePage(target.token, target.database, item, note, { ...deps.notion, fetch: tracked.fetch });
+    return await addDatabasePage(target.token, target.database, { ...item, assigneeId }, note, { ...deps.notion, fetch: tracked.fetch });
   } finally {
     if (tracked.left()) await (record ?? recordCall)({ meetingId: item.meetingId, service: 'notion', what: 'Action items' });
   }

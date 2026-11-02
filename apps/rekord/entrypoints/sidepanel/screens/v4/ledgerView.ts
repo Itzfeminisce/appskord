@@ -1,10 +1,10 @@
-// Ledger rows as V4Ledger shows them: per meeting, and "All meetings · this week" with totals per service.
+// Ledger rows as V4Ledger shows them per meeting, and V4LedgerAll's totals per service for a period.
 import type { LedgerEntry } from '@/lib/memory/types';
 import type { RedactionMark } from '@/lib/redact';
 import { formatClock } from '@/lib/time';
 
 type Service = LedgerEntry['service'];
-export type LedgerIcon = 'calendar' | 'up' | 'check' | 'power' | 'lock';
+export type LedgerIcon = 'calendar' | 'up' | 'check' | 'power' | 'lock' | 'tasks' | 'page' | 'down' | 'none';
 
 export const SERVICE_NAMES: Record<Service, string> = {
   groq: 'Groq', openai: 'OpenAI', openrouter: 'OpenRouter', anthropic: 'Anthropic', deepgram: 'Deepgram',
@@ -75,24 +75,63 @@ export function weekStart(now: number): number {
   return d.getTime();
 }
 
-export interface ServiceTotal { service: Service; name: string; count: number; meetings: number; whats: string[]; icon: LedgerIcon; dark: boolean }
+export type Period = 'week' | 'month' | 'all';
+export const PERIODS: { id: Period; label: string }[] = [{ id: 'week', label: 'This week' }, { id: 'month', label: 'This month' }, { id: 'all', label: 'All time' }];
 
-/** "All meetings · this week": calls this week added up per service, services in order of first use. */
-export function weekTotals(entries: LedgerEntry[], now: number): ServiceTotal[] {
-  const from = weekStart(now);
-  const by = new Map<Service, { total: ServiceTotal; first: number; ids: Set<string> }>();
-  for (const e of entries.filter((x) => x.lastAt >= from && x.firstAt <= now)) {
-    const g = by.get(e.service) ?? {
-      total: { service: e.service, name: SERVICE_NAMES[e.service], count: 0, meetings: 0, whats: [], icon: ICONS[e.service] ?? 'up', dark: e.service === 'off-record' },
-      first: e.firstAt, ids: new Set<string>(),
-    };
-    g.total.count += e.count;
-    g.first = Math.min(g.first, e.firstAt);
-    if (e.meetingId) g.ids.add(e.meetingId);
-    if (!g.total.whats.includes(e.what)) g.total.whats.push(e.what);
-    by.set(e.service, g);
+/** Where a period starts: "This week" reaches back to last Monday, so early in the week it is not nearly empty; "This month" a month back. */
+export function periodStart(period: Period, now: number, entries: LedgerEntry[]): number {
+  if (period === 'week') return weekStart(now) - 7 * 86_400_000;
+  if (period === 'month') {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    d.setMonth(d.getMonth() - 1);
+    return d.getTime();
   }
-  return [...by.values()]
-    .sort((a, b) => Number(LOCAL.includes(a.total.service)) - Number(LOCAL.includes(b.total.service)) || a.first - b.first)
-    .map((g) => ({ ...g.total, meetings: g.ids.size }));
+  const d = new Date(Math.min(now, ...entries.map((e) => e.firstAt)));
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** "26 Oct" */
+export const dayMonth = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+const AI: Service[] = ['groq', 'openai', 'openrouter', 'anthropic', 'deepgram'];
+// Services Rekord can connect to: listed even before anything went to them.
+const CONNECTABLE: Service[] = ['google-calendar', 'google-tasks', 'notion', 'linear'];
+const ALL_ICONS: Partial<Record<Service, LedgerIcon>> = { 'google-calendar': 'calendar', 'google-tasks': 'tasks', notion: 'page', huggingface: 'down' };
+
+export interface ServiceTotal { service: Service; name: string; detail: string; icon: LedgerIcon; none: boolean }
+
+const sum = (entries: LedgerEntry[], keep: (e: LedgerEntry) => boolean = () => true) => entries.filter(keep).reduce((n, e) => n + e.count, 0);
+
+function serviceDetail(service: Service, entries: LedgerEntry[]): string {
+  if (AI.includes(service)) {
+    const meetings = new Set(entries.map((e) => e.meetingId).filter(Boolean)).size;
+    return `Audio and text from ${plural(meetings, 'meeting')} · ${plural(sum(entries), 'request')}`;
+  }
+  if (service === 'google-calendar') return `Read ${plural(sum(entries), 'event')}`;
+  if (service === 'google-tasks') return `${plural(sum(entries, (e) => e.what === 'Tasks'), 'task')} sent`;
+  if (service === 'notion') return plural(sum(entries, (e) => e.what !== 'Database list'), 'page');
+  if (service === 'linear') return plural(sum(entries, (e) => e.what === 'Issues'), 'issue');
+  if (service === 'huggingface') {
+    const n = sum(entries);
+    return `Search model, ${n === 1 ? 'once' : `${n} times`} · ${dayMonth(Math.max(...entries.map((e) => e.lastAt)))}`;
+  }
+  return [...new Set(entries.map((e) => e.what))].join(' · ');
+}
+
+/** V4LedgerAll: what went to each service from `from` to `now`, in order of first use; connectable services with nothing say so, last. */
+export function periodTotals(entries: LedgerEntry[], from: number, now: number): ServiceTotal[] {
+  const by = new Map<Service, LedgerEntry[]>();
+  for (const e of entries) {
+    if (LOCAL.includes(e.service) || e.lastAt < from || e.firstAt > now) continue;
+    by.set(e.service, [...(by.get(e.service) ?? []), e]);
+  }
+  const first = (list: LedgerEntry[]) => Math.min(...list.map((e) => e.firstAt));
+  const used = [...by.entries()].sort((a, b) => first(a[1]) - first(b[1]));
+  const name = (s: Service) => (s === 'huggingface' ? 'huggingface.co' : SERVICE_NAMES[s]);
+  return [
+    ...used.map(([service, list]) => ({ service, name: name(service), detail: serviceDetail(service, list), icon: ALL_ICONS[service] ?? 'up', none: false })),
+    ...CONNECTABLE.filter((s) => !by.has(s)).map((service) => ({ service, name: name(service), detail: 'Nothing yet', icon: 'none' as const, none: true })),
+  ];
 }

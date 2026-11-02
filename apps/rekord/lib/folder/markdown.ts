@@ -23,7 +23,7 @@ export function safeName(name: string): string {
 
 export const shortId = (id: string) => id.replace(/[^a-z0-9]/gi, '').slice(-6) || '0';
 export const meetingPath = (m: Pick<Meeting, 'id' | 'title' | 'startedAt'>) => `Meetings/${isoDay(m.startedAt)} ${safeName(m.title)} (${shortId(m.id)}).md`;
-export const personPath = (p: Pick<Person, 'id' | 'name'>) => `People/${safeName(p.name)} (${shortId(p.id)}).md`;
+export const personPath = (p: Pick<Person, 'name'>) => `People/${safeName(p.name)}.md`;
 export const meetingKey = (id: string) => `m:${id}`;
 export const personKey = (id: string) => `p:${id}`;
 export const OPEN_LOOPS_PATH = 'Open loops.md';

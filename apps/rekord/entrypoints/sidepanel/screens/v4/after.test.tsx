@@ -11,7 +11,8 @@ import { mount, settle, waitFor } from '../../../../test/mountRouter';
 import { sidepanel } from '../../App';
 import { world } from '../../components/v4/world';
 import { DEV_FRAMES } from '../../dev/frames';
-import { sendTasksDeps } from './SendTasks';
+import { linearConnectDeps } from './LinearConnect';
+import { sendTasksDeps, sendTasksSession } from './SendTasks';
 
 const click = (el: Element | null | undefined) => act(() => (el as HTMLElement).click());
 const button = (root: Element, text: string) => [...root.querySelectorAll('button')].find((b) => b.textContent === text)!;
@@ -73,5 +74,49 @@ describe('after the meeting', () => {
     expect(view.host.textContent).toContain('Found in Penv Cloud');
     expect(view.host.innerHTML).not.toContain('lin_api_test');
     expect((view.host.querySelector('select') as HTMLSelectElement).value).toBe('t-product');
+  });
+
+  it('connect Linear without Penv Cloud: one paste field, and Linear’s refusal under it', async () => {
+    linearConnectDeps.current = {
+      loadKeys: async () => ({}), penvKeys: async () => false, hasHosts: async () => true,
+      record: async () => ({ id: '', service: 'linear' as const, what: '', count: 0, firstAt: 0, lastAt: 0 }),
+      fetch: async () => new Response(JSON.stringify({ errors: [{ extensions: { code: 'AUTHENTICATION_ERROR' } }] }), { status: 400 }),
+    };
+    vi.spyOn(browser.permissions, 'request').mockImplementation(async () => true);
+    const view = await mount(sidepanel, 'linearConnect', '/linearConnect');
+    await waitFor(() => expect(view.host.querySelector('label[for="lc-key"]')?.textContent).toBe('Linear API key'));
+    expect(view.host.textContent).not.toContain('from Penv Cloud');
+    expect(view.host.textContent).toContain('Create one in Linear › Settings › Security & access');
+    const input = view.host.querySelector('#lc-key') as HTMLInputElement;
+    expect(input.placeholder).toBe('lin_api_…');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'lin_api_fake');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    click(button(view.host, 'Connect Linear'));
+    await waitFor(() => expect(view.host.querySelector('#lc-key')?.getAttribute('aria-invalid')).toBe('true'));
+    expect(view.host.querySelector('.lc-error')?.textContent).toBe('Linear didn’t accept this key. Check it’s a personal API key, or create a new one.');
+    linearConnectDeps.current = undefined;
+  });
+
+  it('send action items to Linear: connected as you, your promises assigned to you', async () => {
+    await DEV_FRAMES.V4SendTasksLinear!.setup!();
+    const view = await mount(sidepanel, 'sendTasks', `/sendTasks?meeting=${M.sarah3}`);
+    await waitFor(() => expect(view.host.querySelector('.st-account')?.textContent).toBe('Connected as alex@rekord-team.com' + 'Change'));
+    expect(view.host.querySelector('.st-map')?.textContent).toBe('Your promisesAssign to meDueIssue due date');
+    expect(button(view.host, 'Send 2 to Linear')).toBeTruthy();
+    sendTasksDeps.current = undefined;
+    sendTasksSession.tab = undefined;
+  });
+
+  it('send action items to Notion: the database and where owner and due land', async () => {
+    await DEV_FRAMES.V4SendTasksNotion!.setup!();
+    const view = await mount(sidepanel, 'sendTasks', `/sendTasks?meeting=${M.sarah3}`);
+    await waitFor(() => expect(view.host.querySelector('.st-map')?.textContent).toBe('OwnerAssigneeDueDate'));
+    expect(view.host.querySelector('.st-account')?.textContent).toContain('alex@rekord-team.com');
+    expect((view.host.querySelector('#st-db') as HTMLSelectElement).selectedOptions[0]?.textContent).toBe('Northwind tasks');
+    expect(button(view.host, 'Send 2 to Notion')).toBeTruthy();
+    sendTasksDeps.current = undefined;
+    sendTasksSession.tab = undefined;
   });
 });

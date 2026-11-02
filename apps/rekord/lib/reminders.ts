@@ -4,9 +4,10 @@ import { listEvents } from './calendar';
 import { GoogleError } from './google';
 import { record } from './ledger';
 import { chat, LLMError, type FetchLike } from './llm';
-import { buildBrief, briefNote, dueNote, dueToday, lastTimeMessages, localLastTime, parseLines, type Brief } from './memory/brief';
-import { buildWeek, lookBackNote, lookBackStart } from './memory/lookback';
+import { buildBrief, briefNote, dueNote, dueToday, firstName, lastTimeMessages, localLastTime, parseLines, type Brief, type NoteContent } from './memory/brief';
+import { buildWeek, lookBackStart, type Week } from './memory/lookback';
 import { transition } from './memory/promise';
+import { isOpenLoop, isoDay } from './memory/rank';
 import { getItem, listItems, listPeople, putItem } from './memory/store';
 import type { LedgerEntry, MemoryItem, MemorySettings, Person } from './memory/types';
 import { getSettings } from './settings';
@@ -119,7 +120,35 @@ export async function scheduleReminders(now = Date.now()): Promise<AlarmPlan[]> 
 export const NOTE_BRIEF = 'rekord.brief:';
 export const NOTE_DUE = 'rekord.due:';
 export const NOTE_LOOKBACK = 'rekord.lookback:';
+export const NOTE_OWE = 'rekord.owe:';
 const ICON = '/icon/128.png';
+
+/** Your own promises due today, for the due-day notification. */
+export function oweToday(items: MemoryItem[], now: number): MemoryItem[] {
+  const today = isoDay(now);
+  return items.filter((i) => i.kind === 'promise' && i.ownerId === 'me' && !!i.toId && i.toId !== 'me' && i.due === today && isOpenLoop(i, now));
+}
+
+/** "Due today: join Thursday’s rollout demo" / "You promised Sarah in 1:1 with Sarah." with Open and Snooze. */
+export function oweNote(item: MemoryItem, to: Person, made?: Pick<Meeting, 'title'>): NoteContent {
+  const thing = /^.[A-Z0-9]/.test(item.text) ? item.text : item.text.charAt(0).toLowerCase() + item.text.slice(1);
+  return {
+    title: `Due today: ${thing}`,
+    message: `You promised ${firstName(to.name)}${made ? ` in ${made.title}` : ''}.`,
+    buttons: [{ title: 'Open' }, { title: 'Snooze' }],
+  };
+}
+
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** Friday's "Your week in Rekord" / "9 meetings · 8 promises kept · 4 still open" with "Open look back". */
+export function weekNote(week: Week): NoteContent {
+  const open = Math.max(0, week.promisesMade - week.promisesKept);
+  return {
+    title: 'Your week in Rekord',
+    message: `${count(week.meetings, 'meeting')} · ${count(week.promisesKept, 'promise')} kept · ${open} still open`,
+    buttons: [{ title: 'Open look back' }],
+  };
+}
 
 async function memoryData(): Promise<{ people: Person[]; items: MemoryItem[]; meetings: Meeting[] }> {
   const [people, items, meetings] = await Promise.all([listPeople(), listItems(), listMeetings()]);
@@ -153,6 +182,10 @@ export async function onReminderAlarm(name: string, now = Date.now()): Promise<b
         const owner = data.people.find((p) => p.id === item.ownerId);
         if (owner) await notify(NOTE_DUE + item.id, dueNote(item, owner, events, now));
       }
+      for (const item of oweToday(data.items, now)) {
+        const to = data.people.find((p) => p.id === item.toId);
+        if (to) await notify(NOTE_OWE + item.id, oweNote(item, to, data.meetings.find((m) => m.id === item.meetingId)));
+      }
     }
     await scheduleReminders(now);
     return true;
@@ -161,7 +194,7 @@ export async function onReminderAlarm(name: string, now = Date.now()): Promise<b
     const { memory } = await getSettings();
     if (memory.lookBack.on) {
       const start = lookBackStart(now);
-      await notify(NOTE_LOOKBACK + start, lookBackNote(buildWeek({ ...(await memoryData()), now, start })));
+      await notify(NOTE_LOOKBACK + start, weekNote(buildWeek({ ...(await memoryData()), now, start })));
     }
     await scheduleReminders(now);
     return true;

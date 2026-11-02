@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SAMPLE_LEDGER } from '@/lib/memory/sample';
 import type { LedgerEntry } from '@/lib/memory/types';
-import { meetingRows, redactionLine, weekStart, weekTotals } from './ledgerView';
+import { meetingRows, periodStart, periodTotals, redactionLine, weekStart } from './ledgerView';
 
 const at = (d: number, h: number, m: number) => new Date(2026, 10, d, h, m).getTime();
 
@@ -29,17 +29,29 @@ describe('ledger rows', () => {
   });
 });
 
-describe('All meetings · this week', () => {
-  it('adds up this week per service and leaves earlier weeks out', () => {
-    const old: LedgerEntry = { id: 'o', meetingId: 'x', service: 'groq', what: 'Audio for transcription', count: 99, firstAt: at(1, 9, 0), lastAt: at(1, 9, 30) };
-    const other: LedgerEntry = { id: 'n', meetingId: 'y', service: 'groq', what: 'Audio for transcription', count: 10, firstAt: at(2, 9, 0), lastAt: at(2, 9, 10) };
-    const totals = weekTotals([old, other, ...SAMPLE_LEDGER], at(3, 10, 40));
+describe('V4LedgerAll', () => {
+  const now = at(3, 10, 40);
+  const old: LedgerEntry = { id: 'o', meetingId: 'x', service: 'groq', what: 'Audio for transcription', count: 99, firstAt: at(1, 9, 0) - 9 * 86_400_000, lastAt: at(1, 9, 30) - 9 * 86_400_000 };
+  const other: LedgerEntry = { id: 'n', meetingId: 'y', service: 'groq', what: 'Audio for transcription', count: 10, firstAt: at(2, 9, 0), lastAt: at(2, 9, 10) };
+  const model: LedgerEntry = { id: 'h', service: 'huggingface', what: 'Search model download', count: 1, firstAt: new Date(2026, 9, 29, 9).getTime(), lastAt: new Date(2026, 9, 29, 9).getTime() };
+
+  it('starts "This week" last Monday, "This month" a month back and "All time" at the first call', () => {
     expect(weekStart(at(3, 10, 35))).toBe(at(2, 0, 0));
-    expect(totals.map((t) => [t.name, t.count, t.meetings])).toEqual([
-      ['Groq', 32 + 2 + 30 + 1 + 10, 2],
-      ['Google Calendar', 1, 1],
-      ['Google Tasks', 2, 1],
-      ['Off the record', 1, 1],
+    expect(periodStart('week', now, [])).toBe(new Date(2026, 9, 26).getTime());
+    expect(periodStart('month', now, [])).toBe(new Date(2026, 9, 3).getTime());
+    expect(periodStart('all', now, [old, other])).toBe(new Date(2026, 9, 23).getTime());
+  });
+
+  it('adds up each service in the period, leaves local rows out and lists connectable services with nothing', () => {
+    const rows = periodTotals([old, other, model, ...SAMPLE_LEDGER], periodStart('week', now, []), now);
+    expect(rows.map((r) => [r.name, r.detail])).toEqual([
+      ['huggingface.co', 'Search model, once · 29 Oct'],
+      ['Groq', 'Audio and text from 2 meetings · 75 requests'],
+      ['Google Calendar', 'Read 1 event'],
+      ['Google Tasks', '2 tasks sent'],
+      ['Notion', 'Nothing yet'],
+      ['Linear', 'Nothing yet'],
     ]);
+    expect(rows.filter((r) => r.none).map((r) => r.icon)).toEqual(['none', 'none']);
   });
 });

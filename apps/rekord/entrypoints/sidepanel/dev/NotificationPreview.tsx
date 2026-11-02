@@ -1,9 +1,11 @@
-// Dev only: V4Notification drawn around the content Rekord gives Chrome (badge text, notification title, message, buttons).
-import { useEffect, useState, type CSSProperties } from 'react';
+// Dev only: V4Notification and V4NotificationMore drawn around the content Rekord gives Chrome (badge text, notification title, message, buttons).
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { listMeetings } from '@/lib/db';
 import { buildBrief, briefNote, dueNote, dueToday, type NoteContent } from '@/lib/memory/brief';
+import { buildWeek, lookBackStart } from '@/lib/memory/lookback';
 import { rankOpenLoops } from '@/lib/memory/rank';
 import { listItems, listPeople, openLoops } from '@/lib/memory/store';
+import { DUE_HOUR, oweNote, oweToday, weekNote } from '@/lib/reminders';
 import { world } from '../components/v4/world';
 
 const mark = (
@@ -14,10 +16,10 @@ const mark = (
 const card: CSSProperties = { boxSizing: 'border-box', padding: '14px 16px 12px', borderRadius: 10, background: '#F7F7F9', border: '1px solid #D5D7DD', boxShadow: '0 10px 30px rgba(16,16,20,0.18)', display: 'flex', flexDirection: 'column', gap: 10 };
 const grey: CSSProperties = { height: 44, border: 'none', borderRadius: 8, background: '#E8E8EC', font: 'inherit', fontSize: 13, fontWeight: 600, color: '#111114' };
 
-function Note({ note, primary }: { note: NoteContent; primary?: boolean }) {
+function Note({ note, primary, when = 'now' }: { note: NoteContent; primary?: boolean; when?: string }) {
   return (
     <section aria-label={`Notification: ${note.title}`} style={card}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#44464D' }}>{mark}<span>Rekord · Chrome</span><span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)' }}>now</span></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#44464D' }}>{mark}<span>Rekord · Chrome</span><span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)' }}>{when}</span></div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <span style={{ fontSize: 14, fontWeight: 600 }}>{note.title}</span>
         <span style={{ fontSize: 13, lineHeight: 1.4, color: '#44464D' }}>{note.message}</span>
@@ -29,20 +31,67 @@ function Note({ note, primary }: { note: NoteContent; primary?: boolean }) {
   );
 }
 
+const badgeAt = async (now: number) => {
+  const overdue = rankOpenLoops(await openLoops(now), now).overdue;
+  return overdue > 0 ? String(overdue) : '';
+};
+
 export default function NotificationPreview() {
   const [notes, setNotes] = useState<{ brief: NoteContent; due?: NoteContent; badge: string }>();
   useEffect(() => {
     void (async () => {
       const now = world.now();
       const events = world.events ?? [];
-      const [people, items, meetings, loops] = await Promise.all([listPeople(), listItems(), listMeetings(), openLoops(now)]);
+      const [people, items, meetings, badge] = await Promise.all([listPeople(), listItems(), listMeetings(), badgeAt(now)]);
       const brief = buildBrief({ event: events[0]!, people, items, meetings, now });
       const item = dueToday(items, now)[0];
       const owner = people.find((p) => p.id === item?.ownerId);
-      const overdue = rankOpenLoops(loops, now).overdue;
-      setNotes({ brief: briefNote(brief, now), due: item && owner ? dueNote(item, owner, events, now) : undefined, badge: overdue > 0 ? String(overdue) : '' });
+      setNotes({ brief: briefNote(brief, now), due: item && owner ? dueNote(item, owner, events, now) : undefined, badge });
     })();
   }, []);
+  return (
+    <Desktop badge={notes?.badge} clock={['09:55', '02/11/2026']}>
+      {notes && <>
+        {notes.due && <Note note={notes.due} />}
+        <Note note={notes.brief} primary />
+      </>}
+    </Desktop>
+  );
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// The desktop's clock in V4NotificationMore: Friday 6 Nov, 16:00.
+const FRIDAY = new Date(2026, 10, 6, 16, 0).getTime();
+
+/** V4NotificationMore: Thursday's due-day note for a promise you owe, and the Friday look back for the week in the sample world. */
+export function NotificationMore() {
+  const [notes, setNotes] = useState<{ owe?: { note: NoteContent; when: string }; week: NoteContent; badge: string }>();
+  useEffect(() => {
+    void (async () => {
+      const now = world.now();
+      const [people, items, meetings, badge] = await Promise.all([listPeople(), listItems(), listMeetings(), badgeAt(now)]);
+      const sent = new Date(FRIDAY);
+      sent.setDate(sent.getDate() - 1);
+      sent.setHours(DUE_HOUR, 0, 0, 0);
+      const item = oweToday(items, sent.getTime())[0];
+      const to = people.find((p) => p.id === item?.toId);
+      const owe = item && to ? { note: oweNote(item, to, meetings.find((m) => m.id === item.meetingId)), when: `${DAYS[sent.getDay()]} ${pad(sent.getHours())}:00` } : undefined;
+      setNotes({ owe, week: weekNote(buildWeek({ meetings, items, people, now, start: lookBackStart(now) })), badge });
+    })();
+  }, []);
+  const d = new Date(FRIDAY);
+  return (
+    <Desktop badge={notes?.badge} clock={[`${pad(d.getHours())}:${pad(d.getMinutes())}`, `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`]}>
+      {notes && <>
+        {notes.owe && <Note note={notes.owe.note} when={notes.owe.when} />}
+        <Note note={notes.week} primary />
+      </>}
+    </Desktop>
+  );
+}
+
+function Desktop({ badge, clock, children }: { badge?: string; clock: [string, string]; children: ReactNode }) {
   return (
     <div style={{ width: 1366, height: 640, position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #B9C6E4 0%, #D8DDF0 45%, #E9D9E6 100%)', color: '#111114' }}>
       <div style={{ position: 'absolute', left: 56, top: 24, right: 56, bottom: 64, borderRadius: 12, overflow: 'hidden', boxShadow: '0 16px 48px rgba(16,16,20,0.22)', background: '#FFFFFF', display: 'flex', flexDirection: 'column' }}>
@@ -53,7 +102,7 @@ export default function NotificationPreview() {
           <div style={{ flexGrow: 1, height: 30, borderRadius: 15, background: '#F1F3F4', display: 'flex', alignItems: 'center', padding: '0 16px', fontSize: 13, color: '#44464D' }}>calendar.google.com</div>
           <div style={{ position: 'relative', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {mark}
-            {notes?.badge && <span aria-label={`${notes.badge} overdue`} style={{ position: 'absolute', top: -3, right: -5, minWidth: 18, height: 18, boxSizing: 'border-box', padding: '0 5px', borderRadius: 9, background: '#D92D20', color: '#FFFFFF', fontSize: 11, fontWeight: 700, lineHeight: '18px', textAlign: 'center' }}>{notes.badge}</span>}
+            {badge && <span aria-label={`${badge} overdue`} style={{ position: 'absolute', top: -3, right: -5, minWidth: 18, height: 18, boxSizing: 'border-box', padding: '0 5px', borderRadius: 9, background: '#D92D20', color: '#FFFFFF', fontSize: 11, fontWeight: 700, lineHeight: '18px', textAlign: 'center' }}>{badge}</span>}
           </div>
         </div>
         <div style={{ flexGrow: 1, padding: '28px 40px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -63,15 +112,10 @@ export default function NotificationPreview() {
           </div>
         </div>
       </div>
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 40, background: 'rgba(243,243,246,0.94)', borderTop: '1px solid #D5D7DD', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 20px', fontFamily: 'var(--mono)', fontSize: 12, color: '#44464D' }}>
-        <span style={{ textAlign: 'right', lineHeight: 1.2 }}>09:55<br />02/11/2026</span>
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 40, boxSizing: 'content-box', background: 'rgba(243,243,246,0.94)', borderTop: '1px solid #D5D7DD', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 20px', fontFamily: 'var(--mono)', fontSize: 12, color: '#44464D' }}>
+        <span style={{ textAlign: 'right', lineHeight: 1.2 }}>{clock[0]}<br />{clock[1]}</span>
       </div>
-      {notes && (
-        <div style={{ position: 'absolute', right: 20, bottom: 52, width: 364, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {notes.due && <Note note={notes.due} />}
-          <Note note={notes.brief} primary />
-        </div>
-      )}
+      <div style={{ position: 'absolute', right: 20, bottom: 52, width: 364, display: 'flex', flexDirection: 'column', gap: 10 }}>{children}</div>
     </div>
   );
 }

@@ -38,7 +38,7 @@ describe('Rekord folder Markdown', () => {
 
   it('names files in the documented layout', () => {
     expect(meetingPath(SAMPLE_ONE_ON_ONE)).toBe('Meetings/2026-11-03 1∶1 with Sarah (ah1103).md');
-    expect(personPath(SAMPLE_PEOPLE[0]!)).toBe('People/Sarah Chen (psarah).md');
+    expect(personPath(SAMPLE_PEOPLE[0]!)).toBe('People/Sarah Chen.md');
     expect(meetingPath({ ...SAMPLE_ONE_ON_ONE, id: 'other-1' })).not.toBe(meetingPath(SAMPLE_ONE_ON_ONE));
     expect(safeName('a/b\\c?*"<>|')).toBe('a-b-c------');
     expect(safeName('  ')).toBe('Untitled');
@@ -59,7 +59,7 @@ describe('Rekord folder Markdown', () => {
   it('always writes people, Open loops and Decisions', () => {
     const files = folderFiles([], { meetings: SAMPLE_MEETINGS, people: SAMPLE_PEOPLE, items: SAMPLE_ITEMS });
     const paths = files.map((f) => f.path);
-    expect(paths).toContain('People/Sarah Chen (psarah).md');
+    expect(paths).toContain('People/Sarah Chen.md');
     expect(paths).toContain('Open loops.md');
     expect(paths).toContain('Decisions.md');
     expect(files.find((f) => f.path === 'Decisions.md')!.text).toContain('# Decisions');
