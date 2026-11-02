@@ -158,3 +158,14 @@ export async function flushFolder(): Promise<boolean> {
     return false;
   }
 }
+
+/** Writes one file (the weekly look back) into the Rekord folder, asking again inside the click. False when off or refused. */
+export async function saveToFolder(file: FolderFile): Promise<boolean> {
+  const dir = (await handles().get()) as unknown as DirHandle | undefined;
+  if (!dir) return false;
+  let permission = await dir.queryPermission?.({ mode: 'readwrite' });
+  if (permission !== 'granted') permission = await dir.requestPermission?.({ mode: 'readwrite' });
+  if (permission !== 'granted') return false;
+  await writeFiles(dir, [file]);
+  return true;
+}

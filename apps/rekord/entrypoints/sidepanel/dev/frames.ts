@@ -4,6 +4,13 @@ import { getDB, listMeetings } from '@/lib/db';
 import { getItem } from '@/lib/memory/store';
 import { DEFAULT_SETTINGS } from '@/lib/settings';
 import { world } from '../components/v4/world';
+import { SAMPLE_EVENT, SAMPLE_PEOPLE } from '@/lib/memory/sample';
+import { withGoal } from '@/lib/memory/agenda';
+import { lastTimeKey } from '@/lib/reminders';
+import { putAgenda } from '@/lib/memory/store';
+import type { MemoryItem } from '@/lib/memory/types';
+import type { CalendarEvent } from '@/lib/types';
+import type { ComponentType } from 'react';
 import { M, SAMPLE_AFTER, SAMPLE_MEETINGS, SAMPLE_ONE_ON_ONE, SAMPLE_PERSON_SUGGESTION } from '@/lib/memory/sample';
 import { redactSpan } from '@/lib/redact';
 import type { Segment } from '@/lib/types';
@@ -19,6 +26,60 @@ import { folderDev } from '../screens/v4/Folder';
 import { moveDev } from '../screens/v4/Move';
 
 const MB = 1024 * 1024;
+const at = (month: number, day: number, h: number, m: number) => new Date(2026, month - 1, day, h, m).getTime();
+
+/** The 1:1 invite as the brief frames show it: Priya is invited too, and the invite names the rollout date. */
+const BRIEF_EVENT: CalendarEvent = {
+  ...SAMPLE_EVENT,
+  attendees: [...SAMPLE_EVENT.attendees, { name: 'Priya Nair', email: 'priya@rekord-team.com' }],
+  description: 'Agenda:\n- Northwind rollout date',
+};
+
+/** The brief's world: the invite, and "Last time" as the AI wrote it for 27 Oct. */
+async function briefWorld() {
+  world.events = [BRIEF_EVENT];
+  await browser.storage.session.set({
+    [lastTimeKey(M.sarah27)]: ['Northwind wants to start the rollout on 9 Nov.', 'Sarah owes you the Q3 usage numbers.', 'You were still finishing the pricing deck.'],
+  });
+}
+
+/** V4BriefNew: "Intro with Halcyon · Thu 5 Nov · 15:00" with Marco Bell, and the goal Alex typed. */
+const HALCYON: CalendarEvent = {
+  id: 'evt-halcyon-1105', title: 'Intro with Halcyon', start: at(11, 5, 15, 0), end: at(11, 5, 15, 30), app: 'meet',
+  attendees: [{ name: 'Alex', email: 'alex@rekord-team.com', self: true }, { name: 'Marco Bell', email: 'marco@halcyon.studio' }],
+  description: 'Hi Alex, Marco here from Halcyon. Let’s use 30 minutes to walk through how your team could keep track of client calls. I’ll bring two examples from our studio.',
+};
+
+/** V4LookBack, Fri 30 Oct 16:00: 9 meetings, 6 h 40 min, 12 promises made, 8 kept, 5 decisions. */
+async function weekWorld() {
+  const db = await getDB();
+  const extra: [string, string, number, number][] = [
+    ['m-lb-design', 'Design review', at(10, 26, 16, 0), 45], ['m-lb-roadmap', 'Roadmap planning', at(10, 27, 14, 0), 60],
+    ['m-lb-northwind', 'Northwind check-in', at(10, 28, 11, 0), 30], ['m-lb-launch', 'Launch prep', at(10, 29, 10, 0), 48],
+    ['m-lb-retro', 'Team retro', at(10, 30, 11, 0), 60],
+  ];
+  for (const [id, title, start, minutes] of extra) {
+    await db.put('meetings', { id, title, startedAt: start, endedAt: start + minutes * 60_000, status: 'done', language: 'en', source: 'tab' });
+  }
+  const add = async (id: string, ids: string[]) => {
+    const p = SAMPLE_PEOPLE.find((x) => x.id === id)!;
+    await db.put('people', { ...p, meetingIds: [...p.meetingIds, ...ids] });
+  };
+  await add('p-priya', ['m-lb-design', 'm-lb-roadmap', 'm-lb-launch']);
+  await add('p-sam', ['m-lb-design', 'm-lb-roadmap', 'm-lb-launch']);
+  await add('p-sarah', ['m-lb-northwind']);
+  const item = (id: string, kind: MemoryItem['kind'], status: MemoryItem['status'], text: string, meetingId: string, when: number, extra: Partial<MemoryItem> = {}): MemoryItem => ({
+    id, kind, status, text, meetingId, quote: { speaker: 'Alex', text: `${text}.`, meetingId, atMs: 60_000 }, personIds: [], history: [], createdAt: when, updatedAt: when, ...extra,
+  });
+  const kept: [string, number][] = [
+    ['Send the pricing review notes', at(10, 30, 12, 0)], ['Book the Lumen intro', at(10, 30, 11, 30)], ['Update the plan page', at(10, 29, 17, 0)],
+    ['Share the roadmap draft', at(10, 28, 15, 0)], ['Reply to Northwind legal', at(10, 27, 16, 0)], ['Book the design review', at(10, 27, 15, 0)],
+  ];
+  for (const [n, [text, when]] of kept.entries()) await db.put('items', item(`k-${n}`, 'promise', 'done', text, 'm-lb-roadmap', when - 3_600_000, { ownerId: 'me', toId: 'p-priya', personIds: ['p-priya'], updatedAt: when }));
+  await db.put('items', item('d-retro', 'decision', 'open', 'Team retro moves to Fridays', 'm-lb-design', at(10, 26, 16, 10)));
+  await db.put('items', item('d-design', 'decision', 'open', 'Design review every Monday', 'm-lb-design', at(10, 26, 16, 20)));
+  await db.put('items', item('i-pricing-copy', 'promise', 'open', 'Update the pricing page copy', 'm-sync-10-12', at(10, 12, 10, 20), { ownerId: 'p-priya', toId: 'me', personIds: ['p-priya'], due: '2026-10-22' }));
+}
 
 /** Search windows for every sample meeting, so "Memory size" reads about 3 MB as in the frames. */
 async function seedVectors() {
@@ -37,6 +98,10 @@ export interface DevFrame {
   moment?: 'before' | 'after';
   /** Puts the screen in the frame's state once the sample world is seeded. */
   setup?: () => Promise<void>;
+  /** The frame's clock when it is not one of the two moments (V4LookBack: Fri 30 Oct 16:00). */
+  now?: number;
+  /** Full-tab and notification frames: the page drawn instead of a side panel screen. */
+  page?: () => Promise<ComponentType>;
 }
 
 async function setMemory(memory: Partial<Awaited<ReturnType<typeof getSettings>>['memory']>) {
@@ -204,5 +269,20 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
     },
   },
 };
+
+Object.assign(DEV_FRAMES, {
+  V4Brief: { screen: 'brief', params: { eventId: SAMPLE_EVENT.id }, setup: briefWorld },
+  V4AgendaEdit: { screen: 'agendaEdit', params: { eventId: SAMPLE_EVENT.id }, setup: briefWorld },
+  V4BriefNew: {
+    screen: 'brief', params: { eventId: HALCYON.id },
+    setup: async () => {
+      world.events = [HALCYON];
+      await putAgenda(withGoal({ meetingKey: HALCYON.id, items: [], totalMinutes: 30 }, 'Learn what Halcyon needs and agree on a next step.'));
+    },
+  },
+  V4BriefTab: { screen: 'brief', setup: briefWorld, page: async () => (await import('../../brief/BriefTab')).default },
+  V4Notification: { screen: 'brief', setup: briefWorld, page: async () => (await import('./NotificationPreview')).default },
+  V4LookBack: { screen: 'home', now: at(10, 30, 16, 0), setup: weekWorld, page: async () => (await import('../../lookback/LookBack')).default },
+} satisfies Record<string, DevFrame>);
 
 function redactParams() { return { atMs: REDACT_SPAN.startMs, endMs: REDACT_SPAN.endMs }; }

@@ -4,6 +4,7 @@ import { SAMPLE_AFTER, SAMPLE_EVENT, SAMPLE_NOW, seedSample } from '@/lib/memory
 import { BACKFILL_KEY } from '@/lib/memory/backfill';
 import { world } from '../components/v4/world';
 import type { Route } from '../router';
+import type { DevPage } from '../App';
 import { DEV_FRAMES } from './frames';
 
 const SCRATCH_DB = 'rekord-dev-frames';
@@ -54,8 +55,8 @@ async function restoreStorage() {
   await browser.storage.local.set(saved);
 }
 
-function enterSampleWorld(moment: 'before' | 'after') {
-  world.now = () => (moment === 'after' ? SAMPLE_AFTER : SAMPLE_NOW);
+function enterSampleWorld(moment: 'before' | 'after', now?: number) {
+  world.now = () => now ?? (moment === 'after' ? SAMPLE_AFTER : SAMPLE_NOW);
   world.events = [SAMPLE_EVENT];
 }
 
@@ -67,18 +68,19 @@ const deleted = () => new Promise<void>((resolve, reject) => {
 });
 
 /** Seeds a fresh scratch DB and returns the frame's route; undefined for a frame not built yet. */
-export async function openDevFrame(name: string): Promise<Route | undefined> {
+export async function openDevFrame(name: string): Promise<Route | DevPage | undefined> {
   const frame = DEV_FRAMES[name];
   if (!frame) return undefined;
   const moment = frame.moment ?? 'before';
   await deleted();
   await snapshotStorage();
   redirectToScratchDB();
-  enterSampleWorld(moment);
+  enterSampleWorld(moment, frame.now);
   const db = await getDB();
   await seedSample({ put: (store, value) => db.put(store as never, value as never) }, moment);
   await frame.setup?.();
   sessionStorage.setItem(SESSION_KEY, name);
+  if (frame.page) return { page: await frame.page() };
   return { screen: frame.screen, params: frame.params ?? {} };
 }
 
@@ -92,6 +94,6 @@ export function resumeDevFrame(): boolean {
     return false;
   }
   redirectToScratchDB();
-  enterSampleWorld(frame.moment ?? 'before');
+  enterSampleWorld(frame.moment ?? 'before', frame.now);
   return true;
 }

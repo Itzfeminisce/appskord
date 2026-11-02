@@ -48,12 +48,18 @@ import NotionPage from './screens/NotionPage';
 import GoogleConnect from './screens/GoogleConnect';
 import { shouldShowWhatsNew } from '@/lib/whatsNew';
 import NoSound from './screens/NoSound';
+import Brief from './screens/v4/Brief';
+import AgendaEdit from './screens/v4/AgendaEdit';
+import { PanelGo, useEventCache } from './components/v4/panelGo';
 
 declare global {
   /** True outside the release zip (wxt.config.ts): dev frame routes are built in. */
   const __REKORD_DEV_FRAMES__: boolean;
 }
 const devFrames = typeof __REKORD_DEV_FRAMES__ !== 'undefined' && __REKORD_DEV_FRAMES__;
+/** A dev frame for a full tab or a notification: drawn on its own, outside the side panel's routes. */
+export interface DevPage { page: ComponentType }
+const inDevWorld = () => devFrames && (location.hash.startsWith('#/dev/') || !!sessionStorage.getItem('rekord.devFrame'));
 
 export const SCREENS: Record<ScreenName, ComponentType> = {
   welcome: Welcome,
@@ -99,6 +105,8 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   settingsMemory: SettingsMemory,
   folder: Folder,
   move: Move,
+  brief: Brief,
+  agendaEdit: AgendaEdit,
 };
 
 /** First screen: onboarding until the user has finished it, then Open loops. */
@@ -119,7 +127,7 @@ export const sidepanel = createRouter(SCREENS, { fresh: ['googleConnect', 'notio
 const { RouterProvider } = sidepanel;
 
 /** Dev builds: `#/dev/<Frame>` opens that frame's screen in the sample world; a frame not built yet shows its name. */
-async function devRoute(): Promise<Route | string | undefined> {
+async function devRoute(): Promise<Route | DevPage | string | undefined> {
   if (!devFrames) return undefined;
   const dev = await import('./dev/open');
   const name = dev.frameInHash(location.hash);
@@ -131,10 +139,13 @@ async function devRoute(): Promise<Route | string | undefined> {
 }
 
 export default function App() {
-  const [initial, setInitial] = useState<Route | string | null>(null);
+  const [initial, setInitial] = useState<Route | DevPage | string | null>(null);
+  const [real] = useState(() => !inDevWorld());
+  // The background briefs from these cached events; never from a dev frame's sample world.
+  useEventCache(real);
   useEffect(() => {
     // Rekord folder writes queue while the panel is closed; they go out each time it opens (never from a dev frame's sample world).
-    if (!devFrames || !(location.hash.startsWith('#/dev/') || sessionStorage.getItem('rekord.devFrame'))) void flushFolder();
+    if (real) void flushFolder();
     void devRoute()
       .catch((error) => console.error('Rekord: could not open the dev frame', error))
       .then(async (dev) => setInitial(dev ?? (await initialRoute())));
@@ -147,6 +158,10 @@ export default function App() {
       </main>
     );
   }
+  if (typeof initial === 'object' && 'page' in initial) {
+    const Page = initial.page;
+    return <Page />;
+  }
   if (typeof initial === 'string') {
     return (
       <main className="screen screen-center">
@@ -156,6 +171,6 @@ export default function App() {
   }
   return (
     // `initial` is used only when the hash names no screen; a reload keeps the screen in the hash.
-    <RouterProvider initial={initial} />
+    <RouterProvider initial={initial}><PanelGo /></RouterProvider>
   );
 }

@@ -31,6 +31,7 @@ export interface CalendarEvent {
   id: string; title: string; start: number; end: number;
   attendees: { name?: string; email: string; self?: boolean }[];
   app?: 'meet' | 'zoom' | 'teams';                 // from the conference link, used for "· Zoom" labels
+  description?: string;                            // the invite's text, for the brief and its agenda
 }
 
 export interface ShareRecord { kind: 'gdocs' | 'notion'; url: string; at: number; linkShared?: boolean }
