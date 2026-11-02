@@ -28,7 +28,7 @@ import { findRecall, recallAllowed, recentText, type RecallCard as Card } from '
 import { getAgenda, itemsByKind, listPeople, putAgenda, putItem, replaceDecision } from '@/lib/memory/store';
 import type { Agenda } from '@/lib/memory/types';
 import { useConnection } from '@/lib/connection';
-import { onMessage, send } from '@/lib/messages';
+import { onMessage, refreshBadge, send } from '@/lib/messages';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { resolveSuggestion, startSuggester, suggestionCounts } from '@/lib/suggest';
 import type { Marker, MarkerKind, Meeting, Note, RecordingState, Segment, Speaker } from '@/lib/types';
@@ -386,7 +386,7 @@ export default function Live() {
     try {
       // One promise per question: a second tap overwrites the same row instead of adding another.
       await putItem(promiseFromQuestion(q, meetingId, world.now(), person?.id, () => `promise:${meetingId}:${q.id}`));
-      void browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
+      refreshBadge();
       handle(q);
     } catch (error) {
       console.error('Rekord: could not save the promise', error);
@@ -434,7 +434,7 @@ export default function Live() {
       const fresh = replacingDecision(c.clash, meetingId, at);
       await putItem(fresh);
       await replaceDecision(c.clash.decision.id, fresh.id, at);
-      void browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
+      refreshBadge();
       setClash(undefined);
     } catch (error) {
       console.error('Rekord: could not replace the decision', error);

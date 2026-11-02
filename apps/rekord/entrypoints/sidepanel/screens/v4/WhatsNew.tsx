@@ -36,27 +36,36 @@ const LINES: { title: string; text: (ai: string) => string; tone: string; icon: 
 
 interface Offer { meetings: number; ai: string; ask: boolean }
 
+// Seen only once the user answers the card (Build memory or Not now); otherwise it shows again on the next open.
+// Awaited before other settings writes, which would otherwise race it.
+const markSeen = () => markWhatsNewSeen(browser.runtime.getManifest().version).catch((error) => console.error('Rekord: could not save what’s new as seen', error));
+
 export default function WhatsNew() {
   const { navigate, replace, has } = useRouter();
   const [offer, setOffer] = useState<Offer | null>(null);
 
   useEffect(() => {
-    void markWhatsNewSeen(browser.runtime.getManifest().version).catch((error) => console.error('Rekord: could not save what’s new as seen', error));
     void Promise.all([getSettings(), listMeetings()])
-      .then(([settings, meetings]) => setOffer({
-        meetings: meetings.filter((m) => m.status === 'done').length,
-        ai: PROVIDERS[settings.summary.provider].label,
-        // Asked once: after Build memory or Not now the card stays away.
-        ask: settings.memory.backfill === 'ask',
-      }))
+      .then(([settings, meetings]) => {
+        const next = {
+          meetings: meetings.filter((m) => m.status === 'done').length,
+          ai: PROVIDERS[settings.summary.provider].label,
+          // Asked once: after Build memory or Not now the card stays away.
+          ask: settings.memory.backfill === 'ask',
+        };
+        setOffer(next);
+        // With no card there is no choice to wait for.
+        if (!(next.ask && next.meetings > 0)) void markSeen();
+      })
       .catch((error) => console.error('Rekord: could not load your meetings', error));
   }, []);
 
   const build = () => {
-    void requestBackfill().catch((error) => console.error('Rekord: could not start building memory', error));
+    void markSeen().then(requestBackfill).catch((error) => console.error('Rekord: could not start building memory', error));
     navigate('backfill');
   };
   const notNow = async () => {
+    await markSeen();
     try {
       const { memory } = await getSettings();
       await updateSettings({ memory: { ...memory, backfill: 'declined' } });

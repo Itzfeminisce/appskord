@@ -4,7 +4,8 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDB, getDB } from '@/lib/db';
 import { M, SAMPLE_AFTER, seedSample } from '@/lib/memory/sample';
-import { getItem, getPerson } from '@/lib/memory/store';
+import { QUEUE_KEY } from '@/lib/memory/backfill';
+import { deleteItem, getItem, getPerson, itemsForMeeting, putItem } from '@/lib/memory/store';
 import type { MemoryItem } from '@/lib/memory/types';
 import { mount, settle, waitFor } from '../../../../test/mountRouter';
 import { sidepanel } from '../../App';
@@ -135,6 +136,18 @@ describe('review card and summary strip', () => {
     const item = await getItem('n-left-1');
     expect(item?.status).toBe('open');
     expect(item?.leftOut).toBeUndefined();
+  });
+
+  it('summary shows the memory strip once extraction lands from the background queue', async () => {
+    const items = await itemsForMeeting(M.sarah3);
+    for (const i of items) await deleteItem(i.id);
+    const view = await mount(sidepanel, 'summary', `/summary?meeting=${M.sarah3}`);
+    await settle();
+    const before = view.host.querySelector('.sm-strip')?.textContent ?? '';
+    expect(before).not.toContain('promise');
+    for (const i of items) await putItem(i);
+    await act(async () => { await browser.storage.local.set({ [QUEUE_KEY]: { ids: [], rateLimits: {} } }); });
+    await waitFor(() => expect(view.host.querySelector('.sm-strip')?.textContent).not.toBe(before));
   });
 
   it('summary shows the memory strip, the after-the-meeting card and the ledger link', async () => {

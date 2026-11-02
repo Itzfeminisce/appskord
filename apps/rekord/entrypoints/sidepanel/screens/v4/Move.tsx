@@ -4,6 +4,7 @@ import { BackIcon } from '../../components/v4/icons';
 import { useRouter } from '../../router';
 import { megabytes } from './SettingsMemory';
 import './settings.css';
+import { refreshBadge } from '@/lib/messages';
 
 /** Dev frames: a file from the other computer already chosen. */
 export const moveDev: { chosen?: { name: string; preview: MovePreview } } = {};
@@ -55,7 +56,7 @@ export default function Move() {
     setBusy('import');
     try {
       await importMove(chosen.file);
-      browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
+      refreshBadge();
       replace('home');
     } catch (error) {
       console.error('Rekord: could not bring Rekord in', error);

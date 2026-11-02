@@ -8,7 +8,9 @@ import { runSpeakerStep } from '@/lib/speakers';
 import { formatClock, formatDuration } from '@/lib/time';
 import { visibleMarkers } from '@/lib/suggest';
 import type { Marker, Meeting, Note } from '@/lib/types';
+import { QUEUE_KEY } from '@/lib/memory/backfill';
 import { itemsForMeeting, listPeople } from '@/lib/memory/store';
+import { onBadgeRefresh } from '@/lib/messages';
 import type { MemoryItem, Person } from '@/lib/memory/types';
 import { LockIcon } from '../components/v4/icons';
 import { ChevronIcon, KindPill, MailIcon, QuestionRingIcon, SendIcon } from '../components/v4/memory';
@@ -93,10 +95,17 @@ export default function Summary() {
   useEffect(() => {
     if (!meetingId) return;
     let alive = true;
-    Promise.all([itemsForMeeting(meetingId), listPeople(), browser.storage.local.get(reviewedPeopleKey(meetingId))])
-      .then(([items, people, stored]) => alive && setMemory({ items, people, reviewed: (stored[reviewedPeopleKey(meetingId)] as string[] | undefined) ?? [] }))
-      .catch((error) => console.error('Rekord: could not load what this meeting added to memory', error));
-    return () => { alive = false; };
+    const load = () => {
+      Promise.all([itemsForMeeting(meetingId), listPeople(), browser.storage.local.get(reviewedPeopleKey(meetingId))])
+        .then(([items, people, stored]) => alive && setMemory({ items, people, reviewed: (stored[reviewedPeopleKey(meetingId)] as string[] | undefined) ?? [] }))
+        .catch((error) => console.error('Rekord: could not load what this meeting added to memory', error));
+    };
+    load();
+    // Extraction lands later, from the background queue; an item write here also reloads.
+    const changed = (changes: Record<string, unknown>, area: string) => { if (area === 'local' && QUEUE_KEY in changes) load(); };
+    browser.storage.onChanged.addListener(changed);
+    const off = onBadgeRefresh(load);
+    return () => { alive = false; browser.storage.onChanged.removeListener(changed); off(); };
   }, [meetingId]);
 
   useEffect(() => {

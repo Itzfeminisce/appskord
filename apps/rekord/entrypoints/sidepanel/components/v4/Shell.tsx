@@ -7,6 +7,7 @@ import { Header } from './Header';
 import { nearMeeting } from './recordBar';
 import { world } from './world';
 import './shell.css';
+import { refreshBadge } from '@/lib/messages';
 
 export type ShellTab = 'loops' | 'meetings' | 'people';
 
@@ -25,7 +26,7 @@ export function useOverdue(): number {
     openLoops(now)
       .then((items) => alive && setOverdue(rankOpenLoops(items, now).overdue))
       .catch((error) => console.error('Rekord: could not count overdue promises', error));
-    browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
+    refreshBadge();
     return () => { alive = false; };
   }, []);
   return overdue;

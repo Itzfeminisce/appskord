@@ -4,7 +4,7 @@ import { listMarkers, listMeetings, listNotes, listSegments } from '../db';
 import { itemsForMeeting, listItems, listPeople } from '../memory/store';
 import { markFolderWritten, meetingsNeedingFolderWrite, onFolderRewrite } from '../redact';
 import { getSettings, updateSettings } from '../settings';
-import { folderFiles, meetingKey, meetingPath, type FolderFile, type MeetingParts } from './markdown';
+import { folderFiles, meetingKey, meetingPath, personKey, type FolderFile, type MeetingParts } from './markdown';
 
 export * from './markdown';
 
@@ -158,6 +158,17 @@ export async function removeFiles(paths: string[]): Promise<void> {
   await flushFolder();
 }
 
+/** Removes forgotten people's pages by the path each was last written to; a person never written has none. */
+export async function removePersonFiles(ids: string[], extra: string[] = []): Promise<void> {
+  const meta = await readMeta();
+  if (!meta) return;
+  const paths = { ...(meta.paths ?? {}) };
+  const gone = ids.map((id) => paths[personKey(id)]).filter((p): p is string => !!p);
+  for (const id of ids) delete paths[personKey(id)];
+  await writeMeta({ ...meta, paths });
+  await removeFiles([...gone, ...extra]);
+}
+
 // A redaction queues its meeting so the redacted words leave the folder file on the next write.
 onFolderRewrite((id) => { void queueMeetings([id]).then(flushFolder); });
 
@@ -195,6 +206,16 @@ async function write(all: boolean, now = Date.now()): Promise<boolean> {
   await writeMeta({ ...meta, lastWrittenAt: now, queue: [], written: [...new Set([...meta.written, ...ids])], remove: [], paths: nextPaths });
   for (const id of ids) if (rewrite.has(id)) await markFolderWritten(id);
   return true;
+}
+
+// A burst of item writes or extraction progress becomes one folder write.
+export const FLUSH_DEBOUNCE_MS = 2_000;
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** flushFolder a moment after the last call. */
+export function flushFolderSoon(ms = FLUSH_DEBOUNCE_MS): void {
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(() => { flushTimer = undefined; void flushFolder(); }, ms);
 }
 
 /** "Write all 24 past meetings". */

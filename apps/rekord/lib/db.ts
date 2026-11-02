@@ -121,6 +121,15 @@ const byAt = (a: { atMs: number }, b: { atMs: number }) => a.atMs - b.atMs;
 export async function putSegment(s: Segment): Promise<void> { await (await getDB()).put('segments', s); }
 export async function getSegment(id: string): Promise<Segment | undefined> { return (await getDB()).get('segments', id); }
 export async function listSegments(meetingId: string): Promise<Segment[]> { return (await listBy('segments', meetingId)).sort(byStart); }
+/** Whether any segment of the meeting has words; walks the index and stops at the first one. */
+export async function hasSpeech(meetingId: string): Promise<boolean> {
+  let cursor = await (await getDB()).transaction('segments').store.index('meetingId').openCursor(meetingId);
+  while (cursor) {
+    if (cursor.value.text.trim()) return true;
+    cursor = await cursor.continue();
+  }
+  return false;
+}
 export async function deleteSegment(id: string): Promise<void> { await (await getDB()).delete('segments', id); }
 
 export async function putNote(n: Note): Promise<void> { await (await getDB()).put('notes', n); }

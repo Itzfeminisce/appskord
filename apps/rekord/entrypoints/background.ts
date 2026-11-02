@@ -148,10 +148,6 @@ export default defineBackground(() => {
   browser.action.setBadgeBackgroundColor({ color: BADGE_COLOR }).catch((error) => console.error('Rekord: could not colour the badge', error));
   // Each wake of the worker and each change the panel reports recounts overdue promises.
   updateBadge();
-  browser.runtime.onMessage.addListener((msg: { type?: string }) => {
-    if (msg?.type === 'rekord.badge.refresh') updateBadge();
-    return undefined;
-  });
   // The engine saves items from this worker, so its progress writes are the cue; the daily alarm covers promises that turn overdue.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && (BACKFILL_KEY in changes || QUEUE_KEY in changes)) updateBadge();
@@ -204,6 +200,9 @@ export default defineBackground(() => {
     switch (msg.type) {
       case 'recording/get-state':
         return ready.then(() => state);
+      case 'rekord.badge.refresh':
+        updateBadge();
+        return undefined;
       case 'recording/start':
         return ready.then(() => {
           if (state.status !== 'idle') return { ok: false, error: 'Rekord is already recording.' } as RecordingReply;

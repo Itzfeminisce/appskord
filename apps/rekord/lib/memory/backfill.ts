@@ -1,4 +1,4 @@
-import { listMeetings, listSegments } from '../db';
+import { hasSpeech, listMeetings } from '../db';
 import { LLMError, type FetchLike } from '../llm';
 import { getSettings, updateSettings } from '../settings';
 import { extractMeeting, partsSaved, type ExtractDeps } from './extract';
@@ -69,8 +69,10 @@ export async function enqueueExtraction(meetingId: string): Promise<void> {
 /** The queue: every earlier finished meeting with speech in it, oldest first. */
 export async function backfillQueue(): Promise<BackfillMeeting[]> {
   const meetings = (await listMeetings()).filter((m) => m.status === 'done').sort((a, b) => a.startedAt - b.startedAt);
-  const withSpeech = await Promise.all(meetings.map(async (m) => (await listSegments(m.id)).some((s) => s.text.trim())));
-  return meetings.filter((_, i) => withSpeech[i]).map((m) => ({ id: m.id, title: m.title, status: 'waiting' }));
+  const queue: BackfillMeeting[] = [];
+  // One meeting at a time, so a long history never holds every transcript in memory at once.
+  for (const m of meetings) if (await hasSpeech(m.id)) queue.push({ id: m.id, title: m.title, status: 'waiting' });
+  return queue;
 }
 
 /** "Build memory": queues the earlier meetings and wakes the background. Already running: nothing, unless it stopped on an error, which it resumes. */

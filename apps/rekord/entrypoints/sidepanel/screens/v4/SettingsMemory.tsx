@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { listMeetings } from '@/lib/db';
-import { DECISIONS_PATH, OPEN_LOOPS_PATH, personPath, removeFiles } from '@/lib/folder';
+import { DECISIONS_PATH, OPEN_LOOPS_PATH, removePersonFiles } from '@/lib/folder';
 import { forgetAll, listItems, listLedger, listPeople, listVectors } from '@/lib/memory/store';
 import type { MemorySettings } from '@/lib/memory/types';
 import { ensureModel, modelState, removeModel, type ModelState, type Progress } from '@/lib/recall';
@@ -10,6 +10,7 @@ import { BackIcon } from '../../components/v4/icons';
 import { ModelDownloadCard, ModelFailedBanner } from '../../components/v4/states';
 import { useRouter } from '../../router';
 import './settings.css';
+import { refreshBadge } from '@/lib/messages';
 
 const DAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
 const MB = 1024 * 1024;
@@ -181,8 +182,8 @@ export default function SettingsMemory() {
     try {
       const people = plan?.folder ? await listPeople() : [];
       await forgetAll();
-      if (plan?.folder) await removeFiles([...people.map(personPath), OPEN_LOOPS_PATH, DECISIONS_PATH]);
-      browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
+      if (plan?.folder) await removePersonFiles(people.map((p) => p.id), [OPEN_LOOPS_PATH, DECISIONS_PATH]);
+      refreshBadge();
     } catch (error) {
       console.error('Rekord: could not forget memory', error);
     }

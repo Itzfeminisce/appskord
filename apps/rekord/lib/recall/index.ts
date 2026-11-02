@@ -3,8 +3,9 @@ import { rankCandidates, type MeetingData } from '../askAll';
 import { listMeetings, listNotes, listSegments } from '../db';
 import { countVectors, getVector, listItems, listVectors, replaceVectors, vectorsForMeeting, vectorVersion } from '../memory/store';
 import type { MemoryItem, VectorRow } from '../memory/types';
+import { getSettings } from '../settings';
 import type { Meeting } from '../types';
-import { embedTexts, loadCachedModel } from './model';
+import { embedTexts, loadCachedModel, modelState } from './model';
 import { quantize } from './quantize';
 import { fuse, itemsByWindows, meetingsByWindows, scoreItem, searchable, type WindowHit } from './search';
 import { buildIndex, rankIndex, type VectorIndex } from './vectorIndex';
@@ -45,6 +46,17 @@ export async function embedPending(meetings?: Meeting[]): Promise<number> {
     console.error('Rekord: could not embed meetings', e);
   }
   return done;
+}
+
+let embedding: Promise<number> | undefined;
+
+/** After extraction lands: embeds only when the user chose the search model and it is already downloaded. */
+export function embedIfReady(): Promise<number> {
+  embedding ??= (async () => {
+    if ((await getSettings()).memory.searchModel !== 'ready' || (await modelState()) !== 'ready') return 0;
+    return embedPending();
+  })().catch(() => 0).finally(() => (embedding = undefined));
+  return embedding;
 }
 
 export interface SearchOptions {

@@ -34,7 +34,10 @@ import Ledger from './screens/v4/Ledger';
 import SettingsMemory from './screens/v4/SettingsMemory';
 import Folder from './screens/v4/Folder';
 import Move from './screens/v4/Move';
-import { flushFolder } from '@/lib/folder';
+import { flushFolder, flushFolderSoon } from '@/lib/folder';
+import { BACKFILL_KEY, QUEUE_KEY } from '@/lib/memory/backfill';
+import { onBadgeRefresh } from '@/lib/messages';
+import { embedIfReady } from '@/lib/recall';
 import FollowUp from './screens/v4/FollowUp';
 import SendTasks from './screens/v4/SendTasks';
 import LinearConnect from './screens/v4/LinearConnect';
@@ -145,11 +148,27 @@ async function devRoute(): Promise<Route | DevPage | string | undefined> {
   return (await dev.openDevFrame(name)) ?? name;
 }
 
+/** While the panel is open: extraction landing in the background, or an item write here, reaches the folder and the search index. */
+function useMemoryFollowUp(real: boolean) {
+  useEffect(() => {
+    if (!real) return undefined;
+    const onChange = (changes: Record<string, unknown>, area: string) => {
+      if (area !== 'local' || !(QUEUE_KEY in changes || BACKFILL_KEY in changes)) return;
+      flushFolderSoon();
+      void embedIfReady();
+    };
+    browser.storage.onChanged.addListener(onChange);
+    const off = onBadgeRefresh(() => flushFolderSoon());
+    return () => { browser.storage.onChanged.removeListener(onChange); off(); };
+  }, [real]);
+}
+
 export default function App() {
   const [initial, setInitial] = useState<Route | DevPage | string | null>(null);
   const [real] = useState(() => !inDevWorld());
   // The background briefs from these cached events; never from a dev frame's sample world.
   useEventCache(real);
+  useMemoryFollowUp(real);
   useEffect(() => {
     // Rekord folder writes queue while the panel is closed; they go out each time it opens (never from a dev frame's sample world).
     if (real) void flushFolder();

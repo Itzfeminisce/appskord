@@ -9,6 +9,7 @@ import { world } from '../../components/v4/world';
 import { QuoteMissingCard } from '../../components/v4/states';
 import { initials, meetingLine, quoteCaption, quoteClock, tint, type Chip, type Meetings } from './loops';
 import './loops.css';
+import { refreshBadge } from '@/lib/messages';
 
 const base = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
 export const PromiseIcon = ({ size = 13 }: { size?: number }) => <svg {...base} width={size} height={size} strokeWidth="2.2"><path d="M4 12h13M13 7l5 5-5 5" /></svg>;
@@ -135,7 +136,4 @@ export function useMemoryView(): [MemoryView, () => void] {
   return [view, reload];
 }
 
-/** Asks the background to recount the toolbar badge after an item write. */
-export function refreshBadge() {
-  browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
-}
+export { refreshBadge };

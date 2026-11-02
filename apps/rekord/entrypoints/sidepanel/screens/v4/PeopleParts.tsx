@@ -60,7 +60,7 @@ export async function addNotSame(key: string): Promise<void> {
   await browser.storage.local.set({ [NOT_SAME_KEY]: [...new Set([...(await readNotSame()), key])] });
 }
 
-export const refreshBadge = () => { browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined); };
+export { refreshBadge } from '@/lib/messages';
 
 /** One-shot message the People list shows on arrival ("Sarah is forgotten."). */
 export const peopleFlash: { message?: string } = {};

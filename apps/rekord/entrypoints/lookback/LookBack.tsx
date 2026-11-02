@@ -12,6 +12,7 @@ import { world } from '../sidepanel/components/v4/world';
 import { DiamondIcon, DownloadIcon, Face, Pill, QuestionMark, TickIcon } from '../sidepanel/screens/v4/briefParts';
 import { openPanelOn } from '../brief/panel';
 import './lookback.css';
+import { refreshBadge } from '@/lib/messages';
 
 interface Data { week: Week; people: Map<string, Person>; meetings: Map<string, Meeting> }
 
@@ -51,7 +52,7 @@ export default function LookBack() {
 
   const write = async (next: MemoryItem) => {
     await putItem(next);
-    browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
+    refreshBadge();
     reload();
   };
   const carry = (item: MemoryItem) => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { planForget } from '@/lib/memory/link';
-import { personPath, removeFiles } from '@/lib/folder';
+import { removePersonFiles } from '@/lib/folder';
 import { forgetPerson } from '@/lib/memory/store';
 import { canRedactPerson, redactPerson } from '@/lib/redact';
 import { getSettings } from '@/lib/settings';
@@ -40,7 +40,7 @@ export default function Forget() {
       // Redaction reads the person's names, so it runs before they are gone.
       if (redact && canRedactPerson) await redactPerson(person.id, { now: world.now() });
       await forgetPerson(person.id, world.now());
-      if (folder) await removeFiles([personPath(person)]);
+      if (folder) await removePersonFiles([person.id]);
       refreshBadge();
       peopleFlash.message = `${first} is forgotten.`;
       replace('people');

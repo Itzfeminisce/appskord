@@ -138,7 +138,8 @@ export type Message =
   | { type: 'stream/token' }                            // offscreen → background; reply: TokenReply (lib/transcribe/stream.ts)
   | { type: 'stream/get-state' }                        // panel → offscreen; reply: 'live' | 'backup' | 'off'
   | { type: 'app-audio/silent' }                         // desktop-app capture hears nothing
-  | { type: 'app-audio/ended' };                         // desktop-app capture stopped
+  | { type: 'app-audio/ended' }                          // desktop-app capture stopped
+  | { type: 'rekord.badge.refresh' };                    // pages → background: recount the toolbar badge after an item write
 
 /** Reply to `transcriber/config` (the offscreen document has no storage API). Keys are never persisted by the caller. */
 export interface TranscriberConfig { settings: Settings; keys: Record<string, string> }

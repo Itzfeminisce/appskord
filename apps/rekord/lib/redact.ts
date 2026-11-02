@@ -4,7 +4,7 @@ import {
   listMeetings, listNotes, listRecordingParts, listSegments, putChunk, putMeeting, replaceRecordingParts,
 } from './db';
 import { record } from './ledger';
-import { send } from './messages';
+import { refreshBadge, send } from './messages';
 import { addTombstones, deleteItem, getPerson, listItems, putItem, replaceVectors, vectorsForMeeting } from './memory/store';
 import type { AskTurn, Chunk, Marker, Meeting, Note, RecordingMeta, RecordingPart, RecordingState, Segment, Summary } from './types';
 import type { ItemKind, MemoryItem, Quote, VectorRow } from './memory/types';
@@ -380,8 +380,6 @@ export interface RedactOptions {
 }
 export interface RedactResult { plan: SpanPlan; audio: 'none' | 'silenced'; mark: RedactionMark; marks: RedactionMark[] }
 
-const badge = () => { browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined); };
-
 /** The meeting the background is recording now; undefined when idle or when it does not answer. */
 export async function recordingMeetingId(): Promise<string | undefined> {
   const state = await send<RecordingState>({ type: 'recording/get-state' }).catch(() => undefined);
@@ -419,7 +417,7 @@ export async function redactSpans(meetingId: string, spans: Span[], opts: Redact
   await putMeeting(next);
   for (const _ of marks) await record({ meetingId, service: 'redaction', what: 'Redacted', at: now });
   for (const l of folderListeners) l(meetingId);
-  if (plan.deleteItemIds.length || plan.changedItems.length) (opts.notify ?? badge)();
+  if (plan.deleteItemIds.length || plan.changedItems.length) (opts.notify ?? refreshBadge)();
   return { plan, audio: recording ? 'silenced' : 'none', mark: marks[0]!, marks };
 }
 

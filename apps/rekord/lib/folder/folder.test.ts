@@ -12,7 +12,7 @@ import { closeDB, getDB, listSegments } from '../db';
 import { meetingsNeedingFolderWrite } from '../redact';
 import { SAMPLE_ITEMS, SAMPLE_MEETINGS, SAMPLE_ONE_ON_ONE, SAMPLE_ONE_ON_ONE_ITEMS, SAMPLE_PEOPLE, sampleSegments, seedSample } from '../memory/sample';
 import { folderFiles, meetingMarkdown, meetingPath, personPath, safeName } from './markdown';
-import { allowFolder, chooseFolder, flushFolder, folderStatus, removeFiles, stopFolder, useFolderDB, writeAll, writeFiles, type DirHandle } from './index';
+import { allowFolder, chooseFolder, flushFolder, folderStatus, removeFiles, removePersonFiles, stopFolder, useFolderDB, writeAll, writeFiles, type DirHandle } from './index';
 
 /** An in-memory directory that records every file written. */
 function fakeDir(files: Map<string, string>, permission: { value: 'granted' | 'prompt' }, prefix = ''): DirHandle {
@@ -107,6 +107,24 @@ describe('Rekord folder writer', () => {
     expect(files.has(sarah)).toBe(true);
     expect(await allowFolder()).toBe(true);
     expect(files.has(sarah)).toBe(false);
+  });
+
+  it('gives two people with one name their own pages and removes each by its stored path', async () => {
+    const sarah = SAMPLE_PEOPLE.find((p) => p.id === 'p-sarah')!;
+    const twin = { ...sarah, id: 'p-sarah-two', meetingIds: [] };
+    await (await getDB()).put('people', twin);
+    await chooseFolder();
+    const mine = personPath(sarah, [sarah, twin]);
+    const theirs = personPath(twin, [sarah, twin]);
+    expect(mine).toBe('People/Sarah Chen (psarah).md');
+    expect(theirs).toBe('People/Sarah Chen (rahtwo).md');
+    expect(files.has(mine) && files.has(theirs)).toBe(true);
+    await (await getDB()).delete('people', twin.id);
+    await removePersonFiles([twin.id]);
+    expect(files.has(theirs)).toBe(false);
+    // The name is no longer shared, so the same write moves Sarah back to the plain name.
+    expect(files.has(mine)).toBe(false);
+    expect(files.has('People/Sarah Chen.md')).toBe(true);
   });
 
   it('queues while permission is lost and flushes after "Allow"', async () => {

@@ -33,7 +33,8 @@ export default defineAppConfig({
       resolve: { alias: [{ find: /^onnxruntime-web$/, replacement: 'onnxruntime-web/wasm' }] },
       worker: { format: 'es' },
       // Dev frame routes (`#/dev/<Frame>`) are left out of the release zip.
-      define: { __REKORD_DEV_FRAMES__: JSON.stringify(!isRelease()) },
+      // `--mode release` is not Vite's production mode, so React would ship its development build without this.
+      define: { __REKORD_DEV_FRAMES__: JSON.stringify(!isRelease()), ...(isRelease() ? { 'process.env.NODE_ENV': JSON.stringify('production') } : {}) },
     }),
     hooks: {
       // MV3 forbids remote code, so the runtime's loader and .wasm ship in the extension under ort/.

@@ -14,6 +14,7 @@ import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
 import '../../components/v4/shell.css';
 import './review.css';
+import { refreshBadge } from '@/lib/messages';
 
 export interface ReviewData { meeting: Meeting; items: MemoryItem[]; all: MemoryItem[]; people: Person[]; reviewed: string[] }
 
@@ -29,7 +30,7 @@ export async function loadReview(meetingId: string): Promise<ReviewData | undefi
 /** Saves one item and asks the background to refresh the toolbar badge. */
 export async function saveItem(item: MemoryItem): Promise<void> {
   await putItem(item);
-  browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
+  refreshBadge();
 }
 
 async function markReviewed(meetingId: string, ids: string[]) {

@@ -17,6 +17,7 @@ import { dayLabel, firstName, isoDay, shortDate } from '../../components/v4/revi
 import { world } from '../../components/v4/world';
 import { useRouter } from '../../router';
 import './after.css';
+import { refreshBadge } from '@/lib/messages';
 
 export interface SendDone { meetingId: string; service: SendService; target: string; sentIds: string[] }
 
@@ -196,7 +197,7 @@ export default function SendTasks() {
     setBusy(true);
     const result = await sendItems(target, chosen, noteFor, { ...deps, now: () => world.now() });
     if (result.sent.length) {
-      browser.runtime.sendMessage({ type: 'rekord.badge.refresh' }).catch(() => undefined);
+      refreshBadge();
       const sentById = new Map(result.sent.map((s) => [s.item.id, s.item]));
       setItems((rows) => rows.map((r) => sentById.get(r.id) ?? r));
       if (result.error) setChecked((c) => new Set([...c].filter((id) => !sentById.has(id))));

@@ -1,6 +1,6 @@
 // Rekord folder layout: pure Markdown with front matter, documented so other tools can rely on it.
 //   Meetings/<YYYY-MM-DD> <title> (<id>).md   one per meeting; <id> is a short id suffix, so names never collide
-//   People/<name> (<id>).md                   one per person
+//   People/<name>.md                          one per person; " (<id>)" is added only when two people share a name
 //   Open loops.md                      open promises and questions
 //   Decisions.md                       every decision, replaced ones struck through
 import type { Marker, Meeting, Note, Segment } from '../types';
@@ -23,7 +23,13 @@ export function safeName(name: string): string {
 
 export const shortId = (id: string) => id.replace(/[^a-z0-9]/gi, '').slice(-6) || '0';
 export const meetingPath = (m: Pick<Meeting, 'id' | 'title' | 'startedAt'>) => `Meetings/${isoDay(m.startedAt)} ${safeName(m.title)} (${shortId(m.id)}).md`;
-export const personPath = (p: Pick<Person, 'name'>) => `People/${safeName(p.name)}.md`;
+/** `all`: every person written alongside; a name two of them share gets the short id so neither page overwrites the other. */
+export function personPath(p: Pick<Person, 'id' | 'name'>, all: Pick<Person, 'id' | 'name'>[] = []): string {
+  const name = safeName(p.name);
+  // Compared case-insensitively: on a case-insensitive disk "Sam" and "sam" are the same file.
+  const shared = all.some((o) => o.id !== p.id && safeName(o.name).toLowerCase() === name.toLowerCase());
+  return `People/${name}${shared ? ` (${shortId(p.id)})` : ''}.md`;
+}
 export const meetingKey = (id: string) => `m:${id}`;
 export const personKey = (id: string) => `p:${id}`;
 export const OPEN_LOOPS_PATH = 'Open loops.md';
@@ -114,7 +120,7 @@ export function folderFiles(parts: MeetingParts[], all: { meetings: Meeting[]; p
   const meetings = new Map(all.meetings.map((m) => [m.id, m]));
   return [
     ...parts.map((p) => ({ path: meetingPath(p.meeting), text: meetingMarkdown(p, people), key: meetingKey(p.meeting.id) })),
-    ...all.people.map((p) => ({ path: personPath(p), text: personMarkdown(p, all.items, meetings, people), key: personKey(p.id) })),
+    ...all.people.map((p) => ({ path: personPath(p, all.people), text: personMarkdown(p, all.items, meetings, people), key: personKey(p.id) })),
     { path: OPEN_LOOPS_PATH, text: openLoopsMarkdown(all.items, meetings, people) },
     { path: DECISIONS_PATH, text: decisionsMarkdown(all.items, meetings, people) },
   ];
