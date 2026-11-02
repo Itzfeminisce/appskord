@@ -66,7 +66,7 @@ function ItemsBoard() {
     part('Promise detail · V4Promise sheet for a catch-up item', h(PromiseSheet, { item: plan, view })),
     part('Promise detail · owed to you, due date from a follow-up answer', h(AnswerBlock, { quote: admin.history[0]!, question: V41_QUESTIONS[0]!.text, meetings })),
     part('Brief · V4Brief line for 1:1 with Sarah, Tue 3 Nov', h('div', { className: 'v41b-card' },
-      line(`You owe Sarah: ${plan.text}.`, meetingLine(plan.meetingId, meetings)),
+      line('You owe Sarah the Q4 plan draft, due Wed 4 Nov.', meetingLine(plan.meetingId, meetings)),
       line(`Decided: ${V41_ITEMS[0]!.text}.`, meetingLine(V41_ITEMS[0]!.meetingId, meetings)))),
     part('Ask all · answer with catch-up citations', h('div', { className: 'v41b-card' },
       line(V41_ITEMS[0]!.text, citationCaption({ atMs: V41_ITEMS[0]!.quote.atMs, catchup: true })),
@@ -87,6 +87,6 @@ export const FRAMES_41_MEETING = {
     screen: 'summary', params: { meetingId: V41_CATCHUP.id }, now: NOW,
     setup: async () => { await meetingWorld(); summaryView.menuOpen = true; },
   },
-  V41Library: { screen: 'library', now: NOW, setup: meetingWorld },
+  V41Library: { screen: 'library', now: NOW, setup: async () => { await meetingWorld(); await keepItems(); } },
   V41Items: { screen: 'home', now: NOW, setup: async () => { await meetingWorld(); await keepItems(); }, page: async () => BoardPage },
 } satisfies Record<string, DevFrame>;

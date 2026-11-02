@@ -104,6 +104,28 @@ describe('the catch-up meeting page', () => {
     expect(await listTellingAudio(V41_CATCHUP.id)).toHaveLength(1);
   });
 
+  it('hides "Delete audio of your telling" once the audio is gone, keeping the segments and the told line', async () => {
+    const view = await open('V41MeetingMore');
+    click([...(await waitFor(() => view.host.querySelector('[role="menu"]') ?? false)).querySelectorAll('button')].find((b) => b.textContent === 'Delete audio of your telling'));
+    await waitFor(async () => (await getMeeting(V41_CATCHUP.id))?.told?.audioDeleted === true);
+    expect((await listSegments(V41_CATCHUP.id)).length).toBe(V41_SEGMENTS.length);
+    click(view.host.querySelector('[aria-haspopup="menu"]'));
+    const menu = await waitFor(() => view.host.querySelector('[role="menu"]') ?? false);
+    expect([...menu.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent)).toEqual(['Share', 'Delete this catch-up']);
+  });
+
+  it('Undo after "Delete this catch-up" restores the meeting and its items', async () => {
+    summaryView.undoMs = 60_000;
+    const view = await open('V41MeetingMore');
+    click([...(await waitFor(() => view.host.querySelector('[role="menu"]') ?? false)).querySelectorAll('button')].find((b) => b.textContent === 'Delete this catch-up'));
+    click([...(await waitFor(() => view.host.querySelector('[role="dialog"]') ?? false)).querySelectorAll('button')].find((b) => b.textContent === 'Delete'));
+    click(await waitFor(() => [...view.host.querySelectorAll('button')].find((b) => b.textContent === 'Undo') ?? false));
+    await waitFor(() => text(view.host).includes('Your telling'));
+    expect(text(view.host)).not.toContain('catch-up was deleted');
+    expect(await getMeeting(V41_CATCHUP.id)).toBeDefined();
+    expect((await itemsForMeeting(V41_CATCHUP.id)).length).toBe(V41_ITEMS.length);
+  });
+
   it('Delete this catch-up asks first, then removes the meeting and its items', async () => {
     const view = await open('V41MeetingMore');
     const menu = await waitFor(() => view.host.querySelector('[role="menu"]') ?? false);

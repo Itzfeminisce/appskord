@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { FROM_CATCHUP } from '@/lib/catchup/label';
 import { getSettings } from '@/lib/settings';
 import { EmptyCard } from '../../components/v4/states';
 import { agendaMinutes, SOURCE_LABEL, withGoal, GOAL_ID } from '@/lib/memory/agenda';
@@ -93,7 +92,7 @@ function BriefKnown({ brief, agenda, lastTime, meetings }: { brief: BriefData; a
         )}
         {brief.last && !!lastTime?.length && (
           <section aria-labelledby="bp-last" className="bp-last">
-            <h2 id="bp-last" className="bp-h2">Last time · <span className="bp-mono">{dayMonth(brief.last.startedAt)}</span>{brief.last.source === 'catchup' && ` · ${FROM_CATCHUP}`}</h2>
+            <h2 id="bp-last" className="bp-h2">Last time · <span className="bp-mono">{dayMonth(brief.last.startedAt)}</span></h2>
             <ul>{lastTime.map((line) => <li key={line}>{line}</li>)}</ul>
           </section>
         )}

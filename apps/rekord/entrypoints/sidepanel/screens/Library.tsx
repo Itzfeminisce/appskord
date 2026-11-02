@@ -10,6 +10,7 @@ import { world } from '../components/v4/world';
 import { ComingUp } from '../components/CalendarCard';
 import { useRouter } from '../router';
 import { itemsForMeeting, listItems, listPeople } from '@/lib/memory/store';
+import { isOpenLoop } from '@/lib/memory/rank';
 import { StateBanner } from '../components/v4/states';
 import './v41/library.css';
 
@@ -47,7 +48,7 @@ function whenOf(m: Meeting, now: number): string {
 }
 
 export default function Library() {
-  const { navigate, back } = useRouter();
+  const { navigate } = useRouter();
   const [meetings, setMeetings] = useState<Meeting[] | undefined>();
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [error, setError] = useState(false);
@@ -65,7 +66,7 @@ export default function Library() {
       setTexts(Object.fromEntries(entries));
       const open: Record<string, number> = {};
       for (const i of await listItems().catch(() => [])) {
-        if (i.kind === 'promise' && !i.leftOut && ['suggested', 'open', 'looksDone'].includes(i.status)) open[i.meetingId] = (open[i.meetingId] ?? 0) + 1;
+        if (i.kind === 'promise' && isOpenLoop(i, Date.now())) open[i.meetingId] = (open[i.meetingId] ?? 0) + 1;
       }
       setPromises(open);
       setPeople(await listPeople().catch(() => []));

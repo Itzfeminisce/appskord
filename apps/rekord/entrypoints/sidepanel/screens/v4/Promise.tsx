@@ -49,16 +49,18 @@ export function FromTo({ item, view, size = 28 }: { item: MemoryItem; view: Memo
 /** The follow-up question a catch-up answer replied to, found by the answer's words. */
 function useAnswerQuestion(meetingId: string, answer: Quote | undefined): string | undefined {
   const [question, setQuestion] = useState<string>();
+  const answerText = answer?.text;
+  const answerMeeting = answer?.meetingId;
   useEffect(() => {
     let alive = true;
-    if (!answer || answer.meetingId !== meetingId) { setQuestion(undefined); return; }
+    if (answerText === undefined || answerMeeting !== meetingId) { setQuestion(undefined); return; }
     void (async () => {
       const [meeting, asked] = await Promise.all([getMeeting(meetingId), readQuestions(meetingId)]);
-      const id = meeting?.told?.answers?.find((a) => a.text === answer.text)?.questionId;
+      const id = meeting?.told?.answers?.find((a) => a.text === answerText)?.questionId;
       if (alive) setQuestion(asked?.questions.find((q) => q.id === id)?.text);
     })().catch((error) => console.error('Rekord: could not read the question this answered', error));
     return () => { alive = false; };
-  }, [meetingId, answer]);
+  }, [meetingId, answerText, answerMeeting]);
   return question;
 }
 

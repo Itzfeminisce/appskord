@@ -106,11 +106,11 @@ function TellingBlock({ meeting, hasAudio }: { meeting: Meeting; hasAudio: boole
 }
 
 /** The More menu bar over the header (V41MeetingMore). */
-function MoreMenu({ title, onShare, onAudio, onDelete }: { title: string; onShare: () => void; onAudio: () => void; onDelete: () => void }) {
+function MoreMenu({ title, canDeleteAudio, onShare, onAudio, onDelete }: { title: string; canDeleteAudio: boolean; onShare: () => void; onAudio: () => void; onDelete: () => void }) {
   return (
     <div role="menu" aria-label={title} className="sm-menu">
       <button type="button" role="menuitem" onClick={onShare}>Share</button>
-      <button type="button" role="menuitem" onClick={onAudio}>Delete audio of your telling</button>
+      {canDeleteAudio && <button type="button" role="menuitem" onClick={onAudio}>Delete audio of your telling</button>}
       <button type="button" role="menuitem" className="sm-menu-danger" onClick={onDelete}>Delete this catch-up</button>
     </div>
   );
@@ -176,7 +176,8 @@ export default function Summary() {
       .then(([m, n, k]) => {
         if (!alive) return;
         setMeeting(m); setNotes(n);
-        if (m?.told) void listTellingAudio(m.id).then((a) => alive && setHasAudio(a.length > 0)).catch(() => undefined); setMarkers(visibleMarkers(k).filter((x) => x.kind !== 'bookmark' || x.label));
+        if (m?.told) void listTellingAudio(m.id).then((a) => alive && setHasAudio(a.length > 0)).catch(() => undefined);
+        setMarkers(visibleMarkers(k).filter((x) => x.kind !== 'bookmark' || x.label));
         setState(m ? 'ready' : 'missing');
       })
       .catch(() => alive && setState('missing'));
@@ -289,8 +290,9 @@ export default function Summary() {
             {menu && (
               <MoreMenu
                 title={meeting.title}
+                canDeleteAudio={hasAudio && !audioGone}
                 onShare={() => { setMenu(false); navigate('share', { meetingId }); }}
-                onAudio={() => { setMenu(false); if (hasAudio && !audioGone) { setAudioGone(true); void later('audio'); } }}
+                onAudio={() => { setMenu(false); setAudioGone(true); void later('audio'); }}
                 onDelete={() => { setMenu(false); setConfirming(true); }}
               />
             )}
