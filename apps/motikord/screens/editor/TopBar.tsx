@@ -5,7 +5,7 @@ import { ASPECTS } from '../../lib/recipe/validate';
 import { goInSidePanel, useWindowId } from '../../lib/sidepanelGo';
 import { getPack } from '../../lib/templates/scenes';
 import { useEditor } from './Editor';
-import { useIssues } from '../Checker';
+import { useLookCount } from '../Checker';
 import { SaveStatusLine } from './StatesEditor';
 
 const linkStyle = {
@@ -25,7 +25,7 @@ export function TopBar() {
   // Your clips live in the side panel; it opens inside the click.
   const win = useWindowId();
   const shown = focused ? name : r.name;
-  const count = useIssues().cards.length;
+  const count = useLookCount();
   const pack = r.style ? getPack(r.style) : undefined;
   const dot = brand?.colours.find((c) => c.role === 'primary')?.hex ?? brand?.colours[0]?.hex;
 

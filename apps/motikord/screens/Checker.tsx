@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { criticModel, criticSkip, runCritic, type CriticRun, type FrameRenderer } from '../lib/ai/critic';
 import { splitSummary } from '../lib/editor/changes';
 import { reverted, takeBack } from '../lib/editor/history';
-import { autoFixEdits, layoutText, repeatRun } from '../lib/editor/checks';
+import { autoFixEdits, layoutText, liveNotes, repeatRun, toLookAt } from '../lib/editor/checks';
 import { HOSTS, requestHost, type HostAccess } from '../lib/hostAccess';
 import { PROVIDERS } from '../lib/providers';
 import { renderFrames } from '../lib/render/frames';
@@ -137,8 +137,21 @@ const AUTO_BY = 'check' as const;
 
 /** The visual critic's last run per clip, for this editor tab (the critic only runs on a make or on Check again). */
 const critics = new Map<string, CriticRun & { provider: Provider }>();
+const criticListeners = new Set<() => void>();
+const setCriticRun = (clipId: string, run: CriticRun & { provider: Provider }) => {
+  critics.set(clipId, run);
+  criticListeners.forEach((f) => f());
+};
+const onCritic = (f: () => void) => { criticListeners.add(f); return () => { criticListeners.delete(f); }; };
 /** Keeps a critic run for a clip in this tab, as Check again does. */
-export const keepCritic = (clipId: string, run: CriticRun & { provider: Provider }) => critics.set(clipId, run);
+export const keepCritic = setCriticRun;
+/** The count the Check badge and the panel headline share. */
+export function useLookCount(): number {
+  const { state } = useEditor();
+  const { cards } = useIssues();
+  const run = useSyncExternalStore(onCritic, () => critics.get(state.clip.id));
+  return toLookAt(cards.length, run?.notes ?? [], state.clip.recipe);
+}
 const v2Kinds: readonly Issue['kind'][] = ['overlap', 'crowding', 'empty', 'align', 'words', 'template-repeat'];
 
 export function CheckerPanel() {
@@ -164,15 +177,15 @@ export function CheckerPanel() {
     const run = critics.get(clipId);
     if (!run) return;
     const next = { ...run, notes: run.notes.filter((x) => x.sceneIndex !== si) };
-    critics.set(clipId, next);
+    setCriticRun(clipId, next);
     setCritic(next);
   };
   const fixOne = (card: Card, action: string) => edit({ ops: card.fix, summary: action }, { toast: true });
   // Critic notes still about a scene that exists; each is fixed by remaking its scene with the note as the request.
-  const notes = (critic?.notes ?? []).filter((x) => r.scenes[x.sceneIndex]);
+  const notes = liveNotes(critic?.notes ?? [], r);
   const gone = reverted(state.clip.history);
   const fixed = state.clip.history.filter((c) => c.by === AUTO_BY && !gone.has(c.id));
-  const total = cards.length + notes.length;
+  const total = toLookAt(cards.length, notes, r);
   const fixAll = () => {
     if (cards.length) edit({ ops: mergeFixes(cards), summary: `Fixed ${noun(cards.length)}` }, { toast: true });
     // Each critic scene is remade in turn, as its own Change; notes on one scene go in one request.
@@ -214,7 +227,7 @@ export function CheckerPanel() {
         const render: FrameRenderer = (rec, times) => renderFrames(rec, times, { cache });
         const run = await runCritic(current(), render, { signal: ac.signal });
         const out = { ...run, provider: model.provider };
-        critics.set(state.clip.id, out);
+        setCriticRun(state.clip.id, out);
         if (!ac.signal.aborted) setCritic(out);
       } catch (error) {
         if (!ac.signal.aborted) console.error('Motikord: could not run the visual check', error);

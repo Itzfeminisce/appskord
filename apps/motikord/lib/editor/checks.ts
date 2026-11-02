@@ -2,7 +2,7 @@ import { autoFix, type CheckOptions } from '../checker';
 import { applyPatch } from '../patch';
 import { boxFor } from '../render/reflow';
 import { getSceneTemplate } from '../templates/scenes';
-import type { Aspect, Issue, PatchOp, Recipe } from '../types';
+import type { Aspect, CriticNote, Issue, PatchOp, Recipe } from '../types';
 import type { Edit } from './store';
 import { slotCount } from './v2';
 
@@ -96,3 +96,9 @@ export function repeatRun(r: Recipe, sceneId: string): { scenes: number[]; templ
   while (start > 0 && t && r.scenes[start - 1]!.template === t) start--;
   return { scenes: Array.from({ length: i - start + 1 }, (_, k) => start + k + 1), template: (t && getSceneTemplate(t)?.name) ?? '' };
 }
+
+/** Critic notes still about a scene the clip has. */
+export const liveNotes = (notes: readonly CriticNote[], r: Recipe): CriticNote[] => notes.filter((x) => r.scenes[x.sceneIndex]);
+
+/** How many things Check asks you to look at: layout cards plus live critic notes. The badge and the panel headline both use it. */
+export const toLookAt = (cards: number, notes: readonly CriticNote[], r: Recipe): number => cards + liveNotes(notes, r).length;
