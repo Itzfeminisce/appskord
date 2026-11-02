@@ -67,7 +67,7 @@ export function blockPowers(channels: Float32Array[], sampleRate: number, blockM
 }
 
 /** Gated mean of 400 ms block powers (absolute -70 LUFS, then relative -10 LU) in LUFS; -Infinity when none pass. */
-function gated(blocks: number[]): number {
+export function gated(blocks: number[]): number {
   const powers = blocks.filter((p) => p > 0 && toLufs(p) > ABSOLUTE_GATE);
   if (!powers.length) return -Infinity;
   const relative = toLufs(powers.reduce((s, p) => s + p, 0) / powers.length) - 10;
@@ -118,6 +118,11 @@ export class LoudnessMeter {
         this.filled = 0;
       }
     }
+  }
+
+  /** Mean K-weighted power per sample of each whole 100 ms hop so far, summed over channels. */
+  hopPowers(): Float64Array {
+    return Float64Array.from(this.hops, (e) => e / this.hop);
   }
 
   /** Integrated loudness of everything pushed so far, in LUFS. */

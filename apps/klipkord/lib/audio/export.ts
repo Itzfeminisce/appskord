@@ -94,6 +94,32 @@ class StretchStream {
   }
 }
 
+/** Reads what each plain (not natural-voice) part plays in output ms [from, to), one read per source when its parts lie together. */
+export async function readPlain(parts: AudioPart[], infos: Map<string, SourceInfo>, loader: RangeLoader, from: number, to: number): Promise<Map<AudioPart, Playback>> {
+  const play = new Map<AudioPart, Playback>();
+  const bySource = new Map<string, { part: AudioPart; lo: number; hi: number }[]>();   // source samples each part reads
+  for (const part of parts) {
+    const a = Math.max(part.when, from), b = Math.min(part.when + part.length, to);
+    const info = infos.get(part.source);
+    if (b <= a || part.natural || !info) continue;
+    const fa = part.from + (a - part.when) * part.rate - MARGIN_MS, fb = part.from + (b - part.when) * part.rate + MARGIN_MS;
+    const read = { part, lo: Math.max(0, Math.floor((fa * info.sampleRate) / 1000)), hi: Math.ceil((fb * info.sampleRate) / 1000) };
+    bySource.set(part.source, [...(bySource.get(part.source) ?? []), read]);
+  }
+  // Word cuts make many short parts of one source: read each source's range once when its parts lie together.
+  for (const [source, group] of bySource) {
+    const rate = infos.get(source)!.sampleRate;
+    const lo = Math.min(...group.map((g) => g.lo)), hi = Math.max(...group.map((g) => g.hi));
+    const reads = ((hi - lo) * 1000) / rate <= JOIN_MS ? [{ lo, hi, parts: group }] : group.map((g) => ({ ...g, parts: [g] }));
+    for (const read of reads) {
+      const buffer = await loader.load(source, (read.lo * 1000) / rate, (read.hi * 1000) / rate);
+      if (!buffer) continue;
+      for (const { part } of read.parts) play.set(part, { buffer, origin: part.from - (read.lo * 1000) / rate, rate: part.rate });
+    }
+  }
+  return play;
+}
+
 /** Raw mix chunks, back to back from the start of the cut. */
 async function* renderChunks(plan: MixPlan, parts: AudioPart[], infos: Map<string, SourceInfo>, loader: RangeLoader, levels: Map<string, number>,
   o: Settings): AsyncGenerator<Float32Array[]> {
@@ -108,38 +134,20 @@ async function* renderChunks(plan: MixPlan, parts: AudioPart[], infos: Map<strin
     const from = (r * 1000) / sr, to = (s1 * 1000) / sr;
     const ctx = o.createContext(o.channels, s1 - r, sr);
     const play = new Map<AudioPart, Playback>();
-    const plain: { part: AudioPart; lo: number; hi: number }[] = [];   // source samples each plain part reads
     for (const part of parts) {
       const a = Math.max(part.when, from), b = Math.min(part.when + part.length, to);
-      if (b <= a) continue;
-      const info = infos.get(part.source)!, rate = info.sampleRate;
-      if (part.natural) {
-        let stream = streams.get(part);
-        if (!stream) streams.set(part, (stream = new StretchStream(part, info, loader)));
-        const outLen = Math.round(Math.round((part.length * part.rate * rate) / 1000) / part.rate);
-        const lo = Math.max(0, Math.floor(((a - part.when) * rate) / 1000));
-        const hi = Math.min(outLen, Math.ceil(((b - part.when) * rate) / 1000) + 1);
-        const data = hi > lo ? await stream.read(lo, hi) : null;
-        if (!data) continue;
-        play.set(part, { buffer: toBuffer(ctx, data, rate), origin: (-lo * 1000) / rate, rate: 1 });
-      } else {
-        const fa = part.from + (a - part.when) * part.rate - MARGIN_MS, fb = part.from + (b - part.when) * part.rate + MARGIN_MS;
-        plain.push({ part, lo: Math.max(0, Math.floor((fa * rate) / 1000)), hi: Math.ceil((fb * rate) / 1000) });
-      }
+      if (b <= a || !part.natural) continue;
+      const rate = infos.get(part.source)!.sampleRate;
+      let stream = streams.get(part);
+      if (!stream) streams.set(part, (stream = new StretchStream(part, infos.get(part.source)!, loader)));
+      const outLen = Math.round(Math.round((part.length * part.rate * rate) / 1000) / part.rate);
+      const lo = Math.max(0, Math.floor(((a - part.when) * rate) / 1000));
+      const hi = Math.min(outLen, Math.ceil(((b - part.when) * rate) / 1000) + 1);
+      const data = hi > lo ? await stream.read(lo, hi) : null;
+      if (!data) continue;
+      play.set(part, { buffer: toBuffer(ctx, data, rate), origin: (-lo * 1000) / rate, rate: 1 });
     }
-    // Word cuts make many short parts of one source: read each source's range once when its parts lie together.
-    const bySource = new Map<string, typeof plain>();
-    for (const p of plain) bySource.set(p.part.source, [...(bySource.get(p.part.source) ?? []), p]);
-    for (const [source, group] of bySource) {
-      const rate = infos.get(source)!.sampleRate;
-      const lo = Math.min(...group.map((g) => g.lo)), hi = Math.max(...group.map((g) => g.hi));
-      const reads = ((hi - lo) * 1000) / rate <= JOIN_MS ? [{ lo, hi, parts: group }] : group.map((g) => ({ ...g, parts: [g] }));
-      for (const read of reads) {
-        const buffer = await loader.load(source, (read.lo * 1000) / rate, (read.hi * 1000) / rate);
-        if (!buffer) continue;
-        for (const { part } of read.parts) play.set(part, { buffer, origin: part.from - (read.lo * 1000) / rate, rate: part.rate });
-      }
-    }
+    for (const [part, p] of await readPlain(parts, infos, loader, from, to)) play.set(part, p);
     let clean: AudioNode | undefined;
     if (needsDenoise(plan) && o.denoise && !denoiseFailed) {
       try {
@@ -151,6 +159,8 @@ async function* renderChunks(plan: MixPlan, parts: AudioPart[], infos: Map<strin
     }
     schedule(ctx, chunkPlan, (part) => play.get(part) ?? null, ctx.destination, { t0: 0, from, to, denoise: clean, levels });
     const rendered = await ctx.startRendering();
+    // RNNoise holds wasm memory until destroyed.
+    (clean as { destroy?: () => void } | undefined)?.destroy?.();
     yield Array.from({ length: o.channels }, (_, c) =>
       rendered.getChannelData(Math.min(c, rendered.numberOfChannels - 1)).slice(s0 - r, s1 - r));
   }
@@ -163,7 +173,7 @@ function toBuffer(ctx: BaseAudioContext, data: Float32Array<ArrayBuffer>[], samp
 }
 
 /** Loudness gain of each "Clean and level" take, measured over its whole file (takes are short). */
-async function takeLevels(parts: AudioPart[], infos: Map<string, SourceInfo>, loader: RangeLoader): Promise<Map<string, number>> {
+export async function takeLevels(parts: AudioPart[], infos: Map<string, SourceInfo>, loader: RangeLoader): Promise<Map<string, number>> {
   const levels = new Map<string, number>();
   for (const id of new Set(parts.filter((p) => p.clean).map((p) => p.source))) {
     try {

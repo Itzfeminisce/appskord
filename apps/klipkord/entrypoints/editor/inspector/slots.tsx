@@ -1,5 +1,6 @@
 import type { EditorSlots } from '../Editor';
 import type { SlotProps } from '../components/slots';
+import { AudioPanel } from './Audio';
 import { CaptionsPanel } from './Captions';
 import { LookPanel } from './Look';
 
@@ -11,4 +12,9 @@ export const captionsSlots: Pick<EditorSlots, 'inspector'> = {
 /** T10's part of the editor: the Look tab. */
 export const lookSlots: Pick<EditorSlots, 'inspector'> = {
   inspector: (p: SlotProps) => ({ panels: { Look: <LookPanel {...p} /> } }),
+};
+
+/** T12's part of the editor: the Audio tab. */
+export const audioSlots: Pick<EditorSlots, 'inspector'> = {
+  inspector: (p: SlotProps) => ({ panels: { Audio: <AudioPanel {...p} /> } }),
 };

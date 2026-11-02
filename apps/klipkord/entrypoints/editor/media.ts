@@ -50,13 +50,6 @@ export function renderSources(project: Project, blobs: Map<string, Blob>): Rende
   });
 }
 
-/** Sources the preview plays sound from until T12's mix: the mic, the tab sound and an older recording's own audio. */
-export const audioSources = (project: Project): Source[] =>
-  project.sources.filter((s) => s.audio && (s.kind === 'mic' || s.kind === 'tab' || s.kind === 'baked'));
-
-/** The timeline track that mutes a source's sound. */
-export const muteTrack = (source: Source): string => (source.kind === 'tab' ? 'tab' : 'voice');
-
 /** Clicks in a recording's events track, for the side panel's Saved line; 0 without one. */
 export async function countClicks(recordingId: string, store: VideoStore = videoStore): Promise<number> {
   try {

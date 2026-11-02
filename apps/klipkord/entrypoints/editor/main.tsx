@@ -9,7 +9,7 @@ import { exportSlots } from './components/Exporting';
 import type { EditorSlots } from './Editor';
 import { LayoutPanel } from './inspector/Layout';
 import { EditorApp } from './router';
-import { captionsSlots, lookSlots } from './inspector/slots';
+import { audioSlots, captionsSlots, lookSlots } from './inspector/slots';
 import { AutoZoomOnOpen, FocusStage } from './inspector/ZoomEdit';
 import { timelineSlots } from './timeline/slots';
 import { transcriptSlots } from './transcript';
@@ -24,7 +24,7 @@ const slots = {
   ...timelineSlots,
   ...exportSlots,
   topBar: (p) => ({ ...timelineSlots.topBar?.(p), ...exportSlots.topBar?.(p) }),
-  inspector: (p) => ({ ...storySlots.inspector(p, timelineSlots.inspector?.(p)), panels: { ...timelineSlots.inspector?.(p).panels, ...captionsSlots.inspector?.(p).panels, ...lookSlots.inspector?.(p).panels, Layout: <LayoutPanel {...p} /> } }),
+  inspector: (p) => ({ ...storySlots.inspector(p, timelineSlots.inspector?.(p)), panels: { ...timelineSlots.inspector?.(p).panels, ...captionsSlots.inspector?.(p).panels, ...lookSlots.inspector?.(p).panels, ...audioSlots.inspector?.(p).panels, Layout: <LayoutPanel {...p} /> } }),
   // Add media and Voiceover live beside the timeline (with T10's first-open autoZoom); a take's panel shares the inspector cover with Clean up.
   timeline: (p) => <><Timeline {...p} /><mediaSlots.Host {...p} /><AutoZoomOnOpen {...p} /><storySlots.Host /></>,
   stage: (p) => <><FocusStage {...p} /><storySlots.Handles {...p} /></>,

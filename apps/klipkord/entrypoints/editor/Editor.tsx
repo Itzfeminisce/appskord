@@ -137,7 +137,8 @@ export function Editor({ id, slots = {} }: { id: string; slots?: EditorSlots }) 
   const sources = useMemo(() => (project && media ? renderSources(project, media.blobs) : null), [sourcesKey, media]); // eslint-disable-line react-hooks/exhaustive-deps
   const captions = useMemo(() => (recording ? captionLines(units(recording.transcript), project?.wordFixes) : undefined), [recording, project?.wordFixes]);
   // A voiceover take plays the picture without the original sound.
-  useAudio(project, cut, media?.blobs, playback.out, playback.playing && !voiceoverBusy(), deps.audio);
+  const spoken = useMemo(() => recording?.transcript.flatMap((s) => s.words ?? []) ?? [], [recording?.transcript]);
+  useAudio(project, cut, spoken, media?.blobs, playback.out, playback.playing && !voiceoverBusy(), deps.mix);
 
   const sentenceStops = useMemo(() => (project ? stops(project, recording?.transcript ?? []) : []), [project, recording]);
   const prev = useCallback(() => {

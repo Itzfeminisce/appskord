@@ -1,7 +1,7 @@
 // The page side of an export: builds the job, feeds the worker the mix in chunks, and saves what it makes.
 import { exportMix, type MixChunk } from '../audio/export';
 import { mediaLoader } from '../audio/load';
-import { mixPlan } from '../audio/mix';
+import { mixPlan, needsDenoise } from '../audio/mix';
 import type { Cut, Project } from '../project/types';
 import type { Word } from '../types';
 import type { ExportRequest, ExportResponse, Job } from './protocol';
@@ -75,9 +75,12 @@ export function runJob(job: Job, o: RunOptions): Running {
 
 /** The cut's mix for export (T12's leveling and cleaning included); null when nothing makes a sound. */
 export async function cutAudio(project: Project, cut: Cut, words: Word[], blobs: Map<string, Blob>,
-  denoise?: (ctx: BaseAudioContext) => Promise<AudioNode>): Promise<{ chunks: AsyncIterable<MixChunk>; dispose(): void } | null> {
+  denoiser?: () => Promise<(ctx: BaseAudioContext) => Promise<AudioNode>>): Promise<{ chunks: AsyncIterable<MixChunk>; dispose(): void } | null> {
+  const plan = mixPlan(project, cut, words);
+  // Noise removal loads for the voice or for any take with "Clean and level".
+  const denoise = denoiser && needsDenoise(plan) ? await denoiser() : undefined;
   const loader = mediaLoader(async (id) => blobs.get(id) ?? null);
-  const mix = await exportMix(mixPlan(project, cut, words), loader, denoise ? { denoise } : {});
+  const mix = await exportMix(plan, loader, denoise ? { denoise } : {});
   if (!mix) {
     loader.dispose();
     return null;

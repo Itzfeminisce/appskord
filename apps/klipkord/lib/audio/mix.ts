@@ -5,7 +5,6 @@ import { takeEnd } from '../project/media';
 import { cutLength, spans } from '../project/time';
 import { duckEnvelope, gainAt, type Point } from './duck';
 import { CEILING, gainTo, integratedLoudness } from './loudness';
-import { stretch } from './stretch';
 
 export type AudioTrack = 'voice' | 'tab' | 'voiceover' | 'media' | 'music';
 
@@ -137,21 +136,6 @@ export function takeLevels(plan: MixPlan, buffers: Map<string, AudioBuffer>): Ma
   return levels;
 }
 
-/** Decodes each source the plan uses once; a source that can't be loaded is left out. */
-export async function loadBuffers(plan: MixPlan, load: (source: string) => Promise<AudioBuffer | null>): Promise<Map<string, AudioBuffer>> {
-  const ids = [...new Set(plan.parts.map((p) => p.source))];
-  const buffers = new Map<string, AudioBuffer>();
-  await Promise.all(ids.map(async (id) => {
-    try {
-      const buffer = await load(id);
-      if (buffer) buffers.set(id, buffer);
-    } catch (error) {
-      console.error('Klipkord: could not load audio', error);
-    }
-  }));
-  return buffers;
-}
-
 /** Ramps an AudioParam through envelope points, with output ms `from` playing at context time `t0`. */
 function applyEnvelope(param: AudioParam, points: Point[], t0: number, from: number): void {
   param.setValueAtTime(gainAt(points, from), t0);
@@ -175,32 +159,17 @@ export interface Playback { buffer: AudioBuffer; origin: number; rate: number }
 
 export interface Graph { sources: AudioBufferSourceNode[]; nodes: AudioNode[] }
 
-/** Stretched parts, by source, file range and speed; reused across preview restarts. */
+/** Stretched parts, by source, file range and speed. */
 export type StretchCache = Map<string, AudioBuffer>;
 
 export const stretchKey = (p: AudioPart) => `${p.source}|${p.from}|${p.length * p.rate}|${p.rate}`;
-
-/** Time-stretches each "Keep the voice natural" part not yet in `cache`, from the whole decoded sources. */
-export function stretchParts(ctx: BaseAudioContext, plan: MixPlan, buffers: Map<string, AudioBuffer>, cache: StretchCache = new Map()): StretchCache {
-  for (const part of plan.parts) {
-    const buffer = buffers.get(part.source);
-    const key = stretchKey(part);
-    if (!part.natural || !buffer || cache.has(key)) continue;
-    const sr = buffer.sampleRate;
-    const first = Math.round((part.from * sr) / 1000), n = Math.round((part.length * part.rate * sr) / 1000);
-    const input = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c).slice(first, first + n));
-    const out = stretch(input, part.rate, sr);
-    const made = ctx.createBuffer(out.length, Math.max(1, out[0]!.length), sr);
-    out.forEach((d, c) => made.copyToChannel(d, c));
-    cache.set(key, made);
-  }
-  return cache;
-}
 
 export interface ScheduleOptions {
   t0?: number; from?: number;
   /** Output ms past which nothing new is started (a chunk's end). */
   to?: number;
+  /** Stop every part at `to` too, so back-to-back windows of the live preview don't overlap. */
+  clip?: boolean;
   denoise?: AudioNode;
   /** Loudness gain of each "Clean and level" take's source (takeLevels). */
   levels?: ReadonlyMap<string, number>;
@@ -208,7 +177,7 @@ export interface ScheduleOptions {
 
 /** Builds the mix graph into `out` from parts resolved by `play`; output ms `from` plays at context time `t0`. */
 export function schedule(ctx: BaseAudioContext, plan: MixPlan, play: (part: AudioPart) => Playback | null, out: AudioNode,
-  { t0 = ctx.currentTime, from = 0, to = Infinity, denoise, levels }: ScheduleOptions = {}): Graph {
+  { t0 = ctx.currentTime, from = 0, to = Infinity, clip = false, denoise, levels }: ScheduleOptions = {}): Graph {
   const graph: Graph = { sources: [], nodes: [] };
   const gain = (value = 1) => {
     const g = ctx.createGain();
@@ -241,7 +210,7 @@ export function schedule(ctx: BaseAudioContext, plan: MixPlan, play: (part: Audi
     const skip = Math.max(0, from - part.when);              // output ms already played
     const at = t0 + Math.max(0, part.when - from) / 1000;
     let offset = (p.origin + skip * p.rate) / 1000;
-    const duration = ((part.length - skip) * p.rate) / 1000;
+    const duration = (((clip ? Math.min(end, to) : end) - part.when - skip) * p.rate) / 1000;
     const node = ctx.createBufferSource();
     node.buffer = p.buffer;
     node.playbackRate.value = p.rate;
@@ -279,44 +248,4 @@ export function softClipCurve(range: number, ceiling = CEILING, points = 4096): 
     const x = (i / (points - 1)) * 2 * range - range, a = Math.abs(x);
     return Math.sign(x) * (a <= knee ? a : knee + room * Math.tanh((a - knee) / room));
   });
-}
-
-// A WaveShaper reads input in -1..1, so the master gain scales the mix down by this and the curve scales it back.
-const SHAPER_RANGE = 16;
-
-export interface Preview { stop(): void }
-
-/**
- * Plays the mix live from output ms `from`, in step with the preview's playhead. `gain` is the level gain measured
- * ahead (loudness.gainTo); with "Even out the loudness" on, a soft clipper holds peaks under the export's ceiling
- * (no compressor, so no make-up gain). Natural-voice parts are stretched into `stretched` on first play.
- * Create the AudioContext at 48 kHz when noise removal is used.
- */
-export function startPreview(ctx: AudioContext, plan: MixPlan, buffers: Map<string, AudioBuffer>, from: number,
-  { gain = 1, denoise, stretched = new Map() }: { gain?: number; denoise?: AudioNode; stretched?: StretchCache } = {}): Preview {
-  const master = ctx.createGain();
-  const tail: AudioNode[] = [master];
-  if (plan.level) {
-    master.gain.value = gain / SHAPER_RANGE;
-    const clipper = ctx.createWaveShaper();
-    clipper.curve = softClipCurve(SHAPER_RANGE);
-    clipper.oversample = '2x';
-    master.connect(clipper).connect(ctx.destination);
-    tail.push(clipper);
-  } else master.connect(ctx.destination);
-  stretchParts(ctx, plan, buffers, stretched);
-  const graph = connectMix(ctx, plan, buffers, master, { t0: ctx.currentTime + 0.05, from, denoise, stretched });
-  return {
-    stop() {
-      for (const s of graph.sources) {
-        try {
-          s.stop();
-        } catch {
-          // Already ended.
-        }
-      }
-      for (const n of [...graph.nodes, ...tail]) n.disconnect();
-      denoise?.disconnect();
-    },
-  };
 }

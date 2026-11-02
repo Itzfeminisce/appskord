@@ -14,7 +14,7 @@ import { StateCard } from '../states/StateCard';
 import { Seg, TL_ICONS, useEscape } from '../timeline/controls';
 import { actionButton, C, Icon, iconButton } from '../ui';
 
-type Section = 'recordings' | 'computer' | 'music';
+export type Section = 'recordings' | 'computer' | 'music';
 const SECTIONS = [
   { value: 'recordings', label: 'Your recordings' }, { value: 'computer', label: 'From this computer' }, { value: 'music', label: 'Music' },
 ] as const;
@@ -108,9 +108,9 @@ function Thumb({ rec }: { rec: Recording }) {
 }
 
 /** AddMedia (key A, the + on Media and Sound): your recordings, files from this computer, music. */
-export function AddMedia({ p, onClose, io = browserMediaIO }: { p: SlotProps; onClose: () => void; io?: MediaIO }) {
+export function AddMedia({ p, onClose, io = browserMediaIO, start = 'recordings' }: { p: SlotProps; onClose: () => void; io?: MediaIO; start?: Section }) {
   useEscape(onClose);
-  const [section, setSection] = useState<Section>('recordings');
+  const [section, setSection] = useState<Section>(start);
   const [choice, setChoice] = useState<Choice | null>(null);
   const [recs, setRecs] = useState<Recording[]>([]);
   const [over, setOver] = useState(false);

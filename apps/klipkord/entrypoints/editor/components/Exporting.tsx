@@ -238,7 +238,7 @@ async function runExport(p: SlotProps, plan: ExportPlan, dir: FileSystemDirector
   const { project, recording } = p;
   const cut = renderCut(p.cut, { shape: plan.shape, burn: plan.burn });
   const media = await exportDeps.loadMedia(project);
-  const audio = await cutAudio(project, cut, words(recording), media.blobs, cut.audio.denoise ? await exportDeps.denoise() : undefined)
+  const audio = await cutAudio(project, cut, words(recording), media.blobs, exportDeps.denoise)
     .catch((error: unknown) => {
       console.error('Klipkord: could not mix the sound', error);
       return null;
