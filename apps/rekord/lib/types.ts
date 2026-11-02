@@ -1,3 +1,6 @@
+import type { MemorySettings } from './memory/types';
+export type * from './memory/types';
+
 export type Speaker = 'you' | 'others';                 // UI labels: "You", "Others"
 export type MarkerKind = 'decision' | 'action' | 'question' | 'bookmark';
 export type MeetingStatus = 'recording' | 'processing' | 'done' | 'error';
@@ -99,6 +102,7 @@ export interface Settings {
   google: { calendar: boolean; docs: boolean; calendarId?: string; email?: string }; // connected scopes
   notion: { pageId?: string; pageTitle?: string };
   lastSeenVersion?: string;                        // What's new shows when the manifest version is newer
+  memory: MemorySettings;
 }
 
 export type ConnectionState =

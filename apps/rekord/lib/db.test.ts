@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  closeDB, deleteMeeting, getMeeting, listChunks, listMarkers, listMeetings, listNotes, listSegments,
+  closeDB, deleteMeeting, getDB, getMeeting, listChunks, listMarkers, listMeetings, listNotes, listSegments,
   pendingChunks, putChunk, putMarker, putMeeting, putNote, putSegment,
   DB_VERSION, deleteRecording, getRecordingMeta, listAsks, listRecordingParts, putAsk, putRecordingMeta, putRecordingPart,
 } from './db';
@@ -130,5 +130,56 @@ describe('db v2', () => {
     expect(await listRecordingParts('m')).toEqual([]);
     expect(await getRecordingMeta('m')).toBeUndefined();
     expect(await listAsks('keep')).toHaveLength(1);
+  });
+});
+
+describe('db v3', () => {
+  beforeEach(async () => {
+    await closeDB();
+    globalThis.indexedDB = new IDBFactory();
+  });
+
+  it('upgrades a v2 database, keeps old meetings and adds the memory stores', async () => {
+    const v2 = await openDB('rekord', 2, {
+      upgrade(db) {
+        db.createObjectStore('meetings', { keyPath: 'id' });
+        for (const n of ['segments', 'notes', 'markers', 'asks', 'recordings']) db.createObjectStore(n, { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
+        const c = db.createObjectStore('chunks', { keyPath: 'id' });
+        c.createIndex('meetingId', 'meetingId');
+        c.createIndex('status', 'status');
+        db.createObjectStore('recordingMeta', { keyPath: 'meetingId' });
+      },
+    });
+    await v2.put('meetings', meeting('old', 5));
+    await v2.put('asks', { id: 'a', meetingId: 'old', createdAt: 1, question: 'q?' });
+    v2.close();
+
+    expect(DB_VERSION).toBe(3);
+    expect(await getMeeting('old')).toEqual(meeting('old', 5));
+    expect(await listAsks('old')).toHaveLength(1);
+    const db = await getDB();
+    for (const store of ['people', 'items', 'vectors', 'ledger', 'agendas'] as const) expect(db.objectStoreNames.contains(store)).toBe(true);
+    expect([...db.transaction('items').store.indexNames].sort()).toEqual(['kind', 'meetingId', 'personId', 'status']);
+  });
+
+  it('deleteMeeting also removes its memory items, vectors, ledger rows and agenda', async () => {
+    const db = await getDB();
+    const quote = { speaker: 'Alex', text: 'x', meetingId: 'm', atMs: 0 };
+    const item = (id: string, meetingId: string) => ({
+      id, kind: 'promise' as const, status: 'open' as const, text: id, quote, meetingId, personIds: ['p'], history: [], createdAt: 0, updatedAt: 0,
+    });
+    await putMeeting({ ...meeting('m', 1), event: { id: 'evt', title: 'm', start: 0, end: 1, attendees: [] } });
+    await db.put('items', item('i', 'm'));
+    await db.put('items', item('keep', 'other'));
+    await db.put('vectors', { id: 'v', meetingId: 'm', atMs: 0, endMs: 1, text: 'x', v: new Int8Array(2), scale: 1 });
+    await db.put('ledger', { id: 'l', meetingId: 'm', service: 'groq', what: 'Audio for transcription', count: 1, firstAt: 0, lastAt: 0 });
+    await db.put('agendas', { meetingKey: 'evt', items: [], totalMinutes: 30 });
+    await db.put('agendas', { meetingKey: 'm', items: [], totalMinutes: 30 });
+    await deleteMeeting('m');
+    expect(await db.get('items', 'i')).toBeUndefined();
+    expect(await db.get('items', 'keep')).toBeDefined();
+    expect(await db.get('vectors', 'v')).toBeUndefined();
+    expect(await db.get('ledger', 'l')).toBeUndefined();
+    expect(await db.getAll('agendas')).toEqual([]);
   });
 });
