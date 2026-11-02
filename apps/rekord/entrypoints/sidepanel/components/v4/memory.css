@@ -1,0 +1,20 @@
+/* Memory items: group pills, chips, quote blocks (FRAMES "Look") */
+.mem-pill { height: 24px; padding: 0 10px 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.mem-promise { background: #eef0ff; color: #3730a3; }
+.mem-decision { background: #eaf6ef; color: #1a6b40; }
+.mem-question { background: #fff4e5; color: #8a4b00; }
+.mem-person { background: #f1f1f3; color: #2a2b31; }
+.mem-chip { height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; white-space: nowrap; }
+.mem-chip-promise { background: #eef0ff; color: #3730a3; }
+.mem-chip-plain { background: #f1f1f3; color: #2a2b31; }
+.mem-chip-warn { background: #fff4e5; color: #8a4b00; }
+.mem-quote { display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; border-radius: 12px; background: #f6f6f7; border-left: 3px solid #d5d5da; }
+.mem-quote-text { flex-grow: 1; display: flex; flex-direction: column; gap: 2px; }
+.mem-quote-said { font-size: 12.5px; line-height: 1.4; color: #2a2b31; }
+.mem-quote-meta { font-family: var(--mono); font-size: 11px; color: #6e7079; }
+.mem-play { width: 44px; height: 44px; flex-shrink: 0; padding: 0; border: 0; background: transparent; color: #4f46e5; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.mem-play > span { width: 30px; height: 30px; box-sizing: border-box; border-radius: 50%; background: #ffffff; border: 1px solid #e0e0e5; display: flex; align-items: center; justify-content: center; }
+.mem-choice { min-height: 44px; border: 0; background: transparent; padding: 6px 0; font: inherit; cursor: pointer; }
+.mem-choice-pill { height: 32px; box-sizing: content-box; padding: 0 12px; border: 1px solid #dcdce0; border-radius: 999px; background: #ffffff; font-size: 12px; font-weight: 500; color: #2a2b31; display: flex; align-items: center; white-space: nowrap; }
+.mem-choice-dark { background: #111114; color: #ffffff; }
+.mem-play:focus-visible, .mem-choice:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }

@@ -1,7 +1,7 @@
 import { createDB, type DBSchema, type IDBPDatabase } from '@appskord/platform';
-import type { AskTurn, Chunk, Marker, Meeting, Note, RecordingMeta, RecordingPart, Segment } from './types';
+import type { Agenda, AskTurn, Chunk, LedgerEntry, Marker, Meeting, MemoryItem, Note, Person, RecordingMeta, RecordingPart, Segment, VectorRow } from './types';
 
-interface RekordDB extends DBSchema {
+export interface RekordDB extends DBSchema {
   meetings: { key: string; value: Meeting };
   segments: { key: string; value: Segment; indexes: { meetingId: string } };
   notes: { key: string; value: Note; indexes: { meetingId: string } };
@@ -10,12 +10,18 @@ interface RekordDB extends DBSchema {
   asks: { key: string; value: AskTurn; indexes: { meetingId: string } };
   recordings: { key: string; value: RecordingPart; indexes: { meetingId: string } };
   recordingMeta: { key: string; value: RecordingMeta };
+  people: { key: string; value: Person; indexes: { email: string } };
+  items: { key: string; value: MemoryItem; indexes: { meetingId: string; kind: string; status: string; personId: string } };
+  vectors: { key: string; value: VectorRow; indexes: { meetingId: string } };
+  ledger: { key: string; value: LedgerEntry; indexes: { meetingId: string } };
+  agendas: { key: string; value: Agenda };
 }
 
 type ChildStore = 'segments' | 'notes' | 'markers' | 'chunks' | 'asks' | 'recordings';
 const CHILD_STORES: ChildStore[] = ['segments', 'notes', 'markers', 'chunks', 'asks', 'recordings'];
+const MEMORY_STORES = ['items', 'vectors', 'ledger'] as const;
 
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 const appDB = createDB<RekordDB>({
   name: 'rekord',
@@ -35,6 +41,17 @@ const appDB = createDB<RekordDB>({
       db.createObjectStore('asks', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
       db.createObjectStore('recordings', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
       db.createObjectStore('recordingMeta', { keyPath: 'meetingId' });
+    }
+    if (oldVersion < 3) {
+      db.createObjectStore('people', { keyPath: 'id' }).createIndex('email', 'email');
+      const items = db.createObjectStore('items', { keyPath: 'id' });
+      items.createIndex('meetingId', 'meetingId');
+      items.createIndex('kind', 'kind');
+      items.createIndex('status', 'status');
+      items.createIndex('personId', 'personIds', { multiEntry: true });
+      db.createObjectStore('vectors', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
+      db.createObjectStore('ledger', { keyPath: 'id' }).createIndex('meetingId', 'meetingId');
+      db.createObjectStore('agendas', { keyPath: 'meetingKey' });
     }
   },
 });
@@ -56,14 +73,38 @@ export async function listMeetings(): Promise<Meeting[]> {
   const all = await (await getDB()).getAll('meetings');
   return all.sort((a, b) => b.startedAt - a.startedAt);
 }
-/** Deletes the meeting and all its segments, notes, markers, chunks, asks and recorded audio. */
+/** Deletes the meeting, its segments, notes, markers, chunks, asks and audio, and its memory items, vectors, ledger rows and agenda. */
 export async function deleteMeeting(id: string): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction(['meetings', 'recordingMeta', ...CHILD_STORES], 'readwrite');
-  const ops: Promise<unknown>[] = [tx.objectStore('meetings').delete(id), tx.objectStore('recordingMeta').delete(id)];
-  for (const name of CHILD_STORES) {
-    const keys = await tx.objectStore(name).index('meetingId').getAllKeys(id);
-    for (const key of keys) ops.push(tx.objectStore(name).delete(key));
+  const meeting = await db.get('meetings', id);
+  const tx = db.transaction(['meetings', 'recordingMeta', 'agendas', 'people', ...CHILD_STORES, ...MEMORY_STORES], 'readwrite');
+  const ops: Promise<unknown>[] = [
+    tx.objectStore('meetings').delete(id),
+    tx.objectStore('recordingMeta').delete(id),
+    tx.objectStore('agendas').delete(id),
+  ];
+  // The agenda may be keyed by the calendar event instead of the meeting.
+  if (meeting?.event?.id) ops.push(tx.objectStore('agendas').delete(meeting.event.id));
+  const gone = new Set<string>();
+  for (const name of [...CHILD_STORES, ...MEMORY_STORES]) {
+    const store = tx.objectStore(name as 'segments');
+    const keys = await store.index('meetingId').getAllKeys(id);
+    if (name === 'items') for (const key of keys) gone.add(key as string);
+    for (const key of keys) ops.push(store.delete(key));
+  }
+  // People lose the meeting; decisions that pointed at a deleted item reopen.
+  const people = tx.objectStore('people');
+  for (const p of await people.getAll()) {
+    if (p.meetingIds.includes(id)) ops.push(people.put({ ...p, meetingIds: p.meetingIds.filter((m) => m !== id) }));
+  }
+  for (const i of await tx.objectStore('items').getAll()) {
+    if (gone.has(i.id)) continue;
+    const orphan = (i.replacedById && gone.has(i.replacedById)) || (i.replacesId && gone.has(i.replacesId));
+    if (!orphan) continue;
+    const next = { ...i };
+    if (next.replacedById && gone.has(next.replacedById)) { delete next.replacedById; if (next.status === 'replaced') next.status = 'open'; }
+    if (next.replacesId && gone.has(next.replacesId)) delete next.replacesId;
+    ops.push(tx.objectStore('items').put(next));
   }
   await Promise.all([...ops, tx.done]);
 }
@@ -80,6 +121,15 @@ const byAt = (a: { atMs: number }, b: { atMs: number }) => a.atMs - b.atMs;
 export async function putSegment(s: Segment): Promise<void> { await (await getDB()).put('segments', s); }
 export async function getSegment(id: string): Promise<Segment | undefined> { return (await getDB()).get('segments', id); }
 export async function listSegments(meetingId: string): Promise<Segment[]> { return (await listBy('segments', meetingId)).sort(byStart); }
+/** Whether any segment of the meeting has words; walks the index and stops at the first one. */
+export async function hasSpeech(meetingId: string): Promise<boolean> {
+  let cursor = await (await getDB()).transaction('segments').store.index('meetingId').openCursor(meetingId);
+  while (cursor) {
+    if (cursor.value.text.trim()) return true;
+    cursor = await cursor.continue();
+  }
+  return false;
+}
 export async function deleteSegment(id: string): Promise<void> { await (await getDB()).delete('segments', id); }
 
 export async function putNote(n: Note): Promise<void> { await (await getDB()).put('notes', n); }
@@ -114,6 +164,7 @@ export async function putAsk(a: AskTurn): Promise<void> { await (await getDB()).
 export async function listAsks(meetingId: string): Promise<AskTurn[]> {
   return (await listBy('asks', meetingId)).sort((a, b) => a.createdAt - b.createdAt);
 }
+export async function deleteAsk(id: string): Promise<void> { await (await getDB()).delete('asks', id); }
 
 // Continuous recording: parts in seq order, plus pause metadata
 export async function putRecordingPart(p: RecordingPart): Promise<void> { await (await getDB()).put('recordings', p); }
@@ -124,6 +175,12 @@ export async function getRecordingMeta(meetingId: string): Promise<RecordingMeta
   return (await getDB()).get('recordingMeta', meetingId);
 }
 export async function putRecordingMeta(m: RecordingMeta): Promise<void> { await (await getDB()).put('recordingMeta', m); }
+/** Swaps a meeting's recorded parts for new ones in one transaction, so a failure leaves the old parts. */
+export async function replaceRecordingParts(meetingId: string, parts: RecordingPart[]): Promise<void> {
+  const tx = (await getDB()).transaction('recordings', 'readwrite');
+  const keys = await tx.store.index('meetingId').getAllKeys(meetingId);
+  await Promise.all([...keys.map((k) => tx.store.delete(k)), ...parts.map((p) => tx.store.put(p)), tx.done]);
+}
 /** Deletes a meeting's recorded audio parts and their metadata (the transcript is kept). */
 export async function deleteRecording(meetingId: string): Promise<void> {
   const db = await getDB();

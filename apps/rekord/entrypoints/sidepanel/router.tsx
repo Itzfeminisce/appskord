@@ -23,10 +23,18 @@ export type ScreenName =
   // v3 setup: 'connect' is the Setup screen, 'settings' is the AI settings, 'settingsMore' is Recording, language and data
   | 'setupCustom' | 'penvConnect' | 'howItWorks' | 'settingsMore'
   | 'nosound' // v3: desktop-app capture hears nothing
-  | 'notionConnect' | 'notionPage';
+  | 'notionConnect' | 'notionPage'
+  | 'home' | 'backfill' // v4: Open loops is home
+  | 'people' | 'person' | 'personMerge' | 'forget'
+  | 'review' | 'reviewEdit'
+  | 'redact' | 'ledger'
+  | 'promise' | 'promiseDrop' | 'looksDone' | 'nudge' | 'decisions'
+  | 'settingsMemory' | 'folder' | 'move' // v4 settings: memory, Rekord folder, moving computers
+  | 'followUp' | 'sendTasks' | 'linearConnect' // v4: after the meeting
+  | 'brief' | 'agendaEdit'; // v4 before the meeting: brief (or first-meeting brief) and its agenda
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
-export interface RouteParams { meetingId?: string; message?: string; atMs?: number; section?: 'transcription' | 'assistant' }
+export interface RouteParams { meetingId?: string; itemId?: string; message?: string; atMs?: number; endMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string; eventId?: string }
 export interface Route { screen: ScreenName; params: RouteParams }
 
 export interface Router {
@@ -37,6 +45,8 @@ export interface Router {
   replace: (screen: ScreenName, params?: RouteParams) => void;
   back: () => void;
   canGoBack: boolean;
+  /** Whether a screen is registered, so links to screens later tasks add can wait for them. */
+  has: (screen: string) => screen is ScreenName;
 }
 
 /** How the side panel treats some screens. */
@@ -45,11 +55,13 @@ export interface SurfaceOptions {
   fresh?: ScreenName[];
   /** Screens the browser's Back and Forward cannot leave (a live recording). */
   hold?: ScreenName[];
+  /** Where back() goes when there is no back stack, so a back arrow always does something. */
+  home?: ScreenName;
 }
 
 // Survives Back and reload in the URL hash (`#/transcript?meeting=…&at=…`); ids, times and app copy only.
-const validateSearch = searchParams({ meeting: 'string', at: 'number', message: 'string', section: 'string' });
-const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, at: p.atMs, message: p.message, section: p.section });
+const validateSearch = searchParams({ meeting: 'string', item: 'string', at: 'number', end: 'number', message: 'string', section: 'string', person: 'string', other: 'string', event: 'string' });
+const toSearch = (p: RouteParams) => ({ meeting: p.meetingId, item: p.itemId, at: p.atMs, end: p.endMs, message: p.message, section: p.section, person: p.personId, other: p.otherId, event: p.eventId });
 // Redirects name screens built from data, which TanStack's typed `to` cannot check.
 const redirectTo = (route: Route, state?: object) =>
   redirect({ to: `/${route.screen}`, search: toSearch(route.params), replace: true, state } as unknown as Parameters<typeof redirect>[0]);
@@ -57,8 +69,13 @@ function toParams(search: Record<string, unknown>): RouteParams {
   const s = validateSearch(search);
   const params: RouteParams = {};
   if (s.meeting) params.meetingId = s.meeting;
+  if (s.item) params.itemId = s.item;
   if (s.message) params.message = s.message;
   if (s.at !== undefined) params.atMs = s.at;
+  if (s.person) params.personId = s.person;
+  if (s.other) params.otherId = s.other;
+  if (s.event) params.eventId = s.event;
+  if (s.end !== undefined) params.endMs = s.end;
   if (s.section === 'transcription' || s.section === 'assistant') params.section = s.section;
   return params;
 }
@@ -101,7 +118,11 @@ export function createRouter(screens: Partial<Record<ScreenName, ComponentType>>
       });
     const back = () =>
       run(() => {
-        if (!canGoBack(router.state.location) || (hold as string[]).includes(screenOf(router))) return Promise.resolve();
+        if ((hold as string[]).includes(screenOf(router))) return Promise.resolve();
+        if (!canGoBack(router.state.location)) {
+          if (!options.home || screenOf(router) === options.home) return Promise.resolve();
+          return router.navigate({ to: `/${options.home}`, replace: true, state: clearBackState(router.state.location) });
+        }
         // Resolves on navigation, or after a short wait when a blocker swallows the pop, so the queue never stalls.
         return new Promise<void>((resolve) => {
           const done = () => { clearTimeout(timer); stop(); resolve(); };
@@ -126,7 +147,7 @@ export function createRouter(screens: Partial<Record<ScreenName, ComponentType>>
       const location = router.state.location;
       const name = location.pathname.slice(1);
       if (!isScreen(name)) return null;
-      return { ...stable, route: { screen: name, params: toParams(location.search as Record<string, unknown>) }, canGoBack: canGoBack(location) };
+      return { ...stable, route: { screen: name, params: toParams(location.search as Record<string, unknown>) }, canGoBack: canGoBack(location), has: isScreen };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router, stable, href, index]);
     const holding = value !== null && hold.includes(value.route.screen);
@@ -144,7 +165,7 @@ export function createRouter(screens: Partial<Record<ScreenName, ComponentType>>
     const Screen = screens[value.route.screen] as ComponentType;
     return (
       <Context.Provider value={value}>
-        <Screen key={`${value.route.screen}:${value.route.params.meetingId ?? ''}`} />
+        <Screen key={`${value.route.screen}:${value.route.params.meetingId ?? ''}:${value.route.params.personId ?? ''}`} />
         {children}
       </Context.Provider>
     );

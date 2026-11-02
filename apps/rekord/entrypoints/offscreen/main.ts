@@ -9,6 +9,7 @@ import { appSources, type AppFlag } from '@/lib/capture';
 import { APP_AUDIO_PORT, receiveAppAudio, SilenceWatch } from '@/lib/audio/appAudio';
 import { drain, drainAll, enqueue, startTranscriber } from '@/lib/transcribe';
 import { isStreamRequest, mediaRecorderAudio, RealtimeSession, requestToken, wantsRealtime, type SocketLike, type StreamRequest } from '@/lib/transcribe/stream';
+import { gatedChunks, OffRecordGate } from '@/lib/live/offRecord';
 import type { Speaker, TranscriberConfig } from '@/lib/types';
 
 const TICK_MS = 125; // silence sampling; levels are posted every 2nd tick (~4/s)
@@ -18,6 +19,11 @@ interface Track {
   analyser: AnalyserNode;
   buffer: Float32Array<ArrayBuffer>;
   chunker: Chunker;
+  speaker: Speaker;
+  /** A fresh chunker on the same stream, for coming back on the record. */
+  newChunker: () => Chunker;
+  /** Its chunker is recording; starting it again is a no-op, so a track never gets two. */
+  running: boolean;
 }
 
 interface Session {
@@ -31,6 +37,12 @@ interface Session {
   app?: AppSession;
   /** v3 real time: Deepgram streaming over the chunk recorder (which stays on as the Groq backup). */
   realtime?: RealtimeSession;
+  /** v4 off the record: capture stops while it is on; a new real-time session starts after it. */
+  gate: OffRecordGate;
+  /** Set as soon as off the record is asked, so no level tick feeds a chunker meanwhile. */
+  offAsked: boolean;
+  /** An earlier real-time session (before an off-the-record span) streamed lines. */
+  hadRealtime: boolean;
 }
 
 interface AppSession {
@@ -65,6 +77,16 @@ onMessage((msg) => {
     return (busy = busy.then(() => start(msg.streamId, msg.meetingId, msg.startedAt, app ?? resolveSources(msg.sources), app !== null)));
   }
   if (msg.type === 'offscreen/stop') return (busy = busy.then(() => stop()));
+  if (msg.type === 'offscreen/off-record') {
+    // Judged at once (not behind `busy`), so no tick, chunk or line from after the click slips through.
+    const s = session;
+    if (s) s.offAsked = msg.on;
+    const switched = s ? s.gate.set(msg.on, msg.at) : busy.then(() => session?.gate.set(msg.on, msg.at));
+    return (busy = busy.then(() => switched).then(
+      (): OffscreenReply => ({ ok: true }),
+      (error): OffscreenReply => ({ ok: false, error: String(error) }),
+    ));
+  }
   // "Try real time again" / "Retry now" also reconnect a dropped stream.
   if (msg.type === 'transcription/catch-up') session?.realtime?.retry();
   if (isStreamRequest(msg, 'stream/get-state')) return session?.realtime?.current ?? 'off';
@@ -116,24 +138,41 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
   const tabSource = tab && ctx.createMediaStreamSource(tab);
   tabSource?.connect(ctx.destination); // keep the meeting audible while it is captured
   const mimeType = pickMimeType();
+  const mine = () => (session?.meetingId === meetingId ? session : undefined);
+  // Off the record: a chunk holding audio from the span is dropped here, before it is saved, queued or sent.
+  const { saveChunk, onPending } = gatedChunks(
+    (chunk) => mine()?.gate.keep(chunk) ?? true,
+    (chunk) => {
+      const s = mine();
+      const rt = s ? s.realtime : realtime ?? undefined;
+      return rt ? rt.saveChunk(chunk) : putChunk(chunk);
+    },
+    enqueue,
+  );
   const track = (stream: MediaStream, speaker: Speaker, source: MediaStreamAudioSourceNode): Track => {
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
     source.connect(analyser);
-    const chunker = new Chunker({
+    const newChunker = () => new Chunker({
       meetingId, speaker, startedAt,
       createRecorder: () => mediaRecorder(stream, mimeType),
-      saveChunk: realtime ? (chunk) => realtime.saveChunk(chunk) : putChunk,
-      onPending: (chunk) => enqueue(chunk.id),
+      saveChunk,
+      onPending,
     });
-    return { stream, analyser, buffer: new Float32Array(analyser.fftSize), chunker };
+    return { stream, analyser, buffer: new Float32Array(analyser.fftSize), chunker: newChunker(), speaker, newChunker, running: false };
+  };
+  const run = (t: Track) => {
+    if (t.running) return;
+    t.chunker = t.newChunker();
+    t.chunker.start();
+    t.running = true;
   };
   const tracks: Track[] = [];
   const tabTrack = tab && tabSource ? track(tab, 'others', tabSource) : undefined;
   const micTrack = mic ? track(mic, 'you', ctx.createMediaStreamSource(mic)) : undefined;
   if (tabTrack) tracks.push(tabTrack);
   if (micTrack) tracks.push(micTrack);
-  tracks.forEach((t) => t.chunker.start());
+  tracks.forEach(run);
   if (realtime && tab) realtime.addTrack('others', mediaRecorderAudio(tab, mimeType));
   if (realtime && mic) realtime.addTrack('you', mediaRecorderAudio(mic, mimeType));
 
@@ -159,30 +198,62 @@ async function start(streamId: string, meetingId: string, startedAt: number, sou
       void a.playback.play().catch(() => undefined);
       a.others = track(stream, 'others', ctx.createMediaStreamSource(stream));
       tracks.push(a.others);
-      a.others.chunker.start();
-      session?.realtime?.addTrack('others', mediaRecorderAudio(stream, mimeType));
+      // Off the record: the new stream waits; coming back on starts every track (and owns starting it).
+      if (!session?.offAsked) {
+        run(a.others);
+        session?.realtime?.addTrack('others', mediaRecorderAudio(stream, mimeType));
+      }
       a.watch.reset();
-      if (first && session) session.recording = startContinuous(stream, meetingId, startedAt, mimeType);
+      if (first && session) {
+        session.recording = startContinuous(stream, meetingId, startedAt, mimeType)
+          .then((r) => { if (session?.offAsked) r?.pause(); return r; });
+      }
     },
   } : undefined;
 
   let n = 0;
   const timer = setInterval(() => {
+    const off = session?.offAsked === true;
     const level = (t: Track | undefined) => {
       if (!t) return 0;
       t.analyser.getFloatTimeDomainData(t.buffer);
       const value = rms(t.buffer);
-      void t.chunker.tick(value);
+      if (!off) void t.chunker.tick(value);
       return toLevel(value);
     };
     const tabLevel = level(tabTrack ?? appSession?.others);
     const micLevel = level(micTrack);
-    if (appSession?.others) appSession.watch.update(tabLevel, micLevel);
+    if (appSession?.others && !off) appSession.watch.update(tabLevel, micLevel);
     if (++n % 2 === 0) void send({ type: 'offscreen/levels', tabLevel, micLevel });
   }, TICK_MS);
 
   const recording = tab ? startContinuous(tab, meetingId, startedAt, mimeType) : Promise.resolve(null);
-  session = { meetingId, ctx, tracks, timer, recording, ...(appSession && { app: appSession }), ...(realtime && { realtime }) };
+  const gate = new OffRecordGate(startedAt, {
+    // All at once: the real-time audio and the speaker recording stop now, not after the chunkers have flushed.
+    stop: async (cutoffMs) => {
+      const s = mine();
+      if (!s) return;
+      const rt = s.realtime;
+      await Promise.all([
+        rt?.stop(cutoffMs).then((had) => { s.hadRealtime = had || s.hadRealtime; }, () => undefined),
+        s.recording.then((r) => r?.pause()),
+        ...s.tracks.map((t) => { t.running = false; return t.chunker.stop(); }),
+      ]);
+      if (s.realtime === rt) s.realtime = undefined;
+    },
+    start: async () => {
+      const s = mine();
+      if (!s) return;
+      const rt = (await realtimeSession(meetingId, startedAt)) ?? undefined;
+      s.realtime = rt;
+      for (const t of s.tracks) {
+        run(t);
+        rt?.addTrack(t.speaker, mediaRecorderAudio(t.stream, mimeType));
+      }
+      (await s.recording)?.resume();
+    },
+  });
+  session = { meetingId, ctx, tracks, timer, recording, gate, offAsked: false, hadRealtime: false, ...(appSession && { app: appSession }), ...(realtime && { realtime }) };
   return mic || !sources.mic ? { ok: true } : { ok: true, micUnavailable: true };
 }
 
@@ -199,7 +270,7 @@ async function stop(): Promise<OffscreenReply> {
     ...s.tracks.map((t) => t.chunker.stop()),
   ]);
   // After the last chunks are handed over: flush the sockets and settle which chunks Groq still transcribes.
-  const realtime = s.realtime ? await s.realtime.stop().catch(() => false) : false;
+  const realtime = (s.realtime ? await s.realtime.stop().catch(() => false) : false) || s.hadRealtime;
   s.tracks.forEach((t) => stopStream(t.stream));
   await s.ctx.close().catch(() => undefined);
   // Report when the transcriber has caught up, so the background can close this document.
@@ -252,6 +323,7 @@ async function startContinuous(tab: MediaStream, meetingId: string, startedAt: n
       saveMeta: putRecordingMeta,
     });
     recording.start();
+    if (session?.offAsked) recording.pause();
     return recording;
   } catch (error) {
     console.error('Rekord: continuous recording unavailable', error);

@@ -1,3 +1,7 @@
+import type { OffRecordState, OffSpan } from './live/offRecord';
+import type { MemorySettings } from './memory/types';
+export type * from './memory/types';
+
 export type Speaker = 'you' | 'others';                 // UI labels: "You", "Others"
 export type MarkerKind = 'decision' | 'action' | 'question' | 'bookmark';
 export type MeetingStatus = 'recording' | 'processing' | 'done' | 'error';
@@ -22,12 +26,14 @@ export interface Meeting {
   event?: CalendarEvent;                           // the matched calendar event
   shares?: ShareRecord[];
   realtime?: boolean;                              // live labels came from Deepgram streaming
+  offSpans?: OffSpan[];                            // v4: off the record spans (meeting ms), shown as markers
 }
 
 export interface CalendarEvent {
   id: string; title: string; start: number; end: number;
   attendees: { name?: string; email: string; self?: boolean }[];
   app?: 'meet' | 'zoom' | 'teams';                 // from the conference link, used for "· Zoom" labels
+  description?: string;                            // the invite's text, for the brief and its agenda
 }
 
 export interface ShareRecord { kind: 'gdocs' | 'notion'; url: string; at: number; linkShared?: boolean }
@@ -99,6 +105,7 @@ export interface Settings {
   google: { calendar: boolean; docs: boolean; calendarId?: string; email?: string }; // connected scopes
   notion: { pageId?: string; pageTitle?: string };
   lastSeenVersion?: string;                        // What's new shows when the manifest version is newer
+  memory: MemorySettings;
 }
 
 export type ConnectionState =
@@ -107,7 +114,7 @@ export type ConnectionState =
 
 export type RecordingState =
   | { status: 'idle' }
-  | { status: 'starting' | 'recording' | 'stopping'; meetingId: string; startedAt: number; micLevel: number; tabLevel: number; micUnavailable?: boolean; sources?: { mic: boolean; tab: boolean } }; // sources: what was asked to record; micUnavailable: recording the tab only
+  | { status: 'starting' | 'recording' | 'stopping'; meetingId: string; startedAt: number; micLevel: number; tabLevel: number; micUnavailable?: boolean; sources?: { mic: boolean; tab: boolean }; offRecord?: OffRecordState }; // sources: what was asked to record; micUnavailable: recording the tab only; offRecord: v4 off the record
 
 // runtime messages (chrome.runtime.sendMessage); all plain JSON, never Blobs
 export type Message =
@@ -117,6 +124,8 @@ export type Message =
   | { type: 'recording/get-state' }
   | { type: 'offscreen/start'; streamId: string; meetingId: string; startedAt: number; sources?: { mic: boolean; tab: boolean } } // background → offscreen
   | { type: 'offscreen/stop' }
+  | { type: 'recording/off-record'; on: boolean }      // side panel → background (also Alt+Shift+O)
+  | { type: 'offscreen/off-record'; on: boolean; at: number } // background → offscreen; at: the click (epoch ms)
   | { type: 'offscreen/levels'; micLevel: number; tabLevel: number }              // offscreen → background, ~4/s
   | { type: 'segment/added'; segment: Segment }         // offscreen/transcriber → all
   | { type: 'connection/state'; state: ConnectionState }
@@ -129,7 +138,8 @@ export type Message =
   | { type: 'stream/token' }                            // offscreen → background; reply: TokenReply (lib/transcribe/stream.ts)
   | { type: 'stream/get-state' }                        // panel → offscreen; reply: 'live' | 'backup' | 'off'
   | { type: 'app-audio/silent' }                         // desktop-app capture hears nothing
-  | { type: 'app-audio/ended' };                         // desktop-app capture stopped
+  | { type: 'app-audio/ended' }                          // desktop-app capture stopped
+  | { type: 'rekord.badge.refresh' };                    // pages → background: recount the toolbar badge after an item write
 
 /** Reply to `transcriber/config` (the offscreen document has no storage API). Keys are never persisted by the caller. */
 export interface TranscriberConfig { settings: Settings; keys: Record<string, string> }

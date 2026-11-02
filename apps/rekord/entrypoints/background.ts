@@ -5,7 +5,16 @@ import { loadKeys } from '@/lib/penv';
 import { onMessage, send, type MessageOf } from '@/lib/messages';
 import { getSettings } from '@/lib/settings';
 import { handleInstalled } from '@/lib/whatsNew';
+import { BACKFILL_ALARM, BACKFILL_KEY, QUEUE_KEY, runBackfill } from '@/lib/memory/backfill';
+import { rankOpenLoops } from '@/lib/memory/rank';
+import { openLoops } from '@/lib/memory/store';
+import {
+  briefTabUrl, EVENTS_KEY, lookBackTabUrl, NOTE_BRIEF, NOTE_DUE, NOTE_LOOKBACK, NOTE_OWE, onReminderAlarm, scheduleReminders, setPanelRoute, snoozeFromNote,
+  type PanelRoute,
+} from '@/lib/reminders';
 import { isStreamRequest, tokenReply } from '@/lib/transcribe/stream';
+import { record as recordCall } from '@/lib/ledger';
+import { goOff, goOn, OFF_RECORD_COMMAND, OFF_RECORD_WHAT } from '@/lib/live/offRecord';
 import type { Meeting, RecordingState, TranscriberConfig } from '@/lib/types';
 import type { OffscreenReply } from './offscreen/main';
 
@@ -61,10 +70,99 @@ function setCloseAfterDrain(meetingId: string | null): void {
   persist();
 }
 
+/** Badge colour from V4Notification. */
+export const BADGE_COLOR = '#D92D20';
+
+/** The toolbar badge: overdue promises, empty when none. */
+export const badgeText = (overdue: number) => (overdue > 0 ? String(overdue) : '');
+
+/** Sets the toolbar badge to the overdue count from Open loops. */
+export async function refreshBadge(now = Date.now(), setText = (text: string) => browser.action.setBadgeText({ text })): Promise<string> {
+  const text = badgeText(rankOpenLoops(await openLoops(now), now).overdue);
+  await setText(text);
+  return text;
+}
+
+function updateBadge(): void {
+  refreshBadge().catch((error) => console.error('Rekord: could not update the badge', error));
+}
+
+export const BADGE_ALARM = 'rekord.badge';
+
+function reschedule(): void {
+  scheduleReminders().catch((error) => console.error('Rekord: could not schedule reminders', error));
+}
+
+/** The window the person last used, so a notification click can open the panel there. */
+let lastWindowId: number | undefined;
+
+/** Opens the side panel on a screen; rejects when Chrome refuses. Runs inside the notification click (a user gesture): nothing is awaited before open() when the window is known. */
+function openPanelOn(screen: string, params: PanelRoute['params']): Promise<void> {
+  const open = (windowId: number | undefined) =>
+    windowId === undefined ? Promise.reject(new Error('No window to open the side panel in')) : browser.sidePanel.open({ windowId });
+  const opening = lastWindowId !== undefined ? open(lastWindowId) : browser.windows.getLastFocused().then((w) => open(w.id));
+  setPanelRoute(screen, params).catch((error) => console.error('Rekord: could not pass the screen to the side panel', error));
+  return opening.catch((error) => {
+    console.error('Rekord: could not open the side panel', error);
+    throw error;
+  });
+}
+
+function openTab(url: string): Promise<void> {
+  return browser.tabs.create({ url }).then(() => undefined, (error) => {
+    console.error('Rekord: could not open the tab', error);
+    throw error;
+  });
+}
+
+/** Notification click or button: brief, due-day Nudge (or Open) and Snooze, look back. The notification stays when nothing opened. */
+function onNote(id: string, button?: number): void {
+  const clear = () => void browser.notifications.clear(id).catch(() => undefined);
+  const kept = () => undefined;
+  if (id.startsWith(NOTE_BRIEF)) {
+    const eventId = id.slice(NOTE_BRIEF.length);
+    openPanelOn('brief', { eventId }).catch(() => openTab(briefTabUrl(eventId))).then(clear, kept);
+  } else if (id.startsWith(NOTE_DUE)) {
+    const itemId = id.slice(NOTE_DUE.length);
+    if (button === 1) {
+      snoozeFromNote(itemId).then(clear, (error) => console.error('Rekord: could not snooze the promise', error)).finally(updateBadge);
+    } else {
+      openPanelOn(button === 0 ? 'nudge' : 'promise', { itemId }).then(clear, kept);
+    }
+  } else if (id.startsWith(NOTE_OWE)) {
+    const itemId = id.slice(NOTE_OWE.length);
+    if (button === 1) {
+      snoozeFromNote(itemId).then(clear, (error) => console.error('Rekord: could not snooze the promise', error)).finally(updateBadge);
+    } else {
+      openPanelOn('promise', { itemId }).then(clear, kept);
+    }
+  } else if (id.startsWith(NOTE_LOOKBACK)) {
+    openTab(lookBackTabUrl(Number(id.slice(NOTE_LOOKBACK.length)) || undefined)).then(clear, kept);
+  }
+}
+
 export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(({ reason }) => {
     handleInstalled(reason, browser.runtime.getManifest().version).catch((error) => console.error('Rekord: could not record the update', error));
   });
+  browser.action.setBadgeBackgroundColor({ color: BADGE_COLOR }).catch((error) => console.error('Rekord: could not colour the badge', error));
+  // Each wake of the worker and each change the panel reports recounts overdue promises.
+  updateBadge();
+  // The engine saves items from this worker, so its progress writes are the cue; the daily alarm covers promises that turn overdue.
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && (BACKFILL_KEY in changes || QUEUE_KEY in changes)) updateBadge();
+    // The panel refreshes the event cache while open; reminder settings change in Settings.
+    if (area === 'local' && (EVENTS_KEY in changes || 'settings' in changes)) reschedule();
+  });
+  reschedule();
+  // Seeds the window for a notification click that comes before any focus change.
+  browser.windows.getLastFocused().then((w) => { lastWindowId ??= w.id; }, () => undefined);
+  browser.windows.onFocusChanged.addListener((id) => {
+    if (id !== browser.windows.WINDOW_ID_NONE) lastWindowId = id;
+  });
+  browser.notifications.onClicked.addListener((id) => onNote(id));
+  browser.notifications.onButtonClicked.addListener((id, index) => onNote(id, index));
+  browser.alarms.create(BADGE_ALARM, { periodInMinutes: 24 * 60 }).catch((error) => console.error('Rekord: could not schedule the badge update', error));
   // We open the panel ourselves from action.onClicked: with openPanelOnActionClick the click never reaches
   // the extension, so the meeting tab is not granted (activeTab) and tab capture is refused.
   browser.sidePanel
@@ -80,8 +178,21 @@ export default defineBackground(() => {
     if (tab.id != null) void send({ type: 'tab/granted', tabId: tab.id });
   });
 
+  // Memory backfill: started, resumed after a rate limit, or picked up after a restart by its alarm.
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === BACKFILL_ALARM) runBackfill().catch((error) => console.error('Rekord: could not build memory', error)).finally(updateBadge);
+    if (alarm.name === BADGE_ALARM) updateBadge();
+    onReminderAlarm(alarm.name).catch((error) => console.error('Rekord: could not send the reminder', error));
+  });
+
   // After a browser restart, finish transcribing chunks left pending by an earlier meeting.
   browser.runtime.onStartup.addListener(() => void openForCatchUp());
+
+  // Alt+Shift+O: off the record and back.
+  browser.commands.onCommand.addListener((command) => {
+    if (command !== OFF_RECORD_COMMAND) return;
+    void ready.then(() => { if (state.status === 'recording') return setOffRecord(state.offRecord?.since === undefined); });
+  });
 
   onMessage((msg) => {
     // v3 real time: a fresh short-lived Deepgram token per socket; the key itself never leaves the background.
@@ -89,6 +200,9 @@ export default defineBackground(() => {
     switch (msg.type) {
       case 'recording/get-state':
         return ready.then(() => state);
+      case 'rekord.badge.refresh':
+        updateBadge();
+        return undefined;
       case 'recording/start':
         return ready.then(() => {
           if (state.status !== 'idle') return { ok: false, error: 'Rekord is already recording.' } as RecordingReply;
@@ -100,6 +214,8 @@ export default defineBackground(() => {
         });
       case 'recording/stop':
         return ready.then(stopRecording);
+      case 'recording/off-record':
+        return ready.then(() => setOffRecord(msg.on));
       case 'offscreen/levels':
         void ready.then(() => {
           if (state.status === 'recording') setState({ ...state, micLevel: msg.micLevel, tabLevel: msg.tabLevel });
@@ -182,10 +298,35 @@ async function startRecording(tabId: number, sources: Sources, app = false): Pro
   return { ok: true, meetingId };
 }
 
+/**
+ * Off the record: the recorder switches first (stamped at the click); the state and ledger follow only once it says ok.
+ * The ledger keeps one "nothing sent" row per span: its first and last times are when it began and ended.
+ */
+async function setOffRecord(on: boolean): Promise<{ ok: boolean }> {
+  if (state.status !== 'recording' || (state.offRecord?.since !== undefined) === on) return { ok: state.status === 'recording' };
+  const { meetingId, startedAt } = state;
+  // The click: the recorder drops everything heard from here, and the span starts here too.
+  const now = Date.now();
+  const reply = await send<{ ok?: boolean }>({ type: 'offscreen/off-record', on, at: now });
+  if (reply?.ok !== true) return { ok: false };
+  if (state.status !== 'recording' || state.meetingId !== meetingId) return { ok: false };
+  setState({ ...state, offRecord: on ? goOff(state.offRecord, now) : goOn(state.offRecord, now, startedAt) });
+  persist();
+  await recordCall({ meetingId, service: 'off-record', what: OFF_RECORD_WHAT, at: now, span: true })
+    .catch((error) => console.error('Rekord: could not record off the record', error));
+  return { ok: true };
+}
+
 async function stopRecording(): Promise<RecordingReply> {
   if (state.status === 'starting' && starting) await starting.catch(() => undefined); // stop as soon as start reaches 'recording' (or aborts)
   if (state.status !== 'recording') return { ok: true };
-  const { meetingId } = state;
+  const { meetingId, startedAt } = state;
+  // An open span closes at the stop; the spans are kept on the meeting for the saved transcript.
+  const offSpans = state.offRecord ? goOn(state.offRecord, Date.now(), startedAt).spans : [];
+  if (state.offRecord?.since !== undefined) {
+    await recordCall({ meetingId, service: 'off-record', what: OFF_RECORD_WHAT, span: true })
+      .catch((error) => console.error('Rekord: could not record off the record', error));
+  }
   setState({ ...state, status: 'stopping' });
   // Resolves after the last chunks (and the final continuous-recording part) are saved.
   const stopped = await send<OffscreenReply>({ type: 'offscreen/stop' });
@@ -194,7 +335,7 @@ async function stopRecording(): Promise<RecordingReply> {
   // v3: a realtime meeting already has live speaker labels; the names step uses those.
   const realtime = stopped?.ok === true && stopped.realtime === true;
   const speakerStep = stopped?.ok && (stopped.recorded || realtime) ? ({ speakerStep: 'pending' } as const) : {};
-  if (meeting) await putMeeting({ ...meeting, status: 'processing', endedAt: Date.now(), ...speakerStep, ...(realtime && { realtime: true }) });
+  if (meeting) await putMeeting({ ...meeting, status: 'processing', endedAt: Date.now(), ...speakerStep, ...(realtime && { realtime: true }), ...(offSpans.length > 0 && { offSpans }) });
   if (drainedWhileStopping === meetingId) {
     drainedWhileStopping = null; // already drained: nothing left to wait for
   } else {

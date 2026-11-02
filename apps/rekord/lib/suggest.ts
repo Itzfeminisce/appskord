@@ -151,17 +151,23 @@ export interface SuggesterOptions {
   onNew: (markers: Marker[]) => void;
   intervalMs?: number;
   fetchFn?: FetchLike;
+  /** Look for action items on each tick (default true). */
+  suggest?: boolean;
+  /** v4 live loop on the same tick: recall, clash. Runs first, even while the connection is down. */
+  live?: (signal: AbortSignal) => Promise<void>;
 }
 
-/** Runs `runSuggest` every minute (skipping while unhealthy or a run is in flight). Returns a stop function. */
+/** Runs the live loop and `runSuggest` every minute (suggestions skip while unhealthy; one run at a time). Returns a stop function. */
 export function startSuggester(o: SuggesterOptions): () => void {
   let busy = false;
   let stopped = false;
   const ctl = new AbortController();
   const tick = async () => {
-    if (busy || stopped || !o.isOk()) return;
+    if (busy || stopped) return;
     busy = true;
     try {
+      if (o.live) await o.live(ctl.signal).catch((error) => console.error('Rekord: could not run the live loop', error));
+      if (stopped || o.suggest === false || !o.isOk()) return;
       const made = await runSuggest(o.meetingId, { fetchFn: o.fetchFn, signal: ctl.signal });
       if (!stopped && made.length) o.onNew(made);
     } finally { busy = false; }

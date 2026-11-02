@@ -1,7 +1,7 @@
 import { manifestChecks } from '@appskord/config/checks';
 import { describe, expect, it, vi } from 'vitest';
 
-const PERMISSIONS = ['sidePanel', 'storage', 'tabCapture', 'offscreen', 'activeTab', 'identity'];
+const PERMISSIONS = ['sidePanel', 'storage', 'tabCapture', 'offscreen', 'activeTab', 'identity', 'alarms', 'notifications'];
 const OPTIONAL_HOSTS = [
   'https://penv.cloud/*',
   'https://api.groq.com/*',
@@ -13,7 +13,15 @@ const OPTIONAL_HOSTS = [
   'https://api.notion.com/*',
   'https://www.googleapis.com/*',
   'https://oauth2.googleapis.com/*',
+  'https://tasks.googleapis.com/*',
+  'https://api.linear.app/*',
   'http://localhost:11434/*',
+  'https://huggingface.co/*',
+  'https://cdn-lfs.huggingface.co/*',
+  'https://cdn-lfs-us-1.hf.co/*',
+  'https://cas-bridge.xethub.hf.co/*',
+  'https://cdn-lfs.hf.co/*',
+  'https://cdn-lfs-eu-1.hf.co/*',
 ];
 
 manifestChecks({
@@ -36,5 +44,13 @@ describe('hosts', () => {
 
   it('signs in to Google with launchWebAuthFlow, not a manifest oauth2 client', async () => {
     expect((await manifest()).oauth2).toBeUndefined();
+  });
+
+  it('goes off the record with Alt+Shift+O', async () => {
+    expect((await manifest()).commands).toEqual({ 'off-record': { suggested_key: { default: 'Alt+Shift+O' }, description: 'Off the record' } });
+  });
+
+  it('lets the search model compile WebAssembly and nothing remote', async () => {
+    expect((await manifest()).content_security_policy).toEqual({ extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';" });
   });
 });

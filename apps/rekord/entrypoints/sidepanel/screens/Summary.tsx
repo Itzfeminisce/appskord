@@ -8,16 +8,78 @@ import { runSpeakerStep } from '@/lib/speakers';
 import { formatClock, formatDuration } from '@/lib/time';
 import { visibleMarkers } from '@/lib/suggest';
 import type { Marker, Meeting, Note } from '@/lib/types';
+import { QUEUE_KEY } from '@/lib/memory/backfill';
+import { itemsForMeeting, listPeople } from '@/lib/memory/store';
+import { onBadgeRefresh } from '@/lib/messages';
+import type { MemoryItem, Person } from '@/lib/memory/types';
+import { LockIcon } from '../components/v4/icons';
+import { ChevronIcon, KindPill, MailIcon, QuestionRingIcon, SendIcon } from '../components/v4/memory';
+import { countLabel, meetingWhen, personSuggestions, reviewedPeopleKey } from '../components/v4/review';
+import './v4/review.css';
 
-function when(ms: number): string {
-  const d = new Date(ms);
-  const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const day = d.toDateString() === new Date().toDateString() ? 'Today' : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  return `${day} · ${t}`;
+interface Memory { items: MemoryItem[]; people: Person[]; reviewed: string[] }
+const keptItems = (items: MemoryItem[]) => items.filter((i) => !i.leftOut && i.status !== 'dismissed');
+
+/** "From this meeting": what the meeting added to memory, and the way to review it. */
+function MemoryStrip({ meetingId, memory }: { meetingId: string; memory: Memory }) {
+  const { navigate } = useRouter();
+  const kept = keptItems(memory.items);
+  const people = personSuggestions(memory.people, meetingId, memory.reviewed).length;
+  const waiting = kept.filter((i) => i.status === 'suggested').length + people;
+  const count = (k: MemoryItem['kind']) => kept.filter((i) => i.kind === k).length;
+  const chips = [
+    { tone: 'promise' as const, n: count('promise') },
+    { tone: 'decision' as const, n: count('decision') },
+    { tone: 'question' as const, n: count('question'), icon: QuestionRingIcon },
+    { tone: 'person' as const, n: people },
+  ].filter((c) => c.n > 0);
+  if (chips.length === 0) return null;
+  return (
+    <section aria-label="From this meeting" className="sm-strip">
+      <div className="sm-strip-top">
+        <h2>From this meeting</h2>
+        {waiting > 0 && <span>Not saved to memory yet</span>}
+      </div>
+      <div className="sm-counts">
+        {chips.map((c) => (
+          <KindPill key={c.tone} tone={c.tone} icon={c.icon}><span className="mem-n">{c.n}</span>{countLabel(c.n, c.tone)}</KindPill>
+        ))}
+      </div>
+      {waiting > 0 && (
+        <button type="button" className="sm-review" onClick={() => navigate('review', { meetingId })}>Review {waiting} {waiting === 1 ? 'thing' : 'things'}</button>
+      )}
+    </section>
+  );
+}
+
+/** "After the meeting": follow-up email and action items, each live once its screen is registered. */
+function AfterCard({ meetingId, mine }: { meetingId: string; mine: number }) {
+  const { navigate, has } = useRouter();
+  const links = [
+    { screen: 'followUp', icon: <MailIcon />, title: 'Draft follow-up email', sub: 'Written in your voice, for you to check' },
+    { screen: 'sendTasks', icon: <SendIcon />, title: 'Send action items', sub: `Your ${mine} ${mine === 1 ? 'promise' : 'promises'}, to Google Tasks` },
+  ];
+  return (
+    <section aria-label="After the meeting" className="sm-after">
+      <h2>After the meeting</h2>
+      <div className="sm-links">
+        {links.map((l) => (
+          <button
+            key={l.screen} type="button" className="sm-link" aria-disabled={!has(l.screen) || undefined}
+            onClick={() => { if (has(l.screen)) navigate(l.screen, { meetingId }); }}
+          >
+            <span className="sm-link-icon">{l.icon}</span>
+            <span className="sm-link-text"><span className="sm-link-title">{l.title}</span><span className="sm-link-sub">{l.sub}</span></span>
+            <span className="sm-chev"><ChevronIcon /></span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 export default function Summary() {
-  const { route, replace, navigate } = useRouter();
+  const { route, replace, navigate, has } = useRouter();
   const askOn = useAskEnabled();
   const meetingId = route.params.meetingId;
   const [meeting, setMeeting] = useState<Meeting | undefined>(undefined);
@@ -28,6 +90,23 @@ export default function Summary() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [voices, setVoices] = useState<'idle' | 'working'>('idle');
+  const [memory, setMemory] = useState<Memory>({ items: [], people: [], reviewed: [] });
+
+  useEffect(() => {
+    if (!meetingId) return;
+    let alive = true;
+    const load = () => {
+      Promise.all([itemsForMeeting(meetingId), listPeople(), browser.storage.local.get(reviewedPeopleKey(meetingId))])
+        .then(([items, people, stored]) => alive && setMemory({ items, people, reviewed: (stored[reviewedPeopleKey(meetingId)] as string[] | undefined) ?? [] }))
+        .catch((error) => console.error('Rekord: could not load what this meeting added to memory', error));
+    };
+    load();
+    // Extraction lands later, from the background queue; an item write here also reloads.
+    const changed = (changes: Record<string, unknown>, area: string) => { if (area === 'local' && QUEUE_KEY in changes) load(); };
+    browser.storage.onChanged.addListener(changed);
+    const off = onBadgeRefresh(load);
+    return () => { alive = false; browser.storage.onChanged.removeListener(changed); off(); };
+  }, [meetingId]);
 
   useEffect(() => {
     if (!meetingId) { setState('missing'); return; }
@@ -86,24 +165,26 @@ export default function Summary() {
   }
 
   const s = meeting.summary;
+  const ledger: string = 'ledger';
+  // The memory strip carries this meeting's promises, decisions and questions once extraction has run.
+  const hasMemory = keptItems(memory.items).length > 0;
   const decisions = normalizeDecisions(s?.decisions);
   const duration = meeting.endedAt ? formatDuration(meeting.endedAt - meeting.startedAt) : undefined;
   return (
-    <main className="screen sum">
-      <header className="sum-top">
-        <button type="button" className="perm-back" aria-label="Back to home" onClick={home}>
+    <main className="v4-shell sum sm">
+      <header className="sm-head">
+        <button type="button" className="v4-icon rv-back" aria-label="Back to meetings" onClick={() => replace('library')}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
         </button>
-        <span className="sum-spacer" />
-        <button type="button" className="sum-share" onClick={() => navigate('share', { meetingId })}>
+        <div className="sm-head-text">
+          <h1>{meeting.title}</h1>
+          <span>{[meetingWhen(meeting.startedAt), duration].filter(Boolean).join(' · ')}</span>
+        </div>
+        <button type="button" className="sm-share" onClick={() => navigate('share', { meetingId })}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" /></svg>Share
         </button>
       </header>
-      <div className="sum-title">
-        <h1>{meeting.title}</h1>
-        <span className="sum-meta">{[when(meeting.startedAt), duration].filter(Boolean).join(' · ')}</span>
-      </div>
-
+      <div className="sm-scroll">
       <div className="sum-cards">
         {error && <p className="perm-error sum-error" role="alert">{error}</p>}
         {voices === 'working' && meeting.speakerStep !== 'failed' && (
@@ -131,8 +212,10 @@ export default function Summary() {
               </h2>
               <p>{s.overview || 'Nothing to summarize from this meeting.'}</p>
             </section>
+            <MemoryStrip meetingId={meetingId!} memory={memory} />
+            <AfterCard meetingId={meetingId!} mine={memory.items.filter((i) => i.kind === 'promise' && i.ownerId === 'me' && !i.leftOut && i.status !== 'dismissed').length} />
 
-            <section className="sum-card">
+            {!hasMemory && <section className="sum-card">
               <h2>Action items<span className="sum-count">{checked.size} of {s.actions.length}</span></h2>
               {s.actions.length === 0 && <p className="sum-empty">No action items.</p>}
               {s.actions.map((a, i) => (
@@ -148,9 +231,9 @@ export default function Summary() {
                   </span>
                 </label>
               ))}
-            </section>
+            </section>}
 
-            {decisions.length > 0 && (
+            {!hasMemory && decisions.length > 0 && (
               <section className="sum-card">
                 <h2>Decisions</h2>
                 {decisions.map((d, i) => (
@@ -163,7 +246,7 @@ export default function Summary() {
                 ))}
               </section>
             )}
-            {s.questions.length > 0 && (
+            {!hasMemory && s.questions.length > 0 && (
               <section className="sum-card">
                 <h2>Still open</h2>
                 {s.questions.map((q, i) => <p key={i}>{q}</p>)}
@@ -191,11 +274,15 @@ export default function Summary() {
         )}
       </div>
 
-      <footer className="sum-foot">
+      <footer className="sum-foot sm-foot">
         {askOn && <Button block variant="secondary" onClick={() => navigate('ask', { meetingId })}>Ask about it</Button>}
         <Button block variant="secondary" onClick={() => navigate('transcript', { meetingId })}>Transcript</Button>
         <Button block onClick={home}>New meeting</Button>
       </footer>
+      </div>
+      <button type="button" className="sm-ledger" aria-disabled={!has(ledger) || undefined} onClick={() => { if (has(ledger)) navigate(ledger, { meetingId }); }}>
+        <LockIcon size={14} />What left this computer
+      </button>
     </main>
   );
 }

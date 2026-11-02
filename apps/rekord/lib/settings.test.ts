@@ -12,6 +12,16 @@ describe('settings', () => {
     expect(s.onboarded).toBe(false);
   });
 
+  it('has the v4 memory defaults and fills missing memory fields', async () => {
+    expect(DEFAULT_SETTINGS.memory).toEqual({
+      recall: true, clash: false, brief: { on: true, minutes: 5 }, dueReminders: true,
+      lookBack: { on: true, day: 5, hour: 16 }, tellPeople: true, searchModel: 'none', backfill: 'ask', folder: false,
+    });
+    await fakeBrowser.storage.local.set({ settings: { memory: { clash: true, brief: { minutes: 10 } } } });
+    const s = await getSettings();
+    expect(s.memory).toMatchObject({ clash: true, recall: true, brief: { on: true, minutes: 10 }, lookBack: { day: 5 } });
+  });
+
   it('persists partial updates in local storage', async () => {
     await updateSettings({ onboarded: true, language: 'auto' });
     const s = await getSettings();

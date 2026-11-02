@@ -1,4 +1,8 @@
 import { listNotes, listSegments } from './db';
+import { record as recordCall } from './ledger';
+import type { LedgerEntry, MemoryItem } from './memory/types';
+import type { SearchResult } from './recall';
+import { getSettings } from './settings';
 import { chat, LLMError, speakerName, type ChatMessage, type ChatOptions, type FetchLike } from './llm';
 import { formatClock } from './time';
 import type { Meeting, Note, Segment } from './types';
@@ -248,3 +252,206 @@ export function attendeeLine(m: Pick<Meeting, 'event' | 'source'>): string | und
 
 /** Answers kept while the side panel is open; never stored. */
 export const askAllSession: { range: Range; turns: AskAllResult[] } = { range: '30', turns: [] };
+
+// ---- v4: ask by meaning ----
+
+export type Scope = 'all' | 'people' | 'decisions';
+export const SCOPES: { id: Scope; label: string }[] = [
+  { id: 'all', label: 'All meetings' },
+  { id: 'people', label: 'People' },
+  { id: 'decisions', label: 'Decisions' },
+];
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "26 Oct". */
+export function shortDate(at: number): string {
+  const d = new Date(at);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+/** Whole days an open promise is past its date; 0 when it is not overdue. */
+export function overdueDays(item: Pick<MemoryItem, 'kind' | 'status' | 'due'>, now: number): number {
+  if (item.kind === 'decision' || !item.due || (item.status !== 'open' && item.status !== 'looksDone')) return 0;
+  const [y, m, d] = item.due.split('-').map(Number);
+  const t = new Date(now);
+  const days = Math.round((Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()) - Date.UTC(y ?? 0, (m ?? 1) - 1, d ?? 1)) / DAY);
+  return Math.max(0, days);
+}
+
+/** One numbered thing an answer can cite: a memory item or a moment in a meeting. */
+export interface MemorySource {
+  n: number;
+  kind: 'item' | 'meeting';
+  meetingId: string;
+  title: string;
+  startedAt: number;
+  atMs: number;
+  item?: MemoryItem;
+  /** The decision this one replaced. */
+  replaces?: { text: string; at: number };
+  overdue?: number;
+}
+
+export interface AskMemoryResult {
+  question: string;
+  scope: Scope;
+  mode: SearchResult['mode'];
+  status: 'answer' | 'none' | 'error';
+  /** Text with `[n]` markers; every marker names a source in `sources`. */
+  answer?: string;
+  /** Only the cited sources, numbered in order of first mention. */
+  sources?: MemorySource[];
+  error?: string;
+}
+
+export const MEMORY_SYSTEM_PROMPT = [
+  'You answer questions about the user’s meetings, using only the numbered sources you are given.',
+  'Never use outside knowledge. If the sources do not cover something, say so plainly.',
+  'Answer in 2 to 3 short sentences. After each claim, cite the source as [n], using only the numbers given.',
+].join(' ');
+
+const MAX_ITEMS = 3;
+const MAX_MEETINGS = 3;
+
+const clock = (ms: number): string => citationClock(ms);
+
+/** Best matching moment of a meeting when the search found no window (keyword mode). */
+function bestMoment(d: MeetingData, query: string): { atMs: number; text: string } | undefined {
+  const words = queryWords(query);
+  let best: { atMs: number; text: string; score: number } | undefined;
+  for (const s of d.segments) {
+    const low = s.text.toLowerCase();
+    const score = words.filter((w) => low.includes(w)).length;
+    if (score > 0 && (!best || score > best.score)) best = { atMs: s.startMs, text: s.text.trim().slice(0, EXCERPT_CHARS), score };
+  }
+  return best && { atMs: best.atMs, text: best.text };
+}
+
+export function buildMemoryMessages(sources: { n: number; text: string }[], question: string): ChatMessage[] {
+  return [
+    { role: 'system', content: MEMORY_SYSTEM_PROMPT },
+    { role: 'user', content: `Sources:\n\n${sources.map((s) => `[${s.n}] ${s.text}`).join('\n\n')}` },
+    { role: 'user', content: question },
+  ];
+}
+
+/** Keeps `[n]` markers that name a source, drops the rest, and renumbers by first mention. */
+export function checkCitations(answer: string, count: number): { text: string; order: number[] } {
+  const order: number[] = [];
+  const text = answer
+    .replace(/\[(\d+(?:\s*,\s*\d+)+)\]/g, (_, list: string) => list.split(',').map((n) => `[${n.trim()}]`).join(''))
+    .replace(/\[(\d+)\]/g, (_, raw: string) => {
+      const n = Number(raw);
+      if (n < 1 || n > count) return '';
+      let at = order.indexOf(n);
+      if (at < 0) at = order.push(n) - 1;
+      return `[${at + 1}]`;
+    })
+    .replace(/\s+(\[\d+\])/g, '$1')
+    .replace(/(\[\d+\])\1+/g, '$1')
+    .replace(/[ \t]+([.,;:])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+  return { text, order };
+}
+
+export interface AskMemoryDeps extends AskAllDeps {
+  /** Hybrid search (defaults to Recall's). */
+  search?: (query: string, opts: { meetings: Meeting[]; limit: number; load?: AskAllDeps['load']; itemFilter?: (i: MemoryItem) => boolean; keywordOnly?: boolean }) => Promise<SearchResult>;
+  /** Keyword search only, while the search model downloads. */
+  keywordOnly?: boolean;
+  /** Reads one memory item by id (defaults to the store). */
+  getItem?: (id: string) => Promise<MemoryItem | undefined>;
+  /** Records the one outside call (defaults to the ledger). */
+  record?: typeof recordCall;
+}
+
+const LEDGER_SERVICE: Partial<Record<string, LedgerEntry['service']>> = { groq: 'groq', openai: 'openai', openrouter: 'openrouter', anthropic: 'anthropic' };
+const NOT_SENT = new Set(['no-key', 'offline', 'local-unavailable', 'cancelled']);
+export const MEMORY_LEDGER_WHAT = 'Meeting excerpts for an answer';
+
+/** What a scope looks at: People and Decisions search memory items only. */
+export function inScope(item: MemoryItem, scope: Scope): boolean {
+  if (item.status === 'replaced') return false;
+  return scope === 'decisions' ? item.kind === 'decision' : scope === 'people' ? item.personIds.length > 0 : true;
+}
+
+export function scoped(result: SearchResult, scope: Scope): SearchResult {
+  const items = result.items.filter(({ item }) => inScope(item, scope));
+  return { ...result, items, meetings: scope === 'all' ? result.meetings : [] };
+}
+
+/** Answers from memory items first, then meetings. Never throws: errors land on the result. */
+export async function askMemory(question: string, scope: Scope, all: Meeting[], deps: AskMemoryDeps = {}): Promise<AskMemoryResult> {
+  const q = question.trim();
+  const now = deps.now ?? Date.now();
+  let mode: SearchResult['mode'] = 'keyword';
+  try {
+    const finished = all.filter((m) => m.status === 'done');
+    const find = deps.search ?? (await import('./recall')).search;
+    const itemFilter = (i: MemoryItem) => inScope(i, scope);
+    const found = scoped(await find(q, { meetings: finished, limit: 10, load: deps.load, itemFilter, keywordOnly: deps.keywordOnly }), scope);
+    mode = found.mode;
+    const load = deps.load ?? loadFromDb;
+    const getOne = deps.getItem ?? (await import('./memory/store')).getItem;
+    const byId = new Map(all.map((m) => [m.id, m]));
+
+    const sources: MemorySource[] = [];
+    const texts: string[] = [];
+    for (const { item } of found.items.slice(0, MAX_ITEMS)) {
+      const meeting = byId.get(item.quote.meetingId);
+      const old = item.replacesId ? await getOne(item.replacesId) : undefined;
+      const oldAt = old && byId.get(old.quote.meetingId)?.startedAt;
+      const source: MemorySource = {
+        n: sources.length + 1, kind: 'item', meetingId: item.quote.meetingId, title: meeting?.title || 'Untitled meeting',
+        startedAt: meeting?.startedAt ?? item.createdAt, atMs: item.quote.atMs, item,
+        ...(old && oldAt !== undefined ? { replaces: { text: old.text, at: oldAt } } : {}),
+        overdue: overdueDays(item, now),
+      };
+      sources.push(source);
+      const facts = [
+        item.kind === 'decision' ? 'Decision' : item.kind === 'promise' ? `Promise${item.ownerId === 'me' ? ', you owe it' : ', owed to you'}` : 'Question',
+        `status ${item.status}`,
+        source.overdue ? `overdue ${source.overdue} ${source.overdue === 1 ? 'day' : 'days'}` : item.due ? `due ${item.due}` : '',
+        source.replaces ? `replaces “${source.replaces.text}” (${shortDate(source.replaces.at)})` : '',
+      ].filter(Boolean).join(', ');
+      texts.push(`${item.text} (${facts}). ${item.quote.speaker}: “${item.quote.text}” (${source.title}, ${shortDate(source.startedAt)}, ${clock(item.quote.atMs)})`);
+    }
+    for (const hit of found.meetings.slice(0, MAX_MEETINGS)) {
+      const moment = hit.text !== undefined && hit.atMs !== undefined
+        ? { atMs: hit.atMs, text: hit.text.slice(0, EXCERPT_CHARS) }
+        : bestMoment(await load(hit.meeting), q);
+      const m = hit.meeting;
+      const overview = m.summary?.overview ? ` Summary: ${m.summary.overview.slice(0, EXCERPT_CHARS)}` : '';
+      if (!moment && !overview) continue;
+      sources.push({ n: sources.length + 1, kind: 'meeting', meetingId: m.id, title: m.title || 'Untitled meeting', startedAt: m.startedAt, atMs: moment?.atMs ?? 0 });
+      texts.push(`Meeting “${m.title || 'Untitled meeting'}” (${shortDate(m.startedAt)})${moment ? ` at ${clock(moment.atMs)}: ${moment.text}` : ':'}${overview}`);
+    }
+    if (!sources.length) return { question: q, scope, mode, status: 'none' };
+
+    const service = LEDGER_SERVICE[(deps.config?.settings ?? (await getSettings())).summary.provider];
+    let sent = true;
+    let reply = '';
+    try {
+      reply = (await chat(
+        buildMemoryMessages(sources.map((s, i) => ({ n: s.n, text: texts[i] ?? '' })), q),
+        { temperature: 0.2, maxTokens: 400, signal: deps.signal, config: deps.config },
+        deps.fetch,
+      )).trim();
+    } catch (e) {
+      sent = !(e instanceof LLMError && NOT_SENT.has(e.code));
+      throw e;
+    } finally {
+      if (service && sent) await (deps.record ?? recordCall)({ service, what: MEMORY_LEDGER_WHAT });
+    }
+    if (!reply) throw new LLMError('The AI service sent an unexpected reply. Try again.', 'bad-reply');
+    const checked = checkCitations(reply, sources.length);
+    const cited = checked.order.map((n, i) => ({ ...sources[n - 1]!, n: i + 1 }));
+    return { question: q, scope, mode, status: 'answer', answer: checked.text, sources: cited };
+  } catch (e) {
+    return { question: q, scope, mode, status: 'error', error: e instanceof Error && e.message ? e.message : 'Something went wrong while answering. Try again.' };
+  }
+}
+
+/** Answers kept while the side panel is open; never stored. */
+export const askMemorySession: { scope: Scope; turns: AskMemoryResult[] } = { scope: 'all', turns: [] };

@@ -21,7 +21,32 @@ import Transcript from './screens/Transcript';
 import Export from './screens/Export';
 import Settings from './screens/Settings';
 import ErrorScreen from './screens/Error';
-import WhatsNew from './screens/WhatsNew';
+import WhatsNew from './screens/v4/WhatsNew';
+import Backfill from './screens/v4/Backfill';
+import People from './screens/v4/People';
+import Person from './screens/v4/Person';
+import PersonMerge from './screens/v4/PersonMerge';
+import Forget from './screens/v4/Forget';
+import Review from './screens/v4/Review';
+import ReviewEdit from './screens/v4/ReviewEdit';
+import Redact from './screens/v4/Redact';
+import Ledger from './screens/v4/Ledger';
+import SettingsMemory from './screens/v4/SettingsMemory';
+import Folder from './screens/v4/Folder';
+import Move from './screens/v4/Move';
+import { flushFolder, flushFolderSoon } from '@/lib/folder';
+import { BACKFILL_KEY, QUEUE_KEY } from '@/lib/memory/backfill';
+import { onBadgeRefresh } from '@/lib/messages';
+import { embedIfReady } from '@/lib/recall';
+import FollowUp from './screens/v4/FollowUp';
+import SendTasks from './screens/v4/SendTasks';
+import LinearConnect from './screens/v4/LinearConnect';
+import { Shell } from './components/v4/Shell';
+import Home from './screens/v4/Home';
+import PromiseScreen, { PromiseDrop } from './screens/v4/Promise';
+import LooksDone from './screens/v4/LooksDone';
+import Nudge from './screens/v4/Nudge';
+import Decisions from './screens/v4/Decisions';
 import Connections from './screens/Connections';
 import Share from './screens/Share';
 import NotionConnect from './screens/NotionConnect';
@@ -29,6 +54,18 @@ import NotionPage from './screens/NotionPage';
 import GoogleConnect from './screens/GoogleConnect';
 import { shouldShowWhatsNew } from '@/lib/whatsNew';
 import NoSound from './screens/NoSound';
+import Brief from './screens/v4/Brief';
+import AgendaEdit from './screens/v4/AgendaEdit';
+import { PanelGo, useEventCache } from './components/v4/panelGo';
+
+declare global {
+  /** True outside the release zip (wxt.config.ts): dev frame routes are built in. */
+  const __REKORD_DEV_FRAMES__: boolean;
+}
+const devFrames = typeof __REKORD_DEV_FRAMES__ !== 'undefined' && __REKORD_DEV_FRAMES__;
+/** A dev frame for a full tab or a notification: drawn on its own, outside the side panel's routes. */
+export interface DevPage { page: ComponentType }
+const inDevWorld = () => devFrames && (location.hash.startsWith('#/dev/') || !!sessionStorage.getItem('rekord.devFrame'));
 
 export const SCREENS: Record<ScreenName, ComponentType> = {
   welcome: Welcome,
@@ -57,29 +94,87 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   share: Share,
   notionConnect: NotionConnect,
   notionPage: NotionPage,
+  home: Home,
+  backfill: Backfill,
+  people: People,
+  person: Person,
+  personMerge: PersonMerge,
+  forget: Forget,
+  review: Review,
+  reviewEdit: ReviewEdit,
+  redact: Redact,
+  ledger: Ledger,
+  promise: PromiseScreen,
+  promiseDrop: PromiseDrop,
+  looksDone: LooksDone,
+  nudge: Nudge,
+  decisions: Decisions,
+  settingsMemory: SettingsMemory,
+  folder: Folder,
+  move: Move,
+  followUp: FollowUp,
+  sendTasks: SendTasks,
+  linearConnect: LinearConnect,
+  brief: Brief,
+  agendaEdit: AgendaEdit,
 };
 
-/** First screen: onboarding until the user has finished it, then Start. */
+/** First screen: onboarding until the user has finished it, then Open loops. */
 export async function initialRoute(): Promise<Route> {
   try {
     const settings = await getSettings();
     if (settings.onboarded && (await shouldShowWhatsNew(browser.runtime.getManifest().version))) {
       return { screen: 'whatsnew', params: {} };
     }
-    return { screen: settings.onboarded ? 'start' : 'welcome', params: {} };
+    return { screen: settings.onboarded ? 'home' : 'welcome', params: {} };
   } catch {
     return { screen: 'error', params: { message: 'Rekord couldn’t load your settings. Try reopening the side panel.' } };
   }
 }
 
 /** The side panel's routes. Connect flows keep their return path in memory; Live and No sound keep Back from leaving. */
-export const sidepanel = createRouter(SCREENS, { fresh: ['googleConnect', 'notionPage'], hold: ['live', 'nosound'] });
+export const sidepanel = createRouter(SCREENS, { fresh: ['googleConnect', 'notionPage'], hold: ['live', 'nosound'], home: 'home' });
 const { RouterProvider } = sidepanel;
 
-export default function App() {
-  const [initial, setInitial] = useState<Route | null>(null);
+/** Dev builds: `#/dev/<Frame>` opens that frame's screen in the sample world; a frame not built yet shows its name. */
+async function devRoute(): Promise<Route | DevPage | string | undefined> {
+  if (!devFrames) return undefined;
+  const dev = await import('./dev/open');
+  const name = dev.frameInHash(location.hash);
+  if (!name) {
+    dev.resumeDevFrame();
+    return undefined;
+  }
+  return (await dev.openDevFrame(name)) ?? name;
+}
+
+/** While the panel is open: extraction landing in the background, or an item write here, reaches the folder and the search index. */
+function useMemoryFollowUp(real: boolean) {
   useEffect(() => {
-    void initialRoute().then(setInitial);
+    if (!real) return undefined;
+    const onChange = (changes: Record<string, unknown>, area: string) => {
+      if (area !== 'local' || !(QUEUE_KEY in changes || BACKFILL_KEY in changes)) return;
+      flushFolderSoon();
+      void embedIfReady();
+    };
+    browser.storage.onChanged.addListener(onChange);
+    const off = onBadgeRefresh(() => flushFolderSoon());
+    return () => { browser.storage.onChanged.removeListener(onChange); off(); };
+  }, [real]);
+}
+
+export default function App() {
+  const [initial, setInitial] = useState<Route | DevPage | string | null>(null);
+  const [real] = useState(() => !inDevWorld());
+  // The background briefs from these cached events; never from a dev frame's sample world.
+  useEventCache(real);
+  useMemoryFollowUp(real);
+  useEffect(() => {
+    // Rekord folder writes queue while the panel is closed; they go out each time it opens (never from a dev frame's sample world).
+    if (real) void flushFolder();
+    void devRoute()
+      .catch((error) => console.error('Rekord: could not open the dev frame', error))
+      .then(async (dev) => setInitial(dev ?? (await initialRoute())));
   }, []);
 
   if (!initial) {
@@ -89,8 +184,19 @@ export default function App() {
       </main>
     );
   }
+  if (typeof initial === 'object' && 'page' in initial) {
+    const Page = initial.page;
+    return <Page />;
+  }
+  if (typeof initial === 'string') {
+    return (
+      <main className="screen screen-center">
+        <h1>{initial}</h1>
+      </main>
+    );
+  }
   return (
     // `initial` is used only when the hash names no screen; a reload keeps the screen in the hash.
-    <RouterProvider initial={initial} />
+    <RouterProvider initial={initial}><PanelGo /></RouterProvider>
   );
 }

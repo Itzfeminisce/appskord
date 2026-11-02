@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { getSettings, updateSettings } from './settings';
+import pkg from '../package.json';
 import { compareVersions, handleInstalled, isNewerThanSeen, markWhatsNewSeen, shouldShowWhatsNew } from './whatsNew';
 
 describe('versions', () => {
@@ -48,5 +49,13 @@ describe('what’s new, shown once', () => {
   it('waits for onboarding to finish', async () => {
     await handleInstalled('update', '3.0.0');
     expect(await shouldShowWhatsNew('3.0.0')).toBe(false);
+  });
+
+  it('marks What’s new pending on the in-place update from 0.1.0 to this version', async () => {
+    expect(pkg.version).toBe('0.4.0');
+    await updateSettings({ onboarded: true, lastSeenVersion: '0.1.0' });
+    await handleInstalled('update', pkg.version);
+    expect((await browser.storage.local.get('whatsNewPending')).whatsNewPending).toBe(true);
+    expect(await shouldShowWhatsNew(pkg.version)).toBe(true);
   });
 });

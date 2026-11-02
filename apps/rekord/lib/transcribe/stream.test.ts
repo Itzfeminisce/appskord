@@ -330,6 +330,43 @@ describe('RealtimeSession', () => {
     expect(h.audio.stops).toBe(1);
     expect(h.chunks.get('last')!.status).toBe('done');
   });
+
+  it('off the record: finals from after the click never reach storage, the screen or the realtime result', async () => {
+    const h = harness();
+    h.session.addTrack('you', h.startAudio);
+    await h.flush();
+    const s = h.sockets[0]!;
+    s.open();
+    await h.at(4_000);
+    const send = s.send.bind(s);
+    s.send = (d) => {
+      if (typeof d === 'string') {
+        s.say(2, 1, [['Secret', 2.5, 2.9]], false); // interim from after the click
+        s.say(2, 1.5, [['Secret', 2.5, 2.9], ['plan.', 3, 3.4]]); // flushed final, said after the click
+      }
+      send(d);
+    };
+    const before = h.emitted.length;
+    expect(await h.session.stop(2_000)).toBe(false);
+    expect(h.segments.size).toBe(0);
+    expect(h.emitted.slice(before).some((m) => m.type === 'segment/added' && m.segment.text.includes('Secret'))).toBe(false);
+  });
+
+  it('off the record: a final said before the click is still kept', async () => {
+    const h = harness();
+    h.session.addTrack('you', h.startAudio);
+    await h.flush();
+    const s = h.sockets[0]!;
+    s.open();
+    await h.at(4_000);
+    const send = s.send.bind(s);
+    s.send = (d) => {
+      if (typeof d === 'string') { s.say(0, 1.6, [['Fine.', 1, 1.5]]); s.say(2, 1, [['Secret.', 2.2, 2.8]]); }
+      send(d);
+    };
+    expect(await h.session.stop(2_000)).toBe(true);
+    expect([...h.segments.values()].map((x) => x.text)).toEqual(['Fine.']);
+  });
 });
 
 describe('liveLabels', () => {

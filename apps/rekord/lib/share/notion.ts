@@ -187,3 +187,53 @@ export async function shareToNotion(
   await putMeeting(next);
   return { meeting: next, record };
 }
+
+// ---- database pages (action items) ----
+
+export interface NotionDatabase { id: string; title: string; titleProp: string; dateProp?: string; peopleProp?: string }
+
+interface RawDatabase {
+  id: string; archived?: boolean;
+  title?: { plain_text?: string }[];
+  properties?: Record<string, { type?: string }>;
+}
+
+/** Databases the integration can see, with the property names a page needs (POST /v1/search, object=database). */
+export async function searchDatabases(token: string, deps: NotionDeps = {}): Promise<NotionDatabase[]> {
+  const body = { filter: { property: 'object', value: 'database' }, page_size: 100 };
+  const res = (await call(token, '/search', { method: 'POST', body: JSON.stringify(body) }, deps)) as { results?: RawDatabase[] };
+  const out: NotionDatabase[] = [];
+  for (const d of res.results ?? []) {
+    const props = Object.entries(d.properties ?? {});
+    const titleProp = props.find(([, p]) => p.type === 'title')?.[0];
+    if (d.archived || !titleProp) continue;
+    const dateProp = props.find(([, p]) => p.type === 'date')?.[0];
+    const peopleProp = props.find(([, p]) => p.type === 'people')?.[0];
+    const title = (d.title ?? []).map((t) => t.plain_text ?? '').join('').trim() || 'Untitled';
+    out.push({ id: d.id, title, titleProp, ...(dateProp ? { dateProp } : {}), ...(peopleProp ? { peopleProp } : {}) });
+  }
+  return out;
+}
+
+export interface NotionAccount { label: string; userId?: string }
+
+/** Who the integration acts for (GET /v1/users/me): the owner's email and Notion user, else the workspace's name. */
+export async function notionAccount(token: string, deps: NotionDeps = {}): Promise<NotionAccount> {
+  const me = (await call(token, '/users/me', {}, deps)) as { name?: string; bot?: { workspace_name?: string; owner?: { user?: { id?: string; person?: { email?: string } } } } };
+  const user = me.bot?.owner?.user;
+  return { label: user?.person?.email ?? me.bot?.workspace_name ?? me.name ?? 'Notion', ...(user?.id ? { userId: user.id } : {}) };
+}
+
+/** Adds one action item as a page in the database, with its due date and assignee when the database has those properties. */
+export async function addDatabasePage(
+  token: string, db: NotionDatabase, item: { text: string; due?: string; assigneeId?: string }, note: string, deps: NotionDeps = {},
+): Promise<string> {
+  const properties: Record<string, unknown> = { [db.titleProp]: { title: rich(item.text) } };
+  if (db.dateProp && item.due) properties[db.dateProp] = { date: { start: item.due } };
+  if (db.peopleProp && item.assigneeId) properties[db.peopleProp] = { people: [{ id: item.assigneeId }] };
+  const page = (await call(token, '/pages', { method: 'POST', body: JSON.stringify({
+    parent: { database_id: db.id }, properties, children: note ? [block('paragraph', {}, note.slice(0, MAX_TEXT))] : [],
+  }) }, deps)) as RawPage;
+  if (!page.url) throw new NotionError('server');
+  return page.url;
+}

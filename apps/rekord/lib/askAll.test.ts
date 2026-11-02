@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  askAll, attendeeLine, BUDGET_CHARS, filterByRange, parseSources, pickContext, queryWords, rankCandidates, scoreMeeting, stripCitations, type MeetingData,
+  askAll, askMemory, attendeeLine, checkCitations, overdueDays, scoped, type AskMemoryDeps, BUDGET_CHARS, filterByRange, parseSources, pickContext, queryWords, rankCandidates, scoreMeeting, stripCitations, type MeetingData,
 } from './askAll';
+import type { MemoryItem } from './memory/types';
+import type { SearchResult } from './recall';
 import { DEFAULT_SETTINGS } from './settings';
 import type { Meeting, Segment } from './types';
 
@@ -108,5 +110,91 @@ describe('attendeeLine', () => {
   });
   it('adds the app for desktop-app meetings', () => {
     expect(attendeeLine({ source: 'app', event: ev({ app: 'teams', attendees: [{ name: 'Dana', email: 'd@n.com' }] }) })).toBe('With Dana · Teams app');
+  });
+});
+
+describe('ask by meaning', () => {
+  const quote = (meetingId: string) => ({ speaker: 'Priya', text: 'Twelve a seat.', meetingId, atMs: 31_000 });
+  const item = (id: string, kind: MemoryItem['kind'], extra: Partial<MemoryItem> = {}): MemoryItem => ({
+    id, kind, status: 'open', text: `Item ${id}`, quote: quote('m1'), meetingId: 'm1', personIds: [], history: [], createdAt: 1, updatedAt: 1, ...extra,
+  });
+  const ms = [meeting('m1', 2, { title: 'Pricing review' }), meeting('m2', 3)];
+  const found = (items: MemoryItem[], mode: SearchResult['mode'] = 'hybrid'): SearchResult => ({
+    mode, items: items.map((i) => ({ item: i, score: 1 })), meetings: [{ meeting: ms[1]!, score: 1 }],
+  });
+  const config = { settings: DEFAULT_SETTINGS, keys: { GROQ_API_KEY: 'gsk_test' } };
+  const load = async (m: Meeting) => data(m, [[9000, 'we spoke about the pricing and seat price']]);
+  const deps = (result: SearchResult, content: string, over: Partial<AskMemoryDeps> = {}): AskMemoryDeps => ({
+    search: async () => result, getItem: async () => undefined, load, now: NOW, config,
+    fetch: vi.fn(async () => reply(content)), record: vi.fn(async () => ({ id: 'l', service: 'groq' as const, what: '', count: 1, firstAt: 1, lastAt: 1 })), ...over,
+  });
+  const all = [item('d1', 'decision', { personIds: ['p1'] }), item('p1', 'promise', { personIds: ['p1'] }), item('q1', 'question'), item('old', 'decision', { status: 'replaced' })];
+
+  it('narrows to the scope: Decisions and People look at memory items only', () => {
+    const result = found(all);
+    expect(scoped(result, 'all').items.map((h) => h.item.id)).toEqual(['d1', 'p1', 'q1']);
+    expect(scoped(result, 'all').meetings).toHaveLength(1);
+    expect(scoped(result, 'decisions').items.map((h) => h.item.id)).toEqual(['d1']);
+    expect(scoped(result, 'decisions').meetings).toEqual([]);
+    expect(scoped(result, 'people').items.map((h) => h.item.id)).toEqual(['d1', 'p1']);
+  });
+
+  it('numbers items first, checks citations and keeps only real ones', async () => {
+    const d = deps(found(all), 'Twelve a seat. [2] Deck is late. [1][9] Also [3].');
+    const r = await askMemory('pricing?', 'all', ms, d);
+    expect(r.status).toBe('answer');
+    expect(r.answer).toBe('Twelve a seat.[1] Deck is late.[2] Also[3].');
+    expect(r.sources?.map((s) => [s.n, s.item?.id ?? s.meetingId])).toEqual([[1, 'p1'], [2, 'd1'], [3, 'q1']]);
+    const sent = String((d.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]?.body);
+    expect(sent.indexOf('[1] Item d1')).toBeGreaterThan(-1);
+    expect(sent).toContain('[4] Meeting');
+  });
+
+  it('records one ledger entry for the answer call', async () => {
+    const d = deps(found(all), 'Yes. [1]');
+    await askMemory('pricing?', 'all', ms, d);
+    expect(d.record).toHaveBeenCalledTimes(1);
+    expect(d.record).toHaveBeenCalledWith({ service: 'groq', what: 'Meeting excerpts for an answer' });
+  });
+
+  it('keyword mode answers from the same flow and names its mode', async () => {
+    const r = await askMemory('seat price', 'all', ms, deps({ mode: 'keyword', items: [], meetings: [{ meeting: ms[1]!, score: 1 }] }, 'It came up. [1]'));
+    expect(r.mode).toBe('keyword');
+    expect(r.sources).toEqual([expect.objectContaining({ kind: 'meeting', meetingId: 'm2', atMs: 9000 })]);
+  });
+
+  it('says so, without calling the model, when nothing matches', async () => {
+    const d = deps({ mode: 'keyword', items: [], meetings: [] }, 'x');
+    const r = await askMemory('unicorns', 'all', ms, d);
+    expect(r.status).toBe('none');
+    expect(d.fetch).not.toHaveBeenCalled();
+    expect(d.record).not.toHaveBeenCalled();
+  });
+
+  it('puts a model failure on the result and skips the ledger when nothing was sent', async () => {
+    const d = deps(found(all), '', { config: { settings: DEFAULT_SETTINGS, keys: {} } });
+    const r = await askMemory('pricing?', 'all', ms, d);
+    expect(r.status).toBe('error');
+    expect(d.record).not.toHaveBeenCalled();
+  });
+
+  it('renumbers by first mention and drops markers outside the sources', () => {
+    expect(checkCitations('A [3] B [1, 3] C [7]', 3)).toEqual({ text: 'A[1] B[2][1] C', order: [3, 1] });
+    expect(checkCitations('A [123] B [2, 100]', 3)).toEqual({ text: 'A B[1]', order: [2] });
+  });
+
+  it('hands the scope and keyword-only choice to search, so the limit counts only items in scope', async () => {
+    const search = vi.fn(async () => found(all));
+    await askMemory('pricing?', 'decisions', ms, deps(found(all), 'Yes. [1]', { search, keywordOnly: true }));
+    const opts = (search.mock.calls[0] as unknown as [string, { itemFilter: (i: MemoryItem) => boolean; keywordOnly: boolean }])[1];
+    expect(opts.keywordOnly).toBe(true);
+    expect(all.filter(opts.itemFilter).map((i) => i.id)).toEqual(['d1']);
+  });
+
+  it('counts overdue days from the due date', () => {
+    const due = (d: string, status: MemoryItem['status'] = 'open') => overdueDays({ kind: 'promise', status, due: d }, new Date(2026, 10, 3, 9, 55).getTime());
+    expect(due('2026-10-30')).toBe(4);
+    expect(due('2026-11-03')).toBe(0);
+    expect(due('2026-10-30', 'done')).toBe(0);
   });
 });

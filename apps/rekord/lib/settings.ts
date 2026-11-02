@@ -17,6 +17,17 @@ export const DEFAULT_SETTINGS: Settings = {
   realtimeBackup: true,
   google: { calendar: false, docs: false },
   notion: {},
+  memory: {
+    recall: true,
+    clash: false,
+    brief: { on: true, minutes: 5 },
+    dueReminders: true,
+    lookBack: { on: true, day: 5, hour: 16 },
+    tellPeople: true,
+    searchModel: 'none',
+    backfill: 'ask',
+    folder: false,
+  },
 };
 
 const provider = (id: ProviderId): ProviderConfig => {
@@ -44,6 +55,12 @@ function merge(stored: Partial<Settings> | undefined): Settings {
     diarization: { ...DEFAULT_SETTINGS.diarization, ...s.diarization },
     google: { ...DEFAULT_SETTINGS.google, ...s.google },
     notion: { ...DEFAULT_SETTINGS.notion, ...s.notion },
+    memory: {
+      ...DEFAULT_SETTINGS.memory,
+      ...s.memory,
+      brief: { ...DEFAULT_SETTINGS.memory.brief, ...s.memory?.brief },
+      lookBack: { ...DEFAULT_SETTINGS.memory.lookBack, ...s.memory?.lookBack },
+    },
   };
 }
 

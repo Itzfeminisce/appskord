@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { Spinner } from '../components';
 import { ConnectionBanner } from '../components/ConnectionBanner';
 import { useRouter } from '../router';
 import { ask, CITATION_TOLERANCE_MS, markUnfinished, parseCitations, QUICK_PROMPTS, saveAnswerAsNote } from '@/lib/ask';
-import { getMeeting, listAsks } from '@/lib/db';
+import { getMeeting, listAsks, listMeetings, listSegments } from '@/lib/db';
+import { askMemory, citationClock, shortDate, type AskMemoryResult, type MemorySource } from '@/lib/askAll';
+import { displayName } from '@/lib/llm';
+import { PlayIcon } from './v4/liveIcons';
+import { citedUrl } from './v4/Recall';
 import { getSettings } from '@/lib/settings';
 import { formatClock } from '@/lib/time';
 import type { AskTurn } from '@/lib/types';
@@ -79,8 +83,128 @@ function Answer({ turn, nowMs, onOpen, onRetry }: { turn: AskTurn; nowMs: number
   );
 }
 
+type LiveScope = 'meeting' | 'all';
+/** Ask in a meeting: answers from all meetings, kept while the panel is open; never stored. */
+export const liveAskSession: { meetingId?: string; scope: LiveScope; turns: AskMemoryResult[] } = { scope: 'all', turns: [] };
+
+interface Cited { source: MemorySource; speaker?: string; text?: string }
+
+/** The quote a citation shows: the item's own, or the line at that moment of the meeting. */
+async function citedQuote(source: MemorySource): Promise<Cited> {
+  if (source.item) return { source, speaker: source.item.quote.speaker, text: source.item.quote.text };
+  try {
+    const [meeting, segments] = await Promise.all([getMeeting(source.meetingId), listSegments(source.meetingId)]);
+    const line = segments.find((g) => g.startMs <= source.atMs && g.endMs >= source.atMs) ?? segments.find((g) => g.startMs >= source.atMs);
+    return line ? { source, speaker: displayName(line, meeting?.speakers), text: line.text } : { source };
+  } catch {
+    return { source };
+  }
+}
+
+function MemoryAnswer({ turn }: { turn: AskMemoryResult }) {
+  const [cited, setCited] = useState<Cited[]>(() => (turn.sources ?? []).map((source) => (source.item ? { source, speaker: source.item.quote.speaker, text: source.item.quote.text } : { source })));
+  useEffect(() => {
+    let alive = true;
+    void Promise.all((turn.sources ?? []).map(citedQuote)).then((c) => alive && setCited(c));
+    return () => { alive = false; };
+  }, [turn]);
+  if (turn.status !== 'answer') {
+    return <div className="lv-answer"><p role={turn.status === 'error' ? 'alert' : undefined}>{turn.status === 'error' ? turn.error : 'Nothing in your meetings answers that yet.'}</p></div>;
+  }
+  return (
+    <div className="lv-answer">
+      <p>{(turn.answer ?? '').replace(/\s*\[\d+\]/g, '').trim()}</p>
+      {cited.length > 0 && (
+        <ul className="lv-cites">
+          {cited.map(({ source, speaker, text }) => (
+            <li key={source.n}>
+              <div className="lv-cite-text">
+                <span>{text ? `“${text}”` : source.title}</span>
+                <span>{speaker && text ? `${speaker} · ${source.title} · ` : ''}<span className="mono">{shortDate(source.startedAt)} · {citationClock(source.atMs)}</span></span>
+              </div>
+              <a
+                className="lv-play" href={citedUrl(source.meetingId, source.atMs)} target="_blank" rel="noopener"
+                aria-label={`Open ${source.title}, ${shortDate(source.startedAt)}, at ${citationClock(source.atMs)} in a new tab`}
+              ><PlayIcon /></a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {cited.length > 0 && <span className="lv-hint">Opens in a new tab, so your meeting stays here.</span>}
+    </div>
+  );
+}
+
+/** V4LiveAsk: scope "This meeting" / "All meetings" (All by default); citations open in a new tab. */
+function LiveAsk({ meetingId, nowMs, onOpenMoment }: { meetingId: string; nowMs: number; onOpenMoment: (atMs: number) => void }) {
+  if (liveAskSession.meetingId !== meetingId) Object.assign(liveAskSession, { meetingId, scope: 'all', turns: [] });
+  const [scope, setScope] = useState<LiveScope>(liveAskSession.scope);
+  const [turns, setTurns] = useState<AskMemoryResult[]>(liveAskSession.turns);
+  const [pending, setPending] = useState<string | undefined>(undefined);
+  const [draft, setDraft] = useState('');
+  const scroller = useRef<HTMLElement>(null);
+  useEffect(() => { liveAskSession.scope = scope; }, [scope]);
+  useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [turns, pending]);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const q = draft.trim();
+    if (!q || pending) return;
+    setDraft('');
+    setPending(q);
+    const result = await askMemory(q, 'all', await listMeetings().catch(() => []));
+    liveAskSession.turns = [...liveAskSession.turns, result];
+    setTurns(liveAskSession.turns);
+    setPending(undefined);
+  }
+
+  const chips = (
+    <div role="group" aria-label="Search in" className="lv-chips">
+      <button type="button" className="lv-chip" aria-pressed={scope === 'meeting'} onClick={() => setScope('meeting')}>This meeting</button>
+      <button type="button" className="lv-chip" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>All meetings</button>
+    </div>
+  );
+  if (scope === 'meeting') return <AskPanel meetingId={meetingId} nowMs={nowMs} onOpenMoment={onOpenMoment} top={chips} />;
+  return (
+    <>
+      <section ref={scroller} className="lv-ask" aria-label="Ask" aria-live="polite" tabIndex={-1}>
+        {chips}
+        {turns.map((t, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="lv-q">{t.question}</div>
+            <MemoryAnswer turn={t} />
+          </div>
+        ))}
+        {pending && <><div className="lv-q">{pending}</div><Spinner label="Thinking" /></>}
+      </section>
+      <footer className="lv-foot">
+        <div className="lv-foot-gap" />
+        <form className="lv-note" onSubmit={(e) => void submit(e)}>
+          <label htmlFor="ask" className="sr-only">Ask a question</label>
+          <input id="ask" type="text" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ask about this or any meeting" autoComplete="off" />
+          <button type="submit" aria-label="Ask" disabled={!!pending || !draft.trim()}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
+          </button>
+        </form>
+      </footer>
+    </>
+  );
+}
+
 /** The conversation + composer. Renders a scroll area and a footer; the parent supplies a flex-column container. */
-export function AskPanel({ meetingId, nowMs, onOpenMoment }: { meetingId: string; nowMs: number; onOpenMoment: (atMs: number) => void }) {
+export function AskPanel({ meetingId, nowMs, onOpenMoment, live, top }: {
+  meetingId: string; nowMs: number; onOpenMoment: (atMs: number) => void;
+  /** In a meeting: the v4 scope chips, All meetings first. */
+  live?: boolean; top?: ReactNode;
+}) {
+  if (live) return <LiveAsk meetingId={meetingId} nowMs={nowMs} onOpenMoment={onOpenMoment} />;
+  return <MeetingAsk meetingId={meetingId} nowMs={nowMs} onOpenMoment={onOpenMoment} top={top} />;
+}
+
+function MeetingAsk({ meetingId, nowMs, onOpenMoment, top }: { meetingId: string; nowMs: number; onOpenMoment: (atMs: number) => void; top?: ReactNode }) {
   const [turns, setTurns] = useState<AskTurn[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -125,6 +249,7 @@ export function AskPanel({ meetingId, nowMs, onOpenMoment }: { meetingId: string
   return (
     <>
       <section ref={scroller} className="live-scroll" aria-label="Answers" aria-live="polite" tabIndex={0}>
+        {top}
         {loadFailed && <p className="live-empty" role="alert">Rekord couldn’t load earlier questions. You can still ask a new one.</p>}
         {!loadFailed && turns.length === 0 && <p className="live-empty">Ask anything about this meeting. Try a suggestion below.</p>}
         {turns.map((t) => (

@@ -7,7 +7,12 @@ export const DEEPGRAM_HOSTS = ['https://api.deepgram.com/*', 'wss://api.deepgram
 // oauth2.googleapis.com is only for revoking the token on disconnect.
 export const GOOGLE_HOSTS = ['https://www.googleapis.com/*', 'https://oauth2.googleapis.com/*'];
 export const NOTION_HOSTS = ['https://api.notion.com/*'];
+// Google Tasks has its own host, asked when sending to it the first time.
+export const TASKS_HOSTS = ['https://tasks.googleapis.com/*'];
+export const LINEAR_HOSTS = ['https://api.linear.app/*'];
 export const OLLAMA_HOSTS = ['http://localhost:11434/*'];
+// Search model weights: huggingface.co redirects the files to its CDNs.
+export const HUGGINGFACE_HOSTS = ['https://huggingface.co/*', 'https://cdn-lfs.huggingface.co/*', 'https://cdn-lfs-us-1.hf.co/*', 'https://cas-bridge.xethub.hf.co/*', 'https://cdn-lfs.hf.co/*', 'https://cdn-lfs-eu-1.hf.co/*'];
 
 const KEY_HOSTS: Record<string, string[]> = {
   GROQ_API_KEY: ['https://api.groq.com/*'],
@@ -16,10 +21,11 @@ const KEY_HOSTS: Record<string, string[]> = {
   ANTHROPIC_API_KEY: ['https://api.anthropic.com/*'],
   DEEPGRAM_API_KEY: DEEPGRAM_HOSTS,
   NOTION_TOKEN: NOTION_HOSTS,
+  LINEAR_API_KEY: LINEAR_HOSTS,
 };
 
 /** Every host Rekord may ask for; the manifest lists exactly these as optional_host_permissions. */
-export const OPTIONAL_HOSTS = [...new Set([...PENV_HOSTS, ...Object.values(KEY_HOSTS).flat(), ...GOOGLE_HOSTS, ...OLLAMA_HOSTS])];
+export const OPTIONAL_HOSTS = [...new Set([...PENV_HOSTS, ...Object.values(KEY_HOSTS).flat(), ...GOOGLE_HOSTS, ...TASKS_HOSTS, ...OLLAMA_HOSTS, ...HUGGINGFACE_HOSTS])];
 
 /** Hosts for the services these key names unlock. */
 export function hostsForKeys(names: string[]): string[] {

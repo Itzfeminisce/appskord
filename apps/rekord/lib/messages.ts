@@ -9,3 +9,17 @@ export const send = <R = unknown>(msg: Message): Promise<R | undefined> => sendM
 
 /** Listens for runtime messages; return undefined from the handler to ignore. Returns an unsubscribe function. */
 export const onMessage = (handler: (msg: Message, sender: MessageSender) => unknown): (() => void) => on<Message>(handler);
+
+const afterBadge = new Set<() => void>();
+
+/** Asks the background to recount the toolbar badge after an item write, and tells this page's listeners (the folder writer). */
+export function refreshBadge(): void {
+  void send({ type: 'rekord.badge.refresh' });
+  for (const fn of afterBadge) fn();
+}
+
+/** Runs `fn` after each refreshBadge() from this page. Returns an unsubscribe function. */
+export function onBadgeRefresh(fn: () => void): () => void {
+  afterBadge.add(fn);
+  return () => { afterBadge.delete(fn); };
+}
