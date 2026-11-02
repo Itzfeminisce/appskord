@@ -93,4 +93,16 @@ describe('listEvents', () => {
     expect(url).toContain('/calendars/work%40group.calendar.google.com/events?');
     expect(url).toContain('singleEvents=true');
   });
+
+  it('follows nextPageToken, capped, over one list call per page', async () => {
+    const identity: IdentityApi = { getRedirectURL: () => 'https://test.chromiumapp.org/', launchWebAuthFlow: async ({ url }: { url: string }) => `https://test.chromiumapp.org/#access_token=ya29.test&state=${new URL(url).searchParams.get('state')}` };
+    const ev = (id: string) => ({ id, summary: id, start: { dateTime: '2026-10-28T10:00:00Z' }, end: { dateTime: '2026-10-28T11:00:00Z' } });
+    const fetch = vi.fn(async (u: string, _i?: RequestInit) => {
+      const t = new URL(u).searchParams.get('pageToken');
+      return new Response(JSON.stringify(t === null ? { items: [ev('a')], nextPageToken: 'p2' } : { items: [ev('b')] }), { status: 200 });
+    });
+    const events = await listEvents(undefined, NOW, { identity, fetch: fetch as unknown as typeof globalThis.fetch, clientId: 'x' }, NOW + 1000, NOW - 1000);
+    expect(events.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(fetch.mock.calls[1]![0]).toContain('pageToken=p2');
+  });
 });

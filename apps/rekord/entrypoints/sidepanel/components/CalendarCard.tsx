@@ -40,6 +40,8 @@ export interface MissedData {
   /** Picker: calendar meetings of the last 7 days with no meeting, newest first. */
   recent: CalendarEvent[];
   dismiss: (eventId: string) => Promise<void>;
+  /** Reloads from the cache, e.g. after a catch-up is saved. */
+  reload: () => void;
 }
 
 /** Missed calendar meetings from the cached events (refreshed by the panel), kept fresh as the cache or dismissals change. */
@@ -52,23 +54,24 @@ export function useMissedMeetings(): MissedData {
     const missed = settings.missedMeetingCard ? findMissed(events, meetings, dismissed, now).map((event) => ({ event, dismissed: false })) : [];
     return { missed, recent: recentForPicker(events, meetings, now) };
   }, []);
+  const alive = useRef(true);
+  const run = useCallback(() => {
+    load().then((d) => { if (alive.current) setData(d); }).catch((error) => console.error('Rekord: could not load missed meetings', error));
+  }, [load]);
   useEffect(() => {
-    let alive = true;
-    const run = () => {
-      load().then((d) => { if (alive) setData(d); }).catch((error) => console.error('Rekord: could not load missed meetings', error));
-    };
+    alive.current = true;
     run();
     const onChange = (changes: Record<string, unknown>, area: string) => {
       if (area === 'local' && (EVENTS_KEY in changes || DISMISSED_KEY in changes || 'settings' in changes)) run();
     };
     browser.storage.onChanged.addListener(onChange);
-    return () => { alive = false; browser.storage.onChanged.removeListener(onChange); };
-  }, [load]);
+    return () => { alive.current = false; browser.storage.onChanged.removeListener(onChange); };
+  }, [run]);
   const dismiss = useCallback(async (eventId: string) => {
     setData((d) => ({ ...d, missed: d.missed.filter((m) => m.event.id !== eventId) }));
     await dismissMissed(eventId);
   }, []);
-  return { ...data, dismiss };
+  return { ...data, dismiss, reload: run };
 }
 
 const s = {

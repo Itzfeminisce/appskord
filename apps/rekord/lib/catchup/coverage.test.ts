@@ -25,6 +25,12 @@ describe('cover', () => {
     expect(talkingAbout([])).toBeUndefined();
   });
 
+  it('does not read "wasn\'t there" as who was there', () => {
+    expect(speaksTo('who', "Priya wasn't there")).toBe(false);
+    expect(speaksTo('who', 'They weren’t there')).toBe(false);
+    expect(speaksTo('who', 'Priya was there')).toBe(true);
+  });
+
   it('matches cue words, not passing mentions', () => {
     expect(speaksTo('promised', 'She’ll send the numbers by Friday')).toBe(true);
     expect(speaksTo('promised', 'Then we went through the timeline for the pilot.')).toBe(false);

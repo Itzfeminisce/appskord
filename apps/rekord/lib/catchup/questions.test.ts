@@ -18,6 +18,17 @@ describe('findGaps', () => {
     expect(gaps.map((g) => g.about)).toEqual(['owner', 'name']);
   });
 
+  it('matches an attendee first name as a whole word', () => {
+    const items: DraftItem[] = [{ kind: 'decision', text: 'Ship the same build' }];
+    expect(findGaps(items, ['Sam Lee']).map((g) => g.line)).toEqual(['Sam Lee was there but nothing is on them']);
+    expect(findGaps([{ kind: 'decision', text: 'Sam owns the build' }], ['Sam Lee'])).toEqual([]);
+  });
+
+  it('does not flag a decision just for containing "or"', () => {
+    expect(findGaps([{ kind: 'decision', text: 'Use Postgres or nothing else' }])).toEqual([]);
+    expect(findGaps([{ kind: 'decision', text: 'Probably Postgres' }]).map((g) => g.about)).toEqual(['outcome']);
+  });
+
   it('has nothing to ask about a complete draft', () => {
     expect(buildQuestionsPrompt({ title: 'T', date: '2026-11-02', items: [draft[1]!] })).toBeUndefined();
   });

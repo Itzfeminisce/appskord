@@ -13,6 +13,7 @@ export interface Gap { about: CatchupQuestion['about']; line: string }
 
 const UNNAMED = /^(?:someone|somebody|they|them|he|she|him|her|others|the team|their team|a guy|a person|someone from .+|their .+|the .+ (?:guy|person|lead|team))$/i;
 const isMe = (name?: string) => !!name && /^(?:you|me|i)$/i.test(name.trim());
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const clip = (s: string) => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT - 1)}…` : s);
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
@@ -28,13 +29,13 @@ export function findGaps(items: readonly DraftItem[], attendees: readonly string
       if (i.to && UNNAMED.test(i.to.trim())) gaps.push({ about: 'name', line: `Promise owed to someone not named ("${i.to.trim()}"): "${text}"` });
     } else if (i.kind === 'question') {
       gaps.push({ about: 'outcome', line: `Open question with no outcome: "${text}"` });
-    } else if (i.kind === 'decision' && /\b(?:maybe|might|probably|possibly|tbd|or)\b/i.test(i.text)) {
+    } else if (i.kind === 'decision' && /\b(?:maybe|might|probably|possibly|tbd)\b/i.test(i.text)) {
       gaps.push({ about: 'outcome', line: `Decision with no clear outcome: "${text}"` });
     }
   }
   const named = items.flatMap((i) => [i.owner, i.to, i.text]).filter(Boolean).join(' ').toLowerCase();
   for (const a of attendees) {
-    if (a.trim() && !named.includes(firstName(a).toLowerCase())) gaps.push({ about: 'owner', line: `${a.trim()} was there but nothing is on them` });
+    if (a.trim() && !new RegExp(`\\b${escapeRe(firstName(a))}\\b`, 'i').test(named)) gaps.push({ about: 'owner', line: `${a.trim()} was there but nothing is on them` });
   }
   return gaps.slice(0, MAX_GAPS);
 }

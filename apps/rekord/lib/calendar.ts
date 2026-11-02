@@ -88,6 +88,8 @@ export function listWindow(now: number): { timeMin: number; timeMax: number } {
   return { timeMin: now - LOOKBACK_MS, timeMax: end.getTime() };
 }
 
+const MAX_PAGES = 4;
+
 /** Lists today's events (from 15 minutes ago, or from `from`) for the calendar, or until `until`. Throws GoogleError ('auth' = access lost). */
 export async function listEvents(calendarId: string | undefined, now: number, deps: GoogleDeps = {}, until?: number, from?: number): Promise<CalendarEvent[]> {
   const { timeMin: soon, timeMax: endOfDay } = listWindow(now);
@@ -102,9 +104,16 @@ export async function listEvents(calendarId: string | undefined, now: number, de
     maxResults: from === undefined ? '50' : '250',
   });
   const id = encodeURIComponent(calendarId || 'primary');
-  const res = await googleFetch(`https://www.googleapis.com/calendar/v3/calendars/${id}/events?${q}`, [SCOPES.calendar], deps);
-  const body = (await res.json()) as { items?: RawEvent[] };
-  return (body.items ?? [])
+  const items: RawEvent[] = [];
+  // Follow nextPageToken a few pages so a long window isn't cut at maxResults.
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await googleFetch(`https://www.googleapis.com/calendar/v3/calendars/${id}/events?${q}`, [SCOPES.calendar], deps);
+    const body = (await res.json()) as { items?: RawEvent[]; nextPageToken?: string };
+    items.push(...(body.items ?? []));
+    if (!body.nextPageToken) break;
+    q.set('pageToken', body.nextPageToken);
+  }
+  return items
     .filter((e) => !e.attendees?.some((a) => a.self && a.responseStatus === 'declined'))
     .map(toCalendarEvent)
     .filter((e): e is CalendarEvent => !!e);
