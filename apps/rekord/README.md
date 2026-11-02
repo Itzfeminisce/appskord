@@ -19,6 +19,12 @@ Rekord records your meetings, transcribes them and writes the notes for you.
 - You can export a meeting as Markdown or PDF.
 - You can share a meeting to Google Docs or Notion.
 - Google Calendar names your meetings.
+- Rekord remembers across meetings: promises, decisions, open questions and people, each with the quote it came from.
+- Open loops is the home screen: what you owe, what is owed to you, and what looks done.
+- A brief before each calendar meeting, a suggested agenda, and a weekly look back on Fridays.
+- During a meeting: recall cards, agenda tracking, "What did I miss?" and off the record.
+- After a meeting: a follow-up email opened in Gmail, and action items sent to Google Tasks, Notion or Linear.
+- You can redact part of a meeting, see what left your computer, keep a Rekord folder of Markdown files, and move Rekord to a new computer.
 
 ## Screenshots
 
@@ -106,9 +112,13 @@ npm run compile
 ## Privacy
 
 - Your meetings, transcripts and settings stay in your browser (IndexedDB).
-- Your data leaves your computer in two cases only:
-  - Rekord sends audio and text to the AI services you chose.
-  - You share a meeting.
+- Your memory (promises, decisions, people) and search vectors also stay in your browser.
+- Your data leaves your computer only in these cases:
+  - Rekord sends audio and text to the AI services you chose. Building memory sends transcript text only.
+  - You share a meeting, open a follow-up in Gmail, or send action items to Google Tasks, Notion or Linear.
+  - The search model downloads once from huggingface.co if you agree. Your meetings never go there.
+- "What left this computer" lists every outside call per meeting.
+- Off the record spans are never transcribed, sent or remembered.
 - Your API keys are kept in session storage.
 - Session storage is cleared when you close the browser.
 - Rekord has no tracking or analytics.
