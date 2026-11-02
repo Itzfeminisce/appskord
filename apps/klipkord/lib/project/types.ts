@@ -83,7 +83,7 @@ export interface RenderPlan {
   out: number; rec: number | null;            // null: gap or past the end
   screen?: { source: string; t: number; crop: Box; dest: Box; radius: number; shadow: number };
   background: Look['background'];
-  camera?: { source: string; t: number; dest: Box; shape: Camera['shape']; mirror: boolean; blur: Camera['blur']; alpha: number; round?: number };   // round: 0 rounded..1 round, set mid smooth switch
+  camera?: { source: string; t: number; dest: Box; shape: Camera['shape']; mirror: boolean; blur: Camera['blur']; alpha: number; round?: number; edge?: boolean };   // round: 0 rounded..1 round, set mid smooth switch; edge: square, no ring or shadow
   cursor?: { x: number; y: number; size: number; click: number; ring?: { x: number; y: number } };   // click: 0..1 ring progress; ring: where it is drawn
   overlays: Overlay[]; cards: Card[]; captions?: { words: { text: string; on: boolean }[]; style: CaptionStyle };
   media?: { source: string; t: number };

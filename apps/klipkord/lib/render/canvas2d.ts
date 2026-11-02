@@ -170,12 +170,12 @@ export function canvas2dBackend(ctx: Ctx2D, makeCanvas: MakeCanvas = offscreen):
     if (!cam) return;
     toCanvas(c.dest, scene.scale, dest);
     const k = scene.scale.x;
-    const r = cameraRadius(c.shape, dest, c.round);
-    const ring = cameraRing(c.dest) * k;
+    const r = c.edge ? 0 : cameraRadius(c.shape, dest, c.round);
+    const ring = c.edge ? 0 : cameraRing(c.dest) * k;
     ctx.save();
     ctx.globalAlpha = c.alpha;
     Object.assign(area, { x: dest.x - ring, y: dest.y - ring, w: dest.w + 2 * ring, h: dest.h + 2 * ring });
-    shadowed(area, r + ring, Math.min(60, Math.min(c.dest.w, c.dest.h) * 0.28), k);
+    if (!c.edge) shadowed(area, r + ring, Math.min(60, Math.min(c.dest.w, c.dest.h) * 0.28), k);
     if (ring > 0) {
       ctx.fillStyle = '#FFFFFF';
       roundRect(ctx, area.x, area.y, area.w, area.h, r + ring);

@@ -106,25 +106,33 @@ export function LayoutPanel(p: SlotProps) {
   const patch = (next: Partial<Camera>) => p.edit((q) => setCamera(q, { patch: next }));
   const shown = size ?? camera.size;
 
+  // A tall cut leads with its shape and fit, as in AutoVertical; "Screen over camera" places the camera itself.
+  const tall = cut.shape !== '16:9';
+  const stacked = tall && cut.fit === 'stack';
+  const shapeSection = <ShapeSection shape={cut.shape} fit={cut.fit} readOnly={readOnly} edit={p.edit} />;
+
   return (
     <>
+      {tall && shapeSection}
+      {!stacked && <>
       <Heading aside={<span style={{ fontFamily: MONO, fontWeight: 400, color: active ? C.accentText : C.muted }}>{`from ${clock(from)}`}</span>}>Camera layout</Heading>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         {KINDS.map((k) => <Tile key={k} kind={k} on={!off && k === layout} disabled={lock} onPick={() => p.edit((q) => pickLayout(q, out, k))} />)}
       </div>
+      </>}
       {off ? (
-        <Help>{kind === 'baked' ? COPY.baked : HINTS.noCamera}</Help>
+        !stacked && <Help>{kind === 'baked' ? COPY.baked : HINTS.noCamera}</Help>
       ) : (
         <>
-          <div style={{ marginTop: -4 }}><Help>{active && before ? COPY.switched(before, from, active.layout) : COPY.help}</Help></div>
-          {active && (
+          {!stacked && <div style={{ marginTop: -4 }}><Help>{active && before ? COPY.switched(before, from, active.layout) : COPY.help}</Help></div>}
+          {active && !stacked && (
             <>
               <Heading>Switch</Heading>
               <Seg label="Switch" options={SWITCHES} value={active.switch}
                 onChange={(v) => !readOnly && p.edit((q) => updateLayer(q, { kind: 'layouts', id: active.id, patch: { switch: v } }))} />
             </>
           )}
-          {layout === 'bubble' && (
+          {layout === 'bubble' && !stacked && (
             <>
               <Heading>Bubble</Heading>
               <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
@@ -152,7 +160,7 @@ export function LayoutPanel(p: SlotProps) {
           <Switch label="Mirror" on={camera.mirror} disabled={readOnly} onChange={(mirror) => patch({ mirror })} />
         </>
       )}
-      <ShapeSection shape={cut.shape} fit={cut.fit} readOnly={readOnly} edit={p.edit} />
+      {!tall && shapeSection}
     </>
   );
 }

@@ -4,6 +4,7 @@ import type { Look, Project, Shape } from '@/lib/project/types';
 import { FRAME } from '@/lib/render/plan';
 import { GRADIENTS } from '@/lib/render/layers/background';
 import type { SlotProps } from '../components/slots';
+import { AddMedia } from '../dialogs/AddMedia';
 import { Heading, Seg, Slider, Switch } from '../timeline/controls';
 import { C } from '../ui';
 
@@ -56,7 +57,9 @@ const swatch = (on: boolean, background: string): CSSProperties => ({
 });
 
 /** The Look tab (FrameLook): background, the frame around the screen, and the cursor of tab recordings. */
-export function LookPanel({ project, cut, readOnly, edit }: SlotProps) {
+export function LookPanel(p: SlotProps) {
+  const { project, cut, readOnly, edit } = p;
+  const [adding, setAdding] = useState(false);
   const look = cut.look;
   const bg = look.background;
   const [draft, setDraft] = useState<Partial<Pick<Look, 'padding' | 'corners' | 'shadow'>>>({});
@@ -82,11 +85,11 @@ export function LookPanel({ project, cut, readOnly, edit }: SlotProps) {
     : bg.kind === 'gradient' ? Object.keys(GRADIENTS).map((id) => ({ value: id, css: gradientCss(id) }))
     : bg.kind === 'image' ? images.map((s) => ({ value: s.id, css: C.raised, name: s.name }))
     : [];
-  const kinds = images.length ? KINDS : KINDS.filter((k) => k.value !== 'image' || bg.kind === 'image');
   return (
     <>
       <Heading>Background</Heading>
-      <Seg label="Background" options={kinds} value={bg.kind} disabled={readOnly} onChange={(k) => setBackground(firstOf(project, k, bg))} />
+      <Seg label="Background" options={KINDS} value={bg.kind} disabled={readOnly}
+        onChange={(k) => (k === 'image' && !images.length ? !readOnly && setAdding(true) : setBackground(firstOf(project, k, bg)))} />
       {swatches.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {swatches.map((s, i) => (
@@ -108,6 +111,7 @@ export function LookPanel({ project, cut, readOnly, edit }: SlotProps) {
       <Seg label="Cursor size" options={SIZES} value={sizeOf(look.cursor.size)} disabled={readOnly} onChange={(s) => setCursor({ size: CURSOR_SIZE[s] })} />
       <Switch label="Smooth the movement" on={look.cursor.smooth} disabled={readOnly} onChange={(smooth) => setCursor({ smooth })} />
       <Switch label="Show clicks" sub="A soft ring on every click." on={look.cursor.clicks} disabled={readOnly} onChange={(clicks) => setCursor({ clicks })} />
+      {adding && <AddMedia p={p} start="computer" onClose={() => setAdding(false)} />}
     </>
   );
 }

@@ -28,6 +28,7 @@ import { buildRows, type Block, type Row } from './rows';
 import { Ruler } from './Ruler';
 import { openDialog, resetTimeline, select, setTimeline, useTimeline, type Selected } from './store';
 import { Toolbar } from './Toolbar';
+import { useVoiceover } from '../voiceover/state';
 import { ROW_PX, Track, type Part } from './Tracks';
 
 
@@ -139,7 +140,12 @@ export function Timeline({ io = browserIO, ...p }: SlotProps & { io?: TimelineIO
     words, clicks,
     markers: [...project.chapters, ...recording.markers.map((m) => ({ at: m.at, title: MARKER_LABEL[m.kind] }))],
   }), [words, clicks, project.chapters, recording.markers]);
-  const rows = useMemo(() => buildRows(project, cut, clipSpans, view), [project, cut, clipSpans, view]);
+  const vo = useVoiceover();
+  const liveFrom = vo.phase === 'recording' ? vo.rangeFrom : null;
+  const rows = useMemo(
+    () => buildRows(project, cut, clipSpans, view, liveFrom === null ? undefined : { from: liveFrom, to: liveFrom + vo.elapsed, label: `Recording ${clock(vo.elapsed)}` }),
+    [project, cut, clipSpans, view, liveFrom, vo.elapsed],
+  );
   const selectedIds = useMemo(() => new Set(tl.selected?.kind === 'chapters' ? [] : tl.selected?.ids ?? []), [tl.selected]);
   const recMax = useMemo(() => recordingLength(project.sources), [project.sources]);
 

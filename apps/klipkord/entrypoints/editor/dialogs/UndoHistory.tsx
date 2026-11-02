@@ -33,10 +33,10 @@ export function UndoHistory({ p, onClose, now = Date.now() }: { p: SlotProps; on
   useOutside(useCallback(() => ref.current, []), onClose);
   const rows = historyRows(p.project, p.recording.createdAt, now);
   const undoRect = document.querySelector('[aria-label="Undo (Ctrl+Z)"]')?.getBoundingClientRect();
-  const right = undoRect ? Math.max(8, window.innerWidth - undoRect.right - 120) : 300;
+  const right = undoRect ? Math.max(8, window.innerWidth - undoRect.right + 3) : 300;
   return (
     <div ref={ref} role="dialog" aria-label="Undo history" style={{ ...floating, position: 'fixed', right, top: 44 }}>
-      <div style={{ padding: 8, width: 320, display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 480, overflowY: 'auto' }}>
+      <div style={{ padding: 8, width: 336, display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 480, overflowY: 'auto' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: C.muted, padding: '4px 10px' }}>{`History of “${p.cut.name}”`}</span>
         {rows.map((r) => (
           <button key={r.index} type="button" aria-current={r.state === 'current' ? 'step' : undefined} disabled={p.readOnly}

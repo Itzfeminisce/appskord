@@ -54,6 +54,10 @@ export function Seg<T extends string>({ options, value, onChange, label, disable
   );
 }
 
+/** The frames' slider look (style.css `kk-range`): the orange fill runs to `value`. */
+export const rangeFill = (value: number, min: number, max: number) =>
+  ({ '--fill': `${max > min ? ((value - min) / (max - min)) * 100 : 0}%` }) as CSSProperties;
+
 /** A labelled slider with its value in mono on the right; `onCommit` runs once when the drag ends (one Undo step). */
 export function Slider({ label, min, max, step, value, text, onInput, onCommit, disabled }: {
   label?: string; min: number; max: number; step: number; value: number; text: string; onInput?: (v: number) => void; onCommit: (v: number) => void; disabled?: boolean;
@@ -65,7 +69,7 @@ export function Slider({ label, min, max, step, value, text, onInput, onCommit, 
         onChange={(e) => onInput?.(Number(e.target.value))}
         onPointerUp={(e) => onCommit(Number((e.target as HTMLInputElement).value))}
         onKeyUp={(e) => onCommit(Number((e.target as HTMLInputElement).value))}
-        style={{ flexGrow: 1, accentColor: C.accentText, minWidth: 0 }} />
+        className="kk-range" style={{ flexGrow: 1, minWidth: 0, ...rangeFill(value, min, max) }} />
       <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.text, width: 40, textAlign: 'right' }}>{text}</span>
     </div>
   );
