@@ -62,7 +62,7 @@ function fakeDeps({ media = {}, session = 'editing', draws = true }: Setup = {})
   const deps: EditorDeps = {
     loadMedia: async () => ({ blobs: new Map(), missing: [], ...media }),
     startPreview: vi.fn(() => client),
-    audio: () => null,
+    mix: () => null,
     joinSession: () => sessionObj,
     openPanel: (s) => void panels.push(s),
     useGroq: vi.fn(),

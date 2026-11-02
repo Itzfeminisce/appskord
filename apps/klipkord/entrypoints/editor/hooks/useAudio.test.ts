@@ -1,50 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { blankCut } from '@/lib/project/cuts';
-import type { Source } from '@/lib/project/types';
-import { audioTarget, needsSeek } from './useAudio';
+import type { MixPlan } from '@/lib/audio/mix';
+import { DRIFT_MS, measureKey, moved } from './useAudio';
 
-const mic: Source = { id: 'mic', kind: 'mic', file: 'voice', mime: 'audio/webm', offset: 500, duration: 20_000, video: false, audio: true };
-const cut = blankCut({
-  name: 'Full', made: 'full', clips: [
-    { id: 'a', in: 1000, out: 3000, speed: 1 },
-    { id: 'gap', in: 0, out: 1000, speed: 1, gap: true },
-    { id: 'b', in: 8000, out: 12_000, speed: 2, naturalVoice: false },
-  ],
-});
+const plan: MixPlan = { length: 1000, parts: [], music: null, denoise: false, level: false };
 
-describe('preview audio follows the cut', () => {
-  it('plays the source at the clip time, minus where the source starts', () => {
-    expect(audioTarget(cut, mic, 500)).toEqual({ t: 1, rate: 1, naturalVoice: true, clip: 'a' });
+describe('preview sound follows the playhead', () => {
+  it('restarts only when the playhead jumps, not while it runs on with the clock', () => {
+    const started = { out: 1000, at: 50_000 };
+    expect(moved(started, 3000, 52_000)).toBe(false);
+    expect(moved(started, 3000 + DRIFT_MS + 1, 52_000)).toBe(true);
+    expect(moved(started, 0, 52_000)).toBe(true);
   });
 
-  it('is silent in a gap and past the end', () => {
-    expect(audioTarget(cut, mic, 2500)).toBeNull();
-    expect(audioTarget(cut, mic, 60_000)).toBeNull();
-  });
-
-  it('jumps over cut-away time and keeps the clip speed', () => {
-    // Clip b starts at output 3000 ms: 2000 of clip a, then 1000 of gap.
-    expect(audioTarget(cut, mic, 3000 + 1000)).toEqual({ t: 9.5, rate: 2, naturalVoice: false, clip: 'b' });
-  });
-
-  it('seeks when the playhead crosses into the next clip, even over a cut shorter than the drift allowance', () => {
-    const short = blankCut({ name: 'Full', made: 'full', clips: [
-      { id: 'one', in: 0, out: 5000, speed: 1 },
-      { id: 'two', in: 5200, out: 10_000, speed: 1 },
-    ] });
-    const voice = { ...mic, offset: 0 };
-    const before = audioTarget(short, voice, 4990)!;
-    const after = audioTarget(short, voice, 5010)!;
-    expect(after).toEqual({ t: 5.21, rate: 1, naturalVoice: true, clip: 'two' });
-    // The element ran on to 5.01 s: inside the drift allowance, yet 200 ms of cut-away sound.
-    expect(needsSeek(before, after, 5.01)).toBe(true);
-    expect(needsSeek(after, audioTarget(short, voice, 5100)!, 5.3)).toBe(false);
-  });
-
-  it('seeks when the speed changes and when sound starts', () => {
-    const at = audioTarget(cut, mic, 500)!;
-    expect(needsSeek({ ...at, rate: 2 }, at, at.t)).toBe(true);
-    expect(needsSeek(undefined, at, at.t)).toBe(true);
-    expect(needsSeek(at, at, at.t + 0.3)).toBe(true);
+  it('measures again for changes to the sound, not for the level switches', () => {
+    expect(measureKey({ ...plan, level: true, denoise: true })).toBe(measureKey(plan));
+    expect(measureKey({ ...plan, length: 2000 })).not.toBe(measureKey(plan));
   });
 });

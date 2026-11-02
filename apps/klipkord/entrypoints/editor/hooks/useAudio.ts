@@ -1,68 +1,96 @@
-import { useEffect, useRef } from 'react';
-import { spanAt } from '@/lib/project/time';
-import type { Cut, Project, Source } from '@/lib/project/types';
-import type { AudioOut, EditorDeps } from '../deps';
-import { audioSources, muteTrack } from '../media';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import type { LiveMix } from '@/lib/audio/live';
+import { mixPlan, type MixPlan } from '@/lib/audio/mix';
+import type { Cut, Project } from '@/lib/project/types';
+import type { Word } from '@/lib/types';
+import type { EditorDeps } from '../deps';
 
-/** Off by more than this, an element seeks back to the playhead; small drift is left alone to avoid clicks. */
-export const DRIFT_S = 0.25;
+/** Off by more than this, the playhead was moved: the sound restarts there. */
+export const DRIFT_MS = 250;
+/** Edits settle this long before the mix is measured again. */
+export const MEASURE_AFTER_MS = 800;
 
-export interface AudioTarget { t: number; rate: number; naturalVoice: boolean; clip: string }
+/** What the loudness meter shows: the mix's loudness, measured while the Audio tab or "Even out the loudness" needs it. */
+let meter: { key: string; lufs: number | null } = { key: '', lufs: null };
+let wanted = 0;
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((l) => l());
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => listeners.delete(l);
+};
 
-/** Where one source's sound should be at output time `out`, or null when it is silent there. */
-export function audioTarget(cut: Cut, source: Source, out: number): AudioTarget | null {
-  const span = spanAt(cut, out);
-  if (!span || span.clip.gap) return null;
-  const rec = span.clip.in + (out - span.start) * span.clip.speed;
-  const t = (rec - source.offset) / 1000;
-  if (t < 0 || t * 1000 >= source.duration) return null;
-  return { t, rate: span.clip.speed, naturalVoice: span.clip.naturalVoice !== false, clip: span.clip.id };
-}
-
-/** A new clip or speed under the playhead always seeks, so even a short cut is never heard; otherwise only real drift does. */
-export function needsSeek(last: AudioTarget | undefined, target: AudioTarget, currentTime: number): boolean {
-  return !last || last.clip !== target.clip || last.rate !== target.rate || Math.abs(currentTime - target.t) > DRIFT_S;
-}
-
-/** Plays the mic and tab sound in step with the playhead, following the cut's clips. T12's mix replaces this. */
-export function useAudio(project: Project | undefined, cut: Cut | undefined, blobs: Map<string, Blob> | undefined,
-  out: number, playing: boolean, audio: EditorDeps['audio']): void {
-  const outs = useRef(new Map<string, { source: Source; out: AudioOut; last?: AudioTarget }>());
-
+/** The measured loudness in LUFS, or null until it is known; measuring runs while a caller is mounted. */
+export function useLoudness(): number | null {
   useEffect(() => {
-    if (!project || !blobs) return;
-    const made: { dispose(): void }[] = [];
-    for (const source of audioSources(project)) {
-      const blob = blobs.get(source.id);
-      const el = blob && audio(blob);
-      if (!el) continue;
-      made.push(el);
-      outs.current.set(source.id, { source, out: el.out });
-    }
-    const all = outs.current;
+    wanted++;
+    notify();
     return () => {
-      made.forEach((m) => m.dispose());
-      all.clear();
+      wanted--;
+      notify();
     };
-    // Sources only change when the project gains media, not on every edit.
-  }, [project?.sources, blobs, audio]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
+  return useSyncExternalStore(subscribe, () => meter.lufs, () => meter.lufs);
+}
+
+/** The plan's measure key: what changes its loudness before the level gain. */
+export const measureKey = (plan: MixPlan): string => JSON.stringify({ ...plan, level: false, denoise: false });
+
+/** True when the playhead is no longer where the sound started plus the time since: a seek. */
+export const moved = (started: { out: number; at: number }, out: number, now: number): boolean =>
+  Math.abs(out - (started.out + (now - started.at))) > DRIFT_MS;
+
+/** Plays the cut's live mix (voice, tab, takes, media, music) in step with the playhead, through lib/audio. */
+export function useAudio(project: Project | undefined, cut: Cut | undefined, words: Word[], blobs: Map<string, Blob> | undefined,
+  out: number, playing: boolean, make: EditorDeps['mix']): void {
+  const engine = useMemo<LiveMix | null>(() => (blobs ? make(blobs) : null), [blobs, make]);
+  useEffect(() => () => engine?.dispose(), [engine]);
+
+  // One plan per real change: zoom or caption edits leave the sound alone.
+  const built = useMemo(() => (project && cut ? mixPlan(project, cut, words) : null), [project?.sources, cut, words]); // eslint-disable-line react-hooks/exhaustive-deps
+  const key = built ? JSON.stringify(built) : '';
+  const plan = useMemo(() => built, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const outRef = useRef(out);
+  outRef.current = out;
+  const started = useRef<{ out: number; at: number } | null>(null);
+  const [restart, setRestart] = useState(0);
+  const want = useSyncExternalStore(subscribe, () => wanted > 0, () => false);
+  const measured = useSyncExternalStore(subscribe, () => meter, () => meter);
+  const lufsRef = useRef(measured.lufs);
+  lufsRef.current = measured.lufs;
+  // With "Even out the loudness" on, the sound restarts once its level gain is known.
+  const levelKnown = !plan?.level || measured.key === measureKey(plan);
 
   useEffect(() => {
-    if (!cut) return;
-    for (const entry of outs.current.values()) {
-      const { source, out: el, last } = entry;
-      const target = playing ? audioTarget(cut, source, out) : null;
-      const track = cut.tracks[muteTrack(source)];
-      entry.last = target && !track?.muted && !track?.hidden ? target : undefined;
-      if (!target || !entry.last) {
-        if (!el.paused) el.pause();
-        continue;
-      }
-      el.volume = Math.max(0, Math.min(1, source.kind === 'tab' ? cut.audio.tabVolume : cut.audio.voiceVolume));
-      if (el.playbackRate !== target.rate) el.playbackRate = target.rate;
-      el.preservesPitch = target.naturalVoice;
-      if (needsSeek(last, target, el.currentTime)) el.currentTime = target.t;
-      if (el.paused) el.play().catch((error: unknown) => console.error('Klipkord: could not play audio', error));
+    if (!engine || !plan || !playing) {
+      started.current = null;
+      return;
     }
-  }, [cut, out, playing]);
+    engine.play(plan, () => outRef.current, lufsRef.current);
+    started.current = { out: outRef.current, at: performance.now() };
+    return () => engine.stop();
+  }, [engine, plan, playing, restart, levelKnown]);
+
+  useEffect(() => {
+    if (playing && started.current && moved(started.current, out, performance.now())) setRestart((k) => k + 1);
+  }, [out, playing]);
+
+  useEffect(() => {
+    if (!engine || !plan || !(want || plan.level)) return;
+    const k = measureKey(plan);
+    if (meter.key === k) return;
+    let gone = false;
+    const timer = setTimeout(() => {
+      engine.measure(plan, () => gone).then((value) => {
+        if (gone) return;
+        meter = { key: k, lufs: value };
+        notify();
+      }, (error: unknown) => console.error('Klipkord: could not measure the loudness', error));
+    }, MEASURE_AFTER_MS);
+    return () => {
+      gone = true;
+      clearTimeout(timer);
+    };
+  }, [engine, plan, want]);
 }
