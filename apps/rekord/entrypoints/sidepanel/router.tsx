@@ -29,7 +29,8 @@ export type ScreenName =
   | 'review' | 'reviewEdit'
   | 'redact' | 'ledger'
   | 'promise' | 'looksDone' | 'nudge' | 'decisions'
-  | 'settingsMemory' | 'folder' | 'move'; // v4 settings: memory, Rekord folder, moving computers
+  | 'settingsMemory' | 'folder' | 'move' // v4 settings: memory, Rekord folder, moving computers
+  | 'followUp' | 'sendTasks' | 'linearConnect'; // v4: after the meeting
 
 /** Route params. `meetingId` for meeting screens; `message` for the error screen. */
 export interface RouteParams { meetingId?: string; itemId?: string; message?: string; atMs?: number; endMs?: number; section?: 'transcription' | 'assistant'; personId?: string; otherId?: string }

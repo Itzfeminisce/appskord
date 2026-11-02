@@ -14,6 +14,9 @@ export const SCOPES = {
   docs: 'https://www.googleapis.com/auth/drive.file',
 } as const;
 
+// Asked only when the user first sends to Google Tasks, never at Google connect.
+export const TASKS_SCOPE = 'https://www.googleapis.com/auth/tasks';
+
 export type GoogleScope = keyof typeof SCOPES;
 export type GoogleSettings = Settings['google'];
 
@@ -59,6 +62,11 @@ const clientIdOf = (deps: GoogleDeps): string => deps.clientId ?? GOOGLE_CLIENT_
 
 async function storedToken(): Promise<GoogleToken | undefined> {
   return (await browser.storage.session.get(TOKEN_KEY))[TOKEN_KEY] as GoogleToken | undefined;
+}
+
+/** Scopes the stored token was granted; empty without one. */
+export async function grantedScopes(): Promise<string[]> {
+  return (await storedToken())?.scopes ?? [];
 }
 
 const forgetToken = (): Promise<void> => browser.storage.session.remove(TOKEN_KEY);

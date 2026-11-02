@@ -29,6 +29,11 @@ async function seedVectors() {
     })));
   }
 }
+import { followUpDeps } from '../screens/v4/FollowUp';
+import { sendTasksSession } from '../screens/v4/SendTasks';
+import { linearConnectDeps } from '../screens/v4/LinearConnect';
+import { putItem } from '@/lib/memory/store';
+import { TASKS_ON_KEY } from '@/lib/services/gtasks';
 
 export interface DevFrame {
   screen: ScreenName;
@@ -109,6 +114,33 @@ async function redactWorld() {
   await db.put('vectors', { id: 'v-redact', meetingId: M.sarah3, atMs: mmss(21, 0), endMs: mmss(21, 40), text: 'sample', v: new Int8Array(4), scale: 1 });
   await db.put('recordings', { id: 'r-redact', meetingId: M.sarah3, seq: 0, blob: new Blob(['sample'], { type: 'audio/webm' }), mimeType: 'audio/webm' });
   await setMemory({ folder: true });
+}
+
+const noRecord = async () => ({ id: '', service: 'groq' as const, what: '', count: 0, firstAt: 0, lastAt: 0 });
+const json = (body: unknown) => new Response(JSON.stringify(body));
+
+/** The AI's draft in the frame: the plain draft it was asked to reword, unchanged. */
+function echoDraft() {
+  followUpDeps.current = {
+    config: { settings: DEFAULT_SETTINGS, keys: { GROQ_API_KEY: 'gsk_test' } },
+    record: noRecord,
+    fetch: async (_url, init) => {
+      const prompt = (JSON.parse(String(init?.body)) as { messages: { content: string }[] }).messages[1]!.content;
+      const draft = prompt.split('exactly:\n\n')[1]!.split('\n\nMeeting summary')[0]!;
+      return json({ choices: [{ message: { content: draft } }] });
+    },
+  };
+}
+
+/** After "Send 2 to Google Tasks": both of your promises are in My Tasks. */
+async function sentTwo() {
+  await afterOneOnOne();
+  await browser.storage.local.set({ [TASKS_ON_KEY]: true });
+  for (const id of ['n-deck', 'n-demo']) {
+    const item = (await getItem(id))!;
+    await putItem({ ...item, sentTo: [{ service: 'gtasks', url: 'https://tasks.google.com/', at: world.now() }] });
+  }
+  sendTasksSession.done = { meetingId: M.sarah3, service: 'gtasks', target: 'My Tasks', sentIds: ['n-deck', 'n-demo'] };
 }
 
 export const DEV_FRAMES: Record<string, DevFrame> = {
@@ -201,6 +233,29 @@ export const DEV_FRAMES: Record<string, DevFrame> = {
       // A kept recording, so the file reads "with audio" at about the frame's size.
       await putRecordingPart({ id: 'rec-sample', meetingId: M.sync2, seq: 0, mimeType: 'audio/webm', blob: new Blob([new Uint8Array(30.5 * MB)], { type: 'audio/webm' }) });
       moveDev.chosen = { name: 'rekord-2026-10-30.rekord', preview: { meetings: 312, people: 48, already: 6 } };
+    },
+  },
+  V4FollowUp: {
+    screen: 'followUp', params: { meetingId: M.sarah3 }, moment: 'after',
+    setup: async () => { await afterOneOnOne(); echoDraft(); },
+  },
+  V4SendTasks: {
+    screen: 'sendTasks', params: { meetingId: M.sarah3 }, moment: 'after',
+    // First time: Google Tasks is not turned on yet.
+    setup: async () => { await afterOneOnOne(); await browser.storage.local.remove(TASKS_ON_KEY); },
+  },
+  V4SendTasksDone: { screen: 'sendTasks', params: { meetingId: M.sarah3 }, moment: 'after', setup: sentTwo },
+  V4LinearConnect: {
+    screen: 'linearConnect',
+    // LINEAR_API_KEY found in Penv Cloud, Linear already allowed: its one team, Product.
+    setup: async () => {
+      linearConnectDeps.current = {
+        loadKeys: async () => ({ LINEAR_API_KEY: 'lin_api_test' }),
+        penvKeys: async () => true,
+        hasHosts: async () => true,
+        record: noRecord,
+        fetch: async () => json({ data: { teams: { nodes: [{ id: 't-product', name: 'Product' }] } } }),
+      };
     },
   },
 };

@@ -36,7 +36,7 @@ export function checkRequest(name: string, key: string): KeyCheckRequest | null 
 export const penv = createPenv({
   appName: 'Rekord',
   clientId: 'rekord',
-  optionalKeys: [DEEPGRAM_KEY, 'NOTION_TOKEN'],
+  optionalKeys: [DEEPGRAM_KEY, 'NOTION_TOKEN', 'LINEAR_API_KEY'],
   keys: { kind: 'map', storageKey: 'apiKeys' },
   keyCheck: checkRequest,
   settings: getSettings,

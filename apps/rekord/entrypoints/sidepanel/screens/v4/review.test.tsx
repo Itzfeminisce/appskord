@@ -109,7 +109,7 @@ describe('review card and summary strip', () => {
     const text = view.host.textContent!;
     expect(text).toContain('Not saved to memory yet');
     expect(text).toContain('Your 2 promises, to Google Tasks');
-    expect(button(view.host, 'Draft follow-up emailWritten in your voice, for you to check')?.getAttribute('aria-disabled')).toBe('true');
+    expect(button(view.host, 'Draft follow-up emailWritten in your voice, for you to check')?.getAttribute('aria-disabled')).toBeNull();
     expect(view.host.querySelector('.sm-ledger')?.textContent).toBe('What left this computer');
     click(button(view.host, 'Review 7 things'));
     await settle();

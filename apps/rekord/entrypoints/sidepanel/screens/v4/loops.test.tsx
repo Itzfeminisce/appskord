@@ -124,11 +124,11 @@ describe('open loops screens', () => {
     expect(rows(view.host)).not.toContain('A short proposal');
   });
 
-  it('Send to Google Tasks waits for its screen; Edit opens', async () => {
+  it('Send to Google Tasks and Edit open their screens', async () => {
     const view = await mount(sidepanel, 'home');
     act(() => view.router.navigate('promise', { itemId: 'i-deck' }));
     await settle();
-    expect(button(view.host, 'Send to Google Tasks')?.getAttribute('aria-disabled')).toBe('true');
+    expect(button(view.host, 'Send to Google Tasks')?.getAttribute('aria-disabled')).toBeNull();
     expect(button(view.host, 'Edit')?.getAttribute('aria-disabled')).toBeNull();
   });
 

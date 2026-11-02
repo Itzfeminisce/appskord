@@ -35,6 +35,9 @@ import SettingsMemory from './screens/v4/SettingsMemory';
 import Folder from './screens/v4/Folder';
 import Move from './screens/v4/Move';
 import { flushFolder } from '@/lib/folder';
+import FollowUp from './screens/v4/FollowUp';
+import SendTasks from './screens/v4/SendTasks';
+import LinearConnect from './screens/v4/LinearConnect';
 import { Shell } from './components/v4/Shell';
 import Home from './screens/v4/Home';
 import PromiseScreen from './screens/v4/Promise';
@@ -99,6 +102,9 @@ export const SCREENS: Record<ScreenName, ComponentType> = {
   settingsMemory: SettingsMemory,
   folder: Folder,
   move: Move,
+  followUp: FollowUp,
+  sendTasks: SendTasks,
+  linearConnect: LinearConnect,
 };
 
 /** First screen: onboarding until the user has finished it, then Open loops. */
