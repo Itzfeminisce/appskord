@@ -14,6 +14,9 @@ Build the store zip with `pnpm zip:store`; it leaves `key` out of the manifest, 
   - Get a summary and action items when it ends.
   - Ask questions about one meeting, or across all of them.
   - Export as Markdown or PDF, or share to Google Docs or Notion.
+  - Rekord remembers promises, decisions, questions and people across meetings, each with the quote it came from.
+  - Open loops shows what you owe and what you're owed, with a brief before each meeting and a look back on Fridays.
+  - Send a follow-up in Gmail and action items to Google Tasks, Notion or Linear.
   - Meetings, transcripts and settings stay in your browser. No account, no server of its own.
   - Use Groq, OpenAI, Anthropic, OpenRouter, Deepgram or your own Ollama, with keys from Penv Cloud (https://penv.cloud) or your own.
   - Open source.
@@ -29,8 +32,10 @@ Record meetings and turn them into a transcript, summary and action items.
 - `offscreen`: keeps recording and transcribing while the panel is closed.
 - `activeTab`: lets the user's click on Rekord grant the meeting tab, so it can be recorded and named.
 - `storage`: keeps meetings, transcripts and settings on the user's computer.
-- `identity`: signs in to Penv Cloud to fetch the user's keys, and to Google when the user connects Docs or Calendar.
-- Optional host access (`penv.cloud`, Groq, OpenAI, OpenRouter, Anthropic, Deepgram, Notion, Google APIs, `localhost:11434`): asked only when the user turns that feature on; sends audio or text only to the service the user picked.
+- `identity`: signs in to Penv Cloud to fetch the user's keys, and to Google when the user connects Docs, Calendar or Tasks.
+- `alarms`: times the brief before a meeting, due-day reminders, the Friday look back and building memory from older meetings.
+- `notifications`: shows those briefs and reminders when the side panel is closed.
+- Optional host access (`penv.cloud`, Groq, OpenAI, OpenRouter, Anthropic, Deepgram, Notion, Google APIs, Google Tasks, Linear, Hugging Face, `localhost:11434`): asked only when the user turns that feature on; sends audio or text only to the service the user picked. Hugging Face only serves the search model download; nothing is sent to it.
 - Remote code: none is loaded.
 - Data use: disclose audio and transcript text, sent only to the services the user turns on; none sold; none used for unrelated purposes.
 
