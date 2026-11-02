@@ -45,7 +45,7 @@ export function drawBackground(ctx: Ctx, bg: Background, w: number, h: number, l
     ctx.fillRect(0, 0, w, h);
   }
   if (bg.kind === 'blobs') {
-    // Soft blobs have no detail, so they are painted once at quarter size and drawn scaled; drift moves the whole layer.
+    // Blobs are plain discs, so they are painted once at half size and drawn scaled; drift moves the whole layer.
     const layer = blobLayer(cache, colours, w, h, m);
     if (layer) ctx.drawImage(layer, -m + d.x, -m + d.y, w + m * 2, h + m * 2);
     else paintBlobs(ctx, cache, colours, w, h, 0, 0, d);
@@ -98,7 +98,7 @@ function ringOnPanel(ctx: Ctx, poly: [number, number][], colour: string, w: numb
   ctx.stroke();
 }
 
-const BLOB_SCALE = 0.25;
+const BLOB_SCALE = 0.5;
 
 function blobLayer(cache: MediaCache, colours: string[], w: number, h: number, m: number): OffscreenCanvas | undefined {
   if (typeof OffscreenCanvas === 'undefined') return undefined;
@@ -126,7 +126,7 @@ function paintBlobs(ctx: Ctx, cache: MediaCache, colours: string[], w: number, h
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
       // Stand-in contexts (tests, a headless measure pass) may return no gradient; the blob is skipped there.
       g?.addColorStop(0, withAlpha(colour, 1));
-      g?.addColorStop(0.8, withAlpha(colour, 1));
+      g?.addColorStop(0.97, withAlpha(colour, 1));
       g?.addColorStop(1, withAlpha(colour, 0));
       return g;
     });
@@ -163,7 +163,8 @@ function drawGrain(ctx: Ctx, cache: MediaCache, amount: number, w: number, h: nu
   const ox = (step * 37) % GRAIN_TILE;
   const oy = (step * 71) % GRAIN_TILE;
   ctx.save();
-  ctx.globalAlpha = alpha * Math.min(1, amount * 2.5);
+  // Grain is drawn at pixel size, so on a thumbnail it would read as speckle: it fades out below a 540 px short side.
+  ctx.globalAlpha = alpha * Math.min(1, amount * 2.5) * Math.min(1, Math.min(w, h) / 540);
   ctx.fillStyle = pattern;
   ctx.translate(-ox, -oy);
   ctx.fillRect(ox, oy, w, h);

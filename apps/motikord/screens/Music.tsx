@@ -34,7 +34,7 @@ function BeatWave({ peaks, beats, clipMs, trackMs, cuts, snapped, playMs }: { pe
   const bars = Array.from({ length: n }, (_, i) => {
     const t = ((i + 0.5) / n) * span;
     const p = peaks.length ? (peaks[Math.min(peaks.length - 1, Math.floor((t / Math.max(trackMs, span)) * peaks.length))] ?? 0) / max : 0.6;
-    return { t, h: Math.max(3, p * texture(i) * 30) };
+    return { t, h: Math.max(4, p * texture(i) * 60) };
   });
   return (
     <svg viewBox={`0 0 ${W} 96`} width="100%" height={90} role="img" aria-label="Waveform with beats and cuts" style={{ display: 'block' }}>

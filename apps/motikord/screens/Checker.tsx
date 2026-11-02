@@ -137,6 +137,8 @@ const AUTO_BY = 'check' as const;
 
 /** The visual critic's last run per clip, for this editor tab (the critic only runs on a make or on Check again). */
 const critics = new Map<string, CriticRun & { provider: Provider }>();
+/** Keeps a critic run for a clip in this tab, as Check again does. */
+export const keepCritic = (clipId: string, run: CriticRun & { provider: Provider }) => critics.set(clipId, run);
 const v2Kinds: readonly Issue['kind'][] = ['overlap', 'crowding', 'empty', 'align', 'words', 'template-repeat'];
 
 export function CheckerPanel() {

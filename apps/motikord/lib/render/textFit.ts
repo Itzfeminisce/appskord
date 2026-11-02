@@ -1,3 +1,8 @@
+import type { Aspect, TextLayer } from '../types';
+
+/** A text layer's size on one shape: its size times that shape's scale. */
+export const sizeOn = (l: Pick<TextLayer, 'sizePx' | 'scaleAt'>, a: Aspect): number => l.sizePx * (l.scaleAt?.[a] ?? 1);
+
 /** Width in px of `text` drawn at `sizePx`; injected so fitting stays pure and testable. */
 export type Measure = (text: string, sizePx: number) => number;
 

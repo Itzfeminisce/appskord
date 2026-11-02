@@ -310,6 +310,8 @@ function checkLayer(
       if (l.highlight !== undefined && !(isObj(l.highlight) && Number.isInteger(l.highlight.word) && (l.highlight.word as number) >= 0 && isColour(l.highlight.colour))) bad(`${where} highlight needs a word number and a hex colour.`);
       if (l.shadow !== undefined && !isBool(l.shadow)) bad(`${where} shadow must be true or false.`);
       if (l.stagger !== undefined && !oneOf(['word', 'line'], l.stagger)) bad(`${where} stagger must be word or line.`);
+      if (l.scaleAt !== undefined && !(isObj(l.scaleAt) && Object.entries(l.scaleAt).every(([k, v]) => oneOf(ASPECTS, k) && isNum(v) && v > 0))) bad(`${where} scaleAt needs a number above 0 for each size it names.`);
+      if (l.valign !== undefined && l.valign !== 'top') bad(`${where} valign must be top.`);
       break;
     case 'shape':
       if (!oneOf(['rect', 'circle', 'line'], l.shape)) bad(`${where} shape must be rect, circle or line.`);

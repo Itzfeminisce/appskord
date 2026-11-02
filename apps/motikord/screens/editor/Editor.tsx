@@ -23,7 +23,7 @@ import { devSampleV2, isV1Clip, remakeEdit } from '../../lib/editor/v2';
 import { useRouter, type EditorScreen } from '../../entrypoints/editor/router';
 import { AddToScene } from './AddToScene';
 import { Canvas } from './Canvas';
-import { CheckerPanel } from '../Checker';
+import { CheckerPanel, keepCritic } from '../Checker';
 import { ChangesTab } from './ChangesTab';
 import { PromptBox } from './EditorPrompt';
 import { FormatsPanel } from './Formats';
@@ -82,6 +82,8 @@ export interface EditorApi {
   setOverSlot: (layerId: string | undefined) => void;
   /** SwapTemplate, NewLook and TransitionPicker. */
   openPanel: (p: V2Panel) => void;
+  /** The v2 panel open now, so its opener can show it is open. */
+  openedPanel?: V2Panel;
   /** The scene being remade (SceneRemaking), if any. */
   remaking?: string;
   remake: (sceneId: string, request?: string, done?: () => void) => void;
@@ -114,7 +116,8 @@ export function useEditor(): EditorApi {
 
 const FIRST_RUN_KEY = 'editorFirstRunSeen';
 // SceneRemaking: toasts sit at the stage's bottom-left, just above the timeline.
-const corner = { position: 'absolute', left: 12, bottom: 12, width: 320, zIndex: 7 } as const;
+// SceneRemaking: toasts sit at the window's bottom left (over the scenes list, 12 px in), clear of the stage and prompt.
+const corner = { position: 'absolute', left: 12 - 220, bottom: 12, width: 320, zIndex: 7 } as const;
 const GREY = '#D4D4D9';
 const newId = () => crypto.randomUUID();
 
@@ -164,6 +167,13 @@ async function openClip(clipId: string | undefined, cache: MediaCache): Promise<
     const id = clipId ?? 'dev-sample-v2';
     const now = Date.now();
     clip = (await getClip(id)) ?? { id, recipe: id === 'dev-sample' ? devSampleRecipe(id) : devSampleV2(id), history: [], createdAt: now, updatedAt: now };
+    await putClip(clip);
+  }
+  if (clipId === 'dev-issues' && typeof __MOTIKORD_DEV_TOOLS__ !== 'undefined' && __MOTIKORD_DEV_TOOLS__) {
+    // Dev only: the sample clip with seeded quality-check issues, fixes and a critic note (re-seeded on every open).
+    const { devIssuesClip, DEV_CRITIC } = await import('../../entrypoints/editor/devIssues');
+    clip = devIssuesClip();
+    keepCritic(clip.id, { ...DEV_CRITIC, provider: 'groq' });
     await putClip(clip);
   }
   if (!clip) return undefined;
@@ -396,6 +406,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
     sizeOnly, setSizeOnly, setPreview,
     tab, setTab, notice, setNotice: (n) => setNotice(n && undoable(n) && !n.changeId ? { ...n, changeId: stateRef.current.clip.history.at(-1)?.id } : n), overSlot, setOverSlot, remaking,
     openPanel: (p) => setPanel(p),
+    openedPanel: panel?.kind === 'swap' || panel?.kind === 'look' || panel?.kind === 'transition' ? panel : undefined,
     current: () => stateRef.current.clip.recipe,
     remake: (sceneId, request, done) => apiRef.current.remakeEach([{ sceneId, request, done }]),
     remakeEach: (jobs) => {
@@ -433,7 +444,7 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
         if (remakeStop.current === ac) { remakeStop.current = undefined; setRemaking(undefined); }
       })();
     },
-  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly, tab, notice, overSlot, remaking, act]);
+  }), [state, loaded.brand, cache, save, smoothPreview, light, toast, router, sizeOnly, tab, notice, overSlot, remaking, act, panel]);
   const stopRemake = () => { remakeStop.current?.abort(); remakeStop.current = undefined; setRemaking(undefined); };
   // The canvas alone sees the preview recipe; everything else keeps the clip.
   const canvasApi = useMemo<EditorApi>(() => (preview ? { ...api, state: { ...api.state, clip: { ...api.state.clip, recipe: preview } } } : api), [api, preview]);
@@ -516,19 +527,19 @@ function EditorOpen({ loaded, cache, open }: { loaded: Loaded; cache: MediaCache
             {router.route.screen === 'Checker' && <CheckerPanel />}
             {firstRun && <div style={{ position: 'absolute', top: 12, left: 12, width: 260, zIndex: 6 }}><FirstRun onDone={dismissFirstRun} /></div>}
             {remaking && (
-              <div style={{ ...corner, width: 360 }}>
+              <div style={corner}>
                 <Remaking n={sceneIndex(state.clip.recipe, remaking) + 1} others={state.clip.recipe.scenes.length - 1} onStop={stopRemake} />
               </div>
             )}
             {!remaking && notice?.kind === 'scene-remade' && (
-              <div style={{ ...corner, width: 360 }}>
+              <div style={corner}>
                 <Remade n={sceneIndex(state.clip.recipe, notice.sceneId) + 1} onUndo={() => undoNotice(api, notice.changeId)} onKeep={() => setNotice(undefined)} />
               </div>
             )}
             {notice?.kind === 'restyle-done' && <div style={corner}><NoticeCard notice={notice} api={api} /></div>}
             {toastText && !remaking && notice?.kind !== 'restyle-done' && notice?.kind !== 'scene-remade' && <div style={corner}><UndoToast text={toastText} onUndo={api.undo} /></div>}
           </main>
-          <aside style={{ width: 300, flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', alignContent: 'start', padding: '14px 16px', gap: 12, overflowY: 'auto' }}>
+          <aside style={{ width: 300, flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', alignContent: 'start', padding: '12px 16px', gap: 8, overflowY: 'auto' }}>
             {tab === 'changes'
               ? <ChangesTab onLayer={() => setTab('layer')} />
               : tab === 'scene'

@@ -6,7 +6,8 @@ import { inLength, inPose, layerPose, REST, type Pose, type PoseSkip } from './p
 import { HIGHLIGHT_WIPE_MS, KEN_BURNS_SCALE, LINE_STAGGER_MS, WORD_STAGGER_MS } from './tokens';
 import { blends, transitionProgress, transitionShots, type Shot } from './transitions';
 import { boxFor } from './reflow';
-import { fitText, type Fit, type Measure } from './textFit';
+import { fitText, sizeOn, type Fit, type Measure } from './textFit';
+import { aspectOf } from '../templates/blocks';
 
 export type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -221,8 +222,9 @@ function drawText(ctx: Ctx, l: TextLayer, bw: number, bh: number, pose: Pose, al
   }
   if (typed <= 0 && !pill) return;
   // Text never spills out of its box on screen; the checker reports when it had to shrink.
-  const fit = fitIn(ctx, cache, l, l.text, bw - pad * 2, bh - pad * 2, l.sizePx * unit, l.lineHeight);
+  const fit = fitIn(ctx, cache, l, l.text, bw - pad * 2, bh - pad * 2, sizeOn(l, aspectOf(f.w, f.h)) * unit, l.lineHeight);
   const step = fit.sizePx * l.lineHeight;
+  if (l.valign === 'top') ctx.translate(0, -(bh - pad * 2 - fit.lines.length * step) / 2);
   ctx.font = fontFor(l, fit.sizePx);
   if (l.letterSpacing) ctx.letterSpacing = spacing(l.letterSpacing, fit.sizePx);
   if (pill) {

@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { restTime, sceneIndex } from '../../lib/editor/store';
-import { swapGroups, swappedScene, swapTemplate, withScene } from '../../lib/editor/v2';
+import { packOf, swapGroups, swappedScene, swapTemplate, withScene } from '../../lib/editor/v2';
 import { getSceneTemplate } from '../../lib/templates/scenes';
 import type { Aspect, TemplateId } from '../../lib/types';
 import { Caret, CloseButton, Tick } from './dialogIcons';
 import { useEditor } from './Editor';
-import { SceneThumb } from './SceneThumb';
+import { TemplateMini } from './TemplateMini';
 import { SwapNoFit } from './StatesV2';
 
 // SwapTemplate popover: same words in another template, previewed on the stage before it is applied.
@@ -76,21 +76,21 @@ export function SwapTemplatePopover({ sceneId, onClose }: { sceneId: string; onC
     onClose();
   };
   const ts = tileOf(r.aspect);
+  const pack = packOf(r);
   const tile = (id: TemplateId, muted: boolean) => {
     const t = getSceneTemplate(id)!;
     const current = id === scene.template;
     const on = id === picked;
-    const preview = previews.get(id);
     return (
       <button key={id} type="button" aria-label={t.name} aria-pressed={on} title={t.line} onClick={() => setPicked(current ? undefined : id)}
         onPointerEnter={() => setPointed(id)} onPointerLeave={() => setPointed(undefined)} onFocus={() => setPointed(id)} onBlur={() => setPointed(undefined)}
-        style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 0, border: 0, background: 'transparent', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-        <span style={{ position: 'relative', width: ts.w, height: ts.h, borderRadius: 6, overflow: 'hidden', background: '#0A0A0A', display: 'flex', outline: on ? '2px solid var(--accent)' : 'none', outlineOffset: 2 }}>
-          {preview && <SceneThumb recipe={preview} aspect={r.aspect} timeMs={restTime(r, si)} w={ts.w} h={ts.h} />}
+        style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 0, border: 0, background: 'transparent', font: 'inherit', textAlign: 'left', cursor: 'pointer', opacity: muted && !on && pointed !== id ? 0.62 : 1 }}>
+        <span style={{ position: 'relative', width: ts.w, height: ts.h, borderRadius: 6, overflow: 'hidden', background: pack.palette.bg, display: 'flex', outline: on ? '2px solid var(--accent)' : 'none', outlineOffset: 2 }}>
+          <TemplateMini id={id} pack={pack} w={ts.w} h={ts.h} />
           {current && <span style={{ position: 'absolute', top: 4, left: 4, height: 16, padding: '0 5px', borderRadius: 4, background: '#FFFFFF', color: 'var(--ink)', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center' }}>Current</span>}
           {on && <span style={{ position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%', background: 'var(--accent)', display: 'grid', placeItems: 'center' }}><Tick size={10} /></span>}
         </span>
-        <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.25, color: on ? 'var(--accent-hover)' : muted ? 'var(--muted)' : 'var(--ink)', width: ts.w + 4 }}>{t.name}</span>
+        <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.25, color: on ? 'var(--accent-hover)' : 'var(--ink)', width: ts.w + 4 }}>{t.name}</span>
       </button>
     );
   };

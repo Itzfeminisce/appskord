@@ -34,7 +34,8 @@ export function SceneTab() {
 }
 
 function SceneFields({ si, scene }: { si: number; scene: Scene }) {
-  const { state, openPanel, remaking, remake } = useEditor();
+  const { state, openPanel, openedPanel, remaking, remake } = useEditor();
+  const swapping = openedPanel?.kind === 'swap' && openedPanel.sceneId === scene.id;
   const r = state.clip.recipe;
   const t = templateOf(scene);
   const start = sceneStart(r, si);
@@ -48,14 +49,14 @@ function SceneFields({ si, scene }: { si: number; scene: Scene }) {
         <span style={{ fontSize: 14, fontWeight: 600 }}>{`Scene ${si + 1}`}</span>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--faint)', flexShrink: 0 }}>{`${clockShort(start)}–${clockShort(start + scene.durationMs)}`}</span>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={label}>Template</span>
         <div style={{ padding: 10, borderRadius: 12, border: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           <SceneThumb recipe={r} aspect={r.aspect} timeMs={restTime(r, si)} w={thumb.w} h={thumb.h} />
           <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flexGrow: 1 }}>
             <span style={{ fontSize: 14, fontWeight: 600 }}>{t?.name ?? 'Free layers'}</span>
             {t && <span style={{ fontSize: 12, lineHeight: 1.35, color: 'var(--muted)' }}>{t.line}</span>}
-            <button type="button" onClick={() => openPanel({ kind: 'swap', sceneId: scene.id })} style={{ ...quiet, alignSelf: 'flex-start', marginTop: 4, height: 28, borderRadius: 8, borderColor: '#E0E0E4', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+            <button type="button" onClick={() => openPanel({ kind: 'swap', sceneId: scene.id })} aria-expanded={swapping} style={{ ...quiet, alignSelf: 'flex-start', marginTop: 4, height: 28, borderRadius: 8, borderColor: '#E0E0E4', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', ...(swapping ? { outline: '2px solid var(--accent)', outlineOffset: 1, background: 'var(--tint)', color: 'var(--accent-hover)' } : {}) }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" /></svg>
               Swap template
             </button>
@@ -68,7 +69,7 @@ function SceneFields({ si, scene }: { si: number; scene: Scene }) {
           {pair.map((d) => <SlotField key={d.id} si={si} scene={scene} def={d} />)}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: si > 0 ? 'minmax(0, 1.4fr) minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: si > 0 ? 'minmax(0, 1.4fr) minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8 }}>
         {si > 0 && <ComesIn si={si} />}
         <Labelled name="Length"><LengthInput si={si} /></Labelled>
       </div>

@@ -1,6 +1,6 @@
 import { restyle } from '../ai/writeRecipe';
 import { cutWords, expandScene } from '../templates/expand';
-import { paceMs } from '../templates/pick';
+import { paceMs, transitionFor } from '../templates/pick';
 import { autoStyle, getPack, getSceneTemplate, SCENE_TEMPLATES, STYLE_PACKS } from '../templates/scenes';
 import type {
   BrandKit, Layer, Pace, PatchOp, Recipe, Scene, SceneTemplate, SlotDef, SlotValue, StyleId, StylePack, TemplateId, TextLayer,
@@ -329,5 +329,7 @@ export function devSampleV2(id: string): Recipe {
   const pack = getPack('bold')!;
   const r: Recipe = { version: 2, id, name: 'Fresh sourdough', type: 'promo', aspect: '16:9', assets: {}, style: 'bold', pace: 'normal', mood: 'upbeat', scenes: [] };
   r.scenes = SAMPLE.map(([template, slots], i) => expandScene({ id: `s${i + 1}`, durationMs: 3000, background: pack.palette.bg, layout: 'center', layers: [], template, slots }, pack));
+  // Each cut after the first comes in with the pack's transitions in turn, as a made clip does.
+  r.scenes.forEach((s, i) => { if (i) s.transition = transitionFor(pack, i, r.pace); });
   return r;
 }
