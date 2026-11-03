@@ -1,5 +1,6 @@
 /** DiagramEdit: a diagram card opened over the board. Edits stay in a draft; Done saves them as one undo step. */
 import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { cardLabel } from '@/lib/board/label';
 import { cardNumbers, listOrder, newId, updateCard } from '@/lib/board/ops';
 import type { Board, CardColour, Diagram, DiagramNode, DiagramNodeKind } from '@/lib/board/types';
 import { addEdge, addNode, deleteEdge, deleteNode, labelEdge, linkNode, NODE_COLOUR, NODE_SIZE, updateNode } from '@/lib/diagram/edit';
@@ -358,7 +359,7 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
                             }}
                           >
                             <span className="bk-badge">{numbers[id]}</span>
-                            <span className="bk-de-link-title">{c.title || KIND_LABEL[c.kind]}</span>
+                            <span className="bk-de-link-title">{cardLabel(c)}</span>
                           </button>
                         );
                       })}

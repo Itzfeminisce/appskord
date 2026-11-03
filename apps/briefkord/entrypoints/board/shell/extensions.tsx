@@ -2,6 +2,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { Board } from '@/lib/board/types';
 import type { BoardApi } from '../useBoard';
+import { openPanelSettings } from './panel';
 
 /** What a plug-in gets: the board, its history and saving, and a place to show a screen over the board. */
 export interface BoardShell {
@@ -61,7 +62,7 @@ export const boardExtensions: BoardExtensions = {
   shareBoard: (boardId) => {
     location.hash = `#/b/${boardId}`;
   },
-  openSettings: noop,
+  openSettings: () => openPanelSettings(),
 };
 
 export function extendBoard(patch: Partial<BoardExtensions>): void {

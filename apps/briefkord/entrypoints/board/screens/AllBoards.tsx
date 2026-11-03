@@ -108,7 +108,7 @@ export function AllBoards() {
           <input id="ab-find" type="search" placeholder="Find a board" value={find} onChange={(e) => setFind(e.target.value)} />
         </div>
         <a className="bk-btn" href="#/import" onClick={(e) => (e.preventDefault(), go('/import'))}>Import</a>
-        <button type="button" className="bk-icon-btn" aria-label="Settings" onClick={() => boardExtensions.openSettings()}><Settings /></button>
+        <button type="button" className="bk-icon-btn" aria-label="Settings" title="Settings" onClick={() => boardExtensions.openSettings()}><Settings /></button>
       </header>
       <main className="bk-boards-main">
         {pinned.length > 0 && <h2 className="bk-boards-h">Pinned</h2>}

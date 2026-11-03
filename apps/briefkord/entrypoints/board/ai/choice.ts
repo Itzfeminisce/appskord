@@ -2,15 +2,14 @@
 import { PROVIDERS, type CloudProviderId } from '@appskord/llm';
 import type { PickerValue } from '@appskord/ui';
 import { useSyncExternalStore } from 'react';
-import { sendIntent } from '@/lib/capture/intent';
 import { aiReady, defaultChoice, isAiProvider, keyNameOf, penv, requestHostAccess } from '@/lib/keys';
 import { loadSettings } from '@/lib/store/settings';
+import { openPanelSettings } from '../shell/panel';
 
 export interface Choice { value: PickerValue; keyNames: string[] }
 
 let current: Choice | undefined;
 const listeners = new Set<() => void>();
-let windowId: number | undefined;
 
 async function load(): Promise<void> {
   const [keys, s] = await Promise.all([penv.loadKeys(), loadSettings()]);
@@ -27,7 +26,6 @@ export function followChoice(): void {
   browser.storage.onChanged.addListener((changes, area) => {
     if ((area === 'session' && 'apiKeys' in changes) || (area === 'local' && 'settings' in changes)) reload();
   });
-  chrome.windows?.getCurrent?.().then((w) => (windowId = w.id)).catch(() => undefined);
 }
 
 export function useChoice(): Choice | undefined {
@@ -61,10 +59,5 @@ export async function getReady(asked: Promise<boolean> | undefined): Promise<Rea
   return { ok: true, provider: p, model: r.choice.model, key: r.key };
 }
 
-/** Settings, "AI and keys", in the side panel; as a tab when Chrome won't open the panel. */
-export function openAiSettings(): void {
-  const asTab = () => void browser.tabs.create({ url: browser.runtime.getURL('/sidepanel.html#/settings?show=ai') });
-  void sendIntent({ route: '/settings', search: { show: 'ai' } }).catch(() => undefined);
-  if (windowId === undefined || !chrome.sidePanel?.open) return asTab();
-  chrome.sidePanel.open({ windowId }).catch(asTab);
-}
+/** Settings, "AI and keys", in the side panel. */
+export const openAiSettings = (): void => openPanelSettings('ai');

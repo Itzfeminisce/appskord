@@ -4,11 +4,11 @@ import { movedCount, orderMoves, type Move } from '@/lib/ai/apply';
 import { parseOrder, type OrderReply } from '@/lib/ai/parse';
 import { orderPrompt } from '@/lib/ai/prompts';
 import { askAi } from '@/lib/ai/run';
+import { cardLabel } from '@/lib/board/label';
 import { listOrder, reorderList } from '@/lib/board/ops';
 import type { Board } from '@/lib/board/types';
 import { liveBoard } from '../diagram/DiagramEdit';
 import { Sparkle } from '../icons';
-import { KIND_LABEL } from '../logic/cards';
 import type { BoardShell } from '../shell/extensions';
 import { askHost, openAiSettings, providerLabel, useChoice } from './choice';
 import { useAiRun } from './run';
@@ -102,7 +102,7 @@ export function SuggestOrder({ shell, asked }: { shell: BoardShell; asked?: Prom
             return (
               <li key={id} className={`bk-ai-row-item${tone}`}>
                 <span className="bk-ai-num">{i + 1}</span>
-                <span className="bk-ai-row-title">{card.title || KIND_LABEL[card.kind]}</span>
+                <span className="bk-ai-row-title">{cardLabel(card)}</span>
                 {move && (
                   <span className="bk-ai-move">
                     {(move.kind === 'up' || move.kind === 'down') && <Arrow up={move.kind === 'up'} />}

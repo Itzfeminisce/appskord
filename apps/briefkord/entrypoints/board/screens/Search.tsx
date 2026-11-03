@@ -1,5 +1,6 @@
 /** Search (Ctrl K): this board first, then other boards, matched words highlighted. */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { cardLabel } from '@/lib/board/label';
 import { sectionOf } from '@/lib/board/ops';
 import type { Board, Card } from '@/lib/board/types';
 import { searchBoards, snippet, type FieldMatch, type Range, type SearchField, type SearchMatch } from '@/lib/search';
@@ -118,7 +119,7 @@ function ResultRow({ match, card, board, other, active, onHover, onOpen }: { mat
     <button type="button" role="option" aria-selected={active} className="bk-result" onPointerMove={onHover} onClick={onOpen}>
       <span aria-hidden="true" className={`bk-result-thumb bk-thumb-${card.kind} bk-c-${card.colour}`} />
       <span className="bk-result-text">
-        <span className="bk-result-title">{title ? <Marked text={card.title} ranges={title.ranges} /> : card.title}</span>
+        <span className="bk-result-title">{title ? <Marked text={card.title} ranges={title.ranges} /> : cardLabel(card)}</span>
         <span className="bk-result-sub">{body ? <Snippet field={body} /> : where}</span>
       </span>
       <span className="bk-result-kind">{body ? `${kind} · ${FIELD[body.field]}` : other ? `${kind} · title` : kind}</span>

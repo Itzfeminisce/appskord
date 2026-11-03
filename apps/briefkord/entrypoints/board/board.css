@@ -226,8 +226,8 @@ input.bk-note-title.bk-bare { font-weight: 600; font-size: 13px; }
 .bk-bar-group { height: 34px; gap: 4px; }
 .bk-bar-group button { height: 26px; }
 .bk-pop { padding: 6px; border-radius: 12px; background: var(--bk-card); border: 1px solid var(--bk-line); box-shadow: 0 16px 40px -10px rgba(17, 17, 20, 0.3); display: flex; flex-direction: column; min-width: 180px; }
-.bk-pop button { height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; font-size: 13px; cursor: pointer; white-space: nowrap; }
-.bk-pop button:hover { background: var(--bk-ground); }
+.bk-pop button:not(.bk-swatch) { height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.bk-pop button:not(.bk-swatch):hover { background: var(--bk-ground); }
 .bk-pop-dark { background: var(--bk-ink); border-color: var(--bk-ink); min-width: 0; padding: 10px 4px; }
 .bk-size-hint { position: absolute; margin: 0; padding-top: 18px; font-family: var(--bk-mono); font-size: 11px; color: var(--bk-text-2); white-space: nowrap; pointer-events: none; }
 

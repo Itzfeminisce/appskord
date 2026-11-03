@@ -1,5 +1,6 @@
 /** Frames Main, PanelEmpty, StatesPanel and the panel states of StatesMore. */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { cardLabel } from '@/lib/board/label';
 import type { Board, Card } from '@/lib/board/types';
 import { targetSection } from '@/lib/capture/cards';
 import type { Notice } from '@/lib/capture/intent';
@@ -363,7 +364,7 @@ function LastAdded({ board }: { board: Board }) {
           <li key={card.id} className="p-added">
             <KindMark kind={card.kind} />
             <span className="p-added-text">
-              <span className="p-added-title">{card.title}</span>
+              <span className="p-added-title">{cardLabel(card)}</span>
               <span className="p-added-meta">
                 {KIND_NAME[card.kind]} · {ago(card.createdAt, now)}
               </span>

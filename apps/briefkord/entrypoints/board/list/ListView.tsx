@@ -1,6 +1,7 @@
 /** The List (BoardList, SectionEdit): sections with times, rows that drag by the handle or move with Alt ↑ ↓, and the selected card on the right. */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { addSection, cardNumbers, listOrder, moveCardInList, moveSection, newId, renameSection, setSectionMinutes } from '@/lib/board/ops';
+import { cardLabel } from '@/lib/board/label';
 import type { Board, Card, Section } from '@/lib/board/types';
 import { Badge, useFileUrl } from '../cards';
 import { Sparkle } from '../icons';
@@ -181,7 +182,7 @@ export function ListView({ shell }: { shell: BoardShell }) {
         <div className="bk-ls-ghost" aria-hidden="true" style={{ left: drag.ghostLeft, top: drag.y - 24, width: drag.ghostWidth }}>
           <span className="bk-ls-grip"><Grip /></span>
           <span className="bk-ls-ghost-n">{drag.slot ? numberAfterDrop(board, drag.id, drag.slot) : numbers[drag.id]}</span>
-          <span className="bk-ls-ghost-title">{dragCard.title}</span>
+          <span className="bk-ls-ghost-title">{cardLabel(dragCard)}</span>
           {drag.slot && <span className="bk-ls-ghost-hint">Drop to make it {ordinal(numberAfterDrop(board, drag.id, drag.slot))}</span>}
         </div>
       )}
@@ -208,7 +209,7 @@ function Row({ board, card, number, selected, source, onSelect, onKey, onGrab }:
       <Badge n={number} />
       <Thumb boardId={board.id} card={card} />
       <span className="bk-ls-text">
-        <span className="bk-ls-title">{card.title}</span>
+        <span className="bk-ls-title">{cardLabel(card)}</span>
         <span className="bk-ls-detail">{rowDetail(board, card)}</span>
       </span>
     </div>

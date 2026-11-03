@@ -1,4 +1,5 @@
 // The view file renderer. It is inlined into a standalone HTML page, so it imports only types and pure helpers that bundle in.
+import { cardLabel } from '../../lib/board/label';
 import type { Board, Card, Diagram, Rect, Section } from '../../lib/board/types';
 import { routeEdge } from '../../lib/diagram/route';
 import { formatBytes, formatDay } from '../../lib/share/prepare';
@@ -203,7 +204,7 @@ function subtitle(card: Card): string {
 function canvasCard(card: Card, n: number, files: Files): HTMLElement {
   const colour = card.colour === 'white' ? '' : ` c-${card.colour}`;
   const node = card.kind === 'link' && safeHref(card.url) ? newTab(el('a', `vf-card${colour}`), card.url) : el('article', `vf-card${colour}`);
-  node.setAttribute('aria-label', `${KIND[card.kind]}: ${card.title}`);
+  node.setAttribute('aria-label', `${KIND[card.kind]}: ${cardLabel(card)}`);
   switch (card.kind) {
     case 'note': {
       const pad = el('div', 'vf-pad');
@@ -289,7 +290,7 @@ function walkCard(card: Card, files: Files): HTMLElement {
   const colour = card.colour === 'white' ? '' : ` c-${card.colour}`;
   const box = el('article', `vf-big${colour}`);
   const head = el('header', 'vf-big-head');
-  head.append(el('span', 't', card.title || (card.kind === 'file' ? card.file.name : '')), el('span', 'k', KIND[card.kind]));
+  head.append(el('span', 't', cardLabel(card)), el('span', 'k', KIND[card.kind]));
   const body = el('div', 'vf-big-body');
   switch (card.kind) {
     case 'note':

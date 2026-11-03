@@ -4,12 +4,12 @@ import { addBriefNote, briefText, keptBrief, withBrief } from '@/lib/ai/apply';
 import { parseBrief } from '@/lib/ai/parse';
 import { briefPrompt } from '@/lib/ai/prompts';
 import { askAi } from '@/lib/ai/run';
+import { cardLabel } from '@/lib/board/label';
 import { cardNumbers, newId } from '@/lib/board/ops';
 import type { Board, KeptBrief } from '@/lib/board/types';
 import { hasHostAccess, isAiProvider, requestHostAccess } from '@/lib/keys';
 import { liveBoard } from '../diagram/DiagramEdit';
 import { Close } from '../icons';
-import { KIND_LABEL } from '../logic/cards';
 import type { BoardShell } from '../shell/extensions';
 import { askHost, openAiSettings, providerLabel, useChoice } from './choice';
 import { AiPicker, openPicker } from './Picker';
@@ -119,7 +119,7 @@ export function BriefMe({ shell, asked }: { shell: BoardShell; asked?: Promise<b
                           if (!card) return null;
                           return (
                             <button key={id} type="button" className={`bk-ai-chip${shell.selection.includes(id) ? ' is-on' : ''}`} onClick={() => shell.showCard(id)}>
-                              {numbers[id]} {shortTitle(card.title || KIND_LABEL[card.kind])}
+                              {numbers[id]} {shortTitle(cardLabel(card))}
                             </button>
                           );
                         })}

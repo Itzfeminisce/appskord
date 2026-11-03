@@ -21,7 +21,7 @@ export function HomeHeader() {
       <button type="button" className="p-icon-btn" aria-label="Search all boards" disabled={!board} onClick={() => board && openBoardTab(board.id, { search: '1' })}>
         <SearchIcon />
       </button>
-      <button type="button" className="p-icon-btn" aria-label="Settings" onClick={() => go('/settings')}>
+      <button type="button" className="p-icon-btn" aria-label="Settings" title="Settings" onClick={() => go('/settings')}>
         <SettingsIcon />
       </button>
     </header>

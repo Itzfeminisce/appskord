@@ -1,4 +1,5 @@
 /** The meeting's agenda in list order, where each card stands, and the time per section. Pure. */
+import { cardLabel } from '../board/label';
 import type { Board } from '../board/types';
 import { durationText, overBy, spentIn, type Clock } from './clock';
 
@@ -10,7 +11,7 @@ export function agenda(board: Board): AgendaSection[] {
   let index = 0;
   const out: AgendaSection[] = [];
   board.sections.forEach((s, i) => {
-    const cards = s.cards.filter((id) => board.cards[id]).map((id) => ({ id, title: board.cards[id]!.title, number: index + 1, index: index++, section: s.id }));
+    const cards = s.cards.filter((id) => board.cards[id]).map((id) => ({ id, title: cardLabel(board.cards[id]!), number: index + 1, index: index++, section: s.id }));
     if (cards.length) out.push({ id: s.id, title: s.title, number: i + 1, minutes: s.minutes, cards });
   });
   return out;

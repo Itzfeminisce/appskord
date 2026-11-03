@@ -1,6 +1,7 @@
 /** Meeting mode (Meeting, MeetingFocus, MeetingEnd): one card at a time in list order, agenda, timer, notes and keys. */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { briefPointsFor } from '@/lib/ai/apply';
+import { cardLabel } from '@/lib/board/label';
 import { updateCard } from '@/lib/board/ops';
 import type { Board, Card } from '@/lib/board/types';
 import { agenda, agendaCards, endLine, plannedMinutes, sectionTimes, stepOf } from '@/lib/meeting/agenda';
@@ -180,7 +181,7 @@ export function Meeting({ shell }: { shell: BoardShell }) {
                   return (
                     <button key={c.id} type="button" className={`bk-mt-ag-item is-${step}`} aria-current={step === 'current' ? 'step' : undefined} onClick={() => go(c.index)}>
                       {step === 'done' ? <span className="bk-mt-ag-done" role="img" aria-label="Done"><Tick size={14} width={2.6} /></span> : <span className="bk-mt-ag-n">{c.number}</span>}
-                      <span className="bk-mt-ag-title">{board.cards[c.id]?.title ?? c.title}</span>
+                      <span className="bk-mt-ag-title">{board.cards[c.id] ? cardLabel(board.cards[c.id]!) : c.title}</span>
                     </button>
                   );
                 })}
@@ -200,7 +201,7 @@ export function Meeting({ shell }: { shell: BoardShell }) {
             <button type="button" className="bk-mt-prev" aria-label="Previous card" disabled={at === 0} onClick={() => go(at - 1)}><ChevronLeft /></button>
             <span className="bk-mt-count">{at + 1} of {count}</span>
             <button type="button" className="bk-mt-next" onClick={() => go(at + 1)}>
-              <span>{nextCard ? `Next: ${board.cards[nextCard.id]?.title ?? nextCard.title}` : 'Next'}</span>
+              <span>{nextCard ? `Next: ${board.cards[nextCard.id] ? cardLabel(board.cards[nextCard.id]!) : nextCard.title}` : 'Next'}</span>
               <ChevronRight size={16} />
             </button>
             <span className="bk-mt-sep" aria-hidden="true" />
@@ -247,7 +248,7 @@ function Shown({ card, number, boardId, boxW, boxH, onCommit }: { card: Card; nu
     <div className="bk-mt-card" style={{ width: w * s, height: h * s }}>
       <article
         className={`bk-card bk-kind-${card.kind} bk-c-${card.colour}`}
-        aria-label={card.title}
+        aria-label={cardLabel(card)}
         style={{ width: w, height: h, transform: `scale(${s})`, borderRadius: 20 / s, borderWidth: 1 / s }}
       >
         <CardBody card={card} number={number} boardId={boardId} editing={false} onCommit={onCommit} onDone={() => undefined} />
