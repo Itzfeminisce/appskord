@@ -101,6 +101,7 @@ export function ModelPicker({
   const button = useRef<HTMLButtonElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const uid = useId();
+  const listId = `${uid}-list`;
 
   const current = groups.find((g) => g.id === value.provider);
   const currentModel = current?.models.find((m) => m.id === value.model);
@@ -161,6 +162,11 @@ export function ModelPicker({
   if (typedRow) options.push({ key: 'typed', pick: () => pick({ provider: typedRow.id, model: q }, true) });
   const at = Math.min(active, Math.max(options.length - 1, 0));
   const optId = (i: number) => `${uid}-opt-${i}`;
+
+  function addKey(provider: string) {
+    close(true);
+    onAddKey(provider);
+  }
 
   function pick(v: PickerValue, typed: boolean) {
     onPick(v, typed);
@@ -236,7 +242,7 @@ export function ModelPicker({
         </span>
       )}
       {open && (
-        <div className="mp-pop" role="listbox" aria-label={`${label} model`} onKeyDown={onListKey}>
+        <div className="mp-pop" onKeyDown={onListKey}>
           <div className="mp-search-wrap">
             <label className="mp-search">
               <svg
@@ -258,6 +264,10 @@ export function ModelPicker({
                 type="text"
                 placeholder="Search models"
                 aria-label="Search models"
+                role="combobox"
+                aria-expanded={true}
+                aria-controls={listId}
+                aria-autocomplete="list"
                 aria-activedescendant={options.length ? optId(at) : undefined}
                 value={query}
                 onChange={(e) => {
@@ -267,7 +277,7 @@ export function ModelPicker({
               />
             </label>
           </div>
-          <div className="mp-list">
+          <div className="mp-list" id={listId} role="listbox" aria-label={`${label} model`}>
             {shown.map(({ g, models, keyRow }) => (
               <div key={g.id} className={`mp-group is-${g.status}`}>
                 <div className="mp-group-head">
@@ -286,7 +296,7 @@ export function ModelPicker({
                     <div className="mp-refused">
                       {g.name} refused the key. Check it in Keys, then open this list again.
                     </div>
-                    <button type="button" className="mp-key" onClick={() => onAddKey(g.id)}>
+                    <button type="button" className="mp-key" onClick={() => addKey(g.id)}>
                       Check the {g.name} key
                     </button>
                   </>
@@ -332,7 +342,7 @@ export function ModelPicker({
                 })}
                 {g.note && <div className="mp-note">{g.note}</div>}
                 {g.status === 'needs-key' && keyRow && (
-                  <button type="button" className="mp-key" onClick={() => onAddKey(g.id)}>
+                  <button type="button" className="mp-key" onClick={() => addKey(g.id)}>
                     <svg
                       width="15"
                       height="15"

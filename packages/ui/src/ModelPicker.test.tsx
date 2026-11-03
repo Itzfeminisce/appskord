@@ -188,6 +188,21 @@ describe('ModelPicker', () => {
     click(button());
     click([...host.querySelectorAll('.mp-key')].find((b) => b.textContent === 'Add an Anthropic key')!);
     expect(props.onAddKey).toHaveBeenCalledWith('anthropic');
+    expect(listbox()).toBeNull();
+  });
+
+  it('the search input is a combobox wired to the listbox and the highlighted option', () => {
+    mount();
+    click(button());
+    const box = input();
+    const list = listbox()!;
+    expect(list.classList.contains('mp-list')).toBe(true);
+    expect(box.getAttribute('role')).toBe('combobox');
+    expect(box.getAttribute('aria-expanded')).toBe('true');
+    expect(box.getAttribute('aria-controls')).toBe(list.id);
+    expect(box.getAttribute('aria-activedescendant')).toBe(options()[0]!.id);
+    expect(list.contains(options()[0]!)).toBe(true);
+    expect(options()[0]!.getAttribute('aria-selected')).not.toBeNull();
   });
 });
 
