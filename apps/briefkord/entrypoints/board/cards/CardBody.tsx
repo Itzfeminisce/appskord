@@ -1,6 +1,8 @@
 /** What each kind of card shows on the canvas, with its number badge. Notes and checklists also edit in place. */
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { newId } from '@/lib/board/ops';
+import { useDictation } from '@/lib/dictate/useDictation';
+import { openAiSettings } from '../ai/choice';
 import type { Card, ChecklistCard, ChecklistItem, DiagramCard, FileCard, ImageCard, LinkCard, NoteCard } from '@/lib/board/types';
 import { formatBytes } from '../logic/drop';
 import { KIND_LABEL, webUrl } from '../logic/cards';
@@ -111,15 +113,7 @@ function NoteBody({ card, number, editing, onCommit, onDone }: CardBodyProps & {
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }, [editing, text]);
-  if (editing) {
-    return (
-      <div className="bk-note bk-editing-body" onKeyDown={onKey}>
-        <span className="bk-row"><Badge n={number} /><input className="bk-note-title bk-bare" value={title} aria-label="Title" onChange={(e) => setTitle(e.target.value)} /></span>
-        <textarea ref={textRef} className="bk-note-text bk-bare" value={text} aria-label="Note" onChange={(e) => setText(e.target.value)} />
-        <span className="bk-edit-hint">Esc or click outside to finish</span>
-      </div>
-    );
-  }
+  if (editing) return <NoteEditing number={number} title={title} text={text} textRef={textRef} setTitle={setTitle} setText={setText} onKey={onKey} />;
   if (card.summary) {
     const [lead, ...rest] = sentences(card.text);
     return (
@@ -152,6 +146,33 @@ function NoteBody({ card, number, editing, onCommit, onDone }: CardBodyProps & {
     <div className="bk-note">
       {(number || card.title) &&<span className="bk-row"><Badge n={number} />{card.title && <span className="bk-note-title">{card.title}</span>}</span>}
       <span className="bk-note-text">{card.text}</span>
+    </div>
+  );
+}
+
+interface NoteEditingProps {
+  number?: number;
+  title: string;
+  text: string;
+  textRef: RefObject<HTMLTextAreaElement | null>;
+  setTitle(t: string): void;
+  setText(t: string): void;
+  onKey(e: KeyboardEvent): void;
+}
+
+/** The note while editing, with Dictate's mic; spoken words go into the draft, so the text box's own Undo removes them. */
+function NoteEditing({ number, title, text, textRef, setTitle, setText, onKey }: NoteEditingProps) {
+  const dict = useDictation({ field: textRef, where: 'tab', onAddKey: openAiSettings });
+  return (
+    <div className="bk-note bk-editing-body" onKeyDown={onKey}>
+      <span className="bk-row"><Badge n={number} /><input className="bk-note-title bk-bare" value={title} aria-label="Title" onChange={(e) => setTitle(e.target.value)} /></span>
+      <textarea ref={textRef} className="bk-note-text bk-bare" value={text} aria-label="Note" onChange={(e) => setText(e.target.value)} />
+      {dict.tint}
+      {dict.below && <span className="bk-note-dict" data-canvas-control="" onPointerDown={(e) => e.stopPropagation()}>{dict.below}</span>}
+      <span className="bk-dict-row bk-note-tools" data-canvas-control="">
+        {(dict.phase.kind === 'listening' || dict.phase.kind === 'writing') || <span className="bk-edit-hint">Esc or click outside to finish</span>}
+        {dict.controls}
+      </span>
     </div>
   );
 }

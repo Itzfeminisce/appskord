@@ -1,0 +1,45 @@
+/* Frame Dictate: the mic in a text box, its listening row, and its notes under the field. */
+:root {
+  --bk-dict-ring: #E4E4E7;
+  --bk-dict-ink: #134E4A;
+  --bk-dict-grey: #3F3F46;
+  --bk-dict-amber: #B45309;
+  --bk-dict-amber-ink: #78350F;
+  --bk-dict-amber-line: #FDE68A;
+  --bk-dict-tip: #111114;
+}
+
+.bk-dict-row { display: flex; align-items: center; gap: 8px; height: 32px; }
+.bk-dict-gap { flex-grow: 1; }
+.bk-dict-mic { position: relative; display: grid; flex-shrink: 0; }
+.bk-dict-btn { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; padding: 0; font: inherit; border: 0; background: transparent; color: var(--bk-text-2); cursor: pointer; }
+.bk-dict-btn:not(:disabled):hover { background: var(--bk-tint); color: var(--bk-accent); }
+.bk-dict-btn:disabled { color: var(--bk-text-2); opacity: 0.6; cursor: default; }
+.bk-dict-tip { display: none; position: absolute; right: -4px; bottom: 40px; white-space: nowrap; padding: 6px 10px; border-radius: 8px; background: var(--bk-dict-tip); color: var(--bk-card); font-size: 12px; font-weight: 500; z-index: 3; pointer-events: none; }
+.bk-dict-mic:hover .bk-dict-tip, .bk-dict-mic:has(:focus-visible) .bk-dict-tip { display: block; }
+.bk-dict-btn:disabled + .bk-dict-tip, .bk-dict-mic:has(:disabled) .bk-dict-tip { display: none; }
+.bk-dict-stop { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; padding: 0; border: 0; background: var(--bk-accent); color: var(--bk-card); box-shadow: 0 0 0 4px var(--bk-tint-2); cursor: pointer; }
+.bk-dict-stop:hover { background: var(--bk-accent-hover); }
+.bk-dict-bars { display: flex; align-items: center; gap: 2px; height: 20px; flex-shrink: 0; }
+.bk-dict-bars span { width: 3px; border-radius: 2px; background: var(--bk-accent); transition: height 90ms linear; }
+.bk-dict-clock { font-family: var(--bk-mono); font-size: 12px; color: var(--bk-dict-ink); flex-shrink: 0; }
+.bk-dict-writing { font-size: 12.5px; color: var(--bk-text-2); white-space: nowrap; }
+.bk-dict-spin { flex-shrink: 0; animation: bk-dict-turn 0.9s linear infinite; }
+@keyframes bk-dict-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .bk-dict-spin { animation: none; } .bk-dict-bars span { transition: none; } }
+.is-sm .bk-dict-btn, .is-sm .bk-dict-stop { width: 28px; height: 28px; }
+
+.bk-dict-tint { position: absolute; box-sizing: border-box; overflow: hidden; pointer-events: none; color: transparent; overflow-wrap: break-word; mix-blend-mode: multiply; z-index: 1; }
+.bk-dict-tint mark { color: transparent; background: var(--bk-tint-2); border-radius: 3px; box-shadow: 0 0 0 2px var(--bk-tint-2); }
+
+.bk-dict-status { font-size: 12px; color: var(--bk-dict-ink); line-height: 1.45; }
+.bk-dict-nokey { padding: 10px 12px; border-radius: 10px; background: var(--bk-ground); display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--bk-dict-grey); }
+.bk-dict-nokey svg { flex-shrink: 0; }
+.bk-dict-grow { flex-grow: 1; line-height: 1.4; }
+.bk-dict-link { white-space: nowrap; padding: 0; border: 0; background: transparent; font: inherit; font-weight: 600; color: var(--bk-accent); cursor: pointer; }
+.bk-dict-link:hover { color: var(--bk-accent-hover); }
+.bk-dict-alert { border-radius: 12px; border: 1px solid var(--bk-dict-amber-line); background: var(--bk-warn); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.bk-dict-alert-line { display: flex; gap: 8px; font-size: 12.5px; line-height: 1.5; color: var(--bk-dict-amber-ink); }
+.bk-dict-alert-line svg { flex-shrink: 0; margin-top: 1px; color: var(--bk-dict-amber); }
+.bk-dict-alert-btn { align-self: flex-start; white-space: nowrap; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--bk-line); background: var(--bk-card); font: inherit; font-size: 12.5px; font-weight: 600; color: var(--bk-text); cursor: pointer; }
+.bk-dict-alert-btn:hover { background: var(--bk-ground); }

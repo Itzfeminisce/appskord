@@ -6,6 +6,7 @@ import { diagramPrompt } from '@/lib/ai/prompts';
 import { askAi } from '@/lib/ai/run';
 import { newId } from '@/lib/board/ops';
 import type { Diagram } from '@/lib/board/types';
+import { useDictation } from '@/lib/dictate/useDictation';
 import { DiagramView, diagramBounds } from '../cards/DiagramView';
 import { liveBoard } from '../diagram/DiagramEdit';
 import { Close, Sparkle } from '../icons';
@@ -42,6 +43,8 @@ export function DiagramFromText({ shell, cardId }: { shell: BoardShell; cardId?:
   const choice = useChoice();
   const root = useRef<HTMLElement>(null);
   const [text, setText] = useState('');
+  const desc = useRef<HTMLTextAreaElement>(null);
+  const dict = useDictation({ field: desc, where: 'tab', onAddKey: openAiSettings });
   const [current] = useState<Diagram | undefined>(() => {
     const card = cardId ? liveBoard(shell).cards[cardId] : undefined;
     return card?.kind === 'diagram' ? card.diagram : undefined;
@@ -89,9 +92,11 @@ export function DiagramFromText({ shell, cardId }: { shell: BoardShell; cardId?:
         <div className="bk-ai-dft-main">
           <div className="bk-ai-dft-side">
             <label htmlFor="bk-ai-desc" className="bk-ai-label">Describe the flow</label>
+            <div className="bk-ai-desc">
             <textarea
+              ref={desc}
               id="bk-ai-desc"
-              rows={7}
+              rows={5}
               autoFocus
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -102,7 +107,10 @@ export function DiagramFromText({ shell, cardId }: { shell: BoardShell; cardId?:
                 }
               }}
             />
-            <span className="bk-ai-hint">Plain steps work best: who does what, and what happens when.</span>
+            {dict.tint}
+            <div className="bk-dict-row bk-ai-desc-tools">{dict.controls}</div>
+            </div>
+            {dict.below ?? <span className="bk-ai-hint">Plain steps work best: who does what, and what happens when.</span>}
             {choice && <div className="bk-ai-model"><AiPicker choice={choice} label="Model" /></div>}
             <button type="button" className="bk-ai-btn is-wide is-big bk-ai-push" disabled={!text.trim() || phase.kind === 'working'} onClick={make}>
               {made ? 'Make it again' : 'Make it'}

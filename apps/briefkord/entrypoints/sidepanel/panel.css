@@ -233,3 +233,8 @@ button:disabled { cursor: default; }
 .p-tip-num { min-width: 20px; height: 20px; border-radius: 6px; background: var(--bk-tint); color: var(--bk-accent); font-family: var(--bk-mono); font-size: 11px; display: grid; place-items: center; }
 .p-stub { margin: 16px; font-size: 13px; color: var(--bk-text-2); }
 .p-offline-note { margin: 10px 16px 0; font-size: 11.5px; color: var(--bk-text-2); }
+.p-dict { position: relative; display: flex; align-items: center; gap: 8px; padding: 0 5px 0 12px; }
+.p-dict:focus-within { border-color: var(--bk-accent); box-shadow: 0 0 0 3px var(--bk-tint); }
+.p-dict input { flex-grow: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--bk-text); outline: none; }
+.p-dict .bk-dict-row { height: 28px; flex-shrink: 0; }
+.p-dict .bk-dict-gap { display: none; }

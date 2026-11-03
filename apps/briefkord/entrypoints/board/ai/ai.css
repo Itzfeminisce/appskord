@@ -86,6 +86,9 @@
 .bk-ai-label { font-size: 12px; font-weight: 600; color: var(--bk-text-2); }
 .bk-ai-dft-side textarea { box-sizing: border-box; flex-shrink: 0; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--bk-line); font: inherit; font-size: 14px; line-height: 1.55; resize: none; color: var(--bk-text); outline: none; }
 .bk-ai-dft-side textarea:focus { border-color: var(--bk-accent); box-shadow: 0 0 0 4px var(--bk-tint); }
+.bk-ai-desc { position: relative; flex-shrink: 0; display: flex; flex-direction: column; }
+.bk-ai-dft-side .bk-ai-desc textarea { padding-bottom: 48px; }
+.bk-ai-desc-tools { position: absolute; left: 12px; right: 8px; bottom: 8px; }
 .bk-ai-dft-preview { flex-grow: 1; display: flex; flex-direction: column; min-width: 0; }
 .bk-ai-dft-area { flex-grow: 1; position: relative; background: radial-gradient(circle at 1px 1px, var(--bk-map-card) 1px, transparent 1.3px) 0 0 / 16px 16px, color-mix(in srgb, var(--bk-ground) 15%, var(--bk-card)); }
 .bk-ai-badge { position: absolute; left: 20px; top: 16px; z-index: 1; height: 24px; padding: 0 8px; border-radius: 6px; background: var(--bk-tint); color: var(--bk-teal-ink); font-size: 12px; font-weight: 600; display: flex; align-items: center; }
@@ -148,8 +151,7 @@
 .bk-fill-lines span { height: 8px; border-radius: 4px; background: var(--bk-tint-2); }
 .bk-fill-lines span:last-child { width: 60%; }
 .bk-fill-area.is-working { border-color: var(--bk-tint-2); background: var(--bk-tint); }
-/* The right end stays free for Dictate's mic. */
-.bk-fill-tools { position: absolute; left: 6px; right: 44px; bottom: 6px; height: 32px; display: flex; align-items: center; gap: 8px; }
+.bk-fill-tools { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 32px; display: flex; align-items: center; gap: 8px; }
 
 .bk-fill-spark { position: relative; display: grid; flex-shrink: 0; }
 .bk-fill-btn { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; padding: 0; font: inherit; border: 0; background: transparent; color: var(--bk-accent); cursor: pointer; }

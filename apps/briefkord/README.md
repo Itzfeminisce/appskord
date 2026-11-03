@@ -49,6 +49,7 @@ Nothing leaves your computer unless you send it. There is no account, no server,
 | Images and files you add | Your computer (OPFS) | Nothing. Leaves only inside a file you export. Never sent to AI. |
 | Saved pages | Your computer: title, address, preview image and page text, taken from the open tab when you save | Nothing at save time. Briefkord does not fetch the page again unless you press Refresh. |
 | Text for AI | Your computer | When you press an AI action, only the text it needs (a saved page's text, a description, card titles and notes) goes to the provider you chose in the shared model picker. |
+| Speech from the mic | Memory only, while the mic is on; never kept | Only the audio between your two presses, once, when you stop, to Groq (`whisper-large-v3-turbo`) or OpenAI (`gpt-transcribe`) with your own key. Esc while listening throws it away. Never Chrome's built-in dictation. |
 | Exported files | The folder you choose | The view file and the `.briefkord` package go wherever you send them. Briefkord never uploads them. |
 | Keys | `chrome.storage.session`, cleared when Chrome closes | Fetched from Penv Cloud after "Connect Penv Cloud", or pasted. Never printed, logged or committed. |
 

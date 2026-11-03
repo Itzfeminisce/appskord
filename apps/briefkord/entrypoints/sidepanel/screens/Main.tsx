@@ -6,6 +6,7 @@ import { targetSection } from '@/lib/capture/cards';
 import type { Notice } from '@/lib/capture/intent';
 import { previewImage, saveLinkOnly, saveNote, savePage, type SaveResult } from '@/lib/capture/save';
 import { ago, formatBytes, isChromePage, siteName } from '@/lib/capture/text';
+import { useDictation } from '@/lib/dictate/useDictation';
 import { saveSettings } from '@/lib/store/settings';
 import { openBoardTab, usePanel, type ActiveTab } from '../data';
 import { BoardIcon, ChevronDown, FileIcon, ImageIcon, LinkIcon, ListIcon, NoteIcon, OpenIcon, PlusIcon, SpinnerIcon, WindowIcon } from '../icons';
@@ -290,6 +291,9 @@ function TabCard({ board, sectionId, compact, onSaved }: { board: Board; section
 function QuickNote({ board, sectionId }: { board: Board; sectionId: string }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const go = useGo();
+  const field = useRef<HTMLInputElement>(null);
+  const dict = useDictation({ field, where: 'panel', bars: 7, onAddKey: () => go('/settings', { show: 'ai' }) });
   const add = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
@@ -310,11 +314,16 @@ function QuickNote({ board, sectionId }: { board: Board; sectionId: string }) {
         Quick note
       </label>
       <div className="p-row">
-        <input id="quick-note" className="p-input" type="text" placeholder="Ask Sam about the coupon field" value={text} onChange={(e) => setText(e.target.value)} />
+        <div className="p-input p-dict">
+          <input ref={field} id="quick-note" type="text" placeholder="Ask Sam about the coupon field" value={text} onChange={(e) => setText(e.target.value)} />
+          {dict.tint}
+          <span className="bk-dict-row is-sm">{dict.controls}</span>
+        </div>
         <button type="submit" className="p-btn is-small" style={{ fontWeight: 600 }} disabled={busy}>
           Add
         </button>
       </div>
+      {dict.below}
     </form>
   );
 }

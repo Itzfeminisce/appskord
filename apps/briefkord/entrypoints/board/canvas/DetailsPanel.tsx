@@ -1,7 +1,9 @@
 /** Card details beside the canvas (CardSelected): title, place in the list, what to say, and where a link was saved from. */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { moveCardInList, updateCard } from '@/lib/board/ops';
 import type { Board, Card, LinkCard } from '@/lib/board/types';
+import { useDictation } from '@/lib/dictate/useDictation';
+import { openAiSettings } from '../ai/choice';
 import { useFieldFill } from '../ai/FieldFill';
 import { ChevronDown, Close, Refresh } from '../icons';
 import { dateTime, KIND_LABEL, shortDate } from '../logic/cards';
@@ -35,6 +37,12 @@ export function DetailsPanel({ board, card, refresh, change, onRefresh, onKeepNe
   const fill = useFieldFill({ card, values: { title, say }, set, keep: (field, text) => save({ [field]: text }) });
   const titleState = fill.state('title');
   const sayState = fill.state('say');
+  const sayField = useRef<HTMLTextAreaElement>(null);
+  // The spoken words are one step of the board's Undo.
+  const dict = useDictation({ field: sayField, where: 'tab', onAddKey: openAiSettings, onInserted: (text) => save({ say: text }) });
+  const dictCancel = useRef(dict.cancel);
+  dictCancel.current = dict.cancel;
+  useEffect(() => () => dictCancel.current(), [card.id]);
 
   return (
     <aside aria-label="Card details" className="bk-details">
@@ -75,16 +83,18 @@ export function DetailsPanel({ board, card, refresh, change, onRefresh, onKeepNe
           {sayState === 'working' ? (
             <span aria-hidden="true" className="bk-fill-lines"><span /><span /><span /></span>
           ) : (
-            <textarea id="card-say" rows={3} placeholder="What you want to say when you reach this card" value={say} onChange={(e) => setSay(e.target.value)} onBlur={() => !sayState && say !== card.say && save({ say })} />
+            <textarea ref={sayField} id="card-say" rows={3} placeholder="What you want to say when you reach this card" value={say} onChange={(e) => setSay(e.target.value)} onBlur={() => !sayState && say !== card.say && save({ say })} />
           )}
-          {/* The right end of this row is kept for Dictate's mic. */}
+          {dict.tint}
           <span className="bk-fill-tools">
             {fill.sparkle('say')}
             {sayState === 'working' && fill.stopButton}
+            {!sayState && dict.controls}
           </span>
         </div>
       </div>
       {fill.below('say')}
+      {dict.below}
       {card.kind === 'link' && (refresh?.cardId === card.id ? <RefreshCard card={card} state={refresh} onKeepNew={onKeepNew} onKeepOld={onKeepOld} /> : <SavedFrom card={card} onRefresh={() => onRefresh(card.id)} />)}
     </aside>
   );
