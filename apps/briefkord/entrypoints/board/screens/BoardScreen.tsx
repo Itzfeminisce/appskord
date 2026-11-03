@@ -377,6 +377,7 @@ function ReadyBoard({ api, board, view, card: focusCard, go }: BoardScreenProps 
   const single = selected.size === 1 ? board.cards[[...selected][0]!] : undefined;
   const menuCard = menu ? board.cards[menu.id] : undefined;
   const ListView = boardExtensions.ListView;
+  const Banner = boardExtensions.Banner;
   const empty = Object.keys(board.cards).length === 0;
 
   return (
@@ -397,6 +398,7 @@ function ReadyBoard({ api, board, view, card: focusCard, go }: BoardScreenProps 
         onShare={() => boardExtensions.share(shell)}
         onStartMeeting={() => boardExtensions.startMeeting(shell)}
       />
+      <Banner shell={shell} />
       <div className="bk-board-body">
         {view === 'list' ? (
           <ListView shell={shell} />

@@ -3,9 +3,13 @@ import type { Board } from '../board/types';
 /** File id -> `data:` URI. Images show inline; other files become download links. */
 export type ViewFiles = Record<string, string>;
 
-/** Ids of the two JSON blocks the renderer (entrypoints/viewer) reads. */
+/** Ids of the JSON blocks the renderer (entrypoints/viewer) reads. */
 export const VIEW_BOARD_ID = 'board';
 export const VIEW_FILES_ID = 'files';
+export const VIEW_META_ID = 'meta';
+
+/** When the file was made; the renderer shows "Shared from Briefkord · {date}". */
+export interface ViewMeta { at: number }
 
 const escapeHtml = (text: string): string =>
   text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
@@ -17,7 +21,7 @@ const safeScript = (js: string): string => js.replace(/<\/(script)/gi, '<\\/$1')
 const safeStyle = (css: string): string => css.replace(/<\/(style)/gi, '<\\/$1');
 
 /** The view file: one HTML page with the renderer, its styles, the board and its files inline. Needs no network. */
-export function buildViewFile(rendererJs: string, css: string, board: Board, files: ViewFiles): string {
+export function buildViewFile(rendererJs: string, css: string, board: Board, files: ViewFiles, meta?: ViewMeta): string {
   return [
     '<!doctype html>',
     '<html lang="en">',
@@ -30,6 +34,7 @@ export function buildViewFile(rendererJs: string, css: string, board: Board, fil
     '<body>',
     `<script type="application/json" id="${VIEW_BOARD_ID}">${safeJson(board)}</script>`,
     `<script type="application/json" id="${VIEW_FILES_ID}">${safeJson(files)}</script>`,
+    ...(meta ? [`<script type="application/json" id="${VIEW_META_ID}">${safeJson(meta)}</script>`] : []),
     `<script>${safeScript(rendererJs)}</script>`,
     '</body>',
     '</html>',

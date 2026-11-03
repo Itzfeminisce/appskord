@@ -1,20 +1,7 @@
 import { createRootRoute, createRoute, createSurfaceRouter, Outlet, redirect, searchParams, type AnyRouter, type RouterHistory } from '@appskord/platform/router';
-import { Logo } from './icons';
 import { AllBoards } from './screens/AllBoards';
 import { BoardScreen } from './screens/BoardScreen';
-
-// T6 replaces this screen with Import.
-function ImportScreen() {
-  return (
-    <div className="bk-boards">
-      <header className="bk-topbar">
-        <Logo />
-        <a className="bk-crumb" href="#/boards">Boards</a>
-      </header>
-      <main className="bk-center-page"><h1 className="bk-import-title">Import a .briefkord file</h1></main>
-    </div>
-  );
-}
+import { ImportScreen } from './share/ImportScreen';
 
 export function createAppRouter(history?: RouterHistory): AnyRouter {
   const root = createRootRoute({ component: Outlet });
