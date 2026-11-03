@@ -5,6 +5,7 @@ import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import '@appskord/ui/tokens.css';
 import '@appskord/ui/components.css';
+import '@/lib/ui/briefkord.css';
 import { createAppRouter } from './router';
 
 createRoot(document.getElementById('root')!).render(

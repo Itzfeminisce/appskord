@@ -1,0 +1,29 @@
+/* Briefkord look from frames/FRAMES.md "Look". Every screen uses these, never raw hex. */
+:root {
+  --bk-ground: #F6F6F7;
+  --bk-card: #FFFFFF;
+  --bk-line: #E8E8EB;
+  --bk-text: #111114;
+  --bk-text-2: #5F6168;
+  --bk-canvas: #F3F3F5;
+  --bk-accent: #0F766E;
+  --bk-accent-hover: #115E59;
+  --bk-tint: #F0FDFA;
+  --bk-tint-2: #CCFBF1;
+  --bk-accent-on-dark: #2DD4BF;
+  --bk-yellow: #FEF3C7;
+  --bk-warn: #FFFBEB;
+  --bk-error: #FEF2F2;
+  --bk-dark-ground: #0E0E11;
+  --bk-dark-panel: #121216;
+  --bk-dark-panel-2: #1F1F25;
+  --bk-dark-line: #2C2C34;
+  --bk-dark-text: #F4F4F5;
+  --bk-font: Geist, 'Geist Variable', system-ui, sans-serif;
+  --bk-mono: 'Geist Mono', 'Geist Mono Variable', ui-monospace, monospace;
+  --bk-shadow: 0 1px 2px rgba(17, 17, 20, 0.06), 0 4px 12px rgba(17, 17, 20, 0.06);
+}
+body { margin: 0; background: var(--bk-ground); color: var(--bk-text); font-family: var(--bk-font); font-size: 13px; }
+a { color: var(--bk-accent); }
+a:hover { color: var(--bk-accent-hover); }
+:focus-visible { outline: 2px solid var(--bk-accent); outline-offset: 2px; }
