@@ -4,6 +4,7 @@ import { emptyBoard, newId, renameBoard, setPinned } from '@/lib/board/ops';
 import type { Board, BoardMeta } from '@/lib/board/types';
 import { takeIntents, type Notice, type PanelIntent, type PendingCapture } from '@/lib/capture/intent';
 import { addMissingPreviews, storageState, type StorageState } from '@/lib/capture/save';
+import { captureProblem } from '@/lib/capture/result';
 import { onGrant } from '@/lib/capture/shortcut';
 import { onBoardChanged, postBoardChanged } from '@/lib/store/channel';
 import { boardsDB, listBoards, loadBoard, saveBoard, updateBoard } from '@/lib/store/db';
@@ -14,7 +15,7 @@ import { loadSettings, saveSettings, type Settings } from '@/lib/store/settings'
 export const FIRST_SECTION = 'Agenda';
 export const DELETE_UNDO_MS = 10_000;
 
-export interface ActiveTab { id: number; windowId: number; url?: string; title?: string; status?: string }
+export interface ActiveTab { id: number; windowId: number; url?: string; title?: string; status?: string; restricted?: boolean }
 
 interface PanelData {
   loaded: boolean;
@@ -109,6 +110,16 @@ async function sweepOrphanFiles(): Promise<void> {
   }
 }
 
+// Without a grant the address is hidden; Chrome still tells its own pages apart in the scripting error.
+async function isRestricted(tabId: number): Promise<boolean> {
+  try {
+    await browser.scripting.executeScript({ target: { tabId }, func: () => 0 });
+    return false;
+  } catch (error) {
+    return captureProblem(error).problem === 'restricted';
+  }
+}
+
 function useActiveTab(): ActiveTab | undefined {
   const [tab, setTab] = useState<ActiveTab>();
   useEffect(() => {
@@ -118,7 +129,9 @@ function useActiveTab(): ActiveTab | undefined {
       windowId ??= (await browser.windows.getCurrent()).id;
       const [active] = await browser.tabs.query({ active: true, windowId });
       if (!alive || !active?.id) return;
-      setTab({ id: active.id, windowId: active.windowId, url: active.url, title: active.title, status: active.status });
+      const restricted = active.url ? false : await isRestricted(active.id);
+      if (!alive) return;
+      setTab({ id: active.id, windowId: active.windowId, url: active.url, title: active.title, status: active.status, restricted });
     };
     const refresh = () => void read().catch((error: unknown) => console.error('Briefkord: could not read the active tab', error));
     const onActivated = (info: { windowId: number }) => info.windowId === windowId && refresh();

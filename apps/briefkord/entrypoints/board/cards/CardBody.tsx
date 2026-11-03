@@ -1,5 +1,5 @@
 /** What each kind of card shows on the canvas, with its number badge. Notes and checklists also edit in place. */
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { newId } from '@/lib/board/ops';
 import type { Card, ChecklistCard, ChecklistItem, DiagramCard, FileCard, ImageCard, LinkCard, NoteCard } from '@/lib/board/types';
 import { formatBytes } from '../logic/drop';
@@ -105,6 +105,13 @@ function NoteBody({ card, number, editing, onCommit, onDone }: CardBodyProps & {
       onDone();
     }
   };
+  // The card grows while editing so the last line never hides behind the hint.
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!editing || !el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [editing, text]);
   if (editing) {
     return (
       <div className="bk-note bk-editing-body" onKeyDown={onKey}>

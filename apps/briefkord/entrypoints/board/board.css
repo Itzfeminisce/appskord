@@ -46,6 +46,7 @@
   --bk-d-rose-fill: #FEF2F2; --bk-d-rose-line: #B91C1C; --bk-d-rose-ink: #7F1D1D;
   --canvas-arrow: var(--bk-text-2);
   --canvas-arrow-selected: var(--bk-accent);
+  --canvas-arrow-halo: var(--bk-card);
   --canvas-placeholder: rgba(17, 17, 20, 0.05);
 }
 
@@ -123,7 +124,8 @@ kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; 
 .bk-badge-at { position: absolute; left: 10px; top: 10px; display: flex; }
 .bk-card-media { position: relative; flex-shrink: 0; background: linear-gradient(160deg, var(--bk-teal-ink) 0%, var(--bk-accent) 45%, var(--bk-teal-line) 100%); overflow: hidden; }
 .bk-card-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.bk-image-media { flex-grow: 1; background: var(--bk-chip); }
+.bk-image-media { flex: 1 1 0; min-height: 0; background: var(--bk-chip); }
+.bk-image-media img { position: absolute; inset: 0; }
 .bk-card-text { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow: hidden; }
 .bk-image-title { flex-shrink: 0; height: 48px; box-sizing: border-box; justify-content: center; }
 .bk-image-title .bk-card-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -137,7 +139,8 @@ kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; 
 .bk-checklist { gap: 8px; }
 .bk-note-title { font-size: 13px; font-weight: 600; color: var(--card-ink, var(--bk-text)); min-width: 0; }
 .bk-note-text { font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow: hidden; color: var(--card-ink, var(--bk-text)); }
-textarea.bk-note-text { flex-grow: 1; line-height: 1.5; }
+textarea.bk-note-text { flex-grow: 1; line-height: 1.5; resize: none; }
+.bk-note.bk-editing-body { height: auto; min-height: 100%; }
 .bk-card.is-summary { border-top: 3px solid var(--bk-accent); box-shadow: 0 18px 40px -18px rgba(15, 118, 110, 0.4); }
 .bk-summary { gap: 10px; padding: 14px 16px; }
 .bk-summary-head { font-size: 12px; font-weight: 600; color: var(--bk-accent-hover); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

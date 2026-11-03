@@ -16,8 +16,8 @@
 .st-back { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--bk-text); border: 0; background: transparent; padding: 0; }
 .st-back:hover { background: var(--p-hover); }
 .st-body { flex-grow: 1; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
-.st-nav { flex-shrink: 0; display: flex; gap: 2px; padding: 12px 12px 0; overflow-x: auto; box-sizing: border-box; scrollbar-width: none; }
-.st-nav button { white-space: nowrap; height: 36px; padding: 0 12px; border-radius: 9px; border: 1px solid transparent; background: transparent; display: flex; align-items: center; font-size: 13px; color: var(--p-ink-2); }
+.st-nav { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 2px; padding: 12px 10px 0; overflow-x: auto; box-sizing: border-box; scrollbar-width: none; }
+.st-nav button { white-space: nowrap; height: 36px; padding: 0 8px; border-radius: 9px; border: 1px solid transparent; background: transparent; display: flex; align-items: center; font-size: 13px; color: var(--p-ink-2); }
 .st-nav button:hover { background: var(--p-hover); }
 .st-nav button[aria-current='page'] { background: var(--bk-card); border-color: var(--bk-line); font-weight: 600; color: var(--bk-text); }
 .st-main { flex-grow: 1; padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 12px; min-width: 0; box-sizing: border-box; }
@@ -151,7 +151,8 @@
 
 @media (min-width: 880px) {
   .st-body { flex-direction: row; overflow: hidden; }
-  .st-nav { width: 220px; flex-direction: column; padding: 16px 12px; overflow: visible; }
+  .st-nav { width: 220px; flex-direction: column; flex-wrap: nowrap; padding: 16px 12px; overflow: visible; }
+  .st-nav button { padding: 0 12px; }
   .st-main { padding: 16px 32px 24px 8px; overflow-y: auto; }
   .st-cols { flex-direction: row; gap: 24px; }
   .st-col.is-picker { width: 480px; flex-shrink: 0; }

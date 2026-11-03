@@ -1,5 +1,5 @@
 /** Frames PanelBoards and PanelRename, StatesBoard `delete-board` and StatesMore `panel-find-no-match`. */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { BoardMeta } from '@/lib/board/types';
 import { onDay, ago } from '@/lib/capture/text';
 import { loadBoard } from '@/lib/store/db';
@@ -16,6 +16,16 @@ function meta(board: BoardMeta, now: number): string {
 function RowMenu({ board, onClose, onRename, onPin, onDelete }: { board: BoardMeta; onClose: () => void; onRename: () => void; onPin: () => void; onDelete: () => void }) {
   const ref = useDismiss(true, onClose);
   const first = useRef<HTMLButtonElement>(null);
+  const [up, setUp] = useState(false);
+  useLayoutEffect(() => {
+    const menu = ref.current;
+    if (!menu) return;
+    let box: HTMLElement | null = menu.parentElement;
+    while (box && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+    const bottom = box ? box.getBoundingClientRect().bottom : window.innerHeight;
+    // Open upward when the list ends before the menu does, so no item hides under the footer.
+    if (menu.getBoundingClientRect().bottom > bottom) setUp(true);
+  }, [ref]);
   useEffect(() => first.current?.focus(), []);
   const item = (label: string, run: () => void, danger = false, focus = false) => (
     <button
@@ -32,7 +42,7 @@ function RowMenu({ board, onClose, onRename, onPin, onDelete }: { board: BoardMe
     </button>
   );
   return (
-    <div ref={ref} role="menu" aria-label={board.name} className="p-menu p-board-menu">
+    <div ref={ref} role="menu" aria-label={board.name} className={`p-menu p-board-menu${up ? ' is-up' : ''}`}>
       {item('Open in a tab', () => openBoardTab(board.id), false, true)}
       {item('Rename', onRename)}
       {item(board.pinned ? 'Unpin' : 'Pin', onPin)}

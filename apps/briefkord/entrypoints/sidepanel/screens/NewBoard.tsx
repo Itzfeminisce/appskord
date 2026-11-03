@@ -1,4 +1,4 @@
-/** Frame PanelFirstRun: names the first board, and every new one ("New board", right-click "New board…"). */
+/** Frame PanelFirstRun names the first board; later boards use the AllBoards "New board" field copy. */
 import { useState } from 'react';
 import { saveCapture } from '@/lib/capture/save';
 import { makeBoard, usePanel } from '../data';
@@ -35,9 +35,12 @@ export function NewBoard() {
   const go = useGo();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [empty, setEmpty] = useState(false);
+  const first = boards.length === 0;
 
   const make = async () => {
-    if (!name.trim() || busy) return;
+    if (busy) return;
+    if (!name.trim()) return setEmpty(true);
     setBusy(true);
     try {
       const board = await makeBoard(name);
@@ -68,10 +71,12 @@ export function NewBoard() {
           <Art />
         </div>
       </div>
-      <div className="p-intro">
-        <h1>One board for every meeting</h1>
-        <p>Save pages, images and notes while you browse. Arrange them on a canvas or as an agenda, then walk through them in the meeting.</p>
-      </div>
+      {first && (
+        <div className="p-intro">
+          <h1>One board for every meeting</h1>
+          <p>Save pages, images and notes while you browse. Arrange them on a canvas or as an agenda, then walk through them in the meeting.</p>
+        </div>
+      )}
       <form
         style={{ display: 'contents' }}
         onSubmit={(event) => {
@@ -81,9 +86,25 @@ export function NewBoard() {
       >
         <div className="p-first-field">
           <label htmlFor="first-board" className="p-label">
-            Name your first board
+            {first ? 'Name your first board' : 'New board'}
           </label>
-          <input id="first-board" type="text" autoFocus placeholder="For example: Checkout redesign review" value={name} onChange={(e) => setName(e.target.value)} />
+          <input
+            id="first-board"
+            type="text"
+            autoFocus
+            aria-invalid={empty || undefined}
+            placeholder={first ? 'For example: Checkout redesign review' : 'Name it after the meeting'}
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setEmpty(false);
+            }}
+          />
+          {empty && (
+            <span role="alert" className="p-field-error">
+              Give the board a name.
+            </span>
+          )}
         </div>
         <button type="submit" className="p-btn is-primary p-make" disabled={busy}>
           Make the board

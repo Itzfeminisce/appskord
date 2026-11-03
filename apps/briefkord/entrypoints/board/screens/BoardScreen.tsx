@@ -136,6 +136,11 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
     setToast({ kind: 'undo', text: gone.length === 1 ? '1 card deleted.' : `${gone.length} cards deleted.`, onUndo: () => live.current.api.undo() });
   };
 
+  // No frame copy for moves; it follows the `undo-toast` delete pattern.
+  const movedWithUndo = (count: number) => {
+    if (count > 0) setToast({ kind: 'undo', text: count === 1 ? '1 card moved.' : `${count} cards moved.`, onUndo: () => live.current.api.undo() });
+  };
+
   const addCardAt = (kind: 'note' | 'checklist' | 'diagram', at: Point) => {
     const id = newId();
     const make = kind === 'note' ? newNote : kind === 'checklist' ? newChecklist : newDiagram;
@@ -226,7 +231,8 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
     else setRefresh({ cardId: id, phase: 'updated', title: page.title, text: page.text, words: page.words });
   };
 
-  const listMove = (id: string, by: -1 | 1) =>
+  const listMove = (id: string, by: -1 | 1) => {
+    movedWithUndo(1);
     change((b, now) => {
       const at = b.sections.findIndex((s) => s.cards.includes(id));
       const section = b.sections[at];
@@ -241,6 +247,7 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
       const next = b.sections[at + 1];
       return next ? moveCardInList(b, id, next.id, 0, now) : b;
     });
+  };
 
   const duplicate = async (ids: string[]) => {
     const boardId = live.current.board.id;
@@ -269,7 +276,10 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
     edit: (id) => store.set({ editing: id, selected: new Set([id]) }),
     duplicate: (ids) => void duplicate(ids),
     recolour: (ids, colour) => change((b, now) => recolourCards(b, ids, colour, now)),
-    moveToSection: (ids, sectionId) => change((b, now) => ids.reduce((acc, id) => moveCardInList(acc, id, sectionId, Number.MAX_SAFE_INTEGER, now), b)),
+    moveToSection: (ids, sectionId) => {
+      change((b, now) => ids.reduce((acc, id) => moveCardInList(acc, id, sectionId, Number.MAX_SAFE_INTEGER, now), b));
+      movedWithUndo(ids.length);
+    },
     bringToFront: (ids) => change((b, now) => bringToFront(b, ids, now)),
     saveImage: (id) => {
       const card = live.current.board.cards[id];
@@ -312,12 +322,15 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
       change((b, now) => addGroup(b, { id, title: '', cards: ids }, now));
       store.set({ selected: new Set(), group: id, arrow: undefined });
     },
-    lineUp: (ids) =>
+    lineUp: (ids) => {
       change((b, now) => {
         const ordered = ids.filter((id) => b.cards[id]).sort((x, y) => (numbers[x] ?? 0) - (numbers[y] ?? 0));
         const rects = lineUp(ordered.map((id) => b.cards[id]!.rect));
         return ordered.reduce((acc, id, i) => updateCard(acc, id, now, (c) => ({ ...c, rect: rects[i]! })), b);
-      }),
+      });
+      movedWithUndo(ids.length);
+    },
+    moved: movedWithUndo,
     moveToSection: menuActions.moveToSection,
     setArrowDashed: (id, dashed) => change((b, now) => setArrowDashed(b, id, dashed, now)),
     deleteArrow: (id) => {

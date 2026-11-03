@@ -22,6 +22,8 @@ export interface CanvasActions extends BarActions {
   importFile(file: File): void;
   pickFiles(): void;
   showHelp(): void;
+  /** Offers Undo after cards moved. */
+  moved(count: number): void;
 }
 
 export interface BoardCanvasProps {
@@ -94,8 +96,9 @@ export function BoardCanvas(props: BoardCanvasProps) {
   const [drag, setDrag] = useState<{ count: number; boardFile: boolean } | null>(null);
   const dragDepth = useRef(0);
   const minimap = useRef<(camera: Camera) => void>(undefined);
-  const live = useRef({ board, tool, actions, gesture, setTool: props.setTool, spaceHeld: props.spaceHeld });
-  live.current = { board, tool, actions, gesture, setTool: props.setTool, spaceHeld: props.spaceHeld };
+  const wrapRef = useRef<HTMLElement>(null);
+  const live = useRef({ board, tool, actions, gesture, setTool: props.setTool, spaceHeld: props.spaceHeld, target: undefined as Rect | undefined });
+  live.current = { board, tool, actions, gesture, setTool: props.setTool, spaceHeld: props.spaceHeld, target: live.current.target };
   const boardRef = useRef({ boardId: board.id, change: actions.change });
   boardRef.current = { boardId: board.id, change: actions.change };
 
@@ -160,8 +163,10 @@ export function BoardCanvas(props: BoardCanvasProps) {
       },
       (g) => {
         if (g.kind !== 'move') return;
-        if (g.moved) live.current.actions.change((b, now) => regroup(moveCards(b, g.ids, g.dx, g.dy, now), g.ids, now));
-        else if (g.click) store.select([g.click]);
+        if (g.moved) {
+          live.current.actions.change((b, now) => regroup(moveCards(b, g.ids, g.dx, g.dy, now), g.ids, now));
+          live.current.actions.moved(g.ids.length);
+        } else if (g.click) store.select([g.click]);
       },
     );
   };
@@ -416,6 +421,34 @@ export function BoardCanvas(props: BoardCanvasProps) {
   const arrowAt = arrow ? ends(arrow) : undefined;
   const arrowMid = arrowAt ? half(arrowAt.from, arrowAt.to) : undefined;
   const groupSel = selGroup ? groups.find((g) => g.group.id === selGroup) : undefined;
+  const target = singleRect ?? groupSel?.box ?? (selRects.length > 1 ? boxAround(selRects, 0) : undefined);
+  live.current.target = target;
+  const targetKey = single ?? selGroup ?? (selRects.length > 1 ? [...selected].join() : '');
+  const hintClear =
+    !!singleRect &&
+    !items.some(({ id, rect: r }) => id !== single && r.x < singleRect.x + 440 / zoom && r.x + r.w > singleRect.x && r.y < singleRect.y + singleRect.h + 34 / zoom && r.y + r.h > singleRect.y + singleRect.h);
+
+  // A new selection, or the Details panel narrowing the canvas, can leave the target or its bar out of view: pan just enough.
+  useLayoutEffect(() => {
+    const reveal = () => {
+      const c = canvasRef.current, wrap = wrapRef.current, box = live.current.target;
+      if (!c || !wrap || !box || live.current.gesture) return;
+      const view = wrap.getBoundingClientRect(), cam = c.camera();
+      let left = view.left + cam.x + box.x * cam.zoom, top = view.top + cam.y + box.y * cam.zoom;
+      let right = left + box.w * cam.zoom, bottom = top + box.h * cam.zoom;
+      wrap.querySelectorAll('.bk-float > *').forEach((bar) => {
+        const r = bar.getBoundingClientRect();
+        left = Math.min(left, r.left), top = Math.min(top, r.top), right = Math.max(right, r.right), bottom = Math.max(bottom, r.bottom);
+      });
+      const pull = (lo: number, hi: number, min: number, max: number) => (hi > max ? Math.max(max - hi, min - lo) : lo < min ? min - lo : 0);
+      const dx = pull(left, right, view.left + 80, view.right - 16);
+      const dy = pull(top, bottom, view.top + 12, view.bottom - 16);
+      if (dx || dy) c.setCamera({ ...cam, x: cam.x + dx, y: cam.y + dy });
+    };
+    reveal();
+    const frame = requestAnimationFrame(reveal);
+    return () => cancelAnimationFrame(frame);
+  }, [targetKey]);
   const labels = board.arrows.flatMap((a) => {
     if (!a.label && labelling !== a.id) return [];
     const at = ends(a);
@@ -462,9 +495,9 @@ export function BoardCanvas(props: BoardCanvasProps) {
           <div className="bk-float" style={{ left: singleRect.x - 4, top: singleRect.y - 4, ...unscale }}>
             <CardBar card={singleCard} actions={actions} connecting={connectFrom === single} />
           </div>
-          <p className="bk-size-hint" style={{ left: singleRect.x, top: singleRect.y + singleRect.h, ...unscale }}>
+          {hintClear && <p className="bk-size-hint" style={{ left: singleRect.x, top: singleRect.y + singleRect.h, ...unscale }}>
             {Math.round(singleRect.w)} × {Math.round(singleRect.h)} · drag a corner to resize · Shift-click to pick more
-          </p>
+          </p>}
         </>
       )}
       {selBox && !(gesture?.kind === 'move' && gesture.moved) && (
@@ -497,7 +530,7 @@ export function BoardCanvas(props: BoardCanvasProps) {
     <StoreContext.Provider value={store}>
       <HandlersContext.Provider value={handlers}>
         <BoardContext.Provider value={boardRef}>
-          <main className="bk-canvas-wrap" aria-label="Canvas" onDoubleClick={onDoubleClick} onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+          <main ref={wrapRef} className="bk-canvas-wrap" aria-label="Canvas" onDoubleClick={onDoubleClick} onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
             <Canvas
               ref={canvasRef}
               className="bk-canvas"
@@ -557,6 +590,8 @@ function GroupName({ title, onRename }: { title: string; onRename(title: string)
       className="bk-group-input"
       type="text"
       aria-label="Group name"
+      // A group made a moment ago has no name yet: start typing it.
+      autoFocus={!title}
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={() => value !== title && onRename(value)}

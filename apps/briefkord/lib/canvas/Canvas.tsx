@@ -63,7 +63,7 @@ const Item = memo(function Item<T extends CanvasItem>({ item, full, render, plac
 
 const sameSet = (a: Set<string>, b: Set<string>): boolean => a.size === b.size && [...a].every((id) => b.has(id));
 
-/** Pannable, zoomable board: items on one transformed layer, arrows in one SVG, full content only in view. */
+/** Pannable, zoomable board: items on one transformed layer, arrows in one SVG above them, full content only in view. */
 export function Canvas<T extends CanvasItem>(props: CanvasProps<T>) {
   const { items, arrows = [], renderItem, renderPlaceholder = defaultPlaceholder, minZoom = ZOOM_MIN, maxZoom = ZOOM_MAX, margin = 200, onCameraChange, cursor = 'grab' } = props;
   const markerId = `canvas-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -177,6 +177,8 @@ export function Canvas<T extends CanvasItem>(props: CanvasProps<T>) {
       }),
     [arrows, byId],
   );
+  // Arrows sit above every card so a line that crosses another card stays readable.
+  const topZ = useMemo(() => items.reduce((z, item) => Math.max(z, item.z ?? 0), 0), [items]);
   const onArrow = props.onArrowPointerDown;
   const selected = props.selectedArrows;
 
@@ -184,7 +186,10 @@ export function Canvas<T extends CanvasItem>(props: CanvasProps<T>) {
     <div ref={root} className={props.className} style={{ ...ROOT, cursor: props.panAnywhere ? 'grab' : cursor, ...props.style }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
       <div ref={layer} style={LAYER}>
         {props.underlay}
-        <svg style={ARROWS} aria-hidden="true">
+        {items.map((item) => (
+          <Item key={item.id} item={item} full={visible.has(item.id)} render={renderItem} placeholder={renderPlaceholder} />
+        ))}
+        <svg style={{ ...ARROWS, zIndex: topZ + 1 }} aria-hidden="true">
           <defs>
             <marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" fill="var(--canvas-arrow, #6b7280)" />
@@ -200,14 +205,12 @@ export function Canvas<T extends CanvasItem>(props: CanvasProps<T>) {
                 {onArrow && (
                   <path d={line.d} data-canvas-control="" stroke="transparent" strokeWidth={14} fill="none" style={{ pointerEvents: 'stroke', cursor: 'pointer' }} onPointerDown={(e) => onArrow(line.id, e)} />
                 )}
+                <path d={line.d} fill="none" stroke="var(--canvas-arrow-halo, #ffffff)" strokeWidth={on ? 6 : 5} strokeLinecap="round" opacity={0.85} />
                 <path d={line.d} fill="none" stroke={on ? 'var(--canvas-arrow-selected, #0F766E)' : 'var(--canvas-arrow, #6b7280)'} strokeWidth={on ? 2.2 : 1.5} strokeDasharray={line.dashed ? '5 4' : undefined} markerEnd={`url(#${markerId}${on ? '-on' : ''})`} markerStart={line.both ? `url(#${markerId}${on ? '-on' : ''})` : undefined} />
               </g>
             );
           })}
         </svg>
-        {items.map((item) => (
-          <Item key={item.id} item={item} full={visible.has(item.id)} render={renderItem} placeholder={renderPlaceholder} />
-        ))}
         {props.overlay && <div style={OVER}>{props.overlay}</div>}
       </div>
     </div>

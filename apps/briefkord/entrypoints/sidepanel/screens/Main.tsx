@@ -12,7 +12,7 @@ import { HomeHeader, plural, useDismiss, useGo } from '../ui';
 
 type TabKind = 'loading' | 'no-access' | 'chrome' | 'page';
 
-const tabKind = (tab?: ActiveTab): TabKind => (!tab ? 'loading' : !tab.url ? 'no-access' : isChromePage(tab.url) ? 'chrome' : 'page');
+const tabKind = (tab?: ActiveTab): TabKind => (!tab ? 'loading' : tab.restricted || (tab.url && isChromePage(tab.url)) ? 'chrome' : !tab.url ? 'no-access' : 'page');
 
 /** A picture of the tab for the card, when Chrome lets Briefkord take one. */
 function useTabPicture(tab: ActiveTab | undefined, on: boolean): string | undefined {
