@@ -2,6 +2,7 @@
 import { cardLabel } from '../../lib/board/label';
 import type { Board, Card, Diagram, Rect, Section } from '../../lib/board/types';
 import { routeEdge } from '../../lib/diagram/route';
+import { fitNodes, labelRoom, LINE_HEIGHT, nodeLines } from '../../lib/diagram/size';
 import { formatBytes, formatDay } from '../../lib/share/prepare';
 
 type Files = Record<string, string>;
@@ -100,7 +101,7 @@ function arrowHead(defs: SVGElement, cls: string): string {
 
 function diagramSvg(diagram: Diagram, label: string): SVGElement {
   const pad = 16;
-  const nodes = diagram.nodes;
+  const nodes = fitNodes(diagram).nodes;
   const box = nodes.length === 0 ? { x: 0, y: 0, w: 1, h: 1 } : (() => {
     const x = Math.min(...nodes.map((n) => n.x)) - pad, y = Math.min(...nodes.map((n) => n.y)) - pad;
     return { x, y, w: Math.max(...nodes.map((n) => n.x + n.w)) + pad - x, h: Math.max(...nodes.map((n) => n.y + n.h)) + pad - y };
@@ -126,11 +127,28 @@ function diagramSvg(diagram: Diagram, label: string): SVGElement {
     const cx = x + w / 2, cy = y + h / 2;
     if (node.kind === 'choice') root.append(svg('path', { d: `M${cx} ${y + 2}L${x + w - 2} ${cy}L${cx} ${y + h - 2}L${x + 2} ${cy}z`, class: `node ${node.colour}` }));
     else if (node.kind !== 'text') root.append(svg('rect', { x: x + 0.75, y: y + 0.75, width: w - 1.5, height: h - 1.5, rx: 8, class: `node ${node.colour}` }));
-    const text = svg('text', { x: cx, y: cy, class: `node-label ${node.colour}${node.kind === 'choice' ? ' choice' : ''}${node.colour !== 'white' && node.kind === 'step' ? ' strong' : ''}` });
-    text.textContent = node.label;
+    const text = svg('text', { x: cx, y: cy, 'data-room': labelRoom(node), class: `node-label ${node.colour}${node.kind === 'choice' ? ' choice' : ''}${node.colour !== 'white' && node.kind === 'step' ? ' strong' : ''}` });
+    const lines = nodeLines(node);
+    lines.forEach((line, i) => {
+      const span = svg('tspan', { x: cx, dy: `${i === 0 ? (-(lines.length - 1) / 2) * LINE_HEIGHT : LINE_HEIGHT}em` });
+      span.textContent = line;
+      text.append(span);
+    });
     root.append(text);
   }
   return root;
+}
+
+/** Labels are sized for Geist; where another font draws wider, the label shrinks to stay inside its shape. */
+function shrinkLabels(): void {
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return;
+  ctx.font = `600 14px ${getComputedStyle(document.body).fontFamily}`;
+  for (const text of document.querySelectorAll<SVGTextElement>('.vf-diagram text[data-room]')) {
+    const widest = Math.max(...[...text.querySelectorAll('tspan')].map((t) => ctx.measureText(t.textContent ?? '').width));
+    const room = Number(text.dataset.room);
+    if (widest > room) text.style.fontSize = `${Math.floor((14 * room * 10) / widest) / 10}px`;
+  }
 }
 
 function image(src: string, alt = ''): HTMLImageElement {
@@ -652,6 +670,7 @@ function render(board: Board, files: Files, meta: Meta | undefined): void {
   });
 
   document.body.append(wide, narrow, walk, printList(board, entries, files, formatDay(at, true)));
+  void document.fonts.ready.then(shrinkLabels);
 
   // Canvas camera: drag to pan, wheel to scroll, Ctrl + wheel or the buttons to zoom.
   let cam = { x: 0, y: 0, zoom: 1 };

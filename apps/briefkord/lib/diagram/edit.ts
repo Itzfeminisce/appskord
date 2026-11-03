@@ -1,14 +1,6 @@
 /** Pure changes to a diagram inside the editor. Each returns a new diagram, or the same one when nothing changes. */
 import type { CardColour, Diagram, DiagramEdge, DiagramNode, DiagramNodeKind } from '../board/types';
 
-/** A new node's size by kind, in diagram units at zoom 1. */
-export const NODE_SIZE: Record<DiagramNodeKind, { w: number; h: number }> = {
-  step: { w: 150, h: 56 },
-  end: { w: 150, h: 56 },
-  choice: { w: 150, h: 100 },
-  text: { w: 150, h: 40 },
-};
-
 /** The colour a new node of this kind gets. */
 export const NODE_COLOUR: Record<DiagramNodeKind, CardColour> = { step: 'white', end: 'white', choice: 'yellow', text: 'white' };
 

@@ -1,13 +1,17 @@
 /** Layered layout for diagrams whose nodes have no places yet, such as the ones AI makes: wraps to fit, branches on their own lanes. */
-import type { Diagram, DiagramEdge, DiagramNode, DiagramNodeKind } from '../board/types';
+import type { Diagram, DiagramEdge, DiagramNode } from '../board/types';
 import { routeEdge, routeSegments, type Box, type Segment } from './route';
+import { EDGE_FONT, fitSize, LABEL_FONT, measureText } from './size';
+
+export { fitSize } from './size';
 
 export type UnplacedNode = Omit<DiagramNode, 'x' | 'y' | 'w' | 'h'> & Partial<Pick<DiagramNode, 'x' | 'y' | 'w' | 'h'>>;
 export interface UnplacedDiagram { nodes: UnplacedNode[]; edges: DiagramEdge[] }
 
-export const LAYOUT_GAP = { x: 36, y: 36 };
-/** The AI preview's drawing area at the frame size; a layout that fits it at full size reads at 12 px. */
-export const LAYOUT_ROOM = { w: 580, h: 364 };
+/** The least space between columns and rows; it grows with the shapes on either side. */
+export const LAYOUT_GAP = { x: 40, y: 36 };
+/** The AI preview's 580 x 364 drawing area in diagram units; a layout that fits it reads at 12 px there. */
+export const LAYOUT_ROOM = { w: Math.round((580 * LABEL_FONT) / 12), h: Math.round((364 * LABEL_FONT) / 12) };
 
 const placed = (n: UnplacedNode): n is DiagramNode => [n.x, n.y, n.w, n.h].every((v) => typeof v === 'number' && Number.isFinite(v));
 
@@ -18,12 +22,9 @@ export function needsLayout(diagram: UnplacedDiagram): boolean {
   return diagram.nodes.length > 1 && spots.size === 1;
 }
 
-/** A node's size from its label at the 12 px the diagram draws in. */
-export function fitSize(kind: DiagramNodeKind, label: string): { w: number; h: number } {
-  const text = Math.ceil(label.length * 6.8);
-  if (kind === 'choice') return { w: Math.min(240, Math.max(124, text + 56)), h: 88 };
-  if (kind === 'text') return { w: Math.min(220, Math.max(80, text + 16)), h: 32 };
-  return { w: Math.min(220, Math.max(96, text + 28)), h: 48 };
+/** Space between two columns or rows whose largest shapes measure `a` and `b`, wide enough for an arrow label. */
+export function layoutGap(min: number, a: number, b: number, label = 0): number {
+  return Math.round(Math.max(min + 0.15 * Math.max(a, b), label + 28));
 }
 
 /** Edges that do not close a loop, found depth first in node order; loops would make layers endless. */
@@ -46,7 +47,9 @@ function forwardEdges(ids: string[], edges: DiagramEdge[]): DiagramEdge[] {
   return keep;
 }
 
-type Dir = 'LR' | 'TB';
+type Dir = 'LR' | 'RL' | 'TB' | 'BT';
+const across = (d: Dir) => d === 'LR' || d === 'RL';
+const STEP: Record<Dir, Cell> = { LR: { c: 1, r: 0 }, RL: { c: -1, r: 0 }, TB: { c: 0, r: 1 }, BT: { c: 0, r: -1 } };
 interface Cell { c: number; r: number }
 
 /** Lane choices for one layer: which side of the main line each item goes. */
@@ -63,13 +66,15 @@ function slotOptions(n: number): number[][] {
 /** Where each layer goes: its direction, and whether it starts a new band (wraps). */
 type Band = { dir: Dir; wrap: boolean }[];
 
-/** Band patterns to try: one line, or wrapped every `k` layers, turning the same way or alternating. */
+/** Band patterns to try: one line, or wrapped every `k` layers, turning the same way, alternating, or snaking back. */
 function bandPatterns(layers: number): Band[] {
   const of = (k: number, pick: (b: number) => Dir): Band => Array.from({ length: layers }, (_, i) => ({ dir: pick(Math.floor(i / k)), wrap: i > 0 && i % k === 0 }));
   const out: Band[] = [of(layers, () => 'LR'), of(layers, () => 'TB')];
   for (let k = Math.max(2, Math.ceil(layers / 4)); k < layers; k++) {
     out.push(of(k, () => 'LR'), of(k, () => 'TB'), of(k, (b) => (b % 2 ? 'TB' : 'LR')), of(k, (b) => (b % 2 ? 'LR' : 'TB')));
   }
+  // A long flow snakes back and forth so it keeps a readable shape.
+  for (let k = Math.max(3, Math.ceil(layers / 6)); k <= Math.ceil(layers / 2) && k < layers; k++) out.push(of(k, (b) => (b % 2 ? 'RL' : 'LR')), of(k, (b) => (b % 2 ? 'BT' : 'TB')));
   return out;
 }
 
@@ -108,16 +113,16 @@ export function layoutCost(nodes: DiagramNode[], edges: DiagramEdge[], room = LA
   for (const { e, route, segs } of routes) {
     for (const n of nodes) if (n.id !== e.from && n.id !== e.to && segs.some((s) => segHits(s, n, 2))) cost += 100;
     if (e.label && route.label) {
-      const w = e.label.length * 6 + 4;
-      const box = { x: route.label.anchor === 'middle' ? route.label.x - w / 2 : route.label.x, y: route.label.y - 10, w, h: 12 };
+      const w = measureText(e.label, EDGE_FONT) + 4;
+      const box = { x: route.label.anchor === 'middle' ? route.label.x - w / 2 : route.label.x, y: route.label.y - EDGE_FONT, w, h: EDGE_FONT + 2 };
       if (nodes.some((n) => boxesMeet(box, n))) cost += 30;
-      for (const other of routes) if (other.e !== e && other.segs.some((s) => segHits(s, box, 0))) cost += 10;
+      for (const other of routes) if (other.e !== e && other.segs.some((s) => segHits(s, box, 0))) cost += 30;
     }
   }
   routes.forEach((a, i) => routes.slice(i + 1).forEach((b) => {
     const shared = a.e.from === b.e.from || a.e.to === b.e.to;
     for (const s of a.segs) for (const t of b.segs) {
-      if (!shared && collinear(s, t) > 4) cost += 20;
+      if (!shared && collinear(s, t) > 4) cost += 40;
       if (crosses(s, t)) cost += 2;
     }
   }));
@@ -176,8 +181,9 @@ export function layoutDiagram(diagram: UnplacedDiagram, origin = { x: 0, y: 0 },
 
   const size = new Map(diagram.nodes.map((n) => {
     const fit = fitSize(n.kind, n.label);
-    return [n.id, { w: n.w && n.w > 0 ? n.w : fit.w, h: n.h && n.h > 0 ? n.h : fit.h }];
+    return [n.id, { w: Math.max(n.w ?? 0, fit.w), h: Math.max(n.h ?? 0, fit.h) }];
   }));
+  const labelRoom = Math.max(0, ...edges.map((e) => (e.label ? measureText(e.label, EDGE_FONT) : 0)));
 
   let options = layers.map((items) => slotOptions(items.length));
   if (options.reduce((a, o) => a * o.length, 1) > 216) options = layers.map((items) => slotOptions(items.length).slice(0, 1));
@@ -190,14 +196,17 @@ export function layoutDiagram(diagram: UnplacedDiagram, origin = { x: 0, y: 0 },
     let maxC = 0, maxR = 0;
     for (let l = 0; l < count; l++) {
       const { dir, wrap } = band[l]!;
-      const minSlot = Math.min(...slots[l]!);
+      let end = l + 1;
+      while (end < count && !band[end]!.wrap) end++;
+      // Lanes on the near side of any layer in the band, so a new band keeps clear of the last one's lanes.
+      const minSlot = Math.min(...slots.slice(l, end).flat());
       // A new band starts past everything placed so far, beside the last layer.
-      if (wrap && band[l - 1]!.dir === 'LR') axis = { c: axis.c, r: maxR + 1 - (dir === 'LR' ? minSlot : 0) };
-      else if (wrap) axis = { c: maxC + 1 - (dir === 'TB' ? minSlot : 0), r: axis.r };
-      else if (l > 0) axis = dir === 'LR' ? { c: axis.c + 1, r: axis.r } : { c: axis.c, r: axis.r + 1 };
+      if (wrap && across(band[l - 1]!.dir)) axis = { c: axis.c, r: maxR + 1 - (across(dir) ? minSlot : 0) };
+      else if (wrap) axis = { c: maxC + 1 - (across(dir) ? 0 : minSlot), r: axis.r };
+      else if (l > 0) axis = { c: axis.c + STEP[dir].c, r: axis.r + STEP[dir].r };
       for (const [i, id] of layers[l]!.entries()) {
         const s = slots[l]![i]!;
-        const cell = dir === 'LR' ? { c: axis.c, r: axis.r + s } : { c: axis.c + s, r: axis.r };
+        const cell = across(dir) ? { c: axis.c, r: axis.r + s } : { c: axis.c + s, r: axis.r };
         const key = `${cell.c},${cell.r}`;
         if (taken.has(key)) return undefined;
         taken.add(key);
@@ -217,8 +226,9 @@ export function layoutDiagram(diagram: UnplacedDiagram, origin = { x: 0, y: 0 },
       colW[c - c0] = Math.max(colW[c - c0]!, size.get(id)!.w);
       rowH[r - r0] = Math.max(rowH[r - r0]!, size.get(id)!.h);
     }
-    const colX = colW.map((_, c) => origin.x + colW.slice(0, c).reduce((a, w) => a + w + LAYOUT_GAP.x, 0));
-    const rowY = rowH.map((_, r) => origin.y + rowH.slice(0, r).reduce((a, h) => a + h + LAYOUT_GAP.y, 0));
+    const colX = [origin.x], rowY = [origin.y];
+    for (let c = 1; c < cols; c++) colX.push(colX[c - 1]! + colW[c - 1]! + layoutGap(LAYOUT_GAP.x, colW[c - 1]!, colW[c]!, labelRoom));
+    for (let r = 1; r < rows; r++) rowY.push(rowY[r - 1]! + rowH[r - 1]! + layoutGap(LAYOUT_GAP.y, rowH[r - 1]!, rowH[r]!, EDGE_FONT));
     return diagram.nodes.map((n): DiagramNode => {
       const { w, h } = size.get(n.id)!;
       const { c, r } = cells.get(n.id)!;

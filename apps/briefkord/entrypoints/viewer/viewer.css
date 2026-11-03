@@ -92,10 +92,9 @@ a.vf-card { cursor: pointer; }
 .vf-diagram { display: block; width: 100%; height: 100%; }
 .vf-diagram .edge { stroke: var(--bk-ink); stroke-width: 1.4; fill: none; }
 .vf-diagram .head { fill: var(--bk-ink); }
-.vf-diagram .edge-label { font-size: 10px; fill: var(--bk-text-2); }
+.vf-diagram .edge-label { font-size: 12px; fill: var(--bk-text-2); }
 .vf-diagram .node { stroke-width: 1.5; }
-.vf-diagram .node-label { font-size: 12px; font-weight: 500; text-anchor: middle; dominant-baseline: central; }
-.vf-diagram .node-label.choice { font-size: 11.5px; }
+.vf-diagram .node-label { font-size: 14px; font-weight: 500; text-anchor: middle; dominant-baseline: central; }
 .vf-diagram .node-label.strong { font-weight: 600; }
 .vf-diagram .white { fill: var(--bk-d-white-fill); stroke: var(--bk-d-white-line); } .vf-diagram .node-label.white { fill: var(--bk-d-white-ink); stroke: none; }
 .vf-diagram .yellow { fill: var(--bk-d-yellow-fill); stroke: var(--bk-d-yellow-line); } .vf-diagram .node-label.yellow { fill: var(--bk-d-yellow-ink); stroke: none; }
