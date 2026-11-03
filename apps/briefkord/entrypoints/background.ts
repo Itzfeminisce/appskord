@@ -1,6 +1,7 @@
 import { lastUsedFirst } from '@/lib/capture/cards';
 import { sendIntent, type PendingCapture } from '@/lib/capture/intent';
-import { saveCapture } from '@/lib/capture/save';
+import { saveCapture, savePage } from '@/lib/capture/save';
+import { recordGrant, SAVE_COMMAND, saveFromShortcut } from '@/lib/capture/shortcut';
 import { onBoardChanged } from '@/lib/store/channel';
 import { listBoards } from '@/lib/store/db';
 import { loadSettings } from '@/lib/store/settings';
@@ -74,8 +75,24 @@ async function onMenuClick(info: chrome.contextMenus.OnClickData, tab?: chrome.t
 }
 
 export default defineBackground(() => {
-  browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error: unknown) => {
-    console.error('Briefkord: could not set the side panel to open from the toolbar', error);
+  // The icon opens the panel from action.onClicked, which also gives activeTab on the tab in front.
+  browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((error: unknown) => {
+    console.error('Briefkord: could not set the side panel behaviour', error);
+  });
+
+  chrome.action.onClicked.addListener((tab) => {
+    chrome.sidePanel.open({ windowId: tab.windowId }).catch((error: unknown) => console.error('Briefkord: could not open the side panel', error));
+    if (tab.id !== undefined) recordGrant(tab.id).catch((error: unknown) => console.error('Briefkord: could not note the tab access', error));
+  });
+
+  chrome.commands.onCommand.addListener((command, tab) => {
+    if (command !== SAVE_COMMAND || tab?.id === undefined) return;
+    // Opened inside the key press, before any await, so Chrome allows it.
+    chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => undefined);
+    const info = { id: tab.id, windowId: tab.windowId, url: tab.url, title: tab.title };
+    recordGrant(tab.id)
+      .then(() => saveFromShortcut(info, { listBoards, loadSettings, savePage, sendIntent }))
+      .catch((error: unknown) => console.error('Briefkord: could not save the page from the shortcut', error));
   });
 
   browser.runtime.onInstalled.addListener(({ reason }) => {

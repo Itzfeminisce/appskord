@@ -4,7 +4,7 @@ import { Boards } from './screens/Boards';
 import { Main } from './screens/Main';
 import { NewBoard } from './screens/NewBoard';
 import { Saved } from './screens/Saved';
-import { Settings } from './screens/Settings';
+import { Settings } from './settings/Settings';
 
 function Root() {
   const router = useRouter();
@@ -36,6 +36,13 @@ export function createAppRouter(history?: RouterHistory): AnyRouter {
   });
   const boards = createRoute({ getParentRoute: () => root, path: '/boards', component: Boards });
   const make = createRoute({ getParentRoute: () => root, path: '/new', component: NewBoard });
-  const settings = createRoute({ getParentRoute: () => root, path: '/settings', component: Settings });
+  const settings = createRoute({
+    getParentRoute: () => root,
+    path: '/settings',
+    component: function SettingsRoute() {
+      const search = settings.useSearch() as { show?: string };
+      return <Settings show={search.show} />;
+    },
+  });
   return createSurfaceRouter(root.addChildren([home, saved, boards, make, settings]), history);
 }

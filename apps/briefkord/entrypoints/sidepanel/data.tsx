@@ -4,6 +4,7 @@ import { emptyBoard, newId, renameBoard, setPinned } from '@/lib/board/ops';
 import type { Board, BoardMeta } from '@/lib/board/types';
 import { takeIntents, type Notice, type PanelIntent, type PendingCapture } from '@/lib/capture/intent';
 import { addMissingPreviews, storageState, type StorageState } from '@/lib/capture/save';
+import { onGrant } from '@/lib/capture/shortcut';
 import { onBoardChanged, postBoardChanged } from '@/lib/store/channel';
 import { boardsDB, listBoards, loadBoard, saveBoard } from '@/lib/store/db';
 import { deleteBoardFiles } from '@/lib/store/files';
@@ -131,8 +132,11 @@ function useActiveTab(): ActiveTab | undefined {
     refresh();
     browser.tabs.onActivated.addListener(onActivated);
     browser.tabs.onUpdated.addListener(onUpdated);
+    // A toolbar click or the shortcut gave access to a tab: its address is readable now.
+    const offGrant = onGrant(refresh);
     return () => {
       alive = false;
+      offGrant();
       browser.tabs.onActivated.removeListener(onActivated);
       browser.tabs.onUpdated.removeListener(onUpdated);
     };

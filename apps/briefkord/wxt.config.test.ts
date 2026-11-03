@@ -1,7 +1,7 @@
 import { manifestChecks } from '@appskord/config/checks';
 import { describe, expect, it, vi } from 'vitest';
 
-const PERMISSIONS = ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting', 'contextMenus'];
+const PERMISSIONS = ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting', 'contextMenus', 'identity'];
 const OPTIONAL_HOSTS = [
   'https://penv.cloud/*',
   'https://api.groq.com/*',
@@ -29,6 +29,13 @@ describe('hosts', () => {
     const m = await manifest();
     expect(m.host_permissions).toBeUndefined();
     expect([...(m.optional_host_permissions as string[])].sort()).toEqual([...OPTIONAL_HOSTS].sort());
+  });
+
+  it('saves the page in front with Alt+Shift+S', async () => {
+    const commands = (await manifest()).commands as Record<string, { suggested_key: { default: string }; description?: string }>;
+    expect(Object.keys(commands)).toEqual(['save-page']);
+    expect(commands['save-page']?.suggested_key.default).toBe('Alt+Shift+S');
+    expect(commands['save-page']?.description).toBe('Save this page to Briefkord');
   });
 
   it('names the app and says what it is for', async () => {

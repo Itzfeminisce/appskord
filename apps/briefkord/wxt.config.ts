@@ -12,8 +12,14 @@ export default defineAppConfig({
   // The machine check page (T0) ships in the test build only.
   devOnlyEntrypoints: ['check', 'check-view'],
   icons: { 16: 'icon/16.png', 32: 'icon/32.png', 48: 'icon/48.png', 128: 'icon/128.png' },
-  // activeTab + scripting read the page being saved; contextMenus adds "Save to Briefkord".
-  permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting', 'contextMenus'],
+  // activeTab + scripting read the page being saved; contextMenus adds "Save to Briefkord"; identity runs the Penv Cloud sign-in.
+  permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting', 'contextMenus', 'identity'],
   // Requested only when the user connects Penv Cloud or picks an AI provider (lib/hosts.ts).
   optionalHostPermissions: OPTIONAL_HOSTS,
+  manifest: {
+    // A key press grants activeTab on the tab in front, which the side panel cannot get alone after a tab switch.
+    commands: {
+      'save-page': { suggested_key: { default: 'Alt+Shift+S' }, description: 'Save this page to Briefkord' },
+    },
+  },
 });
