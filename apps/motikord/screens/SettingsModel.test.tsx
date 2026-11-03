@@ -1,9 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { stateFor } from '../lib/ai/errors';
-import { reasonFor } from './MakingFailed';
+import { failedModel, reasonFor } from './MakingFailed';
 import { penvKeysLine } from './Settings';
 import { LLMError, type PickerList } from '@appskord/llm';
+import { SUGGESTED_MODELS } from '../lib/providers';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import type { Settings } from '../lib/types';
 import SettingsModel, { checkProblemFor, choiceFor, listOnOpen, modelCheckProblemLine, ModelSection, pickerGroups, pickerValue, seconds, typedProviderFor, type ListState } from './SettingsModel';
@@ -107,6 +108,10 @@ describe('MakingFailed', () => {
     expect(reasonFor('provider-busy', 'openai', 'x')).toBe('OpenAI is still busy');
     expect(reasonFor('offline', 'groq', 'x')).toBe('You’re offline');
     expect(reasonFor('model-not-found', 'openai', 'gpt-6-maxi')).toBe('OpenAI doesn’t have gpt-6-maxi');
+  });
+  it('names the mapped model for a retired stored id', () => {
+    expect(failedModel('groq', 'qwen/qwen3.6-27b')).toBe(SUGGESTED_MODELS.groq.models[0]);
+    expect(failedModel('groq', 'my-model')).toBe('my-model');
   });
   it('maps a missing model to model-not-found', () => {
     expect(stateFor('model-not-found', 'make')).toBe('model-not-found');

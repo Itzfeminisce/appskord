@@ -3,7 +3,7 @@ import { useRouter } from '../entrypoints/sidepanel/router';
 import { HOSTS, requestHost } from '../lib/hostAccess';
 import { draft, runner, useRun, useSettings, type MakeState } from '../lib/makeClip';
 import { FALLBACK_MODEL } from '../lib/llm';
-import { PROVIDERS } from '../lib/providers';
+import { PROVIDERS, pickedModel } from '../lib/providers';
 import type { Provider } from '../lib/types';
 import { KeyNeeded } from './StatesCreate';
 import { PenvDisconnected, ProviderAccess } from './StatesSetup';
@@ -33,6 +33,11 @@ export function reasonFor(failure: MakeState, provider: Provider, model: string)
 const OWN_CARD: MakeState[] = ['key-needed', 'penv-disconnected', 'provider-access'];
 const V2_STEPS = ['plan', 'fill', 'check', 'critic', 'open'] as const;
 
+/** The model the failure names: the stored one, mapped past retired ids; the provider's default when none is set. */
+export function failedModel(provider: Provider, stored: string | undefined): string {
+  return stored ? pickedModel(provider, stored).model : FALLBACK_MODEL[provider];
+}
+
 /** Every failure while making lands here: what was kept, the step that failed and why, and "Try again". */
 export default function MakingFailed() {
   const { navigate, replace } = useRouter();
@@ -40,7 +45,7 @@ export default function MakingFailed() {
   const settings = useSettings();
   const provider = settings?.provider ?? 'groq';
   const failure: MakeState = run.status === 'failed' && run.failure ? run.failure : 'making-failed';
-  const model = settings?.models[provider] ?? FALLBACK_MODEL[provider];
+  const model = failedModel(provider, settings?.models[provider]);
   const scenes = run.recipe?.scenes.length ?? run.storyboard?.beats.length;
   // v2 runs report the step under way; v1 runs count finished steps.
   const failedAt = run.step ? V2_STEPS.indexOf(run.step) : Math.min(run.steps, 3);

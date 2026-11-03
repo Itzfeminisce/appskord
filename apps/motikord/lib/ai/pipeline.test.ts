@@ -131,6 +131,11 @@ describe('critic', () => {
     expect(await criticModel(cloud, { key: 'gsk_test', fetch: listed })).toMatchObject({ model: scout });
   });
 
+  it('maps a retired stored model to the recommended one before the vision swap', async () => {
+    const cloud = { ai: 'cloud' as const, provider: 'groq' as const, models: { groq: 'qwen/qwen3.6-27b' } };
+    expect(await criticModel(cloud)).toEqual({ ai: 'cloud', provider: 'groq', model: 'qwen/qwen3.8-27b' });
+  });
+
   it('writes with the chosen blind model and sends only the frames to the vision model', async () => {
     const g = fake({ storyboard: [SB(FOUR)], fill: fillAll });
     await writeClip(input(), g.opts, { frames: async (_r, t) => t.map(() => 'data:image/jpeg;base64,AAAA') });

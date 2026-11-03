@@ -1,7 +1,7 @@
 import { canSeeImages } from '@appskord/llm';
 import type { AiMode, CriticNote, Provider, Recipe, Settings } from '../types';
 import { chat, chatModelFor, FALLBACK_MODEL, LLMError } from '../llm';
-import { criticModelFor } from '../providers';
+import { criticModelFor, pickedModel } from '../providers';
 import { getSceneTemplate } from '../templates/scenes';
 import { toAiError } from './errors';
 import { criticSystem } from './prompts';
@@ -22,7 +22,8 @@ export async function criticModel(settings: Pick<Settings, 'ai' | 'provider' | '
   const ai = opts.ai ?? settings.ai;
   const provider = opts.provider ?? settings.provider;
   if (ai === 'local') return { ai, provider, model: FALLBACK_MODEL[provider] };
-  const picked = (opts.model ?? settings.models[provider]) || undefined;
+  const stored = settings.models[provider];
+  const picked = opts.model || (stored ? pickedModel(provider, stored).model : undefined);
   return { ai, provider, model: criticModelFor(provider, picked ?? (await chatModelFor(provider, opts))) };
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { canSeeImages } from '@appskord/llm';
-import { criticModelFor, PROVIDER_IDS, PROVIDERS, SUGGESTED_MODELS } from '../lib/providers';
+import { criticModelFor, pickedModel, PROVIDER_IDS, PROVIDERS } from '../lib/providers';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { getBrandKit } from '../lib/db';
 import { chooseFolder } from '../lib/folder';
@@ -62,7 +62,7 @@ function Status({ ready, children, size = 11 }: { ready: boolean; children: stri
 /** The visual critic's line: whether the chosen model can see images. Built-in AI never can. */
 export function criticStatus(s: SettingsData): { ready: boolean; text: string } {
   const label = PROVIDERS[s.provider].label;
-  const model = criticModelFor(s.provider, s.models[s.provider] ?? SUGGESTED_MODELS[s.provider].models[0]!);
+  const model = criticModelFor(s.provider, pickedModel(s.provider, s.models[s.provider]).model);
   const ready = s.ai === 'cloud' && canSeeImages(s.provider, model);
   return { ready, text: ready ? `${label}'s model can see images · Ready` : `${label}'s model can't see images. The layout check still runs.` };
 }
