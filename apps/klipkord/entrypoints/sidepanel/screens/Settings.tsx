@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { listModelsFor } from '@appskord/llm';
 import { ModelPicker, type PickerValue } from '@appskord/ui';
 import { Spinner } from '../components';
@@ -11,7 +11,7 @@ import { builtinAvailable } from '@/lib/notes/engines';
 import { loadKeys, requestHosts, wasDisconnected } from '@/lib/penv';
 import { getSettings, onSettingsChanged, updateSettings } from '@/lib/settings';
 import {
-  choiceFor, hostFor, penvRowStatus, PICKER_CLOUD, PICKER_FOOT, PICKER_LABEL, pickerGroups, pickerValue, REPO_URL, SHORTCUTS_URL,
+  choiceFor, hostFor, penvRowStatus, PICKER_CLOUD, PICKER_FOOT, PICKER_LABEL, pickerGroups, pickerValue, REPO_URL, SHORTCUTS_URL, typedFailure,
   type ListState, type PickerJob,
 } from '@/lib/setup';
 import { formatBytes } from '@/lib/time';
@@ -38,6 +38,7 @@ function AiPickers({ s, loadedKeys, save, navigate }: {
   const [lists, setLists] = useState<Lists>({ transcripts: {}, notes: {} });
   const [builtin, setBuiltin] = useState(false);
   const [ollama, setOllama] = useState<string[] | null | undefined>(undefined);
+  const [failed, setFailed] = useState<Partial<Record<PickerJob, string>>>({});
   const keyNames = loadedKeys.join();
 
   useEffect(() => { builtinAvailable().then(setBuiltin, () => undefined); }, []);
@@ -65,11 +66,23 @@ function AiPickers({ s, loadedKeys, save, navigate }: {
     // Asked on the click itself, so Chrome shows its prompt; already allowed answers at once.
     const allowed = host ? requestHosts([host]) : Promise.resolve(true);
     if (!(await allowed)) return;
+    setFailed((f) => ({ ...f, [job]: undefined }));
     if (typed && job === 'notes' && choice.provider in PROVIDERS) {
+      const p = choice.provider as CloudNotes;
       try {
-        await chat([{ role: 'user', content: 'Reply with OK.' }], { provider: choice.provider as CloudNotes, model: choice.model, maxTokens: 16 });
+        // A gone model would be swapped for a listed one; for a typed name that means it did not answer.
+        let swapped = false;
+        await chat([{ role: 'user', content: 'Reply with OK.' }], { provider: p, model: choice.model, maxTokens: 16, onRepick: () => { swapped = true; } });
+        if (swapped) throw new Error('The typed model is not offered.');
       } catch (error) {
-        return console.error('Klipkord: the typed model did not answer', error);
+        console.error('Klipkord: the typed model did not answer', error);
+        const failure = typedFailure(choice.model, error);
+        if ('refused' in failure) {
+          const prev = lists[job][p];
+          const models = prev?.status === 'done' ? prev.list.models : [];
+          setLists((l) => ({ ...l, [job]: { ...l[job], [p]: { status: 'done', list: { models, source: 'suggested', error: failure.refused } } } }));
+        } else setFailed((f) => ({ ...f, [job]: failure.line }));
+        return;
       }
     }
     save({ [job]: choice });
@@ -86,13 +99,16 @@ function AiPickers({ s, loadedKeys, save, navigate }: {
       {(['transcripts', 'notes'] as const).map((job) => {
         const gone = s[job].gone;
         return (
-          <ModelPicker key={job} label={PICKER_LABEL[job]} foot={PICKER_FOOT[job]}
+          <Fragment key={job}>
+          <ModelPicker label={PICKER_LABEL[job]} foot={PICKER_FOOT[job]}
             groups={pickerGroups(job, s, { keys: loadedKeys, lists: lists[job], builtin, ...(job === 'notes' ? { ollama } : {}) })}
             value={pickerValue(job, s)} typedProvider={typedProvider(job)}
             gone={gone ? { old: gone, app: 'Klipkord' } : undefined}
             onOpen={() => open(job)} onRetry={(p) => load(job, p as CloudNotes)} onAddKey={goKeys}
             onConnectCloud={() => navigate('PenvConnect')}
             onPick={(value, typed) => void pick(job, value, typed)} />
+          {failed[job] && <div role="alert" style={{ fontSize: 12, color: '#B91C1C', margin: '-2px 2px 4px' }}>{failed[job]}</div>}
+          </Fragment>
         );
       })}
     </>

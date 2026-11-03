@@ -8,9 +8,10 @@ const builtin = (availability: string) => ({ LanguageModel: { availability: asyn
 const ids = async (o: Parameters<typeof availableEngines>[0]) => (await availableEngines(o)).map((e) => e.id);
 
 describe('engineOrder', () => {
-  it('puts the pick first, then built-in, Ollama and the cloud providers', () => {
-    expect(engineOrder('builtin')).toEqual(['builtin', 'ollama', 'groq', 'openai', 'anthropic', 'openrouter', 'google', 'xai']);
-    expect(engineOrder('openai')).toEqual(['openai', 'builtin', 'ollama', 'groq', 'anthropic', 'openrouter', 'google', 'xai']);
+  it('puts the pick first, then only the engines on this computer', () => {
+    expect(engineOrder('builtin')).toEqual(['builtin', 'ollama']);
+    expect(engineOrder('ollama')).toEqual(['ollama', 'builtin']);
+    expect(engineOrder('openai')).toEqual(['openai', 'builtin', 'ollama']);
   });
 });
 
@@ -23,12 +24,26 @@ describe('availableEngines', () => {
   it('falls back to Ollama when built-in AI is missing and Ollama answers', async () => {
     expect(await ids({ ...base, fetchFn: ollamaUp })).toEqual(['ollama']);
   });
-  it('falls back to Groq only with a key', async () => {
-    expect(await ids({ ...base, fetchFn: down, keys: { GROQ_API_KEY: 'gsk_test' } })).toEqual(['groq']);
-    expect(await ids({ ...base, fetchFn: down })).toEqual([]);
+  it('never falls back to a cloud provider the user did not pick', async () => {
+    expect(await ids({ ...base, fetchFn: down, keys: { GROQ_API_KEY: 'gsk_test', OPENAI_API_KEY: 'sk-fake' } })).toEqual([]);
   });
-  it('lists every engine that works, in order', async () => {
-    expect(await ids({ ...base, fetchFn: ollamaUp, keys: { GROQ_API_KEY: 'gsk_test' }, globalObject: builtin('available') })).toEqual(['builtin', 'ollama', 'groq']);
+  it('picked Ollama down with a Groq key loaded sends nothing to Groq', async () => {
+    const f = vi.fn(async (u: string) => (u.includes('11434') ? Promise.reject(new TypeError('offline')) : json({ choices: [{ message: { content: 'ok' } }] })));
+    const engines = await availableEngines({ settings: { notes: { provider: 'ollama', model: '' } }, keys: { GROQ_API_KEY: 'gsk_test' }, fetchFn: f, globalObject: {} });
+    expect(engines).toEqual([]);
+    expect(f.mock.calls.every(([u]) => u.startsWith('http://localhost:11434'))).toBe(true);
+  });
+  it('picked OpenAI calls only OpenAI, then only engines on this computer', async () => {
+    const f = vi.fn(async (u: string) => (u.includes('11434') ? json({}, 500) : json({ choices: [{ message: { content: 'ok' } }] })));
+    const keys = { OPENAI_API_KEY: 'sk-fake', GROQ_API_KEY: 'gsk_test', ANTHROPIC_API_KEY: 'sk-ant-fake' };
+    const engines = await availableEngines({ settings: { notes: { provider: 'openai', model: 'gpt-6.1-sol' } }, keys, fetchFn: f, globalObject: builtin('available') });
+    expect(engines.map((e) => e.id)).toEqual(['openai', 'builtin']);
+    await engines[0]!.complete('s', 'u');
+    const cloud = f.mock.calls.map(([u]) => u).filter((u) => !u.includes('11434'));
+    expect(cloud).toEqual(['https://api.openai.com/v1/chat/completions']);
+  });
+  it('lists every local engine that works, in order', async () => {
+    expect(await ids({ ...base, fetchFn: ollamaUp, keys: { GROQ_API_KEY: 'gsk_test' }, globalObject: builtin('available') })).toEqual(['builtin', 'ollama']);
   });
   it('treats a model that still needs a download as unavailable', async () => {
     expect(await builtinAvailable(builtin('downloadable'))).toBe(false);

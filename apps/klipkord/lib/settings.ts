@@ -8,15 +8,16 @@ export const BUILTIN = 'builtin';
 
 /** The provider's Recommended model: the first suggested one in `@appskord/llm` (MODELS.md). */
 export const recommendedSpeech = (p: CloudSpeech): string => SUGGESTED[p].speech![0]!;
-export const recommendedChat = (p: CloudNotes): string => SUGGESTED[p].chat?.[0] ?? '';
+/** Undefined for a provider with no fixed list (OpenRouter), which relies on the live list. */
+export const recommendedChat = (p: CloudNotes): string | undefined => SUGGESTED[p].chat?.[0];
 
 /** Groq for both pickers: what "Faster with Groq" and v1's `ai: 'cloud'` mean. */
 export const GROQ_BOTH: Pick<Settings, 'transcripts' | 'notes'> = {
   transcripts: { provider: 'groq', model: recommendedSpeech('groq') },
-  notes: { provider: 'groq', model: recommendedChat('groq') },
+  notes: { provider: 'groq', model: recommendedChat('groq')! },
 };
 
-// Retired ids from MODELS.md: a saved one is replaced by the provider's Recommended model.
+// Retired ids from MODELS.md: a saved one is replaced by the provider's Recommended model, if it has one.
 const RETIRED = new Set([
   'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'moonshotai/kimi-k2-instruct-0905',
   'meta-llama/llama-4-maverick-17b-128e-instruct', 'meta-llama/llama-4-scout-17b-16e-instruct', 'qwen/qwen3.6-27b',
@@ -40,9 +41,11 @@ type Nested = 'capture' | 'bubble' | 'draw' | 'cleanup';
 /** Settings saved before the model pickers: `ai` and `notesEngine` instead of `transcripts` and `notes`. */
 type Stored = Partial<Settings> & { ai?: 'local' | 'cloud'; notesEngine?: 'builtin' | 'ollama' | 'groq' };
 
+/** A retired id moves to the Recommended model and an empty one is filled with it; with no Recommended model the stored id stays. */
 function unretired<P extends string>(c: ModelChoice<P>, recommended: (p: P) => string | undefined): ModelChoice<P> {
-  const next = RETIRED.has(c.model) ? recommended(c.provider) : undefined;
-  return next ? { provider: c.provider, model: next, gone: c.model } : c;
+  const next = RETIRED.has(c.model) || !c.model ? recommended(c.provider) : undefined;
+  if (!next) return c;
+  return c.model ? { provider: c.provider, model: next, gone: c.model } : { ...c, model: next };
 }
 
 /** `transcripts` and `notes` from what is stored, moving v1-v3's `ai` and `notesEngine` over. */

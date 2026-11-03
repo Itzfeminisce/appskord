@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { NOTES_FOOTER } from '@/lib/ask';
 import { getRecording } from '@/lib/db';
 import { decodeTimed } from '@/lib/notes/chapters';
 import { STYLE_SECTIONS } from '@/lib/notes/style';
@@ -91,12 +92,6 @@ export function NotesUnavailable({ groqDown, failed, recordingId }: { groqDown: 
       action="Choose how to write notes" onAction={() => navigate('Settings')} />
   );
 }
-
-const FOOTER: Record<string, string> = {
-  builtin: 'Written on this computer by Chrome’s built-in AI.',
-  ollama: 'Written on this computer by Ollama.',
-  groq: 'Written by Groq. Only the transcript text was sent.',
-};
 
 const H2: CSSProperties = { margin: 0, fontSize: 12, fontWeight: 600, color: '#5F6168', textTransform: 'uppercase', letterSpacing: '0.04em' };
 const LIST: CSSProperties = { margin: 0, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, lineHeight: 1.45 };
@@ -207,8 +202,8 @@ export default function NotesBody({ recordingId, onSeek, top }: { recordingId: s
         <NotesUnavailable groqDown={phase === 'failed' && progress?.engines?.length === 1 && progress.engines[0] === 'groq'} failed={phase === 'failed'} recordingId={recordingId} />
       )}
       {!working && notes && !noSpeech(rec) && <NotesView notes={notes} onSeek={onSeek} />}
-      {!working && notes && !noSpeech(rec) && FOOTER[notes.engine] && (
-        <div style={{ padding: '10px 0 16px', fontSize: 12, color: '#6E7079' }}>{FOOTER[notes.engine]}</div>
+      {!working && notes && !noSpeech(rec) && NOTES_FOOTER[notes.engine] && (
+        <div style={{ padding: '10px 0 16px', fontSize: 12, color: '#6E7079' }}>{NOTES_FOOTER[notes.engine]}</div>
       )}
     </div>
   );

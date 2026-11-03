@@ -10,6 +10,8 @@ export interface Engine {
   id: NotesProvider;
   /** Characters of transcript one call can take; longer transcripts are condensed in chunks. */
   maxChars: number;
+  /** The model it runs, where the engine names one. */
+  model?: string;
   complete(system: string, user: string, opts?: CompleteOptions): Promise<string>;
 }
 
@@ -55,7 +57,7 @@ export async function ollamaModel(fetchFn: FetchLike): Promise<string | null> {
 
 function ollamaEngine(model: string, fetchFn: FetchLike): Engine {
   return {
-    id: 'ollama', maxChars: 16_000,
+    id: 'ollama', maxChars: 16_000, model,
     async complete(system, user, opts) {
       const res = await fetchFn(`${OLLAMA_URL}/api/chat`, {
         method: 'POST',
@@ -101,13 +103,13 @@ function cloudEngine(id: CloudNotes, model: string, deps: EngineDeps): Engine {
 const saveGone = (notes: ModelChoice<NotesProvider>) =>
   void updateSettings({ notes }).catch((error) => console.error('Klipkord: could not save the new notes model', error));
 
-/** Cloud notes providers, in fallback order. */
+/** Cloud notes providers. */
 export const CLOUD_NOTES: CloudNotes[] = ['groq', 'openai', 'anthropic', 'openrouter', 'google', 'xai'];
 export const isCloudNotes = (p: NotesProvider): p is CloudNotes => (CLOUD_NOTES as string[]).includes(p);
 
-/** The user's pick first, then built-in AI, Ollama and the cloud providers in that order. */
+/** The user's pick first, then only the engines on this computer: data never goes to a cloud provider the user did not pick. */
 export function engineOrder(preferred: NotesProvider): NotesProvider[] {
-  return [preferred, ...(['builtin', 'ollama', ...CLOUD_NOTES] as const).filter((e) => e !== preferred)];
+  return [preferred, ...(['builtin', 'ollama'] as const).filter((e) => e !== preferred)];
 }
 
 export interface EngineDeps {

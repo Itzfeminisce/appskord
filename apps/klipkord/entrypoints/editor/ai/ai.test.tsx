@@ -35,10 +35,11 @@ function Harness() {
   return <DepsContext.Provider value={{ openPanel } as unknown as EditorDeps}><aiSlots.Cover {...p} /><aiSlots.Overlay {...p} /></DepsContext.Provider>;
 }
 
+const groqNotes = { provider: 'groq' as const, model: 'openai/gpt-oss-120b' };
 function useAi(keys: Record<string, string>, ...replies: unknown[]) {
   const queue = replies.map((r) => JSON.stringify(r));
   const fetchFn = vi.fn<FetchLike>(async () => new Response(JSON.stringify({ choices: [{ message: { content: queue.shift() ?? '{}' } }] })));
-  setAiDeps({ keys: async () => keys, fetch: fetchFn, online: () => online, watchOnline: () => () => {} });
+  setAiDeps({ keys: async () => keys, notes: async () => groqNotes, fetch: fetchFn, online: () => online, watchOnline: () => () => {} });
   return fetchFn;
 }
 const key = { [PROVIDERS.groq.keyName]: 'gsk_test' };
@@ -119,7 +120,7 @@ describe('Ask AI', () => {
   it('keeps a request running after Back; a new cut that lands meanwhile is made when Ask AI opens', async () => {
     let answer: (body: string) => void = () => {};
     const reply = { ops: [{ op: 'newCut', name: 'Short', shape: '9:16', keep: [{ from: 0, to: 2 }] }] };
-    setAiDeps({ keys: async () => key, online: () => true, watchOnline: () => () => {},
+    setAiDeps({ keys: async () => key, notes: async () => groqNotes, online: () => true, watchOnline: () => () => {},
       fetch: () => new Promise<Response>((r) => { answer = (body) => r(new Response(JSON.stringify({ choices: [{ message: { content: body } }] }))); }) });
     act(() => { openAsk(); root.render(<Harness />); });
     await send('Make a short');

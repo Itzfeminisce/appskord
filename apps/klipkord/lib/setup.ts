@@ -5,7 +5,7 @@
  */
 import { availabilityOf } from './check/results';
 import { type KeyStatus } from './penv';
-import { detectKey, isProviderKeyName, PROVIDERS as LLM_PROVIDERS, providerForKey, serviceLabel, SUGGESTED, type PickerList, type ProviderKeyName } from '@appskord/llm';
+import { detectKey, isProviderKeyName, LLMError, PROVIDERS as LLM_PROVIDERS, providerForKey, serviceLabel, SUGGESTED, type PickerList, type ProviderKeyName } from '@appskord/llm';
 import type { PickerGroup, PickerOption, PickerValue } from '@appskord/ui';
 import { BUILTIN, DEFAULT_SETTINGS, GROQ_BOTH, WHISPER } from './settings';
 import type { AiMode, CloudNotes, ModelChoice, NotesProvider, Settings, TranscriptsProvider } from './types';
@@ -228,6 +228,14 @@ export function choiceFor(job: PickerJob, v: PickerValue): ModelChoice<Transcrip
   return v.model.startsWith(OLLAMA) ? { provider: 'ollama', model: v.model.slice(OLLAMA.length) } : DEFAULT_SETTINGS.notes;
 }
 
+/** A typed model whose test question failed: a refused key shows picker-key-refused; anything else a line under the picker. */
+export function typedFailure(model: string, error: unknown): { refused: LLMError } | { line: string } {
+  const code = error instanceof LLMError ? error.code : undefined;
+  if (code === 'auth') return { refused: error as LLMError };
+  if (code === 'offline' || code === 'rate-limited' || code === 'cancelled') return { line: (error as LLMError).message };
+  return { line: `No model called “${model}” in your lists.` };
+}
+
 /** The host Chrome must allow before a provider is used; none for Whisper and built-in AI. */
 export function hostFor(choice: ModelChoice<string>): string | null {
   if (choice.provider === 'ollama') return 'http://localhost:11434/*';
@@ -242,7 +250,7 @@ function cloudGroup(job: PickerJob, p: CloudNotes, value: PickerValue, inp: Pick
   const state = inp.lists[p];
   const suggested = (SUGGESTED[p][job === 'transcripts' ? 'speech' : 'chat'] ?? []).map((id, i): PickerOption => (i === 0 ? { id, tag: 'Recommended' } : { id }));
   const list = state?.status === 'done' ? state.list : undefined;
-  const models: PickerOption[] = list ? [...list.models] : suggested;
+  const models: PickerOption[] = list?.models.length ? [...list.models] : suggested;
   if (value.provider === p && value.model && !models.some((m) => m.id === value.model)) models.push({ id: value.model, tag: 'Your choice' });
   if (state?.status === 'loading') return { ...base, status: 'loading', models };
   if (list?.error?.code === 'auth') return { ...base, status: 'key-refused', models };

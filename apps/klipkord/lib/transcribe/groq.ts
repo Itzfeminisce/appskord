@@ -12,7 +12,7 @@ export const GROQ_MODEL = 'whisper-large-v3-turbo';
 export type SpeechErrorCode = 'no-key' | 'offline' | 'auth' | 'rate-limited' | 'server' | 'bad-request';
 
 export class SpeechError extends Error {
-  constructor(message: string, readonly code: SpeechErrorCode) {
+  constructor(message: string, readonly code: SpeechErrorCode, readonly status?: number) {
     super(message);
     this.name = 'SpeechError';
   }
@@ -60,7 +60,7 @@ export async function postSpeech(provider: CloudSpeech, form: FormData, opts: Sp
   if (res.status === 401 || res.status === 403) throw new SpeechError(`${label} did not accept the key.`, 'auth');
   if (res.status === 429) throw new SpeechError(`${label} is busy.`, 'rate-limited');
   if (res.status >= 500) throw new SpeechError(`${label} returned an error (${res.status}).`, 'server');
-  if (!res.ok) throw new SpeechError(`${label} returned an error (${res.status}).`, 'bad-request');
+  if (!res.ok) throw new SpeechError(`${label} returned an error (${res.status}).`, 'bad-request', res.status);
   let body: { text?: unknown; words?: unknown };
   try {
     body = (await res.json()) as { text?: unknown; words?: unknown };

@@ -76,6 +76,13 @@ export const ENGINE_FOOTER: Record<string, string> = {
   ...Object.fromEntries(CLOUD_NOTES.map((p) => [p, `Answered by ${LLM_PROVIDERS[p].label}. Only the transcript text was sent.`])),
 };
 
+/** The notes footer for every engine: where the notes were written and what was sent. */
+export const NOTES_FOOTER: Record<string, string> = {
+  builtin: 'Written on this computer by Chrome’s built-in AI.',
+  ollama: 'Written on this computer by Ollama.',
+  ...Object.fromEntries(CLOUD_NOTES.map((p) => [p, `Written by ${LLM_PROVIDERS[p].label}. Only the transcript text was sent.`])),
+};
+
 /** Asks the first engine that can answer. An answer with no time the transcript backs counts as no answer. */
 export async function askRecording(
   title: string, transcript: Segment[], question: string, deps: EngineDeps, signal?: AbortSignal,

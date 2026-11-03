@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { askRecording, buildAskPrompt, ENGINE_FOOTER, checkTimes, parseTimes, stripUnsupported } from './ask';
+import { askRecording, buildAskPrompt, ENGINE_FOOTER, NOTES_FOOTER, checkTimes, parseTimes, stripUnsupported } from './ask';
 import type { Segment } from './types';
 
 const transcript: Segment[] = [
@@ -57,6 +57,11 @@ describe('askRecording', () => {
     expect(JSON.parse(call[1]!.body as string).model).toBe('claude-sonnet-5-5');
     expect(ENGINE_FOOTER.anthropic).toBe('Answered by Anthropic. Only the transcript text was sent.');
     expect(ENGINE_FOOTER.groq).toBe('Answered by Groq. Only the transcript text was sent.');
+  });
+  it('gives every notes engine its footer', () => {
+    expect(Object.keys(NOTES_FOOTER).sort()).toEqual(Object.keys(ENGINE_FOOTER).sort());
+    expect(NOTES_FOOTER.openai).toBe('Written by OpenAI. Only the transcript text was sent.');
+    expect(NOTES_FOOTER.ollama).toBe('Written on this computer by Ollama.');
   });
   it('answers through built-in AI', async () => {
     const prompt = vi.fn(async () => 'Safari [03:41]');

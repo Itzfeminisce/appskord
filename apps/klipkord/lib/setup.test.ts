@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   aiSettings, builtinAiPresent, canStart, choiceFor, hostFor, isKeyName, jobsFor, noUsableKeys, classifyPaste, cloudSettings, detectMachine, isFirstRun,
-  missingKeys, OLLAMA_DOWN, penvRowStatus, pickerGroups, pickerValue, requestAccess, setupChoice,
+  missingKeys, OLLAMA_DOWN, penvRowStatus, pickerGroups, pickerValue, requestAccess, setupChoice, typedFailure,
 } from './setup';
 import { DEFAULT_SETTINGS, GROQ_BOTH } from './settings';
 import { LLMError } from '@appskord/llm';
@@ -156,6 +156,16 @@ describe('model pickers', () => {
     expect(groups.slice(1, 5).map((g) => g.status)).toEqual(['loading', 'ready', 'key-refused', 'failed']);
     expect(groups[2]!.models).toEqual([{ id: 'gpt-6.1-sol', tag: 'Recommended' }, { id: 'my-model', tag: 'Your choice' }]);
     expect(ids(groups[1]!)).toEqual(['openai/gpt-oss-120b', 'openai/gpt-oss-20b']);
+  });
+
+  it('a typed model that fails its test question shows the picker\'s failure copy', () => {
+    const refused = new LLMError('x', 'auth');
+    expect(typedFailure('my-model', refused)).toEqual({ refused });
+    expect(typedFailure('my-model', new LLMError('x', 'model-not-found'))).toEqual({ line: 'No model called “my-model” in your lists.' });
+    expect(typedFailure('my-model', new Error('swapped'))).toEqual({ line: 'No model called “my-model” in your lists.' });
+    expect(typedFailure('my-model', new LLMError('Could not reach the AI service.', 'offline'))).toEqual({ line: 'Could not reach the AI service.' });
+    const groups = pickerGroups('notes', s, { keys: ['OPENAI_API_KEY'], builtin: false, lists: { openai: { status: 'done', list: { models: [], source: 'suggested', error: refused } } } });
+    expect(groups.find((g) => g.id === 'openai')).toMatchObject({ status: 'key-refused', models: expect.arrayContaining([{ id: 'gpt-6.1-sol', tag: 'Recommended' }]) });
   });
 });
 

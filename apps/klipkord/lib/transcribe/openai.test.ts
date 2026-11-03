@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SAMPLE_RATE } from './chunker';
 import { transcribeAll, transcribeCloud } from './full';
 import { CLOUD_CHUNK_MS, SpeechError } from './groq';
-import { OPENAI_SPEECH_MODEL, transcribeOpenAI } from './openai';
+import { OPENAI_SPEECH_MODEL, refusedWordTimes, transcribeOpenAI } from './openai';
 
 const KEY = 'sk-fake-test';
 const audio = new Float32Array(1600).fill(0.1);
@@ -11,6 +11,8 @@ type Call = [string, RequestInit];
 const form = (f: { mock: { calls: unknown[] } }, i = 0) => (f.mock.calls[i] as Call)[1].body as FormData;
 
 describe('transcribeOpenAI', () => {
+  afterEach(() => refusedWordTimes.clear());
+
   it('posts a WAV to OpenAI with the picked model, the key and the language, and reads word times', async () => {
     const words = [{ word: ' Hello', start: 0.1, end: 0.4 }];
     const fetchFn = vi.fn(async () => reply(200, { text: ' Hello. ', words }));
@@ -41,6 +43,21 @@ describe('transcribeOpenAI', () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
     expect(form(fetchFn, 1).get('response_format')).toBe('json');
     expect(form(fetchFn, 1).has('timestamp_granularities[]')).toBe(false);
+  });
+
+  it.each([404, 413, 422])('does not retry without word times on HTTP %i', async (status) => {
+    const fetchFn = vi.fn(async () => reply(status));
+    await expect(transcribeOpenAI(audio, { key: KEY }, fetchFn)).rejects.toMatchObject({ code: 'bad-request', status });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('remembers a refusal for the model, so later chunks go straight to plain text', async () => {
+    const fetchFn = vi.fn(async (_u: string, i?: RequestInit) =>
+      (i!.body as FormData).get('response_format') === 'verbose_json' ? reply(400) : reply(200, { text: 'Plain.' }));
+    await transcribeOpenAI(audio, { key: KEY, model: 'gpt-transcribe' }, fetchFn);
+    await transcribeOpenAI(audio, { key: KEY, model: 'gpt-transcribe' }, fetchFn);
+    await transcribeOpenAI(audio, { key: KEY, model: 'gpt-transcribe' }, fetchFn);
+    expect(fetchFn.mock.calls.map((_, i) => form(fetchFn, i).get('response_format'))).toEqual(['verbose_json', 'json', 'json', 'json']);
   });
 
   it.each([[401, 'auth'], [429, 'rate-limited'], [503, 'server']])('maps HTTP %i to %s, naming OpenAI and never the key', async (status, code) => {

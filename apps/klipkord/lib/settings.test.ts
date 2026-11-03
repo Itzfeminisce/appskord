@@ -88,6 +88,13 @@ describe('settings', () => {
     expect(s.transcripts).toEqual({ provider: 'openai', model: 'gpt-transcribe', gone: 'gpt-4o-transcribe' });
   });
 
+  it('keeps a stored id for a provider with no Recommended model, and never leaves a cloud pick empty', () => {
+    const slug = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+    expect(mergeSettings({ notes: { provider: 'openrouter', model: slug } }).notes).toEqual({ provider: 'openrouter', model: slug });
+    expect(mergeSettings({ notes: { provider: 'groq', model: '' } }).notes).toEqual({ provider: 'groq', model: 'openai/gpt-oss-120b' });
+    expect(mergeSettings({ transcripts: { provider: 'openai', model: '' } }).transcripts).toEqual({ provider: 'openai', model: 'gpt-transcribe' });
+  });
+
   it('notifies listeners and unsubscribes', async () => {
     const cb = vi.fn();
     const off = onSettingsChanged(cb);
