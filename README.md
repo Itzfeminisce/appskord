@@ -1,6 +1,6 @@
 # Appskord
 
-Appskord is the home of three Chrome extensions that run on your computer and keep your data there: Rekord takes meeting
+Appskord is a suite of Chrome extensions apps that run on your computer and keep your data there: Rekord takes meeting
 notes, Klipkord records the screen, and Motikord makes short animated clips. They share one toolchain (Vite+ with WXT)
 and a few small packages, and each app keeps its own id, version and store listing.
 
