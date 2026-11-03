@@ -31,7 +31,13 @@ export interface CardBase {
 export interface LinkCard extends CardBase { kind: 'link'; url: string; site: string; preview?: FileRef; text: string; words: number; savedAt: number }
 export interface ImageCard extends CardBase { kind: 'image'; file: FileRef; pageUrl?: string }
 export interface FileCard extends CardBase { kind: 'file'; file: FileRef; pages?: number }
-export interface NoteCard extends CardBase { kind: 'note'; text: string; summary?: { of: string; model: string; provider: string; from: number } }
+export interface NoteCard extends CardBase {
+  kind: 'note';
+  text: string;
+  summary?: { of: string; model: string; provider: string; from: number };
+  /** Where a saved selection came from. */
+  source?: { url: string; title: string };
+}
 export interface ChecklistItem { id: string; text: string; done: boolean }
 export interface ChecklistCard extends CardBase { kind: 'checklist'; items: ChecklistItem[] }
 export interface DiagramCard extends CardBase { kind: 'diagram'; diagram: Diagram }
@@ -43,9 +49,9 @@ export interface DiagramEdge { id: string; from: string; to: string; label?: str
 export interface Diagram { nodes: DiagramNode[]; edges: DiagramEdge[] }
 
 /** Between cards. */
-export interface Arrow { id: string; from: string; to: string; dashed?: boolean }
+export interface Arrow { id: string; from: string; to: string; dashed?: boolean; label?: string; both?: boolean }
 /** Its rect is derived from its cards. */
-export interface Group { id: string; title: string; cards: string[] }
+export interface Group { id: string; title: string; cards: string[]; colour?: CardColour }
 /** List order. */
 export interface Section { id: string; title: string; minutes: number; cards: string[] }
 
