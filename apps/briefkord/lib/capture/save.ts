@@ -124,7 +124,11 @@ export async function saveNote(text: string, boardId: string, sectionId?: string
 
 /** Saves a right-clicked image or selection to a board. */
 export async function saveCapture(capture: PendingCapture, boardId: string, sectionId?: string): Promise<SaveResult> {
-  if (capture.kind === 'selection') return saveNote(capture.text, boardId, sectionId);
+  if (capture.kind === 'selection') {
+    const note = noteCard(newId(), Date.now(), capture.text);
+    const source = capture.pageUrl ? { url: capture.pageUrl, title: capture.pageTitle ?? '' } : undefined;
+    return commit(boardId, source ? { ...note, source } : note, sectionId, []);
+  }
   return saveImage(capture.tabId, capture.src, { url: capture.pageUrl, title: capture.pageTitle }, boardId, sectionId);
 }
 
