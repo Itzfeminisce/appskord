@@ -131,10 +131,20 @@ function cloudGroup(job: PickerJob, p: Listed, value: PickerValue, inp: PickerIn
   return { ...base, status: list?.error ? 'failed' : 'ready', models };
 }
 
+/** Rekord shows no "Sees images" tag (that is Motikord's visual critic) and no Recommended on OpenAI speech. */
+function plain(job: PickerJob, g: PickerGroup): PickerGroup {
+  const models = g.models.flatMap((m): PickerOption[] => {
+    if (m.tag === 'Sees images') { const { tag: _t, ...rest } = m; return [rest]; }
+    if (m.tag === 'Recommended' && job === 'transcription' && g.id === 'openai') { const { tag: _t, ...rest } = m; return [rest]; }
+    return [m];
+  });
+  return { ...g, models };
+}
+
 /** Every group of one picker: Transcription is Deepgram, Groq, OpenAI; Assistant is the chat providers, then "On this computer". */
 export function pickerGroups(job: PickerJob, s: Pick<Settings, 'transcription' | 'summary'>, inp: PickerInputs): PickerGroup[] {
   const value = pickerValue(job, s);
-  const cloud = PICKER_CLOUD[job].map((p) => cloudGroup(job, p, value, inp));
+  const cloud = PICKER_CLOUD[job].map((p) => plain(job, cloudGroup(job, p, value, inp)));
   if (job === 'transcription') return [deepgramGroup(value, inp), ...cloud];
   const local: PickerGroup = { id: 'local', name: 'On this computer', status: 'local', models: (inp.ollama ?? []).map((n) => ({ id: OLLAMA + n, name: `Ollama · ${n}` })) };
   if (s.summary.provider === 'ollama' && !local.models.some((m) => m.id === value.model)) {

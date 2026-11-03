@@ -20,6 +20,18 @@ describe('Rekord model pickers', () => {
     expect(groups[2]).toMatchObject({ status: 'needs-key', addKeyLabel: 'Add an OpenAI key', models: [] });
   });
 
+  it('hides Sees images, and Recommended on OpenAI speech', () => {
+    const lists = {
+      openai: { status: 'done' as const, list: { models: [{ id: 'gpt-transcribe', tag: 'Recommended' as const }], source: 'live' as const } },
+      groq: { status: 'done' as const, list: { models: [{ id: 'gemma-vision', tag: 'Sees images' as const }, { id: 'x' }], source: 'live' as const } },
+    };
+    const keys = ['GROQ_API_KEY', 'OPENAI_API_KEY'];
+    const speech = pickerGroups('transcription', base(), { keys, status: {}, lists });
+    expect(speech[2]!.models).toEqual([{ id: 'gpt-transcribe' }]);
+    const chat = pickerGroups('summary', base(), { keys, status: {}, lists });
+    expect(chat[0]!.models.slice(0, 2)).toEqual([{ id: 'gemma-vision' }, { id: 'x' }]);
+  });
+
   it('lists the chat providers for Assistant with On this computer last', () => {
     const groups = pickerGroups('summary', base(), { keys: ['GROQ_API_KEY'], status: {}, lists: {}, ollama: ['llama3.2'] });
     expect(groups.map((g) => g.id)).toEqual(['groq', 'openai', 'anthropic', 'google', 'xai', 'openrouter', 'local']);

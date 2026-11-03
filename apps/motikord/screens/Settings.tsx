@@ -112,6 +112,11 @@ export function penvKeysLine(provider: Provider, keys: Record<string, string>, c
   return have.length === 1 ? `${have[0]} key` : `${have.slice(0, -1).join(', ')} and ${have.at(-1)} keys`;
 }
 
+/** The no-built-in-AI card only matters while "On this computer" is the pick. */
+export function showNoBuiltInAi(builtInAi: boolean | null, ai: SettingsData['ai']): boolean {
+  return builtInAi === false && ai === 'local';
+}
+
 export default function Settings() {
   const { back, navigate } = useRouter();
   const [s, setS] = useState<SettingsData | null>(null);
@@ -150,7 +155,7 @@ export default function Settings() {
           onKeys={() => document.getElementById('keys')?.scrollIntoView({ behavior: 'smooth' })}
           onPasteKey={() => navigate('PasteKey')} onPenv={() => navigate('PenvConnect')} />
       </div>
-      {builtInAi === false && <div style={{ margin: '10px 16px 0' }}><NoBuiltInAi provider={provider} onUseGroq={() => set({ ai: 'cloud' })} /></div>}
+      {showNoBuiltInAi(builtInAi, s.ai) && <div style={{ margin: '10px 16px 0' }}><NoBuiltInAi provider={provider} onUseGroq={() => set({ ai: 'cloud' })} /></div>}
 
       <LookSection s={s} set={set} onPrivacy={() => navigate('Privacy')} onModel={() => navigate('SettingsModel')} />
 

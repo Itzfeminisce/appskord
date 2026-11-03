@@ -250,7 +250,8 @@ function cloudGroup(job: PickerJob, p: CloudNotes, value: PickerValue, inp: Pick
   const state = inp.lists[p];
   const suggested = (SUGGESTED[p][job === 'transcripts' ? 'speech' : 'chat'] ?? []).map((id, i): PickerOption => (i === 0 ? { id, tag: 'Recommended' } : { id }));
   const list = state?.status === 'done' ? state.list : undefined;
-  const models: PickerOption[] = list?.models.length ? [...list.models] : suggested;
+  // "Sees images" belongs to Motikord's visual critic, so Klipkord hides it.
+  const models: PickerOption[] = (list?.models.length ? [...list.models] : suggested).map(({ tag, ...m }): PickerOption => (tag === 'Sees images' ? m : { ...m, ...(tag ? { tag } : {}) }));
   if (value.provider === p && value.model && !models.some((m) => m.id === value.model)) models.push({ id: value.model, tag: 'Your choice' });
   if (state?.status === 'loading') return { ...base, status: 'loading', models };
   if (list?.error?.code === 'auth') return { ...base, status: 'key-refused', models };

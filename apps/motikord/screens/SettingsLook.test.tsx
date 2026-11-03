@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import type { Settings as S } from '../lib/types';
 import { PrivacyView } from './Privacy';
-import { criticStatus, LookSection } from './Settings';
+import { criticStatus, LookSection, showNoBuiltInAi } from './Settings';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const base: S = { ...DEFAULT_SETTINGS, provider: 'openai', ai: 'cloud', models: { openai: 'gpt-6-astra' } } as S;
@@ -18,6 +18,15 @@ function mount(s: S) {
   return { el, set, onPrivacy };
 }
 const sw = (el: HTMLElement, i: number) => el.querySelectorAll<HTMLInputElement>('input[role=switch]')[i]!;
+
+describe('No built-in AI card', () => {
+  it('shows only when On this computer is picked and Chrome has no built-in AI', () => {
+    expect(showNoBuiltInAi(false, 'local')).toBe(true);
+    expect(showNoBuiltInAi(false, 'cloud')).toBe(false);
+    expect(showNoBuiltInAi(true, 'local')).toBe(false);
+    expect(showNoBuiltInAi(null, 'local')).toBe(false);
+  });
+});
 
 describe('Look and quality', () => {
   it('saves each switch and shows On/Off', () => {

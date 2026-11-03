@@ -128,6 +128,12 @@ describe('model pickers', () => {
     expect(hostFor({ provider: 'builtin', model: 'builtin' })).toBeNull();
   });
 
+  it('hides the Sees images tag', () => {
+    const lists = { groq: { status: 'done' as const, list: { models: [{ id: 'm', tag: 'Sees images' as const }], source: 'live' as const } } };
+    const groups = pickerGroups('notes', { ...DEFAULT_SETTINGS }, { keys: ['GROQ_API_KEY'], lists, builtin: false });
+    expect(groups.find((g) => g.id === 'groq')!.models).toEqual([{ id: 'm' }]);
+  });
+
   it('lists On this computer, Groq and OpenAI for transcripts, with suggested models before a list loads', () => {
     const groups = pickerGroups('transcripts', s, { keys: ['GROQ_API_KEY'], lists: {}, builtin: false });
     expect(groups.map((g) => [g.id, g.status])).toEqual([['local', 'local'], ['groq', 'ready'], ['openai', 'needs-key']]);
