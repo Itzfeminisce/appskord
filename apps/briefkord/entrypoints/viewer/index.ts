@@ -461,7 +461,7 @@ function canvasLayer(board: Board, entries: Entry[], files: Files): HTMLElement 
     }
   }
   layer.append(lines);
-  for (const card of [...Object.values(board.cards)].sort((p, q) => p.z - q.z)) {
+  for (const card of Object.values(board.cards).sort((p, q) => p.z - q.z)) {
     const node = canvasCard(card, numbers.get(card.id) ?? 0, files);
     Object.assign(node.style, { left: `${card.rect.x}px`, top: `${card.rect.y}px`, width: `${card.rect.w}px`, height: `${card.rect.h}px` });
     layer.append(node);

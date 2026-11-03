@@ -438,7 +438,10 @@ export function BoardCanvas(props: BoardCanvasProps) {
       let right = left + box.w * cam.zoom, bottom = top + box.h * cam.zoom;
       wrap.querySelectorAll('.bk-float > *').forEach((bar) => {
         const r = bar.getBoundingClientRect();
-        left = Math.min(left, r.left), top = Math.min(top, r.top), right = Math.max(right, r.right), bottom = Math.max(bottom, r.bottom);
+        left = Math.min(left, r.left);
+        top = Math.min(top, r.top);
+        right = Math.max(right, r.right);
+        bottom = Math.max(bottom, r.bottom);
       });
       const pull = (lo: number, hi: number, min: number, max: number) => (hi > max ? Math.max(max - hi, min - lo) : lo < min ? min - lo : 0);
       const dx = pull(left, right, view.left + 80, view.right - 16);

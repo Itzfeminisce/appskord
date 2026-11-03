@@ -126,8 +126,6 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
     boardExtensions.summarize(shellRef.current, focusCard);
   }, [focusCard]);
 
-  const select = (ids: string[]) => store.select(ids);
-
   const deleteWithUndo = (ids: string[]) => {
     const gone = ids.filter((id) => live.current.board.cards[id]);
     if (gone.length === 0) return;

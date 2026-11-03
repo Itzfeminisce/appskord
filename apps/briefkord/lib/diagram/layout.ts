@@ -160,7 +160,7 @@ export function layoutDiagram(diagram: UnplacedDiagram, origin = { x: 0, y: 0 },
     }
     itemPreds.get(e.to)!.push(from);
   }
-  const count = Math.max(0, ...[...itemLayer.values()]) + 1;
+  const count = Math.max(0, ...itemLayer.values()) + 1;
   const layers: string[][] = Array.from({ length: count }, () => []);
   for (const [id, l] of itemLayer) layers[l]!.push(id);
   const rank = new Map<string, number>();
