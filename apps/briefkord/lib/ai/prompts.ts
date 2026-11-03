@@ -2,7 +2,7 @@
  * The prompt for each AI action. Each one carries only what its surface says is sent:
  * Summarize: the link's title and saved page text. Diagram: the description (and, for a change, the open diagram).
  * Suggest an order: card titles, types and notes. Brief me: card titles, notes and the text of saved pages.
- * Fill a field: that one card's own text (see `cardText`). Never images or files.
+ * Fill a field: that one card's own text (see `cardText`). Never images, files or addresses.
  */
 import { estimateTokens, type ChatMessage } from '@appskord/llm';
 import { listOrder } from '../board/ops';
@@ -139,7 +139,7 @@ export function briefPrompt(board: Board): Prompt & { cardIds: string[]; pages: 
 export type FillField = 'title' | 'say';
 export type FillMode = 'write' | 'shorter' | 'clearer' | 'spelling';
 
-/** One card's own text: its title, what to say, note text, link address and saved page text, checklist items, diagram labels. */
+/** One card's own text: its title, what to say, note text, saved page text, checklist items, diagram labels. */
 export function cardText(card: Card): Record<string, string> {
   const out: Record<string, string> = {};
   const put = (name: string, value: string | undefined) => {
@@ -149,10 +149,7 @@ export function cardText(card: Card): Record<string, string> {
   put('title', card.title);
   put('say', card.say);
   if (card.kind === 'note') put('noteText', card.text);
-  if (card.kind === 'link') {
-    put('address', card.url);
-    put('pageText', card.text);
-  }
+  if (card.kind === 'link') put('pageText', card.text);
   if (card.kind === 'checklist') put('checklist', card.items.map((i) => i.text.trim()).filter(Boolean).join('\n'));
   if (card.kind === 'diagram') put('diagramLabels', [...card.diagram.nodes.map((n) => n.label), ...card.diagram.edges.map((e) => e.label ?? '')].map((l) => l.trim()).filter(Boolean).join('\n'));
   return out;

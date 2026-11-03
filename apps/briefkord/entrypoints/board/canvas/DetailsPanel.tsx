@@ -89,7 +89,7 @@ export function DetailsPanel({ board, card, refresh, change, onRefresh, onKeepNe
           <span className="bk-fill-tools">
             {fill.sparkle('say')}
             {sayState === 'working' && fill.stopButton}
-            {!sayState && dict.controls}
+            {sayState !== 'working' && dict.controls}
           </span>
         </div>
       </div>

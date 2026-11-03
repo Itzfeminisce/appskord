@@ -275,6 +275,12 @@ describe('fill a field', () => {
     expect(cardText({ ...image, title: ' ', say: '' })).toEqual({});
   });
 
+  it('never sends a link address', () => {
+    const c = card('findings') as LinkCard;
+    const sent = fillPrompt(c, 'say', 'write', '').messages.map((m) => m.content).join('\n');
+    expect(sent).not.toContain(c.url);
+  });
+
   it('keeps a long page within the budget', () => {
     const c = { ...(card('findings') as LinkCard), text: 'word '.repeat(60_000) };
     expect(estimateTokens(fillPrompt(c, 'say', 'write', '').messages)).toBeLessThanOrEqual(PROMPT_BUDGET);
