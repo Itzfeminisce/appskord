@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type Ref } from 'react';
 import type { Rect } from '../board/types';
-import { arrowLine, visibleCards, worldRect, zoomAt, ZOOM_MAX, ZOOM_MIN, type Camera, type Size } from './geometry';
+import { arrowPath, visibleCards, worldRect, zoomAt, ZOOM_MAX, ZOOM_MIN, type Camera, type Point, type Size } from './geometry';
 
 export interface CanvasItem { id: string; rect: Rect; z?: number }
 export interface CanvasArrow { id: string; from: string; to: string; dashed?: boolean }
@@ -9,6 +9,8 @@ export interface CanvasHandle {
   camera(): Camera;
   setCamera(camera: Camera): void;
   size(): Size;
+  /** The world point under a screen (client) point. */
+  toWorld(clientX: number, clientY: number): Point;
 }
 
 export interface CanvasProps<T extends CanvasItem> {
@@ -24,14 +26,26 @@ export interface CanvasProps<T extends CanvasItem> {
   /** Screen pixels around the view whose items also get full content. */
   margin?: number;
   onCameraChange?: (camera: Camera) => void;
+  /** A press on empty canvas; return true to take the gesture (e.g. a marquee) instead of panning. */
+  onBackgroundPointerDown?: (event: PointerEvent<HTMLDivElement>, at: Point) => boolean;
+  /** Pan from anywhere, items included (Space held). */
+  panAnywhere?: boolean;
+  /** Called with an arrow's id when it is pressed. */
+  onArrowPointerDown?: (id: string, event: PointerEvent<SVGPathElement>) => void;
+  selectedArrows?: ReadonlySet<string>;
+  /** World-space content under the items (groups) and over them (handles, marquee, drafts). */
+  underlay?: ReactNode;
+  overlay?: ReactNode;
   ref?: Ref<CanvasHandle>;
   className?: string;
   style?: CSSProperties;
+  cursor?: string;
 }
 
-const ROOT: CSSProperties = { position: 'relative', overflow: 'hidden', touchAction: 'none', userSelect: 'none', cursor: 'grab' };
+const ROOT: CSSProperties = { position: 'relative', overflow: 'hidden', touchAction: 'none', userSelect: 'none' };
 const LAYER: CSSProperties = { position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', willChange: 'transform' };
 const ARROWS: CSSProperties = { position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' };
+const OVER: CSSProperties = { position: 'absolute', left: 0, top: 0, zIndex: 2147483000 };
 const PLACEHOLDER: CSSProperties = { width: '100%', height: '100%', borderRadius: 8, background: 'var(--canvas-placeholder, rgba(127, 127, 127, 0.12))' };
 
 const defaultPlaceholder = (): ReactNode => <div style={PLACEHOLDER} />;
@@ -51,7 +65,7 @@ const sameSet = (a: Set<string>, b: Set<string>): boolean => a.size === b.size &
 
 /** Pannable, zoomable board: items on one transformed layer, arrows in one SVG, full content only in view. */
 export function Canvas<T extends CanvasItem>(props: CanvasProps<T>) {
-  const { items, arrows = [], renderItem, renderPlaceholder = defaultPlaceholder, minZoom = ZOOM_MIN, maxZoom = ZOOM_MAX, margin = 200, onCameraChange } = props;
+  const { items, arrows = [], renderItem, renderPlaceholder = defaultPlaceholder, minZoom = ZOOM_MIN, maxZoom = ZOOM_MAX, margin = 200, onCameraChange, cursor = 'grab' } = props;
   const markerId = `canvas-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const root = useRef<HTMLDivElement>(null);
   const layer = useRef<HTMLDivElement>(null);
@@ -77,13 +91,20 @@ export function Canvas<T extends CanvasItem>(props: CanvasProps<T>) {
     (next: Camera) => {
       camera.current = next;
       if (layer.current) layer.current.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.zoom})`;
+      if (root.current) root.current.style.backgroundPosition = `${next.x}px ${next.y}px`;
       refreshVisible();
       onChange.current?.(next);
     },
     [refreshVisible],
   );
 
-  useImperativeHandle(props.ref, () => ({ camera: () => camera.current, setCamera: apply, size: () => size.current }), [apply]);
+  const toWorld = useCallback((clientX: number, clientY: number): Point => {
+    const box = root.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
+    const cam = camera.current;
+    return { x: (clientX - box.left - cam.x) / cam.zoom, y: (clientY - box.top - cam.y) / cam.zoom };
+  }, []);
+
+  useImperativeHandle(props.ref, () => ({ camera: () => camera.current, setCamera: apply, size: () => size.current, toWorld }), [apply, toWorld]);
 
   useLayoutEffect(() => {
     const el = root.current;
@@ -122,7 +143,13 @@ export function Canvas<T extends CanvasItem>(props: CanvasProps<T>) {
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 && event.button !== 1) return;
-    if ((event.target as Element).closest('[data-canvas-item]')) return;
+    const pan = props.panAnywhere || event.button === 1;
+    if (!pan) {
+      const target = event.target as Element;
+      if (target.closest('[data-canvas-item], [data-canvas-control]')) return;
+      if (props.onBackgroundPointerDown?.(event, toWorld(event.clientX, event.clientY))) return;
+    }
+    event.preventDefault();
     drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.style.cursor = 'grabbing';
@@ -146,27 +173,42 @@ export function Canvas<T extends CanvasItem>(props: CanvasProps<T>) {
     () =>
       arrows.flatMap((arrow) => {
         const a = byId.get(arrow.from), b = byId.get(arrow.to);
-        return a && b ? [{ ...arrow, ...arrowLine(a, b) }] : [];
+        return a && b ? [{ ...arrow, d: arrowPath(a, b) }] : [];
       }),
     [arrows, byId],
   );
+  const onArrow = props.onArrowPointerDown;
+  const selected = props.selectedArrows;
 
   return (
-    <div ref={root} className={props.className} style={{ ...ROOT, ...props.style }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
+    <div ref={root} className={props.className} style={{ ...ROOT, cursor: props.panAnywhere ? 'grab' : cursor, ...props.style }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
       <div ref={layer} style={LAYER}>
+        {props.underlay}
         <svg style={ARROWS} aria-hidden="true">
           <defs>
-            <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" fill="var(--canvas-arrow, #6b7280)" />
             </marker>
+            <marker id={`${markerId}-on`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--canvas-arrow-selected, #0F766E)" />
+            </marker>
           </defs>
-          {lines.map((line) => (
-            <line key={line.id} x1={line.from.x} y1={line.from.y} x2={line.to.x} y2={line.to.y} stroke="var(--canvas-arrow, #6b7280)" strokeWidth={2} strokeDasharray={line.dashed ? '6 5' : undefined} markerEnd={`url(#${markerId})`} />
-          ))}
+          {lines.map((line) => {
+            const on = selected?.has(line.id);
+            return (
+              <g key={line.id}>
+                {onArrow && (
+                  <path d={line.d} data-canvas-control="" stroke="transparent" strokeWidth={14} fill="none" style={{ pointerEvents: 'stroke', cursor: 'pointer' }} onPointerDown={(e) => onArrow(line.id, e)} />
+                )}
+                <path d={line.d} fill="none" stroke={on ? 'var(--canvas-arrow-selected, #0F766E)' : 'var(--canvas-arrow, #6b7280)'} strokeWidth={on ? 2.2 : 1.5} strokeDasharray={line.dashed ? '5 4' : undefined} markerEnd={`url(#${markerId}${on ? '-on' : ''})`} />
+              </g>
+            );
+          })}
         </svg>
         {items.map((item) => (
           <Item key={item.id} item={item} full={visible.has(item.id)} render={renderItem} placeholder={renderPlaceholder} />
         ))}
+        {props.overlay && <div style={OVER}>{props.overlay}</div>}
       </div>
     </div>
   );

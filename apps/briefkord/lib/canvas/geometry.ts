@@ -68,3 +68,73 @@ export function arrowLine(a: Rect, b: Rect): { from: Point; to: Point } {
   const cb = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
   return { from: edgePoint(a, cb), to: edgePoint(b, ca) };
 }
+
+const contains = (r: Rect, p: Point): boolean => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+
+/** The topmost item (highest z, then latest) under a world point. */
+export function topItemAt<T extends { id: string; rect: Rect; z?: number }>(items: readonly T[], point: Point): T | undefined {
+  let best: T | undefined;
+  for (const item of items) {
+    if (contains(item.rect, point) && (!best || (item.z ?? 0) >= (best.z ?? 0))) best = item;
+  }
+  return best;
+}
+
+/** A rect with a positive width and height, whichever way it was dragged. */
+export function normalRect(r: Rect): Rect {
+  return { x: Math.min(r.x, r.x + r.w), y: Math.min(r.y, r.y + r.h), w: Math.abs(r.w), h: Math.abs(r.h) };
+}
+
+/** Ids of the items a marquee touches. */
+export function itemsInRect(items: readonly { id: string; rect: Rect }[], area: Rect): string[] {
+  const r = normalRect(area);
+  return items.filter(({ rect }) => rect.x < r.x + r.w && rect.x + rect.w > r.x && rect.y < r.y + r.h && rect.y + rect.h > r.y).map((i) => i.id);
+}
+
+/** The camera for "Fit all": every item in view, never zoomed past 100%; undefined for an empty board. */
+export function fitAll(rects: readonly Rect[], size: Size, pad = 56): Camera | undefined {
+  const bounds = boundsOf(rects);
+  return bounds && size.w > 0 && size.h > 0 ? fitCamera(bounds, size, pad, ZOOM_MIN, 1) : undefined;
+}
+
+/** A camera that puts `rect` in the middle of the screen at `zoom`. */
+export function centreOn(rect: Rect, size: Size, zoom: number): Camera {
+  return { x: size.w / 2 - (rect.x + rect.w / 2) * zoom, y: size.h / 2 - (rect.y + rect.h / 2) * zoom, zoom };
+}
+
+/** A soft curve between the facing sides of two rects; straight when they line up or overlap. */
+export function arrowPath(a: Rect, b: Rect): string {
+  const ca = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+  const cb = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+  const gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
+  const gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
+  const line = (f: Point, t: Point) => `M${f.x} ${f.y} L${t.x} ${t.y}`;
+  if (gapX <= 0 && gapY <= 0) {
+    const { from, to } = arrowLine(a, b);
+    return line(from, to);
+  }
+  if (gapX >= gapY) {
+    const right = cb.x > ca.x;
+    const from = { x: right ? a.x + a.w : a.x, y: ca.y };
+    const to = { x: right ? b.x : b.x + b.w, y: cb.y };
+    const mx = (from.x + to.x) / 2;
+    return from.y === to.y ? line(from, to) : `M${from.x} ${from.y} C${mx} ${from.y} ${mx} ${to.y} ${to.x} ${to.y}`;
+  }
+  const down = cb.y > ca.y;
+  const from = { x: ca.x, y: down ? a.y + a.h : a.y };
+  const to = { x: cb.x, y: down ? b.y : b.y + b.h };
+  const my = (from.y + to.y) / 2;
+  return from.x === to.x ? line(from, to) : `M${from.x} ${from.y} C${from.x} ${my} ${to.x} ${my} ${to.x} ${to.y}`;
+}
+
+/** "Line up": the rects in one row, in the given order, top-aligned, `gap` apart, starting at the leftmost. */
+export function lineUp(rects: readonly Rect[], gap = 24): Rect[] {
+  if (rects.length === 0) return [];
+  const top = Math.min(...rects.map((r) => r.y));
+  let x = Math.min(...rects.map((r) => r.x));
+  return rects.map((r) => {
+    const placed = { ...r, x, y: top };
+    x += r.w + gap;
+    return placed;
+  });
+}
