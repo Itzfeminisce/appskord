@@ -4,8 +4,8 @@ import { listOrder, updateCard } from '../board/ops';
 import { sampleBoard } from '../board/sample';
 import type { Board, LinkCard } from '../board/types';
 import { addBriefNote, addSummary, briefPointsFor, briefText, diagramCounts, diagramFromReply, keptBrief, movedCount, orderMoves, summaryHeight, summaryNote, summarySentences, withBrief } from './apply';
-import { parseBrief, parseDiagram, parseOrder, parseSummary } from './parse';
-import { briefPrompt, diagramPrompt, fitTexts, orderPrompt, PROMPT_BUDGET, summaryPrompt } from './prompts';
+import { parseBrief, parseDiagram, parseFill, parseOrder, parseSummary } from './parse';
+import { briefPrompt, cardText, diagramPrompt, fillPrompt, fitTexts, hasNoText, orderPrompt, PROMPT_BUDGET, summaryPrompt } from './prompts';
 import { AiError, askAi } from './run';
 
 const NOW = 1_762_000_000_000;
@@ -240,5 +240,58 @@ describe('apply', () => {
     expect(text).toContain('Not on the board yet\n- Mobile');
     const withNote = addBriefNote(next, text, 'n', NOW);
     expect(withNote.cards.n?.kind === 'note' && withNote.cards.n.title).toBe('Brief me');
+  });
+});
+
+describe('fill a field', () => {
+  const card = (id: string) => board().cards[id]!;
+
+  it('sends only that card’s own text', () => {
+    const b = board();
+    const text = sent(fillPrompt(b.cards.findings!, 'say', 'write', '').messages);
+    expect(text).toContain('PAGE-TEXT');
+    expect(text).toContain('Checkout usability: 18 findings');
+    expect(text).not.toContain('Before we ship');
+    expect(text).not.toContain('Why now');
+    expect(sent(fillPrompt(card('before-ship'), 'title', 'write', '').messages)).toContain('A/B test plan signed off');
+    expect(sent(fillPrompt(card('flow'), 'say', 'write', '').messages)).toContain('Card saved?');
+  });
+
+  it('leaves the field it fills out of the card text, and sends the current text to rework', () => {
+    const c = { ...card('findings'), say: 'OLD-SAY there cart' };
+    const write = sent(fillPrompt(c, 'title', 'write', '').messages);
+    expect(write).not.toContain('Checkout usability: 18 findings');
+    expect(write).toContain('OLD-SAY');
+    const fix = fillPrompt(c, 'say', 'spelling', 'OLD-SAY there cart').messages;
+    expect(fix[0]!.content).toContain('spelling');
+    expect(fix[1]!.content.match(/OLD-SAY/g)).toHaveLength(1);
+    expect(fix[1]!.content).toContain('Current text:');
+  });
+
+  it('knows a card with no text to work from', () => {
+    const image = card('step-2');
+    expect(hasNoText({ ...image, title: '', say: '' })).toBe(true);
+    expect(hasNoText(image)).toBe(false);
+    expect(cardText({ ...image, title: ' ', say: '' })).toEqual({});
+  });
+
+  it('keeps a long page within the budget', () => {
+    const c = { ...(card('findings') as LinkCard), text: 'word '.repeat(60_000) };
+    expect(estimateTokens(fillPrompt(c, 'say', 'write', '').messages)).toBeLessThanOrEqual(PROMPT_BUDGET);
+  });
+
+  it('reads a reply, on one line for a title', () => {
+    expect(parseFill(JSON.stringify({ text: 'Two findings\nmatch support' }), 'say')).toEqual({ ok: true, value: 'Two findings\nmatch support' });
+    expect(parseFill(`Sure: ${JSON.stringify({ text: ' "18 checkout findings\n from tests" ' })}`, 'title')).toEqual({ ok: true, value: '18 checkout findings from tests' });
+    expect(parseFill('{"text":"  "}', 'say').ok).toBe(false);
+    expect(parseFill('no json', 'title').ok).toBe(false);
+  });
+
+  it('asks once more after a bad reply', async () => {
+    const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }));
+    const fetch = vi.fn().mockResolvedValueOnce(reply('nope')).mockResolvedValueOnce(reply('{"text":"Better title"}'));
+    const value = await askAi(fillPrompt(card('why-now'), 'title', 'clearer', 'why now'), (r) => parseFill(r, 'title'), { provider: 'openai', model: 'm', key: KEY, fetch });
+    expect(value).toBe('Better title');
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

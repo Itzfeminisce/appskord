@@ -2,7 +2,7 @@
  * The prompt for each AI action. Each one carries only what its surface says is sent:
  * Summarize: the link's title and saved page text. Diagram: the description (and, for a change, the open diagram).
  * Suggest an order: card titles, types and notes. Brief me: card titles, notes and the text of saved pages.
- * Never images, files, addresses or checklist items.
+ * Fill a field: that one card's own text (see `cardText`). Never images or files.
  */
 import { estimateTokens, type ChatMessage } from '@appskord/llm';
 import { listOrder } from '../board/ops';
@@ -133,4 +133,64 @@ export function briefPrompt(board: Board): Prompt & { cardIds: string[]; pages: 
     long,
   );
   return { messages, maxTokens: 2000, cardIds, pages };
+}
+
+/** A Details field the sparkle fills, and what it does: write an empty field, or rework the text in it. */
+export type FillField = 'title' | 'say';
+export type FillMode = 'write' | 'shorter' | 'clearer' | 'spelling';
+
+/** One card's own text: its title, what to say, note text, link address and saved page text, checklist items, diagram labels. */
+export function cardText(card: Card): Record<string, string> {
+  const out: Record<string, string> = {};
+  const put = (name: string, value: string | undefined) => {
+    const v = value?.trim();
+    if (v) out[name] = v;
+  };
+  put('title', card.title);
+  put('say', card.say);
+  if (card.kind === 'note') put('noteText', card.text);
+  if (card.kind === 'link') {
+    put('address', card.url);
+    put('pageText', card.text);
+  }
+  if (card.kind === 'checklist') put('checklist', card.items.map((i) => i.text.trim()).filter(Boolean).join('\n'));
+  if (card.kind === 'diagram') put('diagramLabels', [...card.diagram.nodes.map((n) => n.label), ...card.diagram.edges.map((e) => e.label ?? '')].map((l) => l.trim()).filter(Boolean).join('\n'));
+  return out;
+}
+
+/** True when the card has no text to work from (an image or file with nothing typed). */
+export const hasNoText = (card: Card): boolean => Object.keys(cardText(card)).length === 0;
+
+const FIELD_ASK: Record<FillField, string> = {
+  title: 'the card\'s title: 2 to 7 words, no ending full stop',
+  say: '"what to say about it": what the presenter says when they reach this card in the meeting, 1 to 3 short plain sentences',
+};
+const MODE_ASK: Record<Exclude<FillMode, 'write'>, string> = {
+  shorter: 'Make the current text shorter. Keep its meaning and its facts.',
+  clearer: 'Make the current text clearer and easier to say out loud. Keep its meaning and its facts.',
+  spelling: 'Fix only the spelling, grammar and capitals of the current text. Change nothing else.',
+};
+
+/** The prompt for one sparkle: fills `field` from `card`'s own text only. `current` is what the field holds now. */
+export function fillPrompt(card: Card, field: FillField, mode: FillMode, current: string): Prompt {
+  const system = [
+    `You write ${FIELD_ASK[field]}, for one card on a meeting board.`,
+    JSON_ONLY,
+    'Shape: {"text": string}.',
+    mode === 'write' ? 'Write it from the card text given.' : MODE_ASK[mode],
+    'Use only what the card says. Do not invent facts or numbers.',
+  ].join('\n');
+  const own = cardText(card);
+  delete own[field];
+  const names = Object.keys(own);
+  const messages = fitted(
+    system,
+    (texts) => {
+      const fields = Object.fromEntries(names.map((n, i) => [n, texts[i]!]));
+      const cardJson = JSON.stringify({ type: card.kind, ...fields });
+      return mode === 'write' ? `Card:\n${cardJson}` : `Card:\n${cardJson}\n\nCurrent text:\n${current.trim()}`;
+    },
+    names.map((n) => own[n]!),
+  );
+  return { messages, maxTokens: field === 'title' ? 200 : 600 };
 }

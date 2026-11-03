@@ -114,3 +114,16 @@ export function parseBrief(reply: string, cardCount: number): Parsed<BriefReply>
   if (points.length === 0) return bad('no usable talking points');
   return { ok: true, value: { points, questions: texts(o.questions), missing: texts(o.missing) } };
 }
+
+const MAX_TITLE = 120;
+
+/** A sparkle's reply: the field's new text, on one line for a title. */
+export function parseFill(reply: string, field: 'title' | 'say'): Parsed<string> {
+  const o = object(reply);
+  if (!o) return bad('not a JSON object');
+  const t = text(o.text);
+  if (!t) return bad('no text');
+  if (field === 'say') return { ok: true, value: t };
+  const line = t.replace(/\s+/g, ' ').replace(/^["“]|["”]$/g, '').trim();
+  return line ? { ok: true, value: line.slice(0, MAX_TITLE) } : bad('no text');
+}

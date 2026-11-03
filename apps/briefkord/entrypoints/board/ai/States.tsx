@@ -1,9 +1,10 @@
 /** StatesAI and ai-site-blocked: the cards an AI surface shows while it works and when it can't. */
-import type { ReactNode } from 'react';
+import { Children, type ReactNode } from 'react';
 import { providerLabel } from './choice';
 import type { AiStateName } from './run';
 
-export type Surface = 'brief' | 'diagram' | 'order' | 'summary';
+/** `card`: a Details field the sparkle fills (CardFillAI); its errors sit under that field. */
+export type Surface = 'brief' | 'diagram' | 'order' | 'summary' | 'card';
 
 const Done = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
@@ -50,20 +51,23 @@ const BAD_REPLY: Record<Surface, { title: string; text: string }> = {
   brief: { title: 'That answer didn’t make a usable brief', text: 'Briefkord asked twice and the reply didn’t fit. Your board hasn’t changed. Try again, or another model.' },
   order: { title: 'That answer didn’t make a usable order', text: 'Briefkord asked twice and the reply didn’t fit. Your board hasn’t changed. Try again, or another model.' },
   summary: { title: 'That answer didn’t make a usable summary', text: 'Briefkord asked twice and the reply didn’t fit. Your board hasn’t changed. Try again, or another model.' },
+  card: { title: 'That answer didn’t fill the card', text: 'Briefkord asked twice and the reply wasn’t usable. Your card hasn’t changed. Try again, or pick another model.' },
 };
 
 function Card({ tone, title, text, children, role = 'alert' }: { tone?: 'warn' | 'error'; title: string; text: string; children?: ReactNode; role?: string }) {
+  const acts = Children.toArray(children);
   return (
     <div role={role} className={`bk-ai-state${tone ? ` is-${tone}` : ''}`}>
       <span className="bk-ai-state-title">{title}</span>
       <span className="bk-ai-state-text">{text}</span>
-      {children && <span className="bk-ai-state-actions">{children}</span>}
+      {acts.length > 0 && <span className="bk-ai-state-actions">{acts}</span>}
     </div>
   );
 }
 
 export function AiState({ state, provider, surface, actions }: { state: AiStateName; provider: string; surface: Surface; actions: StateActions }) {
   const name = providerLabel(provider);
+  const field = surface === 'card';
   switch (state) {
     case 'ai-no-key':
       return (
@@ -83,15 +87,15 @@ export function AiState({ state, provider, surface, actions }: { state: AiStateN
       );
     case 'ai-unreachable':
       return (
-        <Card tone="warn" title={`${name} isn’t answering`} text="Your board is fine and nothing was sent. Try again in a minute, or pick another model.">
-          <button type="button" className="bk-ai-btn is-grow" onClick={actions.onRetry}>Try again</button>
-          <button type="button" className="bk-ai-btn is-grow" onClick={actions.onPick}>Pick another model</button>
+        <Card tone="warn" title={`${name} isn’t answering`} text={`Your ${field ? 'card' : 'board'} is fine and nothing was sent. Try again in a minute, or pick another model.`}>
+          {!field && <button type="button" className="bk-ai-btn is-grow" onClick={actions.onRetry}>Try again</button>}
+          {!field && <button type="button" className="bk-ai-btn is-grow" onClick={actions.onPick}>Pick another model</button>}
         </Card>
       );
     case 'ai-key-refused':
       return (
         <Card tone="error" title={`${name} refused the key`} text="It may have expired or been removed. Check it in Settings, then try again.">
-          <button type="button" className="bk-ai-btn is-grow" onClick={actions.onSettings}>{`Check the ${name} key`}</button>
+          {!field && <button type="button" className="bk-ai-btn is-grow" onClick={actions.onSettings}>{`Check the ${name} key`}</button>}
         </Card>
       );
     case 'ai-site-blocked':

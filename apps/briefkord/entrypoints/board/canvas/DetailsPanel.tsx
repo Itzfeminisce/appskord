@@ -1,7 +1,8 @@
 /** Card details beside the canvas (CardSelected): title, place in the list, what to say, and where a link was saved from. */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { moveCardInList, updateCard } from '@/lib/board/ops';
 import type { Board, Card, LinkCard } from '@/lib/board/types';
+import { useFieldFill } from '../ai/FieldFill';
 import { ChevronDown, Close, Refresh } from '../icons';
 import { dateTime, KIND_LABEL, shortDate } from '../logic/cards';
 
@@ -30,6 +31,10 @@ export function DetailsPanel({ board, card, refresh, change, onRefresh, onKeepNe
   const section = board.sections[sectionIndex];
   const place = section ? `${sectionIndex + 1} · ${section.title}, card ${section.cards.indexOf(card.id) + 1}` : '';
   const save = (patch: Partial<Pick<Card, 'title' | 'say'>>) => change((b, now) => updateCard(b, card.id, now, (c) => ({ ...c, ...patch }) as Card));
+  const set = useCallback((field: 'title' | 'say', text: string) => (field === 'title' ? setTitle(text) : setSay(text)), []);
+  const fill = useFieldFill({ card, values: { title, say }, set, keep: (field, text) => save({ [field]: text }) });
+  const titleState = fill.state('title');
+  const sayState = fill.state('say');
 
   return (
     <aside aria-label="Card details" className="bk-details">
@@ -38,9 +43,20 @@ export function DetailsPanel({ board, card, refresh, change, onRefresh, onKeepNe
         <button type="button" className="bk-icon-btn bk-icon-sm" aria-label="Close details" onClick={onClose}><Close /></button>
       </div>
       <div className="bk-field">
-        <label htmlFor="card-title">Title</label>
-        <input id="card-title" type="text" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== card.title && save({ title })} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+        <label htmlFor="card-title">Title{fill.chip('title')}</label>
+        <div className={`bk-fill-box${titleState ? ` is-${titleState}` : ''}`} aria-busy={titleState === 'working' || undefined}>
+          <span className="bk-fill-line">
+            {fill.sparkle('title')}
+            {titleState === 'working' ? (
+              <span aria-hidden="true" className="bk-fill-bar" />
+            ) : (
+              <input id="card-title" type="text" placeholder="Add a title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => !titleState && title !== card.title && save({ title })} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+            )}
+          </span>
+          {titleState === 'working' && fill.stopButton}
+        </div>
       </div>
+      {fill.below('title')}
       <div className="bk-field">
         <label htmlFor="card-section">Place in the list</label>
         <span className="bk-select">
@@ -54,9 +70,21 @@ export function DetailsPanel({ board, card, refresh, change, onRefresh, onKeepNe
         </span>
       </div>
       <div className="bk-field">
-        <label htmlFor="card-say">What to say about it</label>
-        <textarea id="card-say" rows={3} value={say} onChange={(e) => setSay(e.target.value)} onBlur={() => say !== card.say && save({ say })} />
+        <label htmlFor="card-say">What to say about it{fill.chip('say')}</label>
+        <div className={`bk-fill-area${sayState ? ` is-${sayState}` : ''}`} aria-busy={sayState === 'working' || undefined}>
+          {sayState === 'working' ? (
+            <span aria-hidden="true" className="bk-fill-lines"><span /><span /><span /></span>
+          ) : (
+            <textarea id="card-say" rows={3} placeholder="What you want to say when you reach this card" value={say} onChange={(e) => setSay(e.target.value)} onBlur={() => !sayState && say !== card.say && save({ say })} />
+          )}
+          {/* The right end of this row is kept for Dictate's mic. */}
+          <span className="bk-fill-tools">
+            {fill.sparkle('say')}
+            {sayState === 'working' && fill.stopButton}
+          </span>
+        </div>
       </div>
+      {fill.below('say')}
       {card.kind === 'link' && (refresh?.cardId === card.id ? <RefreshCard card={card} state={refresh} onKeepNew={onKeepNew} onKeepOld={onKeepOld} /> : <SavedFrom card={card} onRefresh={() => onRefresh(card.id)} />)}
     </aside>
   );
