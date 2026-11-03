@@ -104,7 +104,7 @@ export function DiagramFromText({ shell, cardId }: { shell: BoardShell; cardId?:
             />
             <span className="bk-ai-hint">Plain steps work best: who does what, and what happens when.</span>
             {choice && <div className="bk-ai-model"><AiPicker choice={choice} label="Model" /></div>}
-            <span className="bk-ai-hint bk-ai-push">{`Only this description is sent to ${providerLabel(choice?.value.provider ?? '')}.`}</span>
+            <span className="bk-ai-hint bk-ai-push">{current ? `Only this description and the diagram’s labels are sent to ${providerLabel(choice?.value.provider ?? '')}.` : `Only this description is sent to ${providerLabel(choice?.value.provider ?? '')}.`}</span>
             <button type="button" className="bk-ai-btn is-wide is-big" disabled={!text.trim() || phase.kind === 'working'} onClick={make}>
               {made ? 'Make it again' : 'Make it'}
             </button>

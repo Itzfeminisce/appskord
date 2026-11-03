@@ -1,6 +1,5 @@
 /** Frame SettingsStorage: total and bar, space per board with "Delete…", largest files with "Remove". */
 import { useCallback, useEffect, useState } from 'react';
-import { updateCard } from '@/lib/board/ops';
 import { formatBytes } from '@/lib/capture/text';
 import { storageState } from '@/lib/capture/save';
 import { onBoardChanged } from '@/lib/store/channel';
@@ -8,7 +7,7 @@ import { loadAllBoards } from '@/lib/store/db';
 import { deleteFile } from '@/lib/store/files';
 import { DELETE_UNDO_MS, deleteBoardLater, editBoard, usePanel } from '../data';
 import { plural, useToast } from '../ui';
-import { share, storageTotals, withoutFile, type BigFile, type BoardSpace, type StorageTotals, type StoredFile } from './model';
+import { boardWithoutFile, share, storageTotals, type BigFile, type BoardSpace, type StorageTotals, type StoredFile } from './model';
 
 /** Every card file in OPFS with its size on disk. */
 async function listStoredFiles(): Promise<StoredFile[]> {
@@ -69,7 +68,7 @@ export function Storage() {
   const remove = async (file: BigFile) => {
     try {
       // The card keeps its name; only the bytes go.
-      await editBoard(file.boardId, (b) => (b.cards[file.cardId] ? updateCard(b, file.cardId, Date.now(), (c) => withoutFile(c, file.fileId)) : b));
+      await editBoard(file.boardId, (b) => boardWithoutFile(b, file.fileId, Date.now()));
       await deleteFile(file.boardId, file.fileId);
     } catch (error) {
       console.error('Briefkord: could not remove the file', error);

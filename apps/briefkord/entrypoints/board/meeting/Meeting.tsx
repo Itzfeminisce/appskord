@@ -9,6 +9,7 @@ import { meetingKey, stepTo } from '@/lib/meeting/keys';
 import { CardBody } from '../cards';
 import { ChevronLeft, ChevronRight } from '../icons';
 import { boardExtensions, type BoardShell } from '../shell/extensions';
+import { webUrl } from '../logic/cards';
 import './meeting.css';
 
 const Tick = ({ size, width }: { size: number; width: number }) => (
@@ -202,7 +203,7 @@ export function Meeting({ shell }: { shell: BoardShell }) {
               <ChevronRight size={16} />
             </button>
             <span className="bk-mt-sep" aria-hidden="true" />
-            {card?.kind === 'link' && <button type="button" className="bk-mt-plain" onClick={() => window.open(card.url, '_blank', 'noopener')}>Open the page</button>}
+            {card?.kind === 'link' && webUrl(card.url) && <button type="button" className="bk-mt-plain" onClick={() => window.open(webUrl(card.url), '_blank', 'noopener')}>Open the page</button>}
             <button
               type="button"
               className="bk-mt-plain"

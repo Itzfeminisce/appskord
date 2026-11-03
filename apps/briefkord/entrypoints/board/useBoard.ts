@@ -5,7 +5,10 @@ import { newId } from '@/lib/board/ops';
 import type { Board } from '@/lib/board/types';
 import { validateBoard } from '@/lib/board/validate';
 import { onBoardChanged } from '@/lib/store/channel';
-import { loadBoard, saveBoard } from '@/lib/store/db';
+import { loadBoard, updateBoard } from '@/lib/store/db';
+import { sweepUnusedFiles } from '@/lib/store/files';
+import { boardFiles } from '@/lib/share/prepare';
+import { mergeBoards, outsideChange, rebaseHistory } from '@/lib/board/merge';
 import { repairBoard } from './logic/repair';
 
 export type SaveStatus = 'saved' | 'saving' | 'not-saved';
@@ -42,26 +45,52 @@ export function useBoard(id: string): BoardApi {
   const [status, setStatus] = useState<SaveStatus>('saved');
   const [unsaved, setUnsaved] = useState(0);
   const history = useRef<History | undefined>(undefined);
-  const seq = useRef({ changed: 0, saved: 0, saving: false });
+  /** The board as this page last read or wrote it: the base for merging another page's change. */
+  const base = useRef<Board | undefined>(undefined);
+  const seq = useRef({ changed: 0, saved: 0, saving: false, missed: false });
   const retryTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const reread = useRef<() => void>(() => undefined);
 
   const show = (next: History) => {
     history.current = next;
     setLoad({ state: 'ready', history: next });
   };
 
+  const gone = () => {
+    history.current = undefined;
+    base.current = undefined;
+    setLoad({ state: 'missing' });
+  };
+
   const save = useCallback(async () => {
     const s = seq.current;
     if (s.saving) return;
     clearTimeout(retryTimer.current);
-    while (history.current && s.changed !== s.saved) {
+    while (history.current && base.current && s.changed !== s.saved) {
       const target = s.changed;
-      const board = history.current.present;
+      const mine = history.current.present;
+      const known = base.current;
+      let outside = undefined as Board | undefined;
+      let deleted = false as boolean;
       s.saving = true;
       setStatus('saving');
       try {
-        await saveBoard(board);
+        // Saves merge: when another page wrote since `known`, its change is merged by card id under ours in the same transaction.
+        const stored = await updateBoard(id, (latest) => {
+          if (!latest) return void (deleted = true);
+          if (latest.updatedAt === known.updatedAt) return mine;
+          outside = latest;
+          return mergeBoards(known, latest, mine);
+        });
+        s.saving = false;
+        if (deleted || !stored) return gone();
+        base.current = stored;
         s.saved = target;
+        if (outside && history.current) {
+          const change = outsideChange(known, outside);
+          const rebased = rebaseHistory(history.current, change, history.current.present === mine ? stored : undefined);
+          show(rebased);
+        }
       } catch (error) {
         console.error('Briefkord: could not save the board', error);
         s.saving = false;
@@ -70,11 +99,11 @@ export function useBoard(id: string): BoardApi {
         retryTimer.current = setTimeout(() => void save(), RETRY_MS);
         return;
       }
-      s.saving = false;
     }
     setUnsaved(0);
     setStatus('saved');
-  }, []);
+    if (s.missed) reread.current();
+  }, [id]);
 
   const replace = useCallback(
     (next: History) => {
@@ -89,15 +118,18 @@ export function useBoard(id: string): BoardApi {
   useEffect(() => {
     let alive = true;
     history.current = undefined;
-    seq.current = { changed: 0, saved: 0, saving: false };
+    base.current = undefined;
+    seq.current = { changed: 0, saved: 0, saving: false, missed: false };
     setLoad({ state: 'opening' });
     setStatus('saved');
     const read = async (initial: boolean) => {
       try {
         const raw = await loadBoard(id);
         if (!alive) return;
+        const s = seq.current;
         if (!raw) {
-          if (initial) setLoad({ state: 'missing' });
+          // Deleted in another page: stop here rather than saving it back without its files.
+          if (initial || history.current) gone();
           return;
         }
         const checked = validateBoard(raw);
@@ -106,20 +138,30 @@ export function useBoard(id: string): BoardApi {
           if (initial) setLoad({ state: 'damaged', name: typeof raw.name === 'string' ? raw.name : '', copy: repairBoard(raw, newId(), Date.now()) });
           return;
         }
-        const s = seq.current;
-        const present = history.current?.present;
-        // Our own saves come back on the channel too; only another page's change replaces the board.
-        if (!initial && (s.saving || s.changed !== s.saved || present?.updatedAt === checked.board.updatedAt)) return;
-        show(createHistory(checked.board));
+        const latest = checked.board;
+        if (initial || !history.current || !base.current) {
+          base.current = latest;
+          show(createHistory(latest));
+          if (initial) void sweepUnusedFiles(id, new Set(boardFiles(latest).map((f) => f.id))).catch((error: unknown) => console.error('Briefkord: could not tidy the board files', error));
+          return;
+        }
+        // While saving or with edits not yet saved, the next save merges this change; look again once saving ends.
+        if (s.saving || s.changed !== s.saved) return void (s.missed = true);
+        s.missed = false;
+        if (latest.updatedAt === base.current.updatedAt) return;
+        show(rebaseHistory(history.current, outsideChange(base.current, latest), latest));
+        base.current = latest;
       } catch (error) {
         console.error('Briefkord: could not load the board', error);
         if (alive && initial) setLoad({ state: 'missing' });
       }
     };
+    reread.current = () => void read(false);
     void read(true);
     const stop = onBoardChanged((changed) => changed === id && void read(false));
     return () => {
       alive = false;
+      reread.current = () => undefined;
       stop();
       clearTimeout(retryTimer.current);
     };

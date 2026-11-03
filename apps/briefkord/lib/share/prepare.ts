@@ -22,7 +22,7 @@ export function boardFiles(board: Board): FileRef[] {
   return [...seen.values()];
 }
 
-/** The board as it goes into a file: no import marks, and notes and page text only when asked for. */
+/** The board as it goes into a file: no import marks, and notes (with kept Brief me points) and page text only when asked for. */
 export function prepareForShare(board: Board, options: ShareOptions): Board {
   const cards: Record<string, Card> = {};
   for (const [id, card] of Object.entries(board.cards)) {
@@ -32,8 +32,8 @@ export function prepareForShare(board: Board, options: ShareOptions): Board {
     if (!options.pageText && next.kind === 'link') next = { ...next, text: '', words: 0 };
     cards[id] = next;
   }
-  const { imported: _imported, ...rest } = board;
-  return { ...rest, cards };
+  const { imported: _imported, brief, ...rest } = board;
+  return { ...rest, cards, ...(options.notes && brief ? { brief } : {}) };
 }
 
 /** "checkout-redesign-review.html" from "Checkout redesign review". */

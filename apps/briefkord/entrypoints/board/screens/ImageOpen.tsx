@@ -4,9 +4,10 @@ import { cardNumbers, listOrder } from '@/lib/board/ops';
 import type { Board, Card } from '@/lib/board/types';
 import { CardBody, useFileUrl } from '../cards';
 import { ChevronLeft, ChevronRight, Close } from '../icons';
+import { webUrl } from '../logic/cards';
 import { KIND_LABEL, shortDate, siteOf } from '../logic/cards';
 
-const pageOf = (card: Card): string | undefined => (card.kind === 'link' ? card.url : card.kind === 'image' ? card.pageUrl : undefined);
+const pageOf = (card: Card): string | undefined => webUrl(card.kind === 'link' ? card.url : card.kind === 'image' ? card.pageUrl : undefined);
 
 export function ImageOpen({ board, cardId, onClose, onShow }: { board: Board; cardId: string; onClose(): void; onShow(id: string): void }) {
   const card = board.cards[cardId];
@@ -37,8 +38,8 @@ export function ImageOpen({ board, cardId, onClose, onShow }: { board: Board; ca
     return () => window.removeEventListener('keydown', onKey, true);
   });
 
-  const imageId = card?.kind === 'image' ? card.file.id : card?.kind === 'link' ? card.preview?.id : undefined;
-  const src = useFileUrl(board.id, imageId);
+  const image = card?.kind === 'image' ? card.file : card?.kind === 'link' ? card.preview : undefined;
+  const src = useFileUrl(board.id, image);
   if (!card) return null;
   const page = pageOf(card);
   const saved = card.kind === 'link' ? card.savedAt : card.createdAt;

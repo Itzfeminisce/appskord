@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LLMError } from '@appskord/llm';
 import { emptyBoard } from '@/lib/board/ops';
 import type { Board, Card, ImageCard, LinkCard } from '@/lib/board/types';
-import { partFor, pickerGroups, share, storageTotals, withoutFile } from './model';
+import { boardWithoutFile, needsList, partFor, pickerGroups, share, storageTotals, withoutFile } from './model';
 
 const base = { rect: { x: 0, y: 0, w: 200, h: 120 }, z: 1, colour: 'white' as const, say: '', createdAt: 1, updatedAt: 1 };
 const link = (id: string, text: string, preview?: string): LinkCard =>
@@ -67,6 +67,25 @@ describe('storage totals', () => {
     expect(share(1, 10_000)).toBe(1);
     expect(share(50, 100)).toBe(50);
     expect(share(500, 100)).toBe(100);
+  });
+});
+
+describe('removing a file', () => {
+  it('takes the bytes off every card that holds the file', () => {
+    const board = emptyBoard({ board: 'b', section: 's' }, 'B', 'Agenda', 1);
+    const a = image('c1', 'f1', 'A.png');
+    const withTwo: Board = { ...board, cards: { c1: a, c2: { ...a, id: 'c2' } }, sections: [{ ...board.sections[0]!, cards: ['c1', 'c2'] }] };
+    const next = boardWithoutFile(withTwo, 'f1', 5);
+    expect(Object.values(next.cards).map((c) => (c as ImageCard).file.size)).toEqual([0, 0]);
+    expect(boardWithoutFile(next, 'nope', 6)).toBe(next);
+  });
+});
+
+describe('model lists', () => {
+  it('fetches a list again after a failed try', () => {
+    expect(needsList(undefined)).toBe(true);
+    expect(needsList({ status: 'failed' })).toBe(true);
+    expect(needsList({ status: 'loading' })).toBe(false);
   });
 });
 

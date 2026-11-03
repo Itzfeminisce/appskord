@@ -19,6 +19,29 @@ const withNotes = (): Board => {
 const bytes = (n: number, fill = 7) => new Uint8Array(n).fill(fill);
 const pkg = (board: Board, files: Record<string, Uint8Array> = {}): EditPackage => ({ board, from: { person: 'Ada', at: T }, files });
 
+/** The sample board with small files: 300 bytes of image, 500 of PDF. */
+function smallFiles(board: Board): Board {
+  const cards = { ...board.cards };
+  for (const [id, size] of [['step-2', 300], ['report', 500]] as const) {
+    const card = cards[id] as Card & { file: { size: number } };
+    cards[id] = { ...card, file: { ...card.file, size } } as Card;
+  }
+  return { ...board, cards };
+}
+
+/** The zip with one entry's uncompressed size in the central directory changed, as a hostile file could. */
+function withStatedSize(zip: Uint8Array, name: string, size: number): Uint8Array {
+  const out = zip.slice();
+  const view = new DataView(out.buffer);
+  const wanted = strToU8(name);
+  for (let at = 0; at < out.length - 46; at++) {
+    if (view.getUint32(at, true) !== 0x02014b50) continue;
+    const length = view.getUint16(at + 28, true);
+    if (length === wanted.length && out.subarray(at + 46, at + 46 + length).every((b, i) => b === wanted[i])) view.setUint32(at + 24, size, true);
+  }
+  return out;
+}
+
 describe('prepareForShare', () => {
   it('strips notes and page text when they are off', () => {
     const out = prepareForShare(withNotes(), { notes: false, pageText: false });
@@ -39,6 +62,12 @@ describe('prepareForShare', () => {
     expect(out.imported).toBeUndefined();
   });
 
+  it('keeps Brief me points only with "Include my notes"', () => {
+    const board = { ...withNotes(), brief: { at: T, model: 'm', provider: 'groq', points: [{ text: 'Private point', cards: ['why-now'] }], questions: ['Q?'] } };
+    expect(prepareForShare(board, { notes: false, pageText: true }).brief).toBeUndefined();
+    expect(prepareForShare(board, { notes: true, pageText: true }).brief).toEqual(board.brief);
+  });
+
   it('names files and sizes as the frames do', () => {
     expect(shareFileName('Checkout redesign review', 'html')).toBe('checkout-redesign-review.html');
     expect(shareFileName('  ', 'briefkord')).toBe('board.briefkord');
@@ -50,7 +79,7 @@ describe('prepareForShare', () => {
 
 describe('edit file', () => {
   it('packs and unpacks a board, its sender and its files', () => {
-    const board = prepareForShare(withNotes(), { notes: true, pageText: true });
+    const board = prepareForShare(smallFiles(withNotes()), { notes: true, pageText: true });
     const files = { 'step-2-png': bytes(300), 'report-pdf': bytes(500, 3) };
     const result = unpackEditFile(packEditFile(pkg(board, files)), true);
     expect(result.ok).toBe(true);
@@ -59,6 +88,20 @@ describe('edit file', () => {
     expect(result.pkg.from).toEqual({ person: 'Ada', at: T });
     expect(result.pkg.files['report-pdf']).toEqual(files['report-pdf']);
     expect(Object.keys(result.pkg.files).sort()).toEqual(['report-pdf', 'step-2-png']);
+  });
+
+  it('reads only files a card uses, and refuses sizes that do not match or are over the limits', () => {
+    const board = smallFiles(sampleBoard(T, 'board-a'));
+    const used = { 'step-2-png': bytes(300), 'report-pdf': bytes(500) };
+    const extra = unpackEditFile(packEditFile(pkg(board, { ...used, stray: bytes(10) })), true);
+    expect(extra.ok && Object.keys(extra.pkg.files).sort()).toEqual(['report-pdf', 'step-2-png']);
+    const wrong = unpackEditFile(packEditFile(pkg(board, { ...used, 'step-2-png': bytes(5) })), true);
+    expect(wrong.ok === false && wrong.error).toBe('damaged');
+    // A zip that claims a 60 MB entry is refused before it is inflated.
+    const zip = packEditFile(pkg(board, used));
+    const huge = withStatedSize(zip, 'files/report-pdf', 60 * 1024 * 1024);
+    const result = unpackEditFile(huge, true);
+    expect(result.ok === false && result.problems?.join()).toContain('per-file limit');
   });
 
   it('tells a foreign file from a damaged one', () => {
@@ -83,7 +126,25 @@ describe('ids', () => {
     const id = importedId('n1', 'card-1');
     expect(id).not.toBe('card-1');
     expect(originId(id)).toBe('card-1');
-    expect(importedId('n2', id)).toBe('n2~card-1');
+    expect(importedId('n2', id)).toBe('n2~n1~card-1');
+  });
+
+  it('imports a board that holds both an id and an imported copy of it', () => {
+    const own = sampleBoard(T, 'board-a');
+    const copy = { ...own.cards['why-now']!, id: 'n1~why-now' };
+    const both: Board = { ...own, cards: { ...own.cards, [copy.id]: copy }, sections: [{ ...own.sections[0]!, cards: [...own.sections[0]!.cards, copy.id] }, ...own.sections.slice(1)] };
+    const sent = toOriginIds(both);
+    expect(Object.keys(sent.cards)).toContain('n1~why-now');
+    const { board } = importBoard(pkg(sent), undefined, { name: 'X', nonce: 'n2', now: T });
+    expect(validateBoard(board).ok).toBe(true);
+    expect(Object.keys(board.cards)).toEqual(expect.arrayContaining(['n2~why-now', 'n2~n1~why-now']));
+  });
+
+  it('moves Brief me card refs with the cards', () => {
+    const own = { ...sampleBoard(T, 'board-a'), brief: { at: T, model: 'm', provider: 'groq', points: [{ text: 'p', cards: ['why-now'] }], questions: [] } };
+    const { board } = importBoard(pkg(own), undefined, { name: 'X', nonce: 'n1', now: T });
+    expect(board.brief!.points[0]!.cards).toEqual(['n1~why-now']);
+    expect(toOriginIds(board).brief!.points[0]!.cards).toEqual(['why-now']);
   });
 
   it('exports a copy with origin ids, keeping its own new cards', () => {

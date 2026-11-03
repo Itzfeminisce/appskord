@@ -37,13 +37,13 @@ const toDataUri = (blob: Blob) =>
 
 const aborted = () => new DOMException('Export cancelled', 'AbortError');
 
-async function eachFile<T>(board: Board, skip: ReadonlySet<string>, run: Run, read: (file: File) => Promise<T>): Promise<Record<string, T>> {
+async function eachFile<T>(board: Board, skip: ReadonlySet<string>, run: Run, read: (file: Blob) => Promise<T>): Promise<Record<string, T>> {
   const files = boardFiles(board).filter((f) => !skip.has(f.id));
   const out: Record<string, T> = {};
   run.onProgress({ done: 0, total: files.length + 1 });
   for (const [i, ref] of files.entries()) {
     if (run.signal.aborted) throw aborted();
-    const file = await readFile(board.id, ref.id);
+    const file = await readFile(board.id, ref);
     if (file) out[ref.id] = await read(file);
     run.onProgress({ done: i + 1, total: files.length + 1 });
   }

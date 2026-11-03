@@ -2,9 +2,9 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import { useRouter } from '@appskord/platform/router';
 import type { Board } from '@/lib/board/types';
-import { EDIT_FILE_EXT, unpackEditFile, type EditPackage, type UnpackError } from '@/lib/share/editFile';
+import { EDIT_FILE_EXT, MAX_EDIT_FILE_BYTES, unpackEditFile, type EditPackage, type UnpackError } from '@/lib/share/editFile';
 import { findOwnBoard, importBoard, importName } from '@/lib/share/importBoard';
-import { formatBytes, formatDay, formatTime } from '@/lib/share/prepare';
+import { boardFiles, formatBytes, formatDay, formatTime } from '@/lib/share/prepare';
 import { loadAllBoards, saveBoard } from '@/lib/store/db';
 import { deleteBoardFiles, writeFile } from '@/lib/store/files';
 import { UploadIcon } from '../icons';
@@ -44,7 +44,8 @@ export function ImportScreen() {
   const read = useCallback(async (file: File) => {
     setState({ at: 'reading', file });
     try {
-      const result = unpackEditFile(new Uint8Array(await file.arrayBuffer()), file.name.toLowerCase().endsWith(EDIT_FILE_EXT));
+      // Too big to be an edit file: refused before it is read into memory.
+      const result = file.size > MAX_EDIT_FILE_BYTES ? { ok: false as const, error: 'damaged' as const, problems: ['the file is too big'] } : unpackEditFile(new Uint8Array(await file.arrayBuffer()), file.name.toLowerCase().endsWith(EDIT_FILE_EXT));
       if (!result.ok) {
         if (result.problems) console.error('Briefkord: could not read the edit file', result.problems);
         setState({ at: 'error', file, error: result.error });
@@ -75,7 +76,10 @@ export function ImportScreen() {
     setState({ ...state, at: 'importing' });
     const { board, files } = importBoard(state.pkg, state.own, { name: state.name, nonce: crypto.randomUUID().slice(0, 8), now: Date.now() });
     try {
-      for (const [id, bytes] of Object.entries(files)) await writeFile(board.id, id, new Blob([bytes as BlobPart]));
+      for (const ref of boardFiles(board)) {
+        const bytes = files[ref.id];
+        if (bytes) await writeFile(board.id, ref.id, new Blob([bytes as BlobPart]));
+      }
       await saveBoard(board);
       go(`/b/${board.id}`);
     } catch (error) {

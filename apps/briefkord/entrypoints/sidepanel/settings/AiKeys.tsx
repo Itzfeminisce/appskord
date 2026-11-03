@@ -8,7 +8,7 @@ import {
 import { loadSettings, saveSettings } from '@/lib/store/settings';
 import { PasteKey } from './PasteKey';
 import { PenvConnect, type PenvState } from './PenvConnect';
-import { pickerGroups, PICKER_FOOT, PICKER_LABEL, type ListState } from './model';
+import { needsList, pickerGroups, PICKER_FOOT, PICKER_LABEL, type ListState } from './model';
 
 type Open = { kind: 'paste'; provider: CloudProviderId } | { kind: 'penv'; state: PenvState };
 
@@ -53,12 +53,15 @@ export function AiKeys() {
       .then((key) => listModelsFor(p, 'chat', { key }))
       .then(
         (list) => setLists((l) => ({ ...l, [p]: { status: 'done', list } })),
-        (error: unknown) => console.error('Briefkord: could not load the model list', error),
+        (error: unknown) => {
+          console.error('Briefkord: could not load the model list', error);
+          setLists((l) => ({ ...l, [p]: { status: 'failed' } }));
+        },
       );
   };
 
   const onOpen = () => {
-    for (const p of AI_PROVIDERS) if (keyNames.includes(keyNameOf(p)) && !lists[p]) load(p);
+    for (const p of AI_PROVIDERS) if (keyNames.includes(keyNameOf(p)) && needsList(lists[p])) load(p);
   };
 
   const pick = async (next: PickerValue, typed: boolean) => {

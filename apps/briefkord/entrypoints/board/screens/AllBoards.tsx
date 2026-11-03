@@ -4,7 +4,7 @@ import { useRouter } from '@appskord/platform/router';
 import { emptyBoard, newId, renameBoard, setPinned } from '@/lib/board/ops';
 import type { Board } from '@/lib/board/types';
 import { onBoardChanged } from '@/lib/store/channel';
-import { deleteBoard, loadAllBoards, loadBoard, saveBoard } from '@/lib/store/db';
+import { deleteBoard, loadAllBoards, saveBoard, updateBoard } from '@/lib/store/db';
 import { Logo, SearchIcon, Settings } from '../icons';
 import { cardsCount, lastEdit } from '../logic/cards';
 import { boardExtensions } from '../shell/extensions';
@@ -62,8 +62,7 @@ export function AllBoards() {
 
   const edit = async (id: string, fn: (b: Board, now: number) => Board) => {
     try {
-      const b = await loadBoard(id);
-      if (b) await saveBoard(fn(b, Date.now()));
+      await updateBoard(id, (b) => b && fn(b, Date.now()));
     } catch (error) {
       console.error('Briefkord: could not change the board', error);
     }

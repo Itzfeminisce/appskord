@@ -27,7 +27,7 @@ const filesOf = (card: Card): FileRef[] => {
 
 /** The list row for a board; `bytes` counts its JSON and its stored files. */
 export function boardMeta(board: Board): BoardMeta {
-  const files = Object.values(board.cards).flatMap(filesOf).reduce((sum, f) => sum + f.size, 0);
+  const files = [...new Map(Object.values(board.cards).flatMap(filesOf).map((f) => [f.id, f.size])).values()].reduce((sum, size) => sum + size, 0);
   const json = new TextEncoder().encode(JSON.stringify(board)).byteLength;
   return {
     id: board.id,
@@ -40,13 +40,43 @@ export function boardMeta(board: Board): BoardMeta {
   };
 }
 
-/** Saves a board and its row in one transaction, then tells other pages. A board that fails the validator is refused. */
-export async function saveBoard(board: Board): Promise<void> {
-  const checked = validateBoard(board);
-  if (!checked.ok) throw new Error(`Briefkord: board ${board.id} is not valid: ${checked.problems.join('; ')}`);
+/**
+ * Reads the stored board, changes it and writes the result in one transaction, so no other page's write in between is lost.
+ * `change` must be synchronous; returning undefined (or the same board) writes nothing. Each write moves `updatedAt` past the
+ * stored one, so `updatedAt` works as the board's revision. Resolves to the board as written, or undefined.
+ */
+export async function updateBoard(id: string, change: (latest: Board | undefined) => Board | undefined): Promise<Board | undefined> {
   const tx = (await boardsDB.get()).transaction(['boards', 'meta'], 'readwrite');
-  await Promise.all([tx.objectStore('boards').put(board), tx.objectStore('meta').put(boardMeta(board)), tx.done]);
-  postBoardChanged(board.id);
+  const done = tx.done.catch((error: unknown) => error);
+  let written: Board | undefined;
+  try {
+    const latest = await tx.objectStore('boards').get(id);
+    const next = change(latest);
+    if (next && next !== latest) {
+      if (next.id !== id) throw new Error(`Briefkord: board ${next.id} saved as ${id}`);
+      const checked = validateBoard(next);
+      if (!checked.ok) throw new Error(`Briefkord: board ${id} is not valid: ${checked.problems.join('; ')}`);
+      written = latest && next.updatedAt <= latest.updatedAt ? { ...next, updatedAt: latest.updatedAt + 1 } : next;
+      await Promise.all([tx.objectStore('boards').put(written), tx.objectStore('meta').put(boardMeta(written))]);
+    }
+  } catch (error) {
+    try {
+      tx.abort();
+    } catch {
+      // Already finished.
+    }
+    await done;
+    throw error;
+  }
+  const failed = await done;
+  if (failed) throw failed;
+  if (written) postBoardChanged(id);
+  return written;
+}
+
+/** Saves a board and its row, then tells other pages. A board that fails the validator is refused. Resolves to the board as written. */
+export async function saveBoard(board: Board): Promise<Board> {
+  return (await updateBoard(board.id, () => board))!;
 }
 
 export async function loadBoard(id: string): Promise<Board | undefined> {

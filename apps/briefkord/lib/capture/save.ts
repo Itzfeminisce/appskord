@@ -1,7 +1,7 @@
 /** Saving what the user captures onto a board: the page, an image, selected text or a quick note. Shared by the panel and the background. */
 import { deleteCards, newId, updateCard } from '../board/ops';
 import type { Board, Card, FileRef, ImageCard, LinkCard, NoteCard } from '../board/types';
-import { loadBoard, saveBoard } from '../store/db';
+import { loadBoard, updateBoard } from '../store/db';
 import { deleteFile, MAX_FILE_BYTES, writeFile } from '../store/files';
 import { saveSettings } from '../store/settings';
 import { imageCard, linkCard, noteCard, placeCard, quoteCard, targetSection } from './cards';
@@ -73,11 +73,13 @@ async function storeFile(boardId: string, blob: Blob, name: string): Promise<Fil
 /** Puts the card on the board, saves it and remembers the board and section; removes `files` again when saving fails. */
 async function commit(boardId: string, card: LinkCard | ImageCard | NoteCard, sectionId: string | undefined, files: FileRef[]): Promise<SaveResult> {
   try {
-    const board = await loadBoard(boardId);
-    if (!board) throw new Error(`Board ${boardId} is gone.`);
-    const next = placeCard(board, card, Date.now(), sectionId);
-    await saveBoard(next);
-    await saveSettings({ lastBoardId: boardId, lastSectionId: targetSection(board, sectionId).id });
+    // Placed on the newest stored board inside one transaction, so two quick saves never drop each other.
+    const next = await updateBoard(boardId, (board) => {
+      if (!board) throw new Error(`Board ${boardId} is gone.`);
+      return placeCard(board, card, Date.now(), sectionId);
+    });
+    if (!next) throw new Error(`Board ${boardId} was not saved.`);
+    await saveSettings({ lastBoardId: boardId, lastSectionId: targetSection(next, sectionId).id });
     return { ok: true, board: next, card: next.cards[card.id]! };
   } catch (error) {
     await Promise.all(files.map((f) => deleteFile(boardId, f.id).catch(() => undefined)));
@@ -133,10 +135,9 @@ export async function saveCapture(capture: PendingCapture, boardId: string, sect
 
 /** Takes a just-added card off its board again ("Undo"), with its files. */
 export async function removeCard(boardId: string, cardId: string): Promise<void> {
-  const board = await loadBoard(boardId);
-  const card = board?.cards[cardId];
-  if (!board || !card) return;
-  await saveBoard(deleteCards(board, [cardId], Date.now()));
+  const card = (await loadBoard(boardId))?.cards[cardId];
+  if (!card) return;
+  await updateBoard(boardId, (board) => (board?.cards[cardId] ? deleteCards(board, [cardId], Date.now()) : undefined));
   const files = card.kind === 'image' || card.kind === 'file' ? [card.file] : card.kind === 'link' && card.preview ? [card.preview] : [];
   await Promise.all(files.map((f) => deleteFile(boardId, f.id)));
 }
@@ -161,8 +162,10 @@ export async function addMissingPreviews(): Promise<void> {
       const board = await loadBoard(item.boardId);
       if (board?.cards[item.cardId]?.kind !== 'link') continue;
       const preview = await storeFile(item.boardId, await shrink(pageImageBlob(copied.value)), 'preview.jpg');
-      const fresh = (await loadBoard(item.boardId)) ?? board;
-      await saveBoard(updateCard(fresh, item.cardId, Date.now(), (c) => (c.kind === 'link' ? { ...c, preview, rect: { ...c.rect, h: Math.max(c.rect.h, 214) } } : c)));
+      const saved = await updateBoard(item.boardId, (fresh) =>
+        fresh?.cards[item.cardId]?.kind === 'link' ? updateCard(fresh, item.cardId, Date.now(), (c) => (c.kind === 'link' ? { ...c, preview, rect: { ...c.rect, h: Math.max(c.rect.h, 214) } } : c)) : undefined,
+      );
+      if (!saved) await deleteFile(item.boardId, preview.id);
     } catch (error) {
       console.error('Briefkord: could not add the preview image', error);
     }

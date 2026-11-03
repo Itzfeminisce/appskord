@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { sampleBoard } from '@/lib/board/sample';
 import { validateBoard } from '@/lib/board/validate';
 import { routeEdge } from '../cards/DiagramView';
-import { duplicateCard, lastEdit, newFileCard } from './cards';
+import { duplicateCard, lastEdit, newFileCard, webUrl, withNewFiles } from './cards';
 import { regroup } from './groups';
 import { repairBoard } from './repair';
 
@@ -28,6 +28,19 @@ describe('repairBoard', () => {
     const copy = repairBoard(raw, 'copy', T)!;
     expect(copy.sections[0]!.cards).toHaveLength(7);
     expect(copy.sections[0]!.cards[0]).toBe('flow');
+  });
+
+  it('keeps a diagram whose nodes link to other cards, and its links', () => {
+    const raw = JSON.parse(JSON.stringify(sampleBoard(T))) as Record<string, any>;
+    raw.cards.flow.diagram.nodes[0].card = 'report';
+    raw.cards.flow.diagram.nodes[1].card = 'ghost';
+    raw.cards['why-now'].rect.x = null;
+    const copy = repairBoard(raw, 'copy', T)!;
+    expect(copy.cards.flow).toBeDefined();
+    const nodes = (copy.cards.flow as any).diagram.nodes;
+    expect(nodes[0].card).toBe('report');
+    expect(nodes[1].card).toBeUndefined();
+    expect(validateBoard(copy).ok).toBe(true);
   });
 
   it('gives up when nothing can be read', () => {
@@ -71,6 +84,20 @@ describe('cards', () => {
     const copy = duplicateCard(card, 'copy', T + 1);
     expect(copy).toMatchObject({ id: 'copy', rect: { x: card.rect.x + 24, y: card.rect.y + 24 }, createdAt: T + 1 });
     expect(copy.mark).toBeUndefined();
+  });
+
+  it('gives a copied file card its own file id', () => {
+    const card = sampleBoard(T).cards['step-2']!;
+    const { card: copy, copies } = withNewFiles(duplicateCard(card, 'copy', T + 1), () => 'new-file');
+    expect((copy as any).file).toMatchObject({ id: 'new-file', name: (card as any).file.name });
+    expect(copies).toEqual([{ from: (card as any).file, to: 'new-file' }]);
+    expect(withNewFiles(sampleBoard(T).cards['why-now']!, () => 'x').copies).toEqual([]);
+  });
+
+  it('opens only web addresses', () => {
+    expect(webUrl('https://example.com/a')).toBe('https://example.com/a');
+    expect(webUrl('chrome://settings')).toBeUndefined();
+    expect(webUrl('file:///etc/passwd')).toBeUndefined();
   });
 
   it('writes the last edit as the boards list does', () => {

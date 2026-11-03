@@ -216,8 +216,8 @@ function Row({ board, card, number, selected, source, onSelect, onKey, onGrab }:
 }
 
 function Thumb({ boardId, card }: { boardId: string; card: Card }) {
-  const fileId = card.kind === 'link' ? card.preview?.id : card.kind === 'image' ? card.file.id : undefined;
-  const url = useFileUrl(boardId, fileId);
+  const file = card.kind === 'link' ? card.preview : card.kind === 'image' ? card.file : undefined;
+  const url = useFileUrl(boardId, file);
   const colour = card.kind === 'note' || card.kind === 'checklist' ? ` bk-c-${card.colour}` : '';
   return <span className={`bk-ls-thumb bk-ls-thumb-${card.kind}${colour}`} aria-hidden="true">{url && <img src={url} alt="" draggable={false} />}</span>;
 }

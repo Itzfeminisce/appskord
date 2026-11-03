@@ -6,10 +6,10 @@ const SEP = '~';
 /** The id a board, card or file had on the board it was first made on. */
 export const originId = (id: string): string => id.slice(id.lastIndexOf(SEP) + 1);
 
-/** A new id for an imported copy of `id`. */
-export const importedId = (nonce: string, id: string): string => `${nonce}${SEP}${originId(id)}`;
+/** A new id for an imported copy of `id`; the whole id is kept, so two ids with one origin stay apart. */
+export const importedId = (nonce: string, id: string): string => `${nonce}${SEP}${id}`;
 
-/** Every board-level id (board, cards, sections, arrows, groups, files) passed through `map`. Inner ids stay. */
+/** Every board-level id (board, cards, sections, arrows, groups, files, Brief me card refs) passed through `map`. Inner ids stay. */
 export function mapIds(board: Board, map: (id: string) => string): Board {
   const file = (f: FileRef): FileRef => ({ ...f, id: map(f.id) });
   const cards: Record<string, Card> = {};
@@ -30,6 +30,7 @@ export function mapIds(board: Board, map: (id: string) => string): Board {
     sections: board.sections.map((s) => ({ ...s, id: map(s.id), cards: s.cards.map(map) })),
     arrows: board.arrows.map((a) => ({ ...a, id: map(a.id), from: map(a.from), to: map(a.to) })),
     groups: board.groups.map((g) => ({ ...g, id: map(g.id), cards: g.cards.map(map) })),
+    ...(board.brief ? { brief: { ...board.brief, points: board.brief.points.map((p) => ({ ...p, cards: p.cards.map(map) })) } } : {}),
   };
 }
 

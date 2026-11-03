@@ -28,7 +28,7 @@ export function Saved({ cardId, offline }: { cardId: string; offline: boolean })
   const closeMenu = useCallback(() => setMenu(false), []);
   const menuRef = useDismiss(menu, closeMenu);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const preview = useFileUrl(board && link?.preview ? () => readFile(board.id, link.preview!.id) : undefined, link?.preview?.id);
+  const preview = useFileUrl(board && link?.preview ? () => readFile(board.id, link.preview!) : undefined, link?.preview?.id);
 
   const seen = useRef(false);
   useEffect(() => {

@@ -27,8 +27,11 @@ const ADD_KEY: Record<CloudProviderId, string> = {
 };
 const ALIASES: Partial<Record<CloudProviderId, string[]>> = { anthropic: ['claude'], google: ['google'], xai: ['grok'] };
 
-/** A provider's list: being fetched, or fetched (live, or suggested with the error). */
-export type ListState = { status: 'loading' } | { status: 'done'; list: PickerList };
+/** A provider's list: being fetched, fetched (live, or suggested with the error), or not fetched because the key could not be read. */
+export type ListState = { status: 'loading' } | { status: 'done'; list: PickerList } | { status: 'failed' };
+
+/** A list is fetched on open when it never was or the last try failed. */
+export const needsList = (state: ListState | undefined): boolean => !state || state.status === 'failed';
 
 function group(p: CloudProviderId, value: PickerValue, keyNames: readonly string[], state: ListState | undefined): PickerGroup {
   const base = { id: p, name: PROVIDERS[p].label, mark: MARK[p], aliases: ALIASES[p], addKeyLabel: ADD_KEY[p] };
@@ -40,7 +43,7 @@ function group(p: CloudProviderId, value: PickerValue, keyNames: readonly string
   if (value.provider === p && value.model && !models.some((m) => m.id === value.model)) models.push({ id: value.model, tag: 'Your choice' });
   if (state?.status === 'loading') return { ...base, status: 'loading', models };
   if (list?.error?.code === 'auth') return { ...base, status: 'key-refused', models };
-  return { ...base, status: list?.error ? 'failed' : 'ready', models };
+  return { ...base, status: list?.error || state?.status === 'failed' ? 'failed' : 'ready', models };
 }
 
 /** The picker's groups: every cloud provider in the shared order. */
@@ -112,6 +115,15 @@ export function withoutFile(card: Card, fileId: string): Card {
     return rest;
   }
   return card;
+}
+
+/** The board after a file's bytes are removed: every card that holds the file loses it. */
+export function boardWithoutFile(board: Board, fileId: string, now: number): Board {
+  const touched = Object.values(board.cards).filter((c) => withoutFile(c, fileId) !== c);
+  if (touched.length === 0) return board;
+  const cards = { ...board.cards };
+  for (const c of touched) cards[c.id] = { ...withoutFile(c, fileId), updatedAt: now };
+  return { ...board, cards, updatedAt: now };
 }
 
 /** A bar segment's width in percent of `whole`; a non-empty part shows at least 1%. */

@@ -1,34 +1,44 @@
-/** Object URLs for card files in OPFS, made once per file for the life of the tab. */
+/** Object URLs for card files in OPFS, kept for the board on screen and revoked when the tab moves to another board. */
 import { useEffect, useState } from 'react';
+import type { FileRef } from '@/lib/board/types';
 import { readFile } from '@/lib/store/files';
 
+let cacheBoard: string | undefined;
 const cache = new Map<string, Promise<string | undefined>>();
 
-export function fileUrl(boardId: string, fileId: string): Promise<string | undefined> {
-  const key = `${boardId}/${fileId}`;
-  let url = cache.get(key);
+const revoke = (url: Promise<string | undefined>) => void url.then((u) => u && URL.revokeObjectURL(u));
+
+export function fileUrl(boardId: string, ref: FileRef): Promise<string | undefined> {
+  if (boardId !== cacheBoard) {
+    cache.forEach(revoke);
+    cache.clear();
+    cacheBoard = boardId;
+  }
+  let url = cache.get(ref.id);
   if (!url) {
-    url = readFile(boardId, fileId)
-      .then((file) => (file ? URL.createObjectURL(file) : undefined))
+    url = readFile(boardId, ref)
+      .then((blob) => (blob ? URL.createObjectURL(blob) : undefined))
       .catch((error: unknown) => {
         console.error('Briefkord: could not read a card file', error);
-        cache.delete(key);
+        cache.delete(ref.id);
         return undefined;
       });
-    cache.set(key, url);
+    cache.set(ref.id, url);
   }
   return url;
 }
 
-export function useFileUrl(boardId: string, fileId: string | undefined): string | undefined {
+export function useFileUrl(boardId: string, ref: FileRef | undefined): string | undefined {
   const [url, setUrl] = useState<string>();
+  const fileId = ref?.id;
   useEffect(() => {
     let alive = true;
     setUrl(undefined);
-    if (fileId) void fileUrl(boardId, fileId).then((u) => alive && setUrl(u));
+    if (ref) void fileUrl(boardId, ref).then((u) => alive && setUrl(u));
     return () => {
       alive = false;
     };
+    // The bytes behind a file id never change, so the id is enough.
   }, [boardId, fileId]);
   return url;
 }

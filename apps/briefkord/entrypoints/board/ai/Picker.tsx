@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { listModelsFor, type CloudProviderId } from '@appskord/llm';
 import { ModelPicker, type PickerValue } from '@appskord/ui';
-import { pickerGroups, PICKER_FOOT, type ListState } from '@/entrypoints/sidepanel/settings/model';
+import { needsList, pickerGroups, PICKER_FOOT, type ListState } from '@/entrypoints/sidepanel/settings/model';
 import { AI_PROVIDERS, aiKey, isAiProvider, keyNameOf, requestHostAccess } from '@/lib/keys';
 import { saveSettings } from '@/lib/store/settings';
 import { openAiSettings, type Choice } from './choice';
@@ -17,7 +17,10 @@ export function AiPicker({ choice, label }: { choice: Choice; label: string }) {
       .then((key) => listModelsFor(p, 'chat', { key }))
       .then(
         (list) => setLists((l) => ({ ...l, [p]: { status: 'done', list } })),
-        (error: unknown) => console.error('Briefkord: could not load the model list', error),
+        (error: unknown) => {
+          console.error('Briefkord: could not load the model list', error);
+          setLists((l) => ({ ...l, [p]: { status: 'failed' } }));
+        },
       );
   };
 
@@ -37,7 +40,7 @@ export function AiPicker({ choice, label }: { choice: Choice; label: string }) {
       value={value}
       typedProvider={typed}
       onOpen={() => {
-        for (const p of AI_PROVIDERS) if (keyNames.includes(keyNameOf(p)) && !lists[p]) load(p);
+        for (const p of AI_PROVIDERS) if (keyNames.includes(keyNameOf(p)) && needsList(lists[p])) load(p);
       }}
       onRetry={(p) => isAiProvider(p) && load(p)}
       onAddKey={openAiSettings}

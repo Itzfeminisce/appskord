@@ -6,6 +6,18 @@ const record = (v: unknown): Record<string, unknown> => (typeof v === 'object' &
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const text = (v: unknown, fallback: string): string => (typeof v === 'string' ? v : fallback);
 
+/** A card value with its diagram nodes' links to other cards taken off. */
+function unlinked(card: Record<string, unknown>): Record<string, unknown> {
+  const diagram = record(card.diagram);
+  if (card.kind !== 'diagram' || !Array.isArray(diagram.nodes)) return card;
+  const nodes = diagram.nodes.map((n: unknown) => {
+    if (typeof n !== 'object' || n === null || Array.isArray(n)) return n;
+    const { card: _link, ...rest } = n as Record<string, unknown>;
+    return rest;
+  });
+  return { ...card, diagram: { ...diagram, nodes } };
+}
+
 /** The readable cards of a damaged board in a new, valid board with id `newId`; undefined when no card can be read. */
 export function repairBoard(raw: unknown, newId: string, now: number): Board | undefined {
   const source = record(raw);
@@ -14,9 +26,19 @@ export function repairBoard(raw: unknown, newId: string, now: number): Board | u
   for (const [id, value] of Object.entries(record(source.cards))) {
     const card = record(value);
     if (card.id !== id) continue;
-    const probe = { version: 1, id: 'probe', name: '', pinned: false, createdAt: 0, updatedAt: 0, cards: { [id]: value }, arrows: [], groups: [], sections: [{ id: 's', title: '', minutes: 0, cards: [id] }] };
+    // A diagram node's link to another card is checked once every card is known.
+    const probe = { version: 1, id: 'probe', name: '', pinned: false, createdAt: 0, updatedAt: 0, cards: { [id]: unlinked(card) }, arrows: [], groups: [], sections: [{ id: 's', title: '', minutes: 0, cards: [id] }] };
     const checked = validateBoard(probe);
     if (checked.ok) cards[id] = checked.board.cards[id]!;
+  }
+  for (const [id, card] of Object.entries(cards)) {
+    if (card.kind !== 'diagram') continue;
+    const raw = list(record(record(record(source.cards)[id]).diagram).nodes);
+    const nodes = card.diagram.nodes.map((n, i) => {
+      const link = record(raw[i]).card;
+      return typeof link === 'string' && cards[link] ? { ...n, card: link } : n;
+    });
+    cards[id] = { ...card, diagram: { ...card.diagram, nodes } };
   }
   const ids = Object.keys(cards);
   if (ids.length === 0) return undefined;

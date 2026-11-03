@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renameBoard, setPinned } from '../board/ops';
 import { sampleBoard } from '../board/sample';
 import { onBoardChanged } from './channel';
-import { boardMeta, boardsDB, deleteBoard, listBoards, loadAllBoards, loadBoard, saveBoard } from './db';
+import { addCard, updateCard } from '../board/ops';
+import { boardMeta, boardsDB, deleteBoard, listBoards, loadAllBoards, loadBoard, saveBoard, updateBoard } from './db';
 import { deleteBoardFiles } from './files';
 
 vi.mock('./files', () => ({ deleteBoardFiles: vi.fn(async () => {}) }));
@@ -45,6 +46,34 @@ describe('board storage', () => {
     expect(await loadBoard('b1')).toBeUndefined();
     expect(await listBoards()).toEqual([]);
     expect(deleteBoardFiles).toHaveBeenCalledWith('b1');
+  });
+
+  it('changes the newest stored board in one step and moves updatedAt past it', async () => {
+    const stored = await saveBoard(sampleBoard(5, 'b1'));
+    const older = updateCard(sampleBoard(1, 'b1'), 'why-now', 2, (c) => ({ ...c, title: 'Old copy' }));
+    const written = await updateBoard('b1', () => older);
+    expect(written!.updatedAt).toBe(stored.updatedAt + 1);
+    const note = { ...sampleBoard(1, 'x').cards['why-now']!, id: 'n1' };
+    const both = await Promise.all([1, 2].map((i) => updateBoard('b1', (b) => b && addCard(b, { ...note, id: `n${i}` }, 9))));
+    expect(both.every(Boolean)).toBe(true);
+    const latest = (await loadBoard('b1'))!;
+    expect(Object.keys(latest.cards)).toEqual(expect.arrayContaining(['n1', 'n2']));
+    expect(latest.cards['why-now']!.title).toBe('Old copy');
+  });
+
+  it('writes nothing for a board that is gone, and nothing invalid', async () => {
+    expect(await updateBoard('none', (b) => b)).toBeUndefined();
+    expect(await loadBoard('none')).toBeUndefined();
+    await saveBoard(sampleBoard(1, 'b1'));
+    await expect(updateBoard('b1', (b) => b && { ...b, sections: [] })).rejects.toThrow('is not valid');
+    expect((await loadBoard('b1'))!.sections).toHaveLength(3);
+  });
+
+  it('counts a file two cards share once', () => {
+    const board = sampleBoard(1, 'b1');
+    const image = board.cards['step-2']!;
+    const twice = { ...board, cards: { ...board.cards, copy: { ...image, id: 'copy' } }, sections: [{ ...board.sections[0]!, cards: [...board.sections[0]!.cards, 'copy'] }, ...board.sections.slice(1)] };
+    expect(boardMeta(twice).bytes - boardMeta(board).bytes).toBeLessThan(1000);
   });
 
   it('tells other pages about every write', async () => {

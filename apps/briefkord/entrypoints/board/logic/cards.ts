@@ -38,7 +38,23 @@ export function newFileCard(id: string, at: { x: number; y: number }, file: File
   return { ...base(id, at, 'file', now), kind: 'file', title: file.name, file };
 }
 
-/** A copy of a card, offset so both show, with a new id. Files are shared by reference. */
+/** Only web addresses open from a card; an imported card may name chrome:// or file:// pages. */
+export const webUrl = (url: string | undefined): string | undefined => (url && /^https?:\/\//i.test(url) ? url : undefined);
+
+/** The card with each of its files under a new id from `fileId`, and which stored file each new id copies. */
+export function withNewFiles(card: Card, fileId: () => string): { card: Card; copies: { from: FileRef; to: string }[] } {
+  const copies: { from: FileRef; to: string }[] = [];
+  const moved = (from: FileRef): FileRef => {
+    const to = fileId();
+    copies.push({ from, to });
+    return { ...from, id: to };
+  };
+  if (card.kind === 'image' || card.kind === 'file') return { card: { ...card, file: moved(card.file) }, copies };
+  if (card.kind === 'link' && card.preview) return { card: { ...card, preview: moved(card.preview) }, copies };
+  return { card, copies };
+}
+
+/** A copy of a card, offset so both show, with a new id. Its files keep their ids; `withNewFiles` gives it its own. */
 export function duplicateCard(card: Card, id: string, now: number, offset = 24): Card {
   const rect: Rect = { ...card.rect, x: card.rect.x + offset, y: card.rect.y + offset };
   const { mark: _mark, ...rest } = card;

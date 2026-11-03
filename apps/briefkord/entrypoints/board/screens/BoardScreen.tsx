@@ -8,13 +8,14 @@ import {
 import type { Board, Card } from '@/lib/board/types';
 import { lineUp, type CanvasHandle, type Point } from '@/lib/canvas';
 import { saveBoard } from '@/lib/store/db';
-import { writeFile } from '@/lib/store/files';
+import { copyFiles, writeFile } from '@/lib/store/files';
+import { boardFiles } from '@/lib/share/prepare';
 import { fileUrl } from '../cards';
 import { BoardCanvas, type CanvasActions } from '../canvas/BoardCanvas';
 import { CardMenu, type CardMenuActions } from '../canvas/CardMenu';
 import { DetailsPanel, type RefreshState } from '../canvas/DetailsPanel';
 import { createUiStore, useUi } from '../canvas/uiStore';
-import { duplicateCard, newChecklist, newDiagram, newFileCard, newNote } from '../logic/cards';
+import { duplicateCard, webUrl, withNewFiles, newChecklist, newDiagram, newFileCard, newNote } from '../logic/cards';
 import { planDrop } from '../logic/drop';
 import { keyAction, type Tool } from '../logic/keys';
 import { readOpenPage } from '../logic/refresh';
@@ -50,7 +51,8 @@ export function BoardScreen(props: BoardScreenProps) {
     const { name, copy } = api.load;
     const openCopy = () =>
       copy &&
-      saveBoard(copy)
+      copyFiles(props.id, copy.id, boardFiles(copy))
+        .then(() => saveBoard(copy))
         .then(() => go(`/b/${copy.id}`))
         .catch((error: unknown) => console.error('Briefkord: could not save the copy', error));
     return <BoardDamaged name={name} cards={copy ? Object.keys(copy.cards).length : undefined} onOpenCopy={openCopy} onBack={() => go('/boards')} />;
@@ -206,7 +208,7 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
     const card = live.current.board.cards[id];
     if (!card) return;
     if (card.kind === 'file') {
-      void fileUrl(live.current.board.id, card.file.id).then((url) => url && openUrl(url));
+      void fileUrl(live.current.board.id, card.file).then((url) => url && openUrl(url));
       return;
     }
     setOpenId(id);
@@ -240,28 +242,39 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
       return next ? moveCardInList(b, id, next.id, 0, now) : b;
     });
 
-  const duplicate = (ids: string[]) => {
-    const copies = ids.flatMap((id) => (live.current.board.cards[id] ? [{ from: id, copy: duplicateCard(live.current.board.cards[id]!, newId(), Date.now()) }] : []));
+  const duplicate = async (ids: string[]) => {
+    const boardId = live.current.board.id;
+    const copies = ids.flatMap((id) => {
+      const card = live.current.board.cards[id];
+      return card ? [{ from: id, ...withNewFiles(duplicateCard(card, newId(), Date.now()), newId) }] : [];
+    });
+    // Each copy gets its own stored bytes, so removing one card's file never empties the other.
+    try {
+      for (const { copies: files } of copies) for (const { from, to } of files) await copyFiles(boardId, boardId, [from], () => to);
+    } catch (error) {
+      console.error('Briefkord: could not copy the card files', error);
+      return;
+    }
     change((b, now) =>
-      copies.reduce((acc, { from, copy }) => {
+      copies.reduce((acc, { from, card: copy }) => {
         const section = sectionOf(acc, from);
         return addCard(acc, copy, now, section ? { sectionId: section.id, index: section.cards.indexOf(from) + 1 } : {});
       }, b),
     );
-    store.select(copies.map((c) => c.copy.id));
+    store.select(copies.map((c) => c.card.id));
   };
 
   const menuActions: CardMenuActions = {
     openLarge,
     edit: (id) => store.set({ editing: id, selected: new Set([id]) }),
-    duplicate,
+    duplicate: (ids) => void duplicate(ids),
     recolour: (ids, colour) => change((b, now) => recolourCards(b, ids, colour, now)),
     moveToSection: (ids, sectionId) => change((b, now) => ids.reduce((acc, id) => moveCardInList(acc, id, sectionId, Number.MAX_SAFE_INTEGER, now), b)),
     bringToFront: (ids) => change((b, now) => bringToFront(b, ids, now)),
     saveImage: (id) => {
       const card = live.current.board.cards[id];
       if (card?.kind !== 'image') return;
-      void fileUrl(live.current.board.id, card.file.id).then((url) => {
+      void fileUrl(live.current.board.id, card.file).then((url) => {
         if (!url) return;
         const a = document.createElement('a');
         a.href = url;
@@ -288,7 +301,7 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
     summarize: menuActions.summarize,
     openPage: (id) => {
       const card = live.current.board.cards[id];
-      const url = card?.kind === 'link' ? card.url : card?.kind === 'image' ? card.pageUrl : undefined;
+      const url = webUrl(card?.kind === 'link' ? card.url : card?.kind === 'image' ? card.pageUrl : undefined);
       if (url) openUrl(url);
     },
     connect: (id) => store.set({ connectFrom: store.get().connectFrom === id ? undefined : id }),
@@ -346,7 +359,7 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
         case 'help': return setPanel('help');
         case 'undo': return liveApi.undo();
         case 'redo': return liveApi.redo();
-        case 'duplicate': return ids.length && duplicate(ids);
+        case 'duplicate': return void (ids.length && duplicate(ids));
         case 'open-large': return ids[0] && openLarge(ids[0]);
         case 'list-move': return ids.length === 1 && listMove(ids[0]!, action.by);
         case 'delete':

@@ -10,7 +10,6 @@ const OPTIONAL_HOSTS = [
   'https://openrouter.ai/*',
   'https://generativelanguage.googleapis.com/*',
   'https://api.x.ai/*',
-  'http://localhost:11434/*',
 ];
 
 manifestChecks({

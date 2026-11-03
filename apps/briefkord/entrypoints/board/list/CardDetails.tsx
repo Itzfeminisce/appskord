@@ -59,8 +59,8 @@ export function CardDetails({ shell, card }: { shell: BoardShell; card: Card }) 
 }
 
 function Media({ boardId, card }: { boardId: string; card: Card }) {
-  const fileId = card.kind === 'link' ? card.preview?.id : card.kind === 'image' ? card.file.id : undefined;
-  const url = useFileUrl(boardId, fileId);
+  const file = card.kind === 'link' ? card.preview : card.kind === 'image' ? card.file : undefined;
+  const url = useFileUrl(boardId, file);
   if (card.kind === 'diagram') {
     return <div className="bk-ls-media is-diagram"><DiagramView diagram={card.diagram} /></div>;
   }

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { newId } from '@/lib/board/ops';
 import type { Card, ChecklistCard, ChecklistItem, DiagramCard, FileCard, ImageCard, LinkCard, NoteCard } from '@/lib/board/types';
 import { formatBytes } from '../logic/drop';
-import { KIND_LABEL } from '../logic/cards';
+import { KIND_LABEL, webUrl } from '../logic/cards';
 import { providerLabel } from '../ai/choice';
 import { DiagramView } from './DiagramView';
 import { useFileUrl } from './useFileUrl';
@@ -51,7 +51,7 @@ export function CardBody(props: CardBodyProps) {
 }
 
 function LinkBody({ card, number, boardId }: CardBodyProps & { card: LinkCard }) {
-  const preview = useFileUrl(boardId, card.preview?.id);
+  const preview = useFileUrl(boardId, card.preview);
   return (
     <>
       <div className="bk-card-media bk-link-media" style={{ height: '48%' }}>
@@ -68,7 +68,7 @@ function LinkBody({ card, number, boardId }: CardBodyProps & { card: LinkCard })
 }
 
 function ImageBody({ card, number, boardId }: CardBodyProps & { card: ImageCard }) {
-  const url = useFileUrl(boardId, card.file.id);
+  const url = useFileUrl(boardId, card.file);
   return (
     <>
       <div className="bk-card-media bk-image-media">
@@ -138,7 +138,7 @@ function NoteBody({ card, number, editing, onCommit, onDone }: CardBodyProps & {
         </span>
         <span className="bk-quote-text">{card.text}</span>
         <span className="bk-quote-from">{[siteOf(card.source.url), card.source.title].filter(Boolean).join(' · ')}</span>
-        <a className="bk-quote-open" href={card.source.url} target="_blank" rel="noreferrer" data-canvas-control="" onPointerDown={(e) => e.stopPropagation()}>Open where it came from</a>
+        {webUrl(card.source.url) && <a className="bk-quote-open" href={card.source.url} target="_blank" rel="noreferrer" data-canvas-control="" onPointerDown={(e) => e.stopPropagation()}>Open where it came from</a>}
       </div>
     );
   }

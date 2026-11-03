@@ -1,7 +1,12 @@
 /** The `.briefkord` edit file: a zip of meta.json, board.json (with `from`) and files/<fileId>. Pure. */
-import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
+import { strFromU8, strToU8, unzipSync, zipSync, type UnzipFileInfo, type Zippable } from 'fflate';
 import { BOARD_VERSION, type Board } from '../board/types';
 import { validateBoard } from '../board/validate';
+import { MAX_FILE_BYTES } from '../store/files';
+import { boardFiles } from './prepare';
+
+/** The most an edit file may hold once unpacked, and so the biggest file Import reads. */
+export const MAX_EDIT_FILE_BYTES = 500 * 1024 * 1024;
 
 export const EDIT_FILE_FORMAT = 1;
 export const EDIT_FILE_EXT = '.briefkord';
@@ -43,12 +48,23 @@ function parse(bytes: Uint8Array | undefined): unknown {
 
 /** Reads an edit file. `named` is true when the file's name ends in .briefkord, so a broken zip is damaged rather than foreign. */
 export function unpackEditFile(bytes: Uint8Array, named = false): UnpackResult {
+  if (bytes.byteLength > MAX_EDIT_FILE_BYTES) return { ok: false, error: 'damaged', problems: ['the file is bigger than an edit file can be'] };
+  // Sizes come from the zip's directory; fflate never inflates an entry past its stated size, so checking them first caps memory.
+  const entrySize = (f: UnzipFileInfo) => Math.max(f.size, f.originalSize);
+  let tooBig = false;
   let entries: Record<string, Uint8Array>;
   try {
-    entries = unzipSync(bytes);
+    entries = unzipSync(bytes, {
+      filter: (f) => {
+        if (f.name !== 'meta.json' && f.name !== 'board.json') return false;
+        if (entrySize(f) > MAX_FILE_BYTES) return (tooBig = true), false;
+        return true;
+      },
+    });
   } catch {
     return { ok: false, error: named ? 'damaged' : 'not-briefkord' };
   }
+  if (tooBig) return { ok: false, error: 'damaged', problems: ['board.json is too big'] };
   const meta = parse(entries['meta.json']);
   if (!isObj(meta) || meta.app !== 'briefkord') return { ok: false, error: named && entries['board.json'] ? 'damaged' : 'not-briefkord' };
   if (typeof meta.format !== 'number') return { ok: false, error: 'damaged' };
@@ -63,7 +79,32 @@ export function unpackEditFile(bytes: Uint8Array, named = false): UnpackResult {
   const f = isObj(rawFrom) ? rawFrom : {};
   const from: From = { person: typeof f.person === 'string' ? f.person.trim() : '', at: typeof f.at === 'number' && Number.isFinite(f.at) ? f.at : 0 };
 
+  // Only files a card uses are read, each within the per-file limit, all within the total.
+  const used = new Map(boardFiles(checked.board).map((f) => [f.id, f]));
+  let total = 0;
+  const problems: string[] = [];
+  let stored: Record<string, Uint8Array>;
+  try {
+    stored = unzipSync(bytes, {
+      filter: (f) => {
+        const ref = f.name.startsWith(FILES) ? used.get(f.name.slice(FILES.length)) : undefined;
+        if (!ref) return false;
+        const size = entrySize(f);
+        total += size;
+        if (size > MAX_FILE_BYTES) problems.push(`${f.name} is over the per-file limit`);
+        else if (total > MAX_EDIT_FILE_BYTES) problems.push('the files are over the total limit');
+        return problems.length === 0;
+      },
+    });
+  } catch {
+    return { ok: false, error: 'damaged', problems: ['a file could not be unpacked'] };
+  }
   const files: Record<string, Uint8Array> = {};
-  for (const [path, data] of Object.entries(entries)) if (path.startsWith(FILES) && path.length > FILES.length) files[path.slice(FILES.length)] = data;
+  for (const [path, data] of Object.entries(stored)) {
+    const id = path.slice(FILES.length);
+    if (data.byteLength !== used.get(id)!.size) problems.push(`${path} is not the size its card says`);
+    files[id] = data;
+  }
+  if (problems.length) return { ok: false, error: 'damaged', problems };
   return { ok: true, pkg: { board: checked.board, from, files } };
 }

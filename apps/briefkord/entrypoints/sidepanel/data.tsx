@@ -6,7 +6,7 @@ import { takeIntents, type Notice, type PanelIntent, type PendingCapture } from 
 import { addMissingPreviews, storageState, type StorageState } from '@/lib/capture/save';
 import { onGrant } from '@/lib/capture/shortcut';
 import { onBoardChanged, postBoardChanged } from '@/lib/store/channel';
-import { boardsDB, listBoards, loadBoard, saveBoard } from '@/lib/store/db';
+import { boardsDB, listBoards, loadBoard, saveBoard, updateBoard } from '@/lib/store/db';
 import { deleteBoardFiles } from '@/lib/store/files';
 import { loadSettings, saveSettings, type Settings } from '@/lib/store/settings';
 
@@ -52,13 +52,9 @@ export async function makeBoard(name: string): Promise<Board> {
   return board;
 }
 
-/** Loads the newest copy of a board, changes it and saves it. */
+/** Changes the stored board and saves it in one step, so an edit made in a board tab meanwhile is kept. */
 export async function editBoard(id: string, change: (board: Board) => Board): Promise<Board | undefined> {
-  const board = await loadBoard(id);
-  if (!board) return undefined;
-  const next = change(board);
-  if (next !== board) await saveBoard(next);
-  return next;
+  return (await updateBoard(id, (board) => (board ? change(board) : undefined))) ?? loadBoard(id);
 }
 
 export async function renameBoardNamed(id: string, name: string): Promise<void> {

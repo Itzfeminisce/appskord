@@ -1,6 +1,7 @@
 /** Floating black bars over the canvas: one card (CardSelected), several cards (CardMenu multi-select), an arrow and a group (CardEditing). */
 import { useState } from 'react';
 import { CARD_COLOURS, type Arrow, type Board, type Card, type CardColour, type Group } from '@/lib/board/types';
+import { webUrl } from '../logic/cards';
 import { More, Sparkle, Trash } from '../icons';
 
 export interface BarActions {
@@ -31,7 +32,7 @@ export function Swatches({ value, onPick }: { value?: CardColour; onPick(colour:
   );
 }
 
-const pageOf = (card: Card): string | undefined => (card.kind === 'link' ? card.url : card.kind === 'image' ? card.pageUrl : undefined);
+const pageOf = (card: Card): string | undefined => webUrl(card.kind === 'link' ? card.url : card.kind === 'image' ? card.pageUrl : undefined);
 
 export function CardBar({ card, actions, connecting }: { card: Card; actions: BarActions; connecting: boolean }) {
   return (
