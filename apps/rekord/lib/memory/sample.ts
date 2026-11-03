@@ -1,4 +1,5 @@
 // The FRAMES.md sample world, for dev frame routes and tests. Story day: Tue 3 Nov 2026.
+import type { CatchupQuestion, SomethingElseForm } from '../catchup/types';
 import type { CalendarEvent, Meeting, Segment } from '../types';
 import type { Agenda, LedgerEntry, MemoryItem, Person, Quote } from './types';
 
@@ -212,6 +213,111 @@ export async function seedSample(db: SampleDB, moment: 'before' | 'after' = 'bef
     ...all('items', after ? [...SAMPLE_ITEMS, ...SAMPLE_ONE_ON_ONE_ITEMS] : SAMPLE_ITEMS),
     ...all('agendas', [SAMPLE_AGENDA]),
     ...all('ledger', after ? SAMPLE_LEDGER : []),
+  ];
+  for (const [store, value] of writes) await db.put(store, value);
+}
+
+// v4.1 "Catch up": v4's world one day earlier (FRAMES v4.1 "Sample world"). Story day: Mon 2 Nov 2026.
+
+/** Home is staged at 17:05; the Northwind meeting ended at 17:00 and Rekord did not record it. */
+export const V41_NOW = at(11, 2, 17, 5);
+/** You tell it at 17:10. */
+export const V41_TOLD_AT = at(11, 2, 17, 10);
+
+const TOM = { name: 'Tom Becker', email: 'tom@northwind.co' };
+const PRIYA = { name: 'Priya Nair', email: 'priya@rekord-team.com' };
+const SAM = { name: 'Sam Ortiz', email: 'sam@rekord-team.com' };
+
+export const V41_EVENT: CalendarEvent = {
+  id: 'evt-northwind-1102', title: 'Q4 planning with Northwind', start: at(11, 2, 13, 0), end: at(11, 2, 17, 0),
+  attendees: [ME, SARAH, TOM, PRIYA], app: 'meet',
+};
+
+/** The calendar's last 7 days: the Northwind meeting, two older misses, and the recorded Weekly product sync (not listed). */
+export const V41_EVENTS: CalendarEvent[] = [
+  V41_EVENT,
+  { id: 'evt-sync-1102', title: 'Weekly product sync', start: at(11, 2, 10, 0), end: at(11, 2, 10, 47), attendees: [ME, PRIYA, SAM], app: 'meet' },
+  { id: 'evt-hiring-1029', title: 'Hiring sync', start: at(10, 29, 15, 0), end: at(10, 29, 15, 30), attendees: [ME, PRIYA, SAM], app: 'meet' },
+  { id: 'evt-retro-1028', title: 'Team retro', start: at(10, 28, 16, 0), end: at(10, 28, 16, 45), attendees: [ME, PRIYA, SAM], app: 'meet' },
+];
+
+/** V41PickOther's example: not a calendar meeting. */
+export const V41_FORM: SomethingElseForm = {
+  name: 'Lunch with Dana', date: '2026-10-30', start: '12:30', lengthMin: 60, attendees: [{ name: 'Dana Ruiz', email: 'dana@lumen.io' }],
+};
+
+const CATCHUP_ID = 'm-northwind-11-02';
+/** The telling is 12:34 of voice, then 6 s of voice answer: "12:40" in all. */
+const TELLING_MS = mmss(12, 34);
+const ANSWER_AT = TELLING_MS + 1_000;
+
+export const V41_QUESTIONS: CatchupQuestion[] = [
+  { id: 'q1', text: 'Tom is setting up admin access for the pilot. By when?', about: 'due' },
+  { id: 'q2', text: 'Who signs off on the training budget?', about: 'outcome' },
+  { id: 'q3', text: 'Priya was there. Did she take anything on?', about: 'owner' },
+];
+
+/** The catch-up meeting: startedAt and endedAt are the meeting's, `told` is the telling's. */
+export const V41_CATCHUP: Meeting = {
+  id: CATCHUP_ID, title: V41_EVENT.title, startedAt: V41_EVENT.start, endedAt: V41_EVENT.end, status: 'done', language: 'en',
+  source: 'catchup', event: V41_EVENT,
+  told: {
+    at: V41_TOLD_AT, ms: mmss(12, 40),
+    parts: [{ at: V41_TOLD_AT, ms: TELLING_MS, kind: 'voice' }, { at: V41_TOLD_AT + TELLING_MS + 60_000, ms: mmss(0, 6), kind: 'voice' }],
+    answers: [
+      { questionId: 'q1', text: 'By Friday.', atMs: ANSWER_AT },
+      { questionId: 'q2', skipped: true },
+      { questionId: 'q3', text: 'No, she was there to listen.' },
+    ],
+  },
+};
+
+/** What you said; every segment is yours. */
+export const V41_LINES: [number, string][] = [
+  [mmss(0, 40), 'Sarah, Tom and Priya were there.'],
+  [mmss(3, 5), 'We agreed the pilot starts with Northwind’s Support team.'],
+  [mmss(5, 12), 'Then we went through the timeline for the pilot.'],
+  [mmss(5, 48), 'I said I’d send Sarah the Q4 plan draft by Wednesday.'],
+  [mmss(6, 15), 'And Tom is setting up admin access for the pilot.'],
+  // FRAMES names this question but not its words; the quote is ours.
+  [mmss(8, 20), 'Nobody knew who signs off on the training budget.'],
+  [ANSWER_AT, 'By Friday.'],
+];
+
+export const V41_SEGMENTS: Segment[] = V41_LINES.map(([startMs, text]) => ({
+  id: `s-${CATCHUP_ID}-${startMs}`, meetingId: CATCHUP_ID, speaker: 'you', startMs, endMs: startMs + 4_000, text, chunkId: 'sample',
+}));
+
+const told = (text: string) => quote('Alex', text, CATCHUP_ID, V41_LINES.find(([, t]) => t === text)![0]);
+const fromTelling = (id: string, kind: MemoryItem['kind'], text: string, q: Quote, extra: Partial<MemoryItem> = {}): MemoryItem => {
+  const createdAt = V41_TOLD_AT + q.atMs;
+  return { id, kind, status: 'suggested', text, quote: q, meetingId: CATCHUP_ID, personIds: [], history: [], createdAt, updatedAt: createdAt, ...extra };
+};
+
+/** Tom Becker, new from the invite. */
+export const V41_TOM: Person = {
+  id: 'p-tom', name: 'Tom Becker', email: 'tom@northwind.co', company: 'Northwind', aliases: ['Tom'], meetingIds: [CATCHUP_ID],
+  createdAt: V41_TOLD_AT + mmss(12, 40), updatedAt: V41_TOLD_AT + mmss(12, 40),
+};
+
+/** "5 things": 2 promises, 1 decision, 1 question (the 4 memory items), plus Tom. All wait for review. */
+export const V41_ITEMS: MemoryItem[] = [
+  fromTelling('c-pilot', 'decision', 'The pilot starts with Northwind’s Support team', told('We agreed the pilot starts with Northwind’s Support team.'),
+    { personIds: ['p-sarah'] }),
+  fromTelling('c-plan-draft', 'promise', 'Send the Q4 plan draft', told('I said I’d send Sarah the Q4 plan draft by Wednesday.'),
+    { ownerId: 'me', toId: 'p-sarah', personIds: ['p-sarah'], due: '2026-11-04' }),
+  fromTelling('c-admin', 'promise', 'Admin access for the pilot', told('And Tom is setting up admin access for the pilot.'),
+    { ownerId: 'p-tom', toId: 'me', personIds: ['p-tom'], due: '2026-11-06', history: [told('By Friday.')] }),
+  fromTelling('c-training', 'question', 'Who signs off on the training budget?', told('Nobody knew who signs off on the training budget.')),
+];
+
+/** Writes v4's world as of 2 Nov ('before'), plus the catch-up, its telling, items and Tom ('after'). */
+export async function seedSampleV41(db: SampleDB, moment: 'before' | 'after' = 'before'): Promise<void> {
+  await seedSample(db, 'before');
+  if (moment === 'before') return;
+  const writes: [SampleStore, unknown][] = [
+    ['meetings', V41_CATCHUP], ...V41_SEGMENTS.map((v) => ['segments', v] as [SampleStore, unknown]),
+    ['people', V41_TOM], ...V41_ITEMS.map((v) => ['items', v] as [SampleStore, unknown]),
   ];
   for (const [store, value] of writes) await db.put(store, value);
 }

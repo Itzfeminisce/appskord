@@ -2,6 +2,7 @@
 import { APP_NAMES } from '@/lib/calendar';
 import { isoDay } from '@/lib/memory/rank';
 import type { MemoryItem, Person, Quote } from '@/lib/memory/types';
+import { FROM_CATCHUP, itemMeta, isCatchup } from '@/lib/catchup/label';
 import type { CalendarEvent, Meeting } from '@/lib/types';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -45,16 +46,23 @@ export function dueChip(item: MemoryItem, now: number): Chip {
   return { label: weekdayDate(fromIso(item.due)), tone: 'plain' };
 }
 
-export type Meetings = Map<string, Pick<Meeting, 'title' | 'startedAt'>>;
+export type Meetings = Map<string, Pick<Meeting, 'title' | 'startedAt' | 'source'>>;
 
-/** "Pricing review · 26 Oct" */
+/** "Pricing review · 26 Oct", or "Q4 planning with Northwind · 2 Nov · From your catch-up". */
 export function meetingLine(meetingId: string, meetings: Meetings): string {
   const m = meetings.get(meetingId);
-  return m ? `${m.title} · ${dayMonth(m.startedAt)}` : '';
+  if (!m) return '';
+  return isCatchup(m) ? `${m.title} · ${dayMonth(m.startedAt)} · ${FROM_CATCHUP}` : `${m.title} · ${dayMonth(m.startedAt)}`;
 }
-/** "Alex · Pricing review · 26 Oct · 33:40" */
+/** "Alex · Pricing review · 26 Oct · 33:40"; a catch-up ends "From your catch-up" instead of the clock. */
 export function quoteCaption(q: Quote, meetings: Meetings): string {
-  return [q.speaker, meetingLine(q.meetingId, meetings), quoteClock(q.atMs)].filter(Boolean).join(' · ');
+  const m = meetings.get(q.meetingId);
+  return m ? `${q.speaker} · ${itemMeta(m, quoteClock(q.atMs))}` : [q.speaker, quoteClock(q.atMs)].filter(Boolean).join(' · ');
+}
+/** The caption of a follow-up answer: `Alex, answering “Tom is setting up admin access for the pilot. By when?” · …`. */
+export function answerCaption(q: Quote, question: string, meetings: Meetings): string {
+  const m = meetings.get(q.meetingId);
+  return `${q.speaker}, answering “${question}”${m ? ` · ${itemMeta(m, quoteClock(q.atMs))}` : ''}`;
 }
 
 export const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;

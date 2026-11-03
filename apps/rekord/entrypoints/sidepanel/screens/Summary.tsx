@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Spinner, Tag } from '../components';
 import { useRouter } from '../router';
 import { useAskEnabled } from './Ask';
-import { getMeeting, listMarkers, listNotes } from '@/lib/db';
+import { isCatchup, CATCHUP_TAG } from '@/lib/catchup/label';
+import { deleteMeeting, deleteTellingAudio, getMeeting, listMarkers, listNotes, listTellingAudio } from '@/lib/db';
 import { normalizeDecisions, summarize } from '@/lib/summarize';
 import { runSpeakerStep } from '@/lib/speakers';
 import { formatClock, formatDuration } from '@/lib/time';
@@ -13,8 +14,10 @@ import { itemsForMeeting, listPeople } from '@/lib/memory/store';
 import { onBadgeRefresh } from '@/lib/messages';
 import type { MemoryItem, Person } from '@/lib/memory/types';
 import { LockIcon } from '../components/v4/icons';
+import { StateBanner } from '../components/v4/states';
+import { playTelling, stopTelling, ToastBar } from './v4/parts';
 import { ChevronIcon, KindPill, MailIcon, QuestionRingIcon, SendIcon } from '../components/v4/memory';
-import { countLabel, meetingWhen, personSuggestions, reviewedPeopleKey } from '../components/v4/review';
+import { countLabel, meetingWhen, personSuggestions, reviewedPeopleKey, shortDate } from '../components/v4/review';
 import './v4/review.css';
 
 interface Memory { items: MemoryItem[]; people: Person[]; reviewed: string[] }
@@ -53,10 +56,10 @@ function MemoryStrip({ meetingId, memory }: { meetingId: string; memory: Memory 
 }
 
 /** "After the meeting": follow-up email and action items, each live once its screen is registered. */
-function AfterCard({ meetingId, mine }: { meetingId: string; mine: number }) {
+function AfterCard({ meetingId, mine, catchup }: { meetingId: string; mine: number; catchup: boolean }) {
   const { navigate, has } = useRouter();
   const links = [
-    { screen: 'followUp', icon: <MailIcon />, title: 'Draft follow-up email', sub: 'Written in your voice, for you to check' },
+    { screen: 'followUp', icon: <MailIcon />, title: 'Draft follow-up email', sub: catchup ? 'Says it comes from your catch-up' : 'Written in your voice, for you to check' },
     { screen: 'sendTasks', icon: <SendIcon />, title: 'Send action items', sub: `Your ${mine} ${mine === 1 ? 'promise' : 'promises'}, to Google Tasks` },
   ];
   return (
@@ -78,6 +81,46 @@ function AfterCard({ meetingId, mine }: { meetingId: string; mine: number }) {
   );
 }
 
+const CHAT_ICON = <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-4 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" /></svg>;
+const hhmm = (ms: number) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+
+/** "Your telling": when it was told, how long, and the way to play it or add to it. */
+function TellingBlock({ meeting, hasAudio }: { meeting: Meeting; hasAudio: boolean }) {
+  const { navigate } = useRouter();
+  const told = meeting.told!;
+  const play = async () => {
+    if (hasAudio && (await playTelling(meeting.id).catch(() => false))) return;
+    navigate('transcript', { meetingId: meeting.id });
+  };
+  return (
+    <section aria-label="Your telling" className="sm-told">
+      <button type="button" className="sm-told-play" aria-label={hasAudio ? 'Play your telling' : 'Read your telling'} onClick={() => void play()}>
+        <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg></span>
+      </button>
+      <span className="sm-told-text"><span>Your telling</span><span>{`Told ${shortDate(told.at)}, ${hhmm(told.at)} · ${formatClock(told.ms)}`}</span></span>
+      <button type="button" className="sm-told-add" onClick={() => navigate('catchupTell', { meetingId: meeting.id })}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Add more
+      </button>
+    </section>
+  );
+}
+
+/** The More menu bar over the header (V41MeetingMore). */
+function MoreMenu({ title, canDeleteAudio, onShare, onAudio, onDelete }: { title: string; canDeleteAudio: boolean; onShare: () => void; onAudio: () => void; onDelete: () => void }) {
+  return (
+    <div role="menu" aria-label={title} className="sm-menu">
+      <button type="button" role="menuitem" onClick={onShare}>Share</button>
+      {canDeleteAudio && <button type="button" role="menuitem" onClick={onAudio}>Delete audio of your telling</button>}
+      <button type="button" role="menuitem" className="sm-menu-danger" onClick={onDelete}>Delete this catch-up</button>
+    </div>
+  );
+}
+
+/** Dev frame routes open the page with its menu showing (V41MeetingMore); `undoMs` is how long Undo stays, shortened in tests. */
+export const summaryView: { menuOpen: boolean; undoMs: number; state?: 'confirm' | 'gone' | 'audioGone' } = { menuOpen: false, undoMs: 8000 };
+/** Dev frame routes only: a V41States card, read once when the page opens. */
+const takeState = (s: NonNullable<typeof summaryView.state>): boolean => { if (summaryView.state !== s) return false; summaryView.state = undefined; return true; };
+
 export default function Summary() {
   const { route, replace, navigate, has } = useRouter();
   const askOn = useAskEnabled();
@@ -91,6 +134,26 @@ export default function Summary() {
   const [error, setError] = useState('');
   const [voices, setVoices] = useState<'idle' | 'working'>('idle');
   const [memory, setMemory] = useState<Memory>({ items: [], people: [], reviewed: [] });
+  const [menu, setMenu] = useState(() => { const open = summaryView.menuOpen; summaryView.menuOpen = false; return open; });
+  const [hasAudio, setHasAudio] = useState(false);
+  const [confirming, setConfirming] = useState(() => takeState('confirm'));
+  // Both deletes wait for Undo to go (V41States): the audio, and the whole catch-up.
+  const [audioGone, setAudioGone] = useState(() => takeState('audioGone'));
+  const [gone, setGone] = useState(() => takeState('gone'));
+  const pending = useRef<{ kind: 'audio' | 'meeting'; timer: ReturnType<typeof setTimeout> } | null>(null);
+
+  const settle = useCallback(async () => {
+    const p = pending.current;
+    if (!p || !meetingId) return;
+    pending.current = null;
+    clearTimeout(p.timer);
+    try {
+      await (p.kind === 'audio' ? deleteTellingAudio(meetingId) : deleteMeeting(meetingId));
+    } catch (error) {
+      console.error(`Rekord: could not delete ${p.kind === 'audio' ? 'the audio of your telling' : 'this catch-up'}`, error);
+    }
+  }, [meetingId]);
+  useEffect(() => () => { void settle(); stopTelling(); }, [settle]);
 
   useEffect(() => {
     if (!meetingId) return;
@@ -114,7 +177,9 @@ export default function Summary() {
     Promise.all([getMeeting(meetingId), listNotes(meetingId), listMarkers(meetingId)])
       .then(([m, n, k]) => {
         if (!alive) return;
-        setMeeting(m); setNotes(n); setMarkers(visibleMarkers(k).filter((x) => x.kind !== 'bookmark' || x.label));
+        setMeeting(m); setNotes(n);
+        if (m?.told) void listTellingAudio(m.id).then((a) => alive && setHasAudio(a.length > 0)).catch(() => undefined);
+        setMarkers(visibleMarkers(k).filter((x) => x.kind !== 'bookmark' || x.label));
         setState(m ? 'ready' : 'missing');
       })
       .catch(() => alive && setState('missing'));
@@ -153,6 +218,24 @@ export default function Summary() {
   }, [meeting, meetingId, retrySpeakers]);
 
   const home = () => replace('start');
+  const later = async (kind: 'audio' | 'meeting') => {
+    await settle();
+    pending.current = {
+      kind,
+      timer: setTimeout(() => {
+        void settle().then(async () => {
+          if (kind === 'meeting') return replace('library');
+          setAudioGone(false); setHasAudio(false);
+          setMeeting(await getMeeting(meetingId!).catch(() => undefined));
+        });
+      }, summaryView.undoMs),
+    };
+  };
+  const undo = () => {
+    if (pending.current) clearTimeout(pending.current.timer);
+    pending.current = null;
+    setAudioGone(false); setGone(false);
+  };
   if (state === 'loading') return <main className="screen screen-center"><Spinner label="Loading summary" /></main>;
   if (state === 'missing' || !meeting) {
     return (
@@ -165,27 +248,66 @@ export default function Summary() {
   }
 
   const s = meeting.summary;
+  const catchup = isCatchup(meeting) && !!meeting.told;
+  const memoryCount = keptItems(memory.items).length;
+  if (gone) {
+    return (
+      <main className="v4-shell sum sm sm-gone">
+        <StateBanner tone="plain" icon="done" title={`“${meeting.title || 'Untitled meeting'}” catch-up was deleted`}
+          body={memoryCount ? `Its ${memoryCount} memory ${memoryCount === 1 ? 'item' : 'items'} and your telling are gone too.` : 'Your telling is gone too.'}
+          action={{ label: 'Undo', kind: 'light', onClick: undo }} />
+      </main>
+    );
+  }
   const ledger: string = 'ledger';
   // The memory strip carries this meeting's promises, decisions and questions once extraction has run.
   const hasMemory = keptItems(memory.items).length > 0;
   const decisions = normalizeDecisions(s?.decisions);
   const duration = meeting.endedAt ? formatDuration(meeting.endedAt - meeting.startedAt) : undefined;
+  const ledgerLink = (
+    <button type="button" className={catchup ? 'sm-ledger sm-ledger-flow' : 'sm-ledger'} aria-disabled={!has(ledger) || undefined} onClick={() => { if (has(ledger)) navigate(ledger, { meetingId }); }}>
+      <LockIcon size={14} />What left this computer
+    </button>
+  );
   return (
     <main className="v4-shell sum sm">
-      <header className="sm-head">
+      <header className={catchup ? 'sm-head sm-head-cu' : 'sm-head'}>
         <button type="button" className="v4-icon rv-back" aria-label="Back to meetings" onClick={() => replace('library')}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
         </button>
         <div className="sm-head-text">
           <h1>{meeting.title}</h1>
-          <span>{[meetingWhen(meeting.startedAt), duration].filter(Boolean).join(' · ')}</span>
+          {catchup ? (
+            <span className="sm-head-meta"><span className="sm-tag">{CHAT_ICON}{CATCHUP_TAG}</span><span>{[meetingWhen(meeting.startedAt), duration].filter(Boolean).join(' · ')}</span></span>
+          ) : (
+            <span>{[meetingWhen(meeting.startedAt), duration].filter(Boolean).join(' · ')}</span>
+          )}
         </div>
-        <button type="button" className="sm-share" onClick={() => navigate('share', { meetingId })}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" /></svg>Share
-        </button>
+        {catchup ? (
+          <>
+            <button
+              type="button" className="v4-icon" aria-label="More: Share, Delete audio of your telling, Delete this catch-up" aria-haspopup="menu" aria-expanded={menu}
+              onClick={() => setMenu(!menu)}
+            ><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="19" cy="12" r="1.2" /></svg></button>
+            {menu && (
+              <MoreMenu
+                title={meeting.title}
+                canDeleteAudio={hasAudio && !audioGone}
+                onShare={() => { setMenu(false); navigate('share', { meetingId }); }}
+                onAudio={() => { setMenu(false); setAudioGone(true); void later('audio'); }}
+                onDelete={() => { setMenu(false); setConfirming(true); }}
+              />
+            )}
+          </>
+        ) : (
+          <button type="button" className="sm-share" onClick={() => navigate('share', { meetingId })}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" /></svg>Share
+          </button>
+        )}
       </header>
       <div className="sm-scroll">
       <div className="sum-cards">
+        {catchup && <TellingBlock meeting={meeting} hasAudio={hasAudio && !audioGone} />}
         {error && <p className="perm-error sum-error" role="alert">{error}</p>}
         {voices === 'working' && meeting.speakerStep !== 'failed' && (
           <p className="sum-sub" role="status">Telling voices apart…</p>
@@ -208,12 +330,12 @@ export default function Summary() {
           <>
             <section className="sum-dark" aria-labelledby="sum-h">
               <h2 id="sum-h">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" /></svg>Summary
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" /></svg>{catchup ? 'Summary · from your catch-up' : 'Summary'}
               </h2>
               <p>{s.overview || 'Nothing to summarize from this meeting.'}</p>
             </section>
             <MemoryStrip meetingId={meetingId!} memory={memory} />
-            <AfterCard meetingId={meetingId!} mine={memory.items.filter((i) => i.kind === 'promise' && i.ownerId === 'me' && !i.leftOut && i.status !== 'dismissed').length} />
+            <AfterCard catchup={catchup} meetingId={meetingId!} mine={memory.items.filter((i) => i.kind === 'promise' && i.ownerId === 'me' && !i.leftOut && i.status !== 'dismissed').length} />
 
             {!hasMemory && <section className="sum-card">
               <h2>Action items<span className="sum-count">{checked.size} of {s.actions.length}</span></h2>
@@ -279,10 +401,26 @@ export default function Summary() {
         <Button block variant="secondary" onClick={() => navigate('transcript', { meetingId })}>Transcript</Button>
         <Button block onClick={home}>New meeting</Button>
       </footer>
+      {catchup && ledgerLink}
       </div>
-      <button type="button" className="sm-ledger" aria-disabled={!has(ledger) || undefined} onClick={() => { if (has(ledger)) navigate(ledger, { meetingId }); }}>
-        <LockIcon size={14} />What left this computer
-      </button>
+      {confirming && (
+        <>
+          <div aria-hidden="true" className="lp-scrim" onClick={() => setConfirming(false)} />
+          <div role="dialog" aria-modal="true" aria-label="Delete this catch-up?" className="sm-confirm">
+            <h3>Delete this catch-up?</h3>
+            <p>{memoryCount ? `Your telling and its ${memoryCount} memory ${memoryCount === 1 ? 'item are' : 'items are'} deleted from this computer.` : 'Your telling is deleted from this computer.'}</p>
+            <div>
+              <button type="button" className="sm-confirm-delete" onClick={() => { setConfirming(false); setGone(true); void later('meeting'); }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3" /></svg>Delete
+              </button>
+              <button type="button" className="sm-confirm-cancel" onClick={() => setConfirming(false)}>Cancel</button>
+            </div>
+          </div>
+        </>
+      )}
+      {audioGone && <div className="lp-toast-wrap"><ToastBar text="Audio of your telling deleted. The notes stay." onUndo={undo} /></div>}
+      {catchup && <div className="v4-fade" aria-hidden="true" />}
+      {!catchup && ledgerLink}
     </main>
   );
 }

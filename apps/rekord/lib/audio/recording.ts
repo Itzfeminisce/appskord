@@ -27,6 +27,8 @@ export interface ContinuousRecordingOptions {
   now?: () => number;
   newId?: () => string;
   partMs?: number;
+  /** First part's seq (a catch-up's voice part starts at its own base, so parts of one telling stay apart). */
+  firstSeq?: number;
 }
 
 /**
@@ -47,11 +49,12 @@ export function shouldRecord(config: TranscriberConfig | undefined, hasTabAudio:
  * error is logged and recording continues; stop() never throws.
  */
 export class ContinuousRecording {
-  private readonly o: Required<Omit<ContinuousRecordingOptions, 'now' | 'newId' | 'partMs' | 'deleteRecording'>> & {
+  private readonly o: Required<Omit<ContinuousRecordingOptions, 'now' | 'newId' | 'partMs' | 'deleteRecording' | 'firstSeq'>> & {
     now: () => number; newId: () => string; partMs: number; deleteRecording: (meetingId: string) => Promise<void>;
   };
   private recorder: SliceRecorder | null = null;
   private seq = 0;
+  private readonly firstSeq: number;
   private writes: Promise<unknown> = Promise.resolve();
   private meta: RecordingMeta;
   private pausedAt: number | null = null;
@@ -67,10 +70,11 @@ export class ContinuousRecording {
       deleteRecording: opts.deleteRecording ?? deleteRecording,
     };
     this.meta = { meetingId: opts.meetingId, pauses: [] };
+    this.seq = this.firstSeq = opts.firstSeq ?? 0;
   }
 
   /** Number of parts handed to `savePart` so far. */
-  get parts(): number { return this.seq; }
+  get parts(): number { return this.seq - this.firstSeq; }
   get paused(): boolean { return this.pausedAt !== null; }
 
   start(): void {
@@ -112,7 +116,7 @@ export class ContinuousRecording {
       try { await this.o.deleteRecording(this.o.meetingId); } catch (error) { console.error('Rekord: could not delete failed recording', error); }
       return false;
     }
-    return this.seq > 0;
+    return this.parts > 0;
   }
 
   private closePause(): void {

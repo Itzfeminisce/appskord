@@ -3,7 +3,7 @@ import { listMeetings } from '@/lib/db';
 import { DECISIONS_PATH, OPEN_LOOPS_PATH, removePersonFiles } from '@/lib/folder';
 import { forgetAll, listItems, listLedger, listPeople, listVectors } from '@/lib/memory/store';
 import type { MemorySettings } from '@/lib/memory/types';
-import { ensureModel, modelState, removeModel, type ModelState, type Progress } from '@/lib/recall';
+import { ensureModel, modelFailureText, modelState, removeModel, type ModelResult, type ModelState, type Progress } from '@/lib/recall';
 import { MODEL_CACHE, MODEL_ID } from '@/lib/recall/protocol';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { BackIcon } from '../../components/v4/icons';
@@ -127,9 +127,11 @@ export default function SettingsMemory() {
   const { back, canGoBack, replace } = useRouter();
   const [memory, setMemory] = useState<MemorySettings | null>(null);
   const [model, setModel] = useState<{ state: ModelState; bytes: number }>({ state: 'none', bytes: 0 });
+  const [failReason, setFailReason] = useState('');
   const [progress, setProgress] = useState<Progress>({ loaded: 0, total: 0 });
   const [size, setSize] = useState<{ items: number; bytes: number } | null>(null);
   const [plan, setPlan] = useState<ForgetPlan | null>(null);
+  const [missedCard, setMissedCard] = useState(true);
 
   const loadSize = () => memorySize().then(setSize).catch((error) => console.error('Rekord: could not measure memory', error));
   const loadModel = async () => {
@@ -139,7 +141,7 @@ export default function SettingsMemory() {
   };
 
   useEffect(() => {
-    getSettings().then((s) => setMemory(s.memory)).catch((error) => console.error('Rekord: could not load your settings', error));
+    getSettings().then((s) => { setMemory(s.memory); setMissedCard(s.missedMeetingCard); }).catch((error) => console.error('Rekord: could not load your settings', error));
     loadModel().catch((error) => console.error('Rekord: could not check the search model', error));
     void loadSize();
     if (settingsDev.forgetAll) void askForget();
@@ -149,6 +151,15 @@ export default function SettingsMemory() {
     try {
       const s = await getSettings();
       setMemory((await updateSettings({ memory: { ...s.memory, ...partial } })).memory);
+    } catch (error) {
+      console.error('Rekord: could not save your settings', error);
+    }
+  }
+
+  async function saveMissedCard(on: boolean) {
+    setMissedCard(on);
+    try {
+      await updateSettings({ missedMeetingCard: on });
     } catch (error) {
       console.error('Rekord: could not save your settings', error);
     }
@@ -164,8 +175,9 @@ export default function SettingsMemory() {
   async function download() {
     setModel({ state: 'downloading', bytes: 0 });
     setProgress({ loaded: 0, total: 0 });
-    const ok = await ensureModel(setProgress).catch(() => false);
-    if (ok) await save({ searchModel: 'ready' });
+    const res = await ensureModel(setProgress).catch((e): ModelResult => ({ ok: false, reason: e instanceof Error ? e.message : 'unknown error' }));
+    setFailReason(res.ok ? '' : modelFailureText(res.reason));
+    if (res.ok) await save({ searchModel: 'ready' });
     await loadModel();
   }
 
@@ -209,6 +221,7 @@ export default function SettingsMemory() {
             {m && <span className="sm-value">{m.brief.minutes} min</span>}
           </Row>
           <Toggle id="r4" title="Due-day reminders" sub="A nudge on the day a promise is due" on={m?.dueReminders ?? false} set={(dueReminders) => void save({ dueReminders })} />
+          <Toggle id="r9" title="Missed-meeting card" sub="Offers a catch up when Rekord missed a calendar meeting" on={missedCard} set={(on) => void saveMissedCard(on)} />
           <Row title="Weekly look back" sub="What was kept and what slipped">
             {m && <span className="sm-value">{DAYS[m.lookBack.day]} {String(m.lookBack.hour).padStart(2, '0')}:00</span>}
           </Row>
@@ -221,7 +234,7 @@ export default function SettingsMemory() {
             {size && <span className="sm-value">{size.items} items · {megabytes(size.bytes)}</span>}
           </Row>
           {model.state === 'downloading' && <div className="sm-state"><ModelDownloadCard loaded={progress.loaded} total={progress.total} /></div>}
-          {model.state === 'failed' && <div className="sm-state"><ModelFailedBanner onRetry={() => void download()} /></div>}
+          {model.state === 'failed' && <div className="sm-state"><ModelFailedBanner reason={failReason} onRetry={() => void download()} /></div>}
           <LinkRow to="folder" title="Rekord folder" sub="Your notes as plain Markdown files" />
           <LinkRow to="move" title="Move to a new computer" sub="Save everything, bring it back later" />
           <LinkRow to="ledger" title="What left this computer" sub="Every time something was sent out" />

@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
     backfill: 'ask',
     folder: false,
   },
+  missedMeetingCard: true,
 };
 
 const provider = (id: ProviderId): ProviderConfig => {

@@ -59,8 +59,8 @@ export function ModelDownloadCard({ loaded, total }: { loaded: number; total: nu
 }
 
 /** The search model failed to download: keyword search still works. */
-export function ModelFailedBanner({ onRetry }: { onRetry: () => void }) {
-  return <StateBanner alert tone="warn" icon="warn" title="The search model didn’t download" body="Keyword search still works." action={{ label: 'Try again', kind: 'light', onClick: onRetry }} />;
+export function ModelFailedBanner({ onRetry, reason }: { onRetry: () => void; reason?: string }) {
+  return <StateBanner alert tone="warn" icon="warn" title="The search model didn’t download" body={`${reason ? `${reason.charAt(0).toUpperCase()}${reason.slice(1).replace(/\.$/, '')}. ` : ''}Keyword search still works.`} action={{ label: 'Try again', kind: 'light', onClick: onRetry }} />;
 }
 
 /** The play button found no such words near the quote's time: the transcript was edited since. */

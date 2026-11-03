@@ -26,6 +26,10 @@ import { settingsDev } from '../screens/v4/SettingsMemory';
 import { folderDev } from '../screens/v4/Folder';
 import { moveDev } from '../screens/v4/Move';
 import { openTab } from '../screens/v4/Home';
+import { FRAMES_41_START } from './frames41start';
+import { FRAMES_41_TELL } from './frames41tell';
+import { FRAMES_41_MEETING } from './frames41meeting';
+import { FRAMES_41_STATES } from './frames41states';
 
 const MB = 1024 * 1024;
 const at = (month: number, day: number, h: number, m: number) => new Date(2026, month - 1, day, h, m).getTime();
@@ -572,3 +576,7 @@ Object.assign(DEV_FRAMES, {
     },
   },
 } satisfies Record<string, DevFrame>);
+Object.assign(DEV_FRAMES, FRAMES_41_START);
+Object.assign(DEV_FRAMES, FRAMES_41_TELL);
+Object.assign(DEV_FRAMES, FRAMES_41_MEETING);
+Object.assign(DEV_FRAMES, FRAMES_41_STATES);

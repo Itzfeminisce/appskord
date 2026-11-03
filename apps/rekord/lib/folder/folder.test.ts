@@ -56,6 +56,18 @@ describe('Rekord folder Markdown', () => {
     if (promise) expect(md).toContain(`  > “${promise.quote.text}”`);
   });
 
+  it('captions catch-up quotes "From your catch-up" instead of a clock, on the meeting page and in the lists', () => {
+    const meeting = { ...SAMPLE_ONE_ON_ONE, source: 'catchup' as const };
+    const items = SAMPLE_ONE_ON_ONE_ITEMS.map((i) => ({ ...i, leftOut: false, status: 'open' as const }));
+    const md = meetingMarkdown({ meeting, segments: [], notes: [], markers: [], items }, people);
+    expect(md).toContain(`(${items[0]!.quote.speaker}, From your catch-up)`);
+    expect(md).not.toMatch(/” \([^)]*\d\d:\d\d\)/);
+    const files = folderFiles([], { meetings: [meeting], people: SAMPLE_PEOPLE, items });
+    expect(files.find((f) => f.path === 'Open loops.md')!.text + files.find((f) => f.path === 'Decisions.md')!.text).toContain('From your catch-up)');
+    const plain = meetingMarkdown({ meeting: SAMPLE_ONE_ON_ONE, segments: [], notes: [], markers: [], items }, people);
+    expect(plain).not.toContain('From your catch-up');
+  });
+
   it('always writes people, Open loops and Decisions', () => {
     const files = folderFiles([], { meetings: SAMPLE_MEETINGS, people: SAMPLE_PEOPLE, items: SAMPLE_ITEMS });
     const paths = files.map((f) => f.path);

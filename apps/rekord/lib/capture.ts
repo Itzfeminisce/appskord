@@ -33,3 +33,12 @@ export function captureSources(place: MeetingPlace, mic: boolean, appHasAudio = 
 export function appSources(msg: { sources?: { mic?: boolean }; app?: boolean }): { mic: boolean; tab: false } | null {
   return msg.app ? { mic: msg.sources?.mic ?? true, tab: false } : null;
 }
+
+/** v4.1 catch-up: the microphone only. No tab is captured and no tab grant is asked. */
+export const CATCHUP_SOURCES = { mic: true, tab: false } as const;
+
+/** Reply when a catch-up can't reach the microphone; the screen offers the permission tab (`lib/mic.ts`) or typing. */
+export const MIC_BLOCKED = 'Rekord can’t use your microphone';
+export function micBlockedReply(): { ok: false; error: string; micBlocked: true } {
+  return { ok: false, error: MIC_BLOCKED, micBlocked: true };
+}

@@ -22,7 +22,12 @@ export interface FollowUpFacts {
   /** "Tue 10 Nov, 10:00" */
   next?: string;
   overview?: string;
+  /** From a catch-up: the email says the notes are the user's own account. */
+  catchup?: true;
 }
+
+/** The follow-up email line for a catch-up (FRAMES V41Items). */
+export const CATCHUP_EMAIL_LINE = 'These notes are from my own catch-up after the meeting, so tell me if I got anything wrong.';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -94,6 +99,7 @@ export function followUpFacts(
     owes: owes.slice(0, MAX_LIST),
     ...(d ? { next: `${dayOf(d)}, ${pad(d.getHours())}:${pad(d.getMinutes())}` } : {}),
     ...(meeting.summary?.overview ? { overview: meeting.summary.overview } : {}),
+    ...(meeting.source === 'catchup' ? { catchup: true as const } : {}),
   };
 }
 
@@ -107,7 +113,7 @@ export function greeting(recipients: Recipient[]): string {
 
 /** The email without the AI: the facts in the frame's layout. The AI rewords this; it is also the fallback. */
 export function plainDraft(f: FollowUpFacts, length: FollowUpLength): string {
-  const parts = [greeting(f.recipients), 'Thanks for today.'];
+  const parts = [greeting(f.recipients), 'Thanks for today.', ...(f.catchup ? [CATCHUP_EMAIL_LINE] : [])];
   if (length === 'full') {
     if (f.decisions.length) parts.push(['Decided', ...f.decisions.map((x) => `- ${x}`)].join('\n'));
     if (f.owes.length) parts.push(['Who owes what', ...f.owes.map((x) => `- ${x}`)].join('\n'));
@@ -138,7 +144,7 @@ export function followUpMessages(f: FollowUpFacts, length: FollowUpLength) {
     },
     {
       role: 'user' as const,
-      content: `Length: ${shape}\n\nReword this draft lightly. Keep every fact, date and name exactly:\n\n${plainDraft(f, length)}`
+      content: `Length: ${shape}\n\nReword this draft lightly. Keep every fact, date and name exactly${f.catchup ? ', and keep the line about my catch-up word for word' : ''}:\n\n${plainDraft(f, length)}`
         + (f.overview ? `\n\nMeeting summary, for context only:\n${f.overview.slice(0, OVERVIEW_CHARS)}` : ''),
     },
   ];
@@ -151,6 +157,14 @@ export interface FollowUpDeps {
   signal?: AbortSignal;
 }
 
+/** The AI may reword or drop the catch-up line; it goes back in word for word, after the opening paragraph. */
+export function withCatchupLine(body: string): string {
+  if (body.includes(CATCHUP_EMAIL_LINE)) return body;
+  const paras = body.split(/\n{2,}/);
+  const at = Math.min(2, paras.length);
+  return [...paras.slice(0, at), CATCHUP_EMAIL_LINE, ...paras.slice(at)].join('\n\n');
+}
+
 /** The AI's draft of the email. Throws LLMError; records one ledger entry when the text was sent. */
 export async function draftFollowUp(f: FollowUpFacts, length: FollowUpLength, deps: FollowUpDeps = {}): Promise<string> {
   const service = LEDGER_SERVICE[(deps.config?.settings ?? (await getSettings())).summary.provider];
@@ -158,7 +172,7 @@ export async function draftFollowUp(f: FollowUpFacts, length: FollowUpLength, de
   try {
     const reply = (await chat(followUpMessages(f, length), { temperature: 0.3, maxTokens: 700, signal: deps.signal, config: deps.config }, deps.fetch)).trim();
     if (!reply) throw new LLMError('The AI service sent an unexpected reply. Try again.', 'bad-reply');
-    return reply;
+    return f.catchup ? withCatchupLine(reply) : reply;
   } catch (e) {
     sent = !(e instanceof LLMError && NOT_SENT.has(e.code));
     throw e;

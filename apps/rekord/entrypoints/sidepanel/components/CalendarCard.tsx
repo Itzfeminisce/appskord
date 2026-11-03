@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { clock, currentEvent, listEvents, nextEvent, peopleCount } from '@/lib/calendar';
+import { findMissed, recentForPicker } from '@/lib/catchup/missed';
+import { DISMISSED_KEY, type MissedMeeting } from '@/lib/catchup/types';
+import { listMeetings } from '@/lib/db';
 import { GoogleError, type GoogleDeps } from '@/lib/google';
+import { dismissedIds, dismissMissed, EVENTS_KEY, pastEvents } from '@/lib/reminders';
 import { getSettings } from '@/lib/settings';
 import type { CalendarEvent } from '@/lib/types';
 import { useRouter } from '../router';
@@ -28,6 +32,46 @@ export function useCalendar(deps?: GoogleDeps): CalendarState {
     return () => { alive = false; };
   }, [deps]);
   return state;
+}
+
+export interface MissedData {
+  /** Home cards: calendar meetings of the last 24 h that Rekord missed, not dismissed. Empty when the setting is off. */
+  missed: MissedMeeting[];
+  /** Picker: calendar meetings of the last 7 days with no meeting, newest first. */
+  recent: CalendarEvent[];
+  dismiss: (eventId: string) => Promise<void>;
+  /** Reloads from the cache, e.g. after a catch-up is saved. */
+  reload: () => void;
+}
+
+/** Missed calendar meetings from the cached events (refreshed by the panel), kept fresh as the cache or dismissals change. */
+export function useMissedMeetings(): MissedData {
+  const [data, setData] = useState<Pick<MissedData, 'missed' | 'recent'>>({ missed: [], recent: [] });
+  const load = useCallback(async () => {
+    const now = Date.now();
+    const [settings, events, meetings, dismissed] = await Promise.all([getSettings(), pastEvents(now), listMeetings(), dismissedIds()]);
+    if (!settings.google.calendar) return { missed: [], recent: [] };
+    const missed = settings.missedMeetingCard ? findMissed(events, meetings, dismissed, now).map((event) => ({ event, dismissed: false })) : [];
+    return { missed, recent: recentForPicker(events, meetings, now) };
+  }, []);
+  const alive = useRef(true);
+  const run = useCallback(() => {
+    load().then((d) => { if (alive.current) setData(d); }).catch((error) => console.error('Rekord: could not load missed meetings', error));
+  }, [load]);
+  useEffect(() => {
+    alive.current = true;
+    run();
+    const onChange = (changes: Record<string, unknown>, area: string) => {
+      if (area === 'local' && (EVENTS_KEY in changes || DISMISSED_KEY in changes || 'settings' in changes)) run();
+    };
+    browser.storage.onChanged.addListener(onChange);
+    return () => { alive.current = false; browser.storage.onChanged.removeListener(onChange); };
+  }, [run]);
+  const dismiss = useCallback(async (eventId: string) => {
+    setData((d) => ({ ...d, missed: d.missed.filter((m) => m.event.id !== eventId) }));
+    await dismissMissed(eventId);
+  }, []);
+  return { ...data, dismiss, reload: run };
 }
 
 const s = {

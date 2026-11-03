@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { listMeetings, listSegments } from '@/lib/db';
+import { isCatchup } from '@/lib/catchup/label';
+import { listMeetings, listSegments, listTellingAudio, tellingAudioAt, type TellingAudio } from '@/lib/db';
 import { quoteFound } from '@/lib/memory/check';
 import { nextWake } from '@/lib/memory/rank';
 import { itemsByStatus, listPeople } from '@/lib/memory/store';
@@ -7,7 +8,7 @@ import type { MemoryItem, Person, Quote } from '@/lib/memory/types';
 import { useRouter } from '../../router';
 import { world } from '../../components/v4/world';
 import { QuoteMissingCard } from '../../components/v4/states';
-import { initials, meetingLine, quoteCaption, quoteClock, tint, type Chip, type Meetings } from './loops';
+import { answerCaption, initials, meetingLine, quoteCaption, quoteClock, tint, type Chip, type Meetings } from './loops';
 import './loops.css';
 import { refreshBadge } from '@/lib/messages';
 
@@ -39,19 +40,50 @@ export function KindTag({ kind }: { kind: MemoryItem['kind'] }) {
   return <span className="lp-tag lp-tag-decision"><DecisionIcon size={13} stroke={2.2} />Decision</span>;
 }
 
-/** The quote with its caption and a play button that opens the transcript at that moment. */
-export function QuoteBlock({ quote, meetings, accent = '#3730A3', variant }: { quote: Quote; meetings: Meetings; accent?: string; variant?: 'compact' | 'log' | 'question' }) {
+let player: { audio: HTMLAudioElement; url: string } | undefined;
+const stopPlayer = () => { if (player) { player.audio.pause(); URL.revokeObjectURL(player.url); player = undefined; } };
+
+/** Plays your telling from `atMs` into it (0 = the start) and on through the later parts; false when no audio is kept for that moment. */
+export async function playTelling(meetingId: string, atMs = 0): Promise<boolean> {
+  stopPlayer();
+  const at = atMs > 0 ? await tellingAudioAt(meetingId, atMs) : undefined;
+  const all = await listTellingAudio(meetingId);
+  const first = at ?? (atMs > 0 ? undefined : all[0] && { ...all[0], seekMs: 0 });
+  if (!first) return false;
+  const queue: (TellingAudio & { seekMs?: number })[] = [first, ...all.filter((a) => a.part > first.part)];
+  const next = () => {
+    const a = queue.shift();
+    if (!a) { stopPlayer(); return; }
+    const url = URL.createObjectURL(a.blob);
+    const audio = new Audio(url);
+    if (a.seekMs) audio.currentTime = a.seekMs / 1000;
+    audio.onended = () => { URL.revokeObjectURL(url); next(); };
+    player = { audio, url };
+    void audio.play().catch((error) => { console.error('Rekord: could not play your telling', error); stopPlayer(); });
+  };
+  next();
+  return true;
+}
+/** Stops your telling when its screen closes. */
+export const stopTelling = stopPlayer;
+
+/** The quote with its caption and a play button that opens the transcript at that moment (a catch-up plays your telling). */
+export function QuoteBlock({ quote, meetings, accent = '#3730A3', variant, caption, playLabel }: {
+  quote: Quote; meetings: Meetings; accent?: string; variant?: 'compact' | 'log' | 'question'; caption?: string; playLabel?: string;
+}) {
   const { navigate } = useRouter();
   const [missing, setMissing] = useState(false);
+  const told = isCatchup(meetings.get(quote.meetingId));
   // The transcript may have been edited since the checker found the quote: say so instead of opening the wrong moment.
   const play = async () => {
+    if (told && (await playTelling(quote.meetingId, quote.atMs).catch(() => false))) return;
     const found = quoteFound(quote, await listSegments(quote.meetingId).catch(() => []));
     if (found) navigate('transcript', { meetingId: quote.meetingId, atMs: quote.atMs });
     else setMissing(true);
   };
   if (missing) {
     return (
-      <QuoteMissingCard quote={`${quote.speaker}: “${quote.text}”`} caption={[meetingLine(quote.meetingId, meetings), quoteClock(quote.atMs)].join(' · ')}
+      <QuoteMissingCard quote={`${quote.speaker}: “${quote.text}”`} caption={caption ?? (told ? meetingLine(quote.meetingId, meetings) : [meetingLine(quote.meetingId, meetings), quoteClock(quote.atMs)].join(' · '))}
         onOpen={() => navigate('summary', { meetingId: quote.meetingId })} />
     );
   }
@@ -59,14 +91,19 @@ export function QuoteBlock({ quote, meetings, accent = '#3730A3', variant }: { q
     <figure className={variant ? `lp-quote lp-quote-${variant}` : 'lp-quote'} style={{ borderLeftColor: accent }}>
       <div className="lp-quote-text">
         <blockquote>{`“${quote.text}”`}</blockquote>
-        <figcaption>{quoteCaption(quote, meetings)}</figcaption>
+        <figcaption>{caption ?? quoteCaption(quote, meetings)}</figcaption>
       </div>
-      <button type="button" className="lp-play" aria-label="Play this moment in the transcript"
+      <button type="button" className="lp-play" aria-label={playLabel ?? (told ? 'Play this moment in your telling' : 'Play this moment in the transcript')}
         onClick={() => void play()}>
         <span><PlayIcon /></span>
       </button>
     </figure>
   );
+}
+
+/** The follow-up answer a promise's due date came from, captioned with the question it answered. */
+export function AnswerBlock({ quote, question, meetings }: { quote: Quote; question: string; meetings: Meetings }) {
+  return <QuoteBlock quote={quote} meetings={meetings} caption={answerCaption(quote, question, meetings)} playLabel="Play your answer" />;
 }
 
 /** A bottom sheet over the screen behind it. */

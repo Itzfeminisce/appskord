@@ -14,7 +14,7 @@ import { createRoot } from 'react-dom/client';
 import { MemoryCard } from './AskAll';
 import type { MemoryItem } from '@/lib/memory/types';
 
-const ensureModel = vi.fn(async (_p?: (x: { loaded: number; total: number }) => void) => true);
+const ensureModel = vi.fn(async (_p?: (x: { loaded: number; total: number }) => void): Promise<{ ok: true } | { ok: false; reason: string }> => ({ ok: true }));
 vi.mock('@/lib/recall', async (orig) => ({ ...(await orig<typeof import('@/lib/recall')>()), ensureModel: (p?: never) => ensureModel(p), embedPending: async () => 0 }));
 
 const button = (host: HTMLElement, label: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === label || b.getAttribute('aria-label') === label)!;
@@ -58,7 +58,7 @@ describe('Ask all by meaning', () => {
   });
 
   it('shows the download progress, and a failed download says keyword search still works with Try again', async () => {
-    let finish: (ok: boolean) => void = () => undefined;
+    let finish: (r: { ok: false; reason: string }) => void = () => undefined;
     ensureModel.mockImplementationOnce((p) => { p?.({ loaded: 9 * 1024 * 1024, total: 22 * 1024 * 1024 }); return new Promise((r) => { finish = r; }); });
     const view = await mount(sidepanel, 'askall');
     await settle();
@@ -66,10 +66,10 @@ describe('Ask all by meaning', () => {
     await settle();
     expect(view.host.querySelector('[role="status"]')?.textContent).toBe('Downloading the search model9 of 22 MBKeyword search works meanwhile.');
     expect(view.host.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('9');
-    await act(async () => finish(false));
+    await act(async () => finish({ ok: false, reason: 'denied' }));
     await settle();
     expect((await getSettings()).memory.searchModel).toBe('none');
-    expect(view.host.querySelector('[role="alert"]')?.textContent).toBe('The search model didn’t downloadKeyword search still works.Try again');
+    expect(view.host.querySelector('[role="alert"]')?.textContent).toBe('The search model didn’t downloadAccess to huggingface.co was not allowed. Keyword search still works.Try again');
     act(() => button(view.host, 'Try again').click());
     await settle();
     expect(ensureModel).toHaveBeenCalledTimes(2);

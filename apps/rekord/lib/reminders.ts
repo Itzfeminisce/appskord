@@ -1,4 +1,5 @@
-// Before the meeting: the 24-hour event cache, alarms, notifications, and the brief's one AI call.
+// Before the meeting: the event cache (7 days back, 24 hours ahead), alarms, notifications, and the brief's one AI call.
+import { DISMISSED_KEY } from './catchup/types';
 import { listMeetings } from './db';
 import { listEvents } from './calendar';
 import { GoogleError } from './google';
@@ -19,35 +20,72 @@ const DAY = 24 * 60 * MIN;
 // Events
 
 export const EVENTS_KEY = 'rekord.events';
-export interface EventCache { savedAt: number; events: CalendarEvent[] }
+/** `past` holds events that ended in the last 7 days, keyed by event id, for the catch-up card and picker. */
+export interface EventCache { savedAt: number; events: CalendarEvent[]; past?: Record<string, CalendarEvent> }
 /** How often the open panel refreshes the cache (Google tokens last about an hour, with no refresh). */
 export const CACHE_REFRESH_MS = 15 * MIN;
-export const CALENDAR_LEDGER_WHAT = 'Events for the next 24 hours';
+export const CALENDAR_LEDGER_WHAT = 'Events for the last 7 days and the next 24 hours';
+/** How far back the cache reaches, for meetings Rekord missed (same calendar.readonly scope). */
+export const PAST_MS = 7 * DAY;
 
-/** Fetches the next 24 hours of events and keeps them, so the background can brief without a token. */
+/** Fetches the last 7 days and the next 24 hours of events and keeps them, so the background can brief without a token. */
 export async function refreshEventCache(now = Date.now(), deps: { list?: typeof listEvents; save?: (c: EventCache) => Promise<void> } = {}): Promise<CalendarEvent[] | undefined> {
   const { google } = await getSettings();
   if (!google.calendar) return undefined;
   const list = deps.list ?? listEvents;
   const sent = () => record({ service: 'google-calendar', what: CALENDAR_LEDGER_WHAT, at: now });
-  let events: CalendarEvent[];
+  let fetched: CalendarEvent[];
   try {
-    events = await list(google.calendarId, now, {}, now + DAY);
+    fetched = await list(google.calendarId, now, {}, now + DAY, now - PAST_MS);
   } catch (error) {
     // Only a reply from Google means the request left the computer.
     if (error instanceof GoogleError && error.code === 'server') await sent();
     throw error;
   }
   await sent();
-  await (deps.save ?? saveEvents)({ savedAt: now, events });
+  const { events, past } = splitEvents(fetched, now);
+  await (deps.save ?? saveEvents)({ savedAt: now, events, past });
   return events;
 }
 const saveEvents = (cache: EventCache) => browser.storage.local.set({ [EVENTS_KEY]: cache });
 
+/** Upcoming and current events stay a list; ended ones go to `past`, keyed by id. */
+export function splitEvents(fetched: CalendarEvent[], now: number): { events: CalendarEvent[]; past: Record<string, CalendarEvent> } {
+  const past: Record<string, CalendarEvent> = {};
+  for (const e of fetched) if (e.end <= now && e.end > now - PAST_MS) past[e.id] = e;
+  return { events: fetched.filter((e) => e.end > now), past };
+}
+
+const readCache = async () => (await browser.storage.local.get(EVENTS_KEY))[EVENTS_KEY] as EventCache | undefined;
+
 /** Cached events not over yet. */
 export async function cachedEvents(now = Date.now()): Promise<CalendarEvent[]> {
-  const cache = (await browser.storage.local.get(EVENTS_KEY))[EVENTS_KEY] as EventCache | undefined;
-  return (cache?.events ?? []).filter((e) => e.end > now);
+  return ((await readCache())?.events ?? []).filter((e) => e.end > now);
+}
+
+/** Cached events that ended in the last 7 days. */
+export async function pastEvents(now = Date.now()): Promise<CalendarEvent[]> {
+  const cache = await readCache();
+  // Events that ended since the last refresh are still in `events`.
+  const all = [...Object.values(cache?.past ?? {}), ...(cache?.events ?? [])];
+  return [...new Map(all.map((e) => [e.id, e])).values()].filter((e) => e.end <= now && e.end > now - PAST_MS);
+}
+
+// Missed-meeting cards
+
+const DISMISSED_MAX = 200;
+
+/** Event ids whose missed-meeting card was dismissed. */
+export async function dismissedIds(): Promise<string[]> {
+  const ids = (await browser.storage.local.get(DISMISSED_KEY))[DISMISSED_KEY];
+  return Array.isArray(ids) ? ids.filter((i): i is string => typeof i === 'string') : [];
+}
+
+/** Hides the card for one event for good. */
+export async function dismissMissed(eventId: string): Promise<void> {
+  const ids = await dismissedIds();
+  if (ids.includes(eventId)) return;
+  await browser.storage.local.set({ [DISMISSED_KEY]: [...ids, eventId].slice(-DISMISSED_MAX) });
 }
 
 // Alarms
