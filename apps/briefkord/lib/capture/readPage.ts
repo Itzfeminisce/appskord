@@ -1,4 +1,5 @@
 import { captureProblem, type CaptureResult } from './result';
+import { cleanText, wordCount } from './text';
 
 export interface PageRead {
   title: string;
@@ -11,8 +12,9 @@ export interface PageRead {
 }
 
 // Runs inside the page; must not use anything from this module's scope.
-function readInPage(maxChars: number): PageRead {
-  const text = (document.body?.innerText ?? '').replace(/[ \t\f\v]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim().slice(0, maxChars);
+function readInPage(maxChars: number): Omit<PageRead, 'words'> {
+  // Raw text, bounded so a huge page does not cross the message boundary whole; cleaned outside the page.
+  const text = (document.body?.innerText ?? '').slice(0, maxChars * 2);
   const meta = document.querySelector<HTMLMetaElement>('meta[property="og:image"], meta[name="og:image"], meta[name="twitter:image"]');
   let previewUrl: string | undefined;
   try {
@@ -20,7 +22,7 @@ function readInPage(maxChars: number): PageRead {
   } catch {
     previewUrl = undefined;
   }
-  return { title: document.title || location.hostname, url: location.href, text, words: text ? text.split(/\s+/).length : 0, previewUrl };
+  return { title: document.title || location.hostname, url: location.href, text, previewUrl };
 }
 
 /** Reads the tab's title, address, visible text and preview image address. Needs activeTab (or a host grant) on it. */
@@ -28,7 +30,8 @@ export async function readPage(tabId: number, maxChars = 200_000): Promise<Captu
   try {
     const [result] = await chrome.scripting.executeScript({ target: { tabId }, func: readInPage, args: [maxChars] });
     if (!result?.result) return { ok: false, problem: 'failed', message: 'The page returned nothing.' };
-    return { ok: true, value: result.result };
+    const text = cleanText(result.result.text, maxChars);
+    return { ok: true, value: { ...result.result, text, words: wordCount(text) } };
   } catch (error) {
     return captureProblem(error);
   }

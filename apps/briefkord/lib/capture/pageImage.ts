@@ -6,6 +6,10 @@ export interface PageImage {
   bytes: number;
   /** How the bytes were got: the page's own fetch (original file) or a redraw on a canvas (PNG). */
   via: 'fetch' | 'canvas';
+  /** The image element's alt text and natural size, when it is on the page. */
+  alt?: string;
+  width?: number;
+  height?: number;
 }
 
 type InPage = { ok: true; value: PageImage } | { ok: false; message: string };
@@ -18,17 +22,18 @@ async function copyInPage(src: string): Promise<InPage> {
     for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
     return btoa(binary);
   };
+  const img = [...document.images].find((i) => i.currentSrc === src || i.src === src);
+  const about = img ? { alt: img.alt.trim() || undefined, width: img.naturalWidth || undefined, height: img.naturalHeight || undefined } : {};
   let fetchError = '';
   try {
     const response = await fetch(src, { credentials: 'include' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const blob = await response.blob();
-    return { ok: true, value: { base64: toBase64(await blob.arrayBuffer()), mime: blob.type || 'application/octet-stream', bytes: blob.size, via: 'fetch' } };
+    return { ok: true, value: { base64: toBase64(await blob.arrayBuffer()), mime: blob.type || 'application/octet-stream', bytes: blob.size, via: 'fetch', ...about } };
   } catch (error) {
     fetchError = error instanceof Error ? error.message : String(error);
   }
   // Cross-origin images the page may not fetch can still be drawn if they were served with CORS.
-  const img = [...document.images].find((i) => i.currentSrc === src || i.src === src);
   if (!img || !img.naturalWidth) return { ok: false, message: `Could not fetch the image (${fetchError}) and it is not on the page.` };
   try {
     const canvas = document.createElement('canvas');
@@ -36,7 +41,7 @@ async function copyInPage(src: string): Promise<InPage> {
     canvas.height = img.naturalHeight;
     canvas.getContext('2d')!.drawImage(img, 0, 0);
     const base64 = canvas.toDataURL('image/png').split(',')[1] ?? '';
-    return { ok: true, value: { base64, mime: 'image/png', bytes: Math.floor((base64.length * 3) / 4), via: 'canvas' } };
+    return { ok: true, value: { base64, mime: 'image/png', bytes: Math.floor((base64.length * 3) / 4), via: 'canvas', ...about } };
   } catch (error) {
     return { ok: false, message: `Could not fetch the image (${fetchError}) or copy it from the page (${error instanceof Error ? error.message : String(error)}).` };
   }
