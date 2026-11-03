@@ -43,6 +43,17 @@ export function noteCard(id: string, now: number, text: string): NoteCard {
   return { ...base(id, now), kind: 'note', colour: 'yellow', title: titleFrom(text), rect: { x: 0, y: 0, ...CARD_SIZE.note }, text: text.trim() };
 }
 
+/** A saved selection: as wide as the frame's quote card, as tall as its text, up to a cap. */
+export function quoteCard(id: string, now: number, text: string, source?: NoteCard['source']): NoteCard {
+  const note = noteCard(id, now, text);
+  const w = 280;
+  const perLine = Math.floor((w - 32) / 7.2);
+  const lines = note.text.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.length / perLine)), 0);
+  // Badge row, source line, link and gaps around 14px text at 21px per line.
+  const h = Math.min(360, Math.max(130, 112 + lines * 21));
+  return { ...note, rect: { x: 0, y: 0, w, h }, ...(source ? { source } : {}) };
+}
+
 /** The section new cards go to: the remembered one when it is on this board, else the last. */
 export function targetSection(board: Board, sectionId?: string): Section {
   return board.sections.find((s) => s.id === sectionId) ?? board.sections[board.sections.length - 1]!;

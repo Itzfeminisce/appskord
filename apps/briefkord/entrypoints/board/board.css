@@ -87,6 +87,7 @@ kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; 
 .bk-crumb:hover { color: var(--bk-text); }
 .bk-board-name { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; min-width: 0; }
 .bk-board-name button { border: 0; background: none; padding: 2px 4px; margin: -2px -4px; border-radius: 6px; font-weight: 600; cursor: text; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bk-board-from { font-weight: 500; color: var(--bk-text-2); white-space: nowrap; }
 .bk-board-name button:hover { background: var(--bk-chip); }
 .bk-rename { display: flex; align-items: center; gap: 8px; }
 .bk-rename input { height: 32px; width: 240px; box-sizing: border-box; padding: 0 8px; border-radius: 8px; border: 1.5px solid var(--bk-accent); font: inherit; font-size: 15px; font-weight: 600; outline: none; }
@@ -137,6 +138,12 @@ kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; 
 .bk-note-title { font-size: 13px; font-weight: 600; color: var(--card-ink, var(--bk-text)); min-width: 0; }
 .bk-note-text { font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow: hidden; color: var(--card-ink, var(--bk-text)); }
 textarea.bk-note-text { flex-grow: 1; line-height: 1.5; }
+.bk-card.is-summary { border-top: 3px solid var(--bk-accent); box-shadow: 0 18px 40px -18px rgba(15, 118, 110, 0.4); }
+.bk-summary { gap: 10px; padding: 14px 16px; }
+.bk-summary-head { font-size: 12px; font-weight: 600; color: var(--bk-accent-hover); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-summary-lead { margin: 0; font-size: 14px; line-height: 1.5; font-weight: 500; }
+.bk-summary-points { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.5; color: var(--bk-text); overflow: hidden; min-height: 0; }
+.bk-summary-foot { margin-top: auto; font-size: 11.5px; color: var(--bk-text-2); flex-shrink: 0; }
 .bk-quote { gap: 8px; padding: 14px 16px; }
 .bk-quote-text { font-size: 14px; line-height: 1.5; overflow: hidden; min-height: 0; flex-shrink: 1; color: var(--card-ink, var(--bk-text)); }
 .bk-quote-from { font-size: 12px; color: var(--bk-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }

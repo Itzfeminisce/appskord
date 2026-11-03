@@ -5,6 +5,8 @@ import type { SaveStatus } from '../useBoard';
 
 export interface TopBarProps {
   name: string;
+  /** Set on a board made by Import. */
+  from?: string;
   status: SaveStatus;
   view: 'canvas' | 'list';
   canUndo: boolean;
@@ -25,7 +27,7 @@ export function TopBar(props: TopBarProps) {
     <header className="bk-topbar">
       <Logo />
       <a className="bk-crumb" href="#/boards" onClick={(e) => (e.preventDefault(), props.onBoards())}>Boards<ChevronRight /></a>
-      <BoardName name={props.name} onRename={props.onRename} />
+      <BoardName name={props.name} from={props.from} onRename={props.onRename} />
       <SaveState status={props.status} />
       <span className="bk-grow" />
       <div role="tablist" aria-label="View" className="bk-switch">
@@ -50,7 +52,7 @@ function SaveState({ status }: { status: SaveStatus }) {
 }
 
 /** board-rename: click the name, Enter saves, Esc cancels; an empty name is refused. */
-function BoardName({ name, onRename }: { name: string; onRename(name: string): void }) {
+function BoardName({ name, from, onRename }: { name: string; from?: string; onRename(name: string): void }) {
   const [draft, setDraft] = useState<string | null>(null);
   const empty = draft !== null && draft.trim() === '';
   const finish = (save: boolean) => {
@@ -67,7 +69,7 @@ function BoardName({ name, onRename }: { name: string; onRename(name: string): v
     }
   };
   if (draft === null) {
-    return <h1 className="bk-board-name"><button type="button" onClick={() => setDraft(name)}>{name}</button></h1>;
+    return <h1 className="bk-board-name"><button type="button" onClick={() => setDraft(name)}>{name}</button>{from && <span className="bk-board-from"> (from {from})</span>}</h1>;
   }
   return (
     <span className="bk-rename">

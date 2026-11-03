@@ -306,7 +306,7 @@ function SectionEditor({ board, section, index, change, onAddBelow, onDone }: Ed
           <span className="bk-ls-menu-rule" aria-hidden="true" />
           <button type="button" role="menuitem" className="bk-ls-danger" disabled={only} onClick={() => finish((b, now) => deleteSectionKeepCards(b, section.id, now))}>
             Delete section
-            {section.cards.length > 0 && <span>{section.cards.length === 1 ? 'Its 1 card moves' : `Its ${section.cards.length} cards move`} to the next section. Nothing is deleted from the board.</span>}
+            {section.cards.length > 0 && <span>{section.cards.length === 1 ? 'Its 1 card moves' : `Its ${section.cards.length} cards move`} to the {last ? 'section above' : 'next section'}. Nothing is deleted from the board.</span>}
           </button>
         </div>
       )}

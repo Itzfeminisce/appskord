@@ -89,6 +89,37 @@ describe('validateBoard', () => {
     ]);
   });
 
+  it('checks optional fields on arrows, groups, notes and the board', () => {
+    const b = board() as unknown as Record<string, unknown> & { arrows: Record<string, unknown>[]; groups: Record<string, unknown>[]; cards: Record<string, Record<string, unknown>> };
+    const noteId = Object.keys(b.cards).find((id) => b.cards[id]!.kind === 'note')!;
+    b.arrows.push({ id: 'a1', from: 'flow', to: noteId, label: 7, both: 'yes' });
+    b.groups[0]!.colour = 'green';
+    b.cards[noteId]!.source = { url: 'https://example.com', title: 3 };
+    b.cards[noteId]!.summary = { of: 'x', model: 'm', provider: 'p' };
+    b.imported = { person: 'Ada', at: 1, changed: 'two', added: 0 };
+    b.brief = { at: 1, model: 'm', provider: 'p', points: [{ text: 'a', cards: [5] }], questions: 'none' };
+    const arrowId = 'a1';
+    const groupId = b.groups[0]!.id as string;
+    expect(problems(b)).toEqual([
+      `cards.${noteId}.summary.from is not a number`,
+      `cards.${noteId}.source.title is not text`,
+      `arrow ${arrowId}.both is not true or false`,
+      `arrow ${arrowId}.label is not text`,
+      `group ${groupId}.colour "green" is unknown`,
+      'board.imported.changed is not a number',
+      'board.brief.points[0].cards has an id that is not text',
+      'board.brief.questions is not a list',
+    ]);
+  });
+
+  it('keeps a brief whose card ids went stale', () => {
+    const b = board();
+    b.arrows.push({ id: 'a1', from: 'flow', to: 'report', label: 'then', both: true });
+    b.groups[0] = { ...b.groups[0]!, colour: 'teal' };
+    b.brief = { at: 1, model: 'm', provider: 'p', points: [{ text: 'a', cards: ['gone'] }], questions: ['why?'] };
+    expect(problems(b)).toEqual([]);
+  });
+
   it('never throws, whatever it is given', () => {
     const loop: Record<string, unknown> = { ...board() };
     loop.self = loop;

@@ -8,7 +8,7 @@ import { dateTime, KIND_LABEL, shortDate } from '../logic/cards';
 export type RefreshState =
   | { cardId: string; phase: 'refreshing' }
   | { cardId: string; phase: 'updated'; title: string; text: string; words: number }
-  | { cardId: string; phase: 'gone' };
+  | { cardId: string; phase: 'unread' };
 
 export interface DetailsProps {
   board: Board;
@@ -71,7 +71,7 @@ function SavedFrom({ card, onRefresh }: { card: LinkCard; onRefresh(): void }) {
   );
 }
 
-/** StatesMore refresh-page: refreshing, changed (keep new or old), gone (the saved copy stays). */
+/** StatesMore refresh-page: refreshing, changed (keep new or old), unread: the page is not open or could not be read (the saved copy stays). */
 export function RefreshCard({ card, state, onKeepNew, onKeepOld }: { card: LinkCard; state: RefreshState; onKeepNew(): void; onKeepOld(): void }) {
   if (state.phase === 'refreshing') {
     return (
@@ -96,8 +96,8 @@ export function RefreshCard({ card, state, onKeepNew, onKeepOld }: { card: LinkC
   }
   return (
     <div className="bk-refresh is-gone" role="status">
-      <span className="bk-refresh-title">The page is gone</span>
-      <span className="bk-refresh-text">{card.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')} no longer loads. Your saved copy is still on the card.</span>
+      <span className="bk-refresh-title">The page could not be read</span>
+      <span className="bk-refresh-text">Open {card.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')} in a tab, then refresh again. Your saved copy is still on the card.</span>
     </div>
   );
 }

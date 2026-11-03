@@ -4,7 +4,7 @@ import type { Board, Card, FileRef, ImageCard, LinkCard, NoteCard } from '../boa
 import { loadBoard, saveBoard } from '../store/db';
 import { deleteFile, MAX_FILE_BYTES, writeFile } from '../store/files';
 import { saveSettings } from '../store/settings';
-import { imageCard, linkCard, noteCard, placeCard, targetSection } from './cards';
+import { imageCard, linkCard, noteCard, placeCard, quoteCard, targetSection } from './cards';
 import type { PendingCapture } from './intent';
 import { pageImage, pageImageBlob } from './pageImage';
 import { readPage } from './readPage';
@@ -125,9 +125,8 @@ export async function saveNote(text: string, boardId: string, sectionId?: string
 /** Saves a right-clicked image or selection to a board. */
 export async function saveCapture(capture: PendingCapture, boardId: string, sectionId?: string): Promise<SaveResult> {
   if (capture.kind === 'selection') {
-    const note = noteCard(newId(), Date.now(), capture.text);
     const source = capture.pageUrl ? { url: capture.pageUrl, title: capture.pageTitle ?? '' } : undefined;
-    return commit(boardId, source ? { ...note, source } : note, sectionId, []);
+    return commit(boardId, quoteCard(newId(), Date.now(), capture.text, source), sectionId, []);
   }
   return saveImage(capture.tabId, capture.src, { url: capture.pageUrl, title: capture.pageTitle }, boardId, sectionId);
 }

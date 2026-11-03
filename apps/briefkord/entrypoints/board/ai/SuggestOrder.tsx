@@ -90,7 +90,7 @@ export function SuggestOrder({ shell, asked }: { shell: BoardShell; asked?: Prom
           <div role="status" className="bk-ai-banner">
             <span className="bk-ai-accent"><Sparkle size={18} small /></span>
             <span className="bk-ai-banner-text">
-              <strong>Suggested order</strong>
+              <strong>{result.reply.headline ? `Suggested order: ${result.reply.headline}` : 'Suggested order'}</strong>
               <span>{`${moved === 1 ? '1 card moves' : `${moved} cards move`}. Nothing changes until you choose. ${phase.meta.model} · ${providerLabel(phase.meta.provider)}`}</span>
             </span>
             <button type="button" className="bk-ai-btn is-mid" onClick={close}>Keep mine</button>

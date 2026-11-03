@@ -61,7 +61,7 @@ const CardFrame = memo(function CardFrame({ card }: { card: Card }) {
   const selected = useUi(store, (s) => s.selected.has(card.id));
   const editing = useUi(store, (s) => s.editing === card.id);
   const number = useUi(store, (s) => s.numbers[card.id]);
-  const cls = `bk-card bk-kind-${card.kind} bk-c-${card.colour}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${card.mark ? ` is-${card.mark}` : ''}`;
+  const cls = `bk-card bk-kind-${card.kind} bk-c-${card.colour}${selected ? ' is-selected' : ''}${editing ? ' is-editing' : ''}${card.mark ? ` is-${card.mark}` : ''}${card.kind === 'note' && card.summary ? ' is-summary' : ''}`;
   return (
     <article className={cls} aria-label={card.title} onPointerDown={(e) => handlers.current.cardDown(e, card.id)} onContextMenu={(e) => handlers.current.cardMenu(e, card.id)}>
       <CardBody

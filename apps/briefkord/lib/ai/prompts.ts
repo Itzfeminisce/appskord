@@ -93,7 +93,8 @@ export function orderPrompt(board: Board): Prompt & { cardIds: string[] } {
   const system = [
     'You suggest the order to walk through the cards of a meeting board, so the story is easy to follow.',
     JSON_ONLY,
-    'Shape: {"order": [card id], "reasons": [{"card": card id, "why": string}]}.',
+    'Shape: {"headline": string, "order": [card id], "reasons": [{"card": card id, "why": string}]}.',
+    '"headline" is a few words naming the flow, for example "problem, evidence, fix, then decisions".',
     '"order" names every card id exactly once.',
     '"reasons": one for each card you moved, at most 4. "why" is a short headline sentence, then one sentence of reason.',
   ].join('\n');

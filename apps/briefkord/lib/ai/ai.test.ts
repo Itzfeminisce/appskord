@@ -46,8 +46,9 @@ describe('parse', () => {
   });
 
   it('reads an order that names every card once, keeping only usable reasons', () => {
-    const r = parseOrder(JSON.stringify({ order: ['b', 'a', 'c'], reasons: [{ card: 'b', why: 'First.' }, { card: 'zz', why: 'x' }, { why: 'no card' }] }), ['a', 'b', 'c']);
-    expect(r).toEqual({ ok: true, value: { order: ['b', 'a', 'c'], reasons: [{ card: 'b', why: 'First.' }] } });
+    const r = parseOrder(JSON.stringify({ headline: 'problem, then fix', order: ['b', 'a', 'c'], reasons: [{ card: 'b', why: 'First.' }, { card: 'zz', why: 'x' }, { why: 'no card' }] }), ['a', 'b', 'c']);
+    expect(r).toEqual({ ok: true, value: { headline: 'problem, then fix', order: ['b', 'a', 'c'], reasons: [{ card: 'b', why: 'First.' }] } });
+    expect(parseOrder('{"order":["a"]}', ['a'])).toEqual({ ok: true, value: { headline: '', order: ['a'], reasons: [] } });
   });
   it('refuses an order that leaves out, repeats or invents a card', () => {
     const ids = ['a', 'b', 'c'];

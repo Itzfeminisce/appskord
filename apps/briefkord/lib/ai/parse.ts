@@ -7,7 +7,7 @@ export interface DiagramReply {
   nodes: { id: string; kind: DiagramNodeKind; label: string }[];
   edges: { from: string; to: string; label?: string }[];
 }
-export interface OrderReply { order: string[]; reasons: { card: string; why: string }[] }
+export interface OrderReply { headline: string; order: string[]; reasons: { card: string; why: string }[] }
 export interface BriefReply { points: { text: string; cards: number[] }[]; questions: string[]; missing: string[] }
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; why: string };
@@ -96,7 +96,7 @@ export function parseOrder(reply: string, cardIds: readonly string[]): Parsed<Or
     const why = text(r.why);
     return card && why && known.has(card) ? [{ card, why }] : [];
   });
-  return { ok: true, value: { order, reasons } };
+  return { ok: true, value: { headline: text(o.headline) ?? '', order, reasons } };
 }
 
 /** `cardCount`: the cards were sent numbered 1 to `cardCount`; other numbers are left out. */

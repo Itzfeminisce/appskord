@@ -219,7 +219,7 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
     setDetailsHidden(false);
     setRefresh({ cardId: id, phase: 'refreshing' });
     const page = await readOpenPage(card.url);
-    if (!page) setRefresh({ cardId: id, phase: 'gone' });
+    if (!page) setRefresh({ cardId: id, phase: 'unread' });
     else if (page.text === card.text) setRefresh(undefined);
     else setRefresh({ cardId: id, phase: 'updated', title: page.title, text: page.text, words: page.words });
   };
@@ -392,6 +392,7 @@ function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardS
     <div className="bk-board">
       <TopBar
         name={board.name}
+        from={board.imported?.person}
         status={api.status}
         view={view}
         canUndo={api.canUndo}

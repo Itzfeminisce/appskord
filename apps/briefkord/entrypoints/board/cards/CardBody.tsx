@@ -4,6 +4,7 @@ import { newId } from '@/lib/board/ops';
 import type { Card, ChecklistCard, ChecklistItem, DiagramCard, FileCard, ImageCard, LinkCard, NoteCard } from '@/lib/board/types';
 import { formatBytes } from '../logic/drop';
 import { KIND_LABEL } from '../logic/cards';
+import { providerLabel } from '../ai/choice';
 import { DiagramView } from './DiagramView';
 import { useFileUrl } from './useFileUrl';
 
@@ -24,6 +25,9 @@ const siteOf = (url: string): string => {
     return '';
   }
 };
+
+const sentences = (text: string): string[] => text.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim()).filter(Boolean);
+const shortDate = (at: number): string => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
 export function Badge({ n }: { n?: number }) {
   return n ? <span className="bk-badge">{n}</span> : null;
@@ -107,6 +111,21 @@ function NoteBody({ card, number, editing, onCommit, onDone }: CardBodyProps & {
         <span className="bk-row"><Badge n={number} /><input className="bk-note-title bk-bare" value={title} aria-label="Title" onChange={(e) => setTitle(e.target.value)} /></span>
         <textarea ref={textRef} className="bk-note-text bk-bare" value={text} aria-label="Note" onChange={(e) => setText(e.target.value)} />
         <span className="bk-edit-hint">Esc or click outside to finish</span>
+      </div>
+    );
+  }
+  if (card.summary) {
+    const [lead, ...rest] = sentences(card.text);
+    return (
+      <div className="bk-note bk-summary">
+        <span className="bk-row">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--bk-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /></svg>
+          <span className="bk-summary-head">{`Summary · ${card.title}`}</span>
+          <Badge n={number} />
+        </span>
+        {lead && <p className="bk-summary-lead">{lead}</p>}
+        {rest.length > 0 && <ul className="bk-summary-points">{rest.map((s, i) => <li key={i}>{s}</li>)}</ul>}
+        <span className="bk-summary-foot">{`From the page text saved ${shortDate(card.summary.from)} · ${card.summary.model} · ${providerLabel(card.summary.provider)}`}</span>
       </div>
     );
   }

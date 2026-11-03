@@ -89,10 +89,12 @@ function check(value: unknown): string[] {
     for (const end of ['from', 'to']) {
       if (typeof a[end] !== 'string' || !cardIds.has(a[end] as string)) fail(`arrow ${a.id} names missing card ${String(a[end])}`);
     }
-    if (a.dashed !== undefined && typeof a.dashed !== 'boolean') fail(`arrow ${a.id}.dashed is not true or false`);
+    for (const k of ['dashed', 'both']) if (a[k] !== undefined && typeof a[k] !== 'boolean') fail(`arrow ${a.id}.${k} is not true or false`);
+    if (a.label !== undefined) str(a, 'label', `arrow ${a.id}`);
   }
   for (const g of ids(list(value, 'groups', 'board'), 'groups', boardIds)) {
     str(g, 'title', `group ${g.id}`);
+    if (g.colour !== undefined && !CARD_COLOURS.includes(g.colour as never)) fail(`group ${g.id}.colour ${JSON.stringify(g.colour)} is unknown`);
     for (const id of list(g, 'cards', `group ${g.id}`)) {
       if (typeof id !== 'string' || !cardIds.has(id)) fail(`group ${g.id} names missing card ${String(id)}`);
     }
@@ -111,6 +113,21 @@ function check(value: unknown): string[] {
     else {
       str(value.imported, 'person', 'board.imported');
       for (const k of ['at', 'changed', 'added']) num(value.imported, k, 'board.imported');
+    }
+  }
+  // Card ids in a kept brief may go stale when cards are deleted; readers skip them.
+  if (value.brief !== undefined) {
+    const b = value.brief;
+    if (!isObj(b)) fail('board.brief is not an object');
+    else {
+      num(b, 'at', 'board.brief');
+      for (const k of ['model', 'provider']) str(b, k, 'board.brief');
+      list(b, 'points', 'board.brief').forEach((p, i) => {
+        if (!isObj(p)) return void fail(`board.brief.points[${i}] is not an object`);
+        str(p, 'text', `board.brief.points[${i}]`);
+        if (list(p, 'cards', `board.brief.points[${i}]`).some((id) => typeof id !== 'string')) fail(`board.brief.points[${i}].cards has an id that is not text`);
+      });
+      if (list(b, 'questions', 'board.brief').some((q) => typeof q !== 'string')) fail('board.brief.questions has an item that is not text');
     }
   }
   return problems;
@@ -154,6 +171,10 @@ function checkKind(card: Obj, at: string, c: Checks): void {
           for (const k of ['of', 'model', 'provider']) str(card.summary, k, `${at}.summary`);
           num(card.summary, 'from', `${at}.summary`);
         }
+      }
+      if (card.source !== undefined) {
+        if (!isObj(card.source)) fail(`${at}.source is not an object`);
+        else for (const k of ['url', 'title']) str(card.source, k, `${at}.source`);
       }
       return;
     case 'checklist':

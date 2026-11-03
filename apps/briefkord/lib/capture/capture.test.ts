@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { emptyBoard } from '../board/ops';
 import { validateBoard } from '../board/validate';
 import type { BoardMeta, Rect } from '../board/types';
-import { lastUsedFirst, linkCard, noteCard, placeCard } from './cards';
+import { lastUsedFirst, linkCard, noteCard, placeCard, quoteCard } from './cards';
 import { freeSpot, PLACE_GAP, PLACE_ORIGIN } from './place';
 import { ago, cleanText, formatBytes, imageFileName, isChromePage, onDay, siteName, titleFrom, wordCount } from './text';
 
@@ -102,5 +102,16 @@ describe('right-click board order', () => {
   it('puts the last used board first, then the most recently edited', () => {
     const meta = (id: string, updatedAt: number): BoardMeta => ({ id, name: id, pinned: false, cards: 0, updatedAt, bytes: 0 });
     expect(lastUsedFirst([meta('a', 3), meta('b', 1), meta('c', 2)], 'b').map((b) => b.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('sizes a saved selection to its quote, up to a cap', () => {
+    const source = { url: 'https://example.com/a', title: 'A' };
+    const short = quoteCard('q1', 1, 'Short quote.', source);
+    const long = quoteCard('q2', 1, 'word '.repeat(80), source);
+    const huge = quoteCard('q3', 1, 'word '.repeat(2000), source);
+    expect(short.rect).toMatchObject({ w: 280, h: 133 });
+    expect(long.rect.h).toBeGreaterThan(short.rect.h);
+    expect(huge.rect.h).toBe(360);
+    expect(short.source).toEqual(source);
   });
 });
