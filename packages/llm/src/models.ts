@@ -279,7 +279,14 @@ export async function listModelsFor(
       });
     }
     if (!res.ok) {
-      const reason = res.status === 401 || res.status === 403 ? 'auth' : res.status === 429 ? 'busy' : 'status';
+      const scoped = missingScope(await readError(res));
+      const reason = scoped
+        ? 'no-list'
+        : res.status === 401 || res.status === 403
+          ? 'auth'
+          : res.status === 429
+            ? 'busy'
+            : 'status';
       throw fail(plainText, { reason, label, status: res.status });
     }
     let data: unknown;

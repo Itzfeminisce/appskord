@@ -40,6 +40,19 @@ export const SUGGESTED_MODELS: Record<Provider, { models: string[]; faster: stri
   xai: { models: ['grok-4.7'], faster: 'grok-4.7' },
 };
 
+// Shut down (MODELS.md). Only Groq and OpenAI ids: an OpenRouter slug keeps its id.
+const RETIRED: Partial<Record<Provider, readonly string[]>> = {
+  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'moonshotai/kimi-k2-instruct-0905', 'meta-llama/llama-4-maverick-17b-128e-instruct', 'meta-llama/llama-4-scout-17b-16e-instruct', 'qwen/qwen3.6-27b'],
+  openai: ['gpt-4o-transcribe', 'gpt-4o-mini-transcribe', 'whisper-1'],
+};
+
+/** The model clips use for a stored choice: a retired or missing one becomes Recommended, and `gone` names the retired one. */
+export function pickedModel(provider: Provider, stored: string | undefined): { model: string; gone?: string } {
+  const recommended = SUGGESTED_MODELS[provider].models[0]!;
+  if (!stored) return { model: recommended };
+  return RETIRED[provider]?.includes(stored) ? { model: recommended, gone: stored } : { model: stored };
+}
+
 /** A model of the provider that can see images, for the visual critic when the chat model can't; absent = keep the chat model. */
 export const VISION_MODEL: Partial<Record<Provider, string>> = {
   groq: 'qwen/qwen3.8-27b',
@@ -50,8 +63,8 @@ export function criticModelFor(provider: Provider, chat: string): string {
   return canSeeImages(provider, chat) ? chat : (VISION_MODEL[provider] ?? chat);
 }
 
-/** "a Groq key", "an OpenAI key". */
-export const withArticle = (name: string) => `${/^[AEIOU]/i.test(name) ? 'an' : 'a'} ${name}`;
+/** "a Groq key", "an OpenAI key", "an xAI key". */
+export const withArticle = (name: string) => `${/^[AEIOUaeiou]|^x[A-Z]/.test(name) ? 'an' : 'a'} ${name}`;
 
 /** Settings and Setup order; Groq is the default. */
 export const PROVIDER_IDS: Provider[] = ['groq', 'openai', 'anthropic', 'openrouter', 'google', 'xai'];

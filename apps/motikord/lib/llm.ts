@@ -3,7 +3,7 @@ import {
   chatCloud,
   chatLocal,
   chatUrl,
-  listModels as listProviderModels,
+  listModelsFor,
   LLMError,
   modelsUrl,
   notForText,
@@ -15,11 +15,11 @@ import {
   type FetchLike,
   type LanguageModelLike,
   type ModelCache,
-  type ModelList,
+  type PickerList,
 } from '@appskord/llm';
 import type { AiMode, Provider } from './types';
 import { DEFAULT_SETTINGS, getKey, getSettings } from './settings';
-import { PROVIDER_IDS, SUGGESTED_MODELS } from './providers';
+import { pickedModel, PROVIDER_IDS, SUGGESTED_MODELS } from './providers';
 
 export {
   chatModels,
@@ -31,7 +31,7 @@ export {
   type FetchLike,
   type LanguageModelLike,
   type LLMErrorCode,
-  type ModelList,
+  type PickerList,
 } from '@appskord/llm';
 
 export const GROQ_URL = chatUrl({ provider: 'groq' });
@@ -102,7 +102,8 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
   const ai = opts.ai ?? settings.ai;
   if (ai === 'local') return { text: await chatLocal(messages, { text, json: opts.json, signal: opts.signal, languageModel: opts.languageModel }), by: 'builtin' };
   const provider = opts.provider ?? settings.provider;
-  const model = opts.model ?? settings.models[provider];
+  const stored = settings.models[provider];
+  const model = opts.model ?? (stored ? pickedModel(provider, stored).model : undefined);
   const key = opts.key ?? (await getKey(provider));
   const reply = await chatCloud(messages, {
     app: 'Motikord', text, provider, key, model, cache: modelCache, fallback: FALLBACK_MODEL[provider],
@@ -124,10 +125,9 @@ export function recommendedModel(provider: Provider, ids: string[]): string {
   return pickModel(provider, ids, { fallback: FALLBACK_MODEL[provider] }) ?? FALLBACK_MODEL[provider];
 }
 
-/** Asks the provider for its models: recommended first, then the rest. Throws LLMError (offline, auth, no-list, server, cancelled). */
-export async function listModels(provider: Provider, key: string, fetchFn?: FetchLike, signal?: AbortSignal): Promise<ModelList & { recommended: string }> {
-  const list = await listProviderModels({ provider, key, text, fetch: fetchFn, signal, fallback: FALLBACK_MODEL[provider] });
-  return { ...list, recommended: list.recommended ?? FALLBACK_MODEL[provider] };
+/** The picker's chat list for a provider, tagged. Never throws: without a key, or when the list fails, the suggested models (with `error`). */
+export function listModels(provider: Provider, key?: string, fetchFn?: FetchLike, signal?: AbortSignal): Promise<PickerList> {
+  return listModelsFor(provider, 'chat', { key, fetch: fetchFn, signal });
 }
 
 /** "Check model": one tiny request to `model` with `key`. Resolves the time it took in ms; throws LLMError. */

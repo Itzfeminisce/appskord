@@ -308,6 +308,12 @@ describe('listModelsFor', () => {
   it('failures fall back to suggested with a coded error and no key in the message', async () => {
     const cases: [() => Promise<Response>, string][] = [
       [async () => new Response('{}', { status: 401 }), 'auth'],
+      // A key that may chat but not list models is not a refused key.
+      [
+        async () =>
+          new Response(JSON.stringify({ error: { message: 'Missing scopes: api.model.read.' } }), { status: 403 }),
+        'no-list',
+      ],
       [async () => new Response('{}', { status: 429 }), 'rate-limited'],
       [async () => new Response('{}', { status: 500 }), 'server'],
       [async () => Promise.reject(new TypeError('failed gsk_test')), 'offline'],

@@ -3,45 +3,76 @@ import { describe, expect, it, vi } from 'vitest';
 import { stateFor } from '../lib/ai/errors';
 import { reasonFor } from './MakingFailed';
 import { penvKeysLine } from './Settings';
-import SettingsModel, { checkProblemFor, listOnOpen, modelCheckProblemLine, ModelInput, ModelOptions, seconds } from './SettingsModel';
+import { LLMError, type PickerList } from '@appskord/llm';
+import { DEFAULT_SETTINGS } from '../lib/settings';
+import type { Settings } from '../lib/types';
+import SettingsModel, { checkProblemFor, choiceFor, listOnOpen, modelCheckProblemLine, ModelSection, pickerGroups, pickerValue, seconds, typedProviderFor, type ListState } from './SettingsModel';
 
 describe('SettingsModel', () => {
   const html = renderToStaticMarkup(<SettingsModel />).replace(/&quot;/g, '"');
-  it('renders every state with the frame copy', () => {
+  it('renders every check state with the frame copy', () => {
     for (const text of [
-      'model-picker-open · Settings (Model)', 'Suggested', 'Recommended', 'Faster', 'From OpenAI', 'Use “gpt-6” as typed', 'Typing filters the list. Enter uses exactly what you typed.',
-      'Getting OpenAI’s list… You can keep typing.',
-      'OpenAI’s full list didn’t load, so the suggestions show instead. You can still type any model name.', 'Try again',
-      'Your choice', 'Not in the list. Check it once to be sure.', 'Check model',
-      'Asking gpt-6-astra-2026-09-01 a test question…', 'gpt-6-astra-2026-09-01 answered in 1.4 s. Ready for clips.',
+      'Asking gpt-6-astra-2026-09-01 a test question…', 'gpt-6-astra-2026-09-01 answered in 1.4 s. Ready for clips.', 'Check model',
       'OpenAI doesn’t have gpt-6-maxi', 'Check the spelling, or pick a suggested model. Motikord keeps using gpt-6.1-sol until this one works.', 'Use gpt-6.1-sol', 'Show models',
       'gpt-transcribe can’t write clips', 'It works with sound, not text. Pick a chat model like gpt-6.1-sol.',
       'Add an Anthropic key to use it', 'You can choose a model now. Clips start once a key works.', 'Paste a key', 'Use Penv Cloud',
-      'Chrome picks its own built-in model. There’s nothing to choose.',
     ]) expect(html).toContain(text);
-  });
-  it('shows a long model name whole in its tooltip when the field cuts it', () => {
-    const html = renderToStaticMarkup(<ModelInput value="meta-llama/llama-4-scout-17b-16e-instruct" />);
-    expect(html).toContain('title="meta-llama/llama-4-scout-17b-16e-instruct"');
-    expect(html).toContain('text-overflow:ellipsis');
-  });
-
-  it('drops the old warning states', () => {
-    expect(html).not.toContain('Couldn’t load');
-    expect(html).not.toContain('Loading OpenAI’s models');
-  });
-  it('filters by what you typed and offers it as typed', () => {
-    const list = renderToStaticMarkup(<ModelOptions provider="openai" live={['gpt-6-luna-preview', 'o3']} query="luna" chosen="gpt-6.1-sol" onPick={() => undefined} />).replace(/&quot;/g, '"');
-    expect(list).toContain('gpt-6-luna');
-    expect(list).toContain('gpt-6-luna-preview');
-    expect(list).not.toContain('>o3<');
-    expect(list).toContain('Use “luna” as typed');
-    const exact = renderToStaticMarkup(<ModelOptions provider="openai" live={[]} query="gpt-6-astra" chosen="gpt-6.1-sol" onPick={() => undefined} />);
-    expect(exact).not.toContain('as typed');
   });
   it('says the check time in tenths of a second', () => {
     expect(seconds(1234)).toBe('1.2');
     expect(seconds(20)).toBe('0.1');
+  });
+});
+
+const base: Settings = { ...DEFAULT_SETTINGS, ai: 'cloud', provider: 'openai', models: {} };
+const done = (list: PickerList): ListState => ({ status: 'done', list });
+
+describe('the Model picker', () => {
+  const keys = { OPENAI_API_KEY: 'sk-test', GROQ_API_KEY: 'gsk_test' };
+  it('lists OpenAI first and On this computer last, with the frame marks and key rows', () => {
+    const groups = pickerGroups(base, { keys, lists: {}, builtInAi: true });
+    expect(groups.map((g) => g.id)).toEqual(['openai', 'groq', 'anthropic', 'google', 'xai', 'openrouter', 'local']);
+    expect(groups.map((g) => g.mark)).toEqual(['OA', 'Gq', 'An', 'Gm', 'xA', 'OR', undefined]);
+    expect(groups.find((g) => g.id === 'anthropic')).toMatchObject({ status: 'needs-key', addKeyLabel: 'Add an Anthropic key', aliases: ['claude'] });
+    expect(groups.find((g) => g.id === 'google')).toMatchObject({ name: 'Gemini', addKeyLabel: 'Add a Gemini key' });
+    expect(groups.find((g) => g.id === 'xai')).toMatchObject({ addKeyLabel: 'Add an xAI key', aliases: ['grok'] });
+    expect(groups.at(-1)).toMatchObject({ name: 'On this computer', status: 'local', models: [{ id: 'builtin', name: 'Chrome’s built-in AI', tag: 'Simpler clips' }] });
+  });
+  it('shows the loaded list, a refused key, and a failed list', () => {
+    const ok = done({ models: [{ id: 'gpt-6.1-sol', tag: 'Recommended' }, { id: 'gpt-6-astra', tag: 'Sees images' }], source: 'live' });
+    const g = (lists: Partial<Record<'openai', ListState>>) => pickerGroups(base, { keys, lists, builtInAi: true })[0]!;
+    expect(g({ openai: ok })).toMatchObject({ status: 'ready', models: [{ id: 'gpt-6.1-sol', tag: 'Recommended' }, { id: 'gpt-6-astra', tag: 'Sees images' }] });
+    expect(g({ openai: { status: 'loading' } }).status).toBe('loading');
+    expect(g({ openai: done({ models: [], source: 'suggested', error: new LLMError('x', 'auth') }) }).status).toBe('key-refused');
+    expect(g({ openai: done({ models: [], source: 'suggested', error: new LLMError('x', 'no-list') }) }).status).toBe('failed');
+  });
+  it('keeps a typed model in its group as Your choice', () => {
+    const s = { ...base, models: { openai: 'gpt-6-astra-2026-09-01' } };
+    expect(pickerGroups(s, { keys, lists: {}, builtInAi: true })[0]!.models).toEqual([{ id: 'gpt-6-astra-2026-09-01', tag: 'Your choice' }]);
+  });
+  it('writes provider and models[provider]; On this computer sets ai local', () => {
+    expect(choiceFor({ provider: 'groq', model: 'openai/gpt-oss-20b' })).toEqual({ ai: 'cloud', provider: 'groq', models: { groq: 'openai/gpt-oss-20b' } });
+    expect(choiceFor({ provider: 'local', model: 'builtin' })).toEqual({ ai: 'local' });
+    expect(pickerValue({ ...base, ai: 'local' }).value).toEqual({ provider: 'local', model: 'builtin' });
+  });
+  it('a retired model shows Recommended and picker-model-gone; never an empty model; OpenRouter keeps its id', () => {
+    expect(pickerValue({ ...base, provider: 'groq', models: { groq: 'llama-3.3-70b-versatile' } })).toEqual({ value: { provider: 'groq', model: 'openai/gpt-oss-120b' }, gone: 'llama-3.3-70b-versatile' });
+    expect(pickerValue({ ...base, provider: 'groq', models: {} }).value.model).toBe('openai/gpt-oss-120b');
+    expect(pickerValue({ ...base, provider: 'openrouter', models: { openrouter: 'meta-llama/llama-4-scout-17b-16e-instruct' } })).toEqual({ value: { provider: 'openrouter', model: 'meta-llama/llama-4-scout-17b-16e-instruct' } });
+  });
+  it('sends a typed name to the current cloud provider, else the first with a key', () => {
+    expect(typedProviderFor(base, {})).toBe('openai');
+    expect(typedProviderFor({ ...base, ai: 'local' }, { GROQ_API_KEY: 'gsk_test' })).toBe('groq');
+    expect(typedProviderFor({ ...base, ai: 'local' }, {})).toBe('openai');
+  });
+  it('renders the picker, the check link and the hint, and never a key', () => {
+    const html = renderToStaticMarkup(<ModelSection s={base} keys={keys} builtInAi save={() => undefined} onKeys={() => undefined} onPasteKey={() => undefined} onPenv={() => undefined} />);
+    for (const text of ['Model', 'gpt-6.1-sol', 'OpenAI · Ready', 'Check model', 'Large, strong models write the best clips. Small ones are faster but simpler.']) expect(html).toContain(text);
+    expect(html).not.toContain('sk-test');
+    expect(html).not.toContain('gsk_test');
+  });
+  it('hides Chrome’s built-in AI where Chrome has none', () => {
+    expect(pickerGroups(base, { keys, lists: {}, builtInAi: false }).at(-1)!.models).toEqual([]);
   });
 });
 

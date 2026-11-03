@@ -45,25 +45,36 @@ describe('model lists', () => {
     expect(recommendedModel('anthropic', [])).toBe('claude-opus-5-5');
   });
 
-  it('lists recommended first, with each provider’s headers', async () => {
+  it('lists the picker models, recommended first, with each provider’s headers', async () => {
     const { fetch, calls } = fake({ [ANTHROPIC_MODELS]: [{ id: 'claude-haiku-5-5' }, { id: 'claude-sonnet-5-5' }] });
-    expect(await listModels('anthropic', 'sk-ant-test', fetch)).toEqual({ models: ['claude-sonnet-5-5', 'claude-haiku-5-5'], recommended: 'claude-sonnet-5-5' });
+    const list = await listModels('anthropic', 'sk-ant-test', fetch);
+    expect(list.source).toBe('live');
+    expect(list.models.map((x) => x.id)).toEqual(['claude-sonnet-5-5', 'claude-haiku-5-5']);
     expect(calls[0]!.init?.headers).toMatchObject({ 'x-api-key': 'sk-ant-test', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' });
     expect(calls[0]!.init?.credentials).toBe('omit');
   });
 
-  it('maps list failures', async () => {
-    expect(await code(listModels('openai', 'sk-test', async () => new Response('{}', { status: 401 })))).toBe('auth');
-    expect(await code(listModels('openai', 'sk-test', async () => new Response('{}', { status: 500 })))).toBe('server');
-    expect(await code(listModels('openai', 'sk-test', async () => { throw new TypeError('Failed to fetch'); }))).toBe('offline');
+  it('shows the suggested models with the failure code when the list fails', async () => {
+    const code = async (f: FetchLike) => (await listModels('openai', 'sk-test', f)).error?.code;
+    expect(await code(async () => new Response('{}', { status: 401 }))).toBe('auth');
+    expect(await code(async () => new Response('{}', { status: 500 }))).toBe('server');
+    expect(await code(async () => { throw new TypeError('Failed to fetch'); })).toBe('offline');
+    expect((await listModels('openai', 'sk-test', async () => new Response('{}', { status: 500 }))).models[0]).toEqual({ id: 'gpt-6.1-sol', tag: 'Recommended' });
   });
 
-  // X's bug: a working OpenAI key without the models scope made Settings say "Couldn't load OpenAI's models".
+  it('asks nothing without a key', async () => {
+    const f = vi.fn<FetchLike>();
+    expect((await listModels('groq', undefined, f)).models.map((x) => x.id)).toEqual(['openai/gpt-oss-120b', 'openai/gpt-oss-20b']);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  // X's bug: a working OpenAI key without the models scope made Settings say the key was refused.
   it('says no-list, not auth, when a key that can chat may not list models', async () => {
     const scope = (status: number) => async () => json({ error: { message: 'You have insufficient permissions for this operation. Missing scopes: api.model.read.', type: 'invalid_request_error' } }, status);
-    expect(await code(listModels('openai', 'sk-proj-test', scope(401)))).toBe('no-list');
-    expect(await code(listModels('openai', 'sk-proj-test', scope(403)))).toBe('no-list');
-    expect(await code(listModels('openai', 'sk-test', async () => json({ error: { message: 'Incorrect API key provided.', code: 'invalid_api_key' } }, 401)))).toBe('auth');
+    const code = async (f: FetchLike) => (await listModels('openai', 'sk-proj-test', f)).error?.code;
+    expect(await code(scope(401))).toBe('no-list');
+    expect(await code(scope(403))).toBe('no-list');
+    expect(await code(async () => json({ error: { message: 'Incorrect API key provided.', code: 'invalid_api_key' } }, 401))).toBe('auth');
   });
 
   it('still chats on the fallback model when the list is not allowed', async () => {
@@ -74,6 +85,14 @@ describe('model lists', () => {
     expect((await chat(m, { ai: 'cloud', key: 'sk-proj-test', fetch })).text).toBe('ok');
     expect(err).not.toHaveBeenCalled();
     err.mockRestore();
+  });
+
+  it('sends a retired stored model’s clips to Recommended at the picked provider only', async () => {
+    await updateSettings({ ai: 'cloud', provider: 'groq', models: { groq: 'llama-3.3-70b-versatile' } });
+    const { fetch, calls } = fake({}, json({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }));
+    expect((await chat(m, { key: 'gsk_test', fetch })).by).toBe('groq');
+    expect(calls.every((c) => c.url.startsWith('https://api.groq.com/'))).toBe(true);
+    expect(calls.at(-1)!.body?.model).toBe('openai/gpt-oss-120b');
   });
 
   it('keeps a built-in suggested list per provider, and falls back to its first model', () => {
