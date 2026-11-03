@@ -148,7 +148,10 @@ function SectionPicker({ board, sectionId }: { board: Board; sectionId: string }
   );
 }
 
-type SaveState = { kind: 'idle' } | { kind: 'saving' } | { kind: 'cant-read' } | { kind: 'error' };
+type SaveState = { kind: 'idle' } | { kind: 'saving' } | { kind: 'cant-read'; noAccess: boolean } | { kind: 'error' };
+
+// activeTab covers only the tab the panel opened on; a click on the icon or the shortcut grants the tab in front.
+const SHORTCUT_HINT = <p className="p-hint is-shortcut">Press Alt+Shift+S or click the Briefkord icon to save this tab.</p>;
 
 function TabCard({ board, sectionId, compact, onSaved }: { board: Board; sectionId: string; compact: boolean; onSaved: (result: SaveResult) => void }) {
   const { tab } = usePanel();
@@ -166,7 +169,7 @@ function TabCard({ board, sectionId, compact, onSaved }: { board: Board; section
     if (!tab) return;
     setState({ kind: 'saving' });
     const result = await savePage(tab, board.id, sectionId);
-    if (!result.ok && result.problem === 'cant-read') return setState({ kind: 'cant-read' });
+    if (!result.ok && result.problem === 'cant-read') return setState({ kind: 'cant-read', noAccess: result.reason === 'no-access' });
     setState(result.ok ? { kind: 'idle' } : { kind: 'error' });
     onSaved(result);
   };
@@ -183,9 +186,12 @@ function TabCard({ board, sectionId, compact, onSaved }: { board: Board; section
 
   if (kind === 'no-access')
     return (
-      <div role="alert" className="p-alert is-warn">
-        <span className="p-alert-title">Chrome doesn’t let Briefkord read this page</span>
-      </div>
+      <>
+        <div role="alert" className="p-alert is-warn">
+          <span className="p-alert-title">Chrome doesn’t let Briefkord read this page</span>
+        </div>
+        {SHORTCUT_HINT}
+      </>
     );
 
   if (state.kind === 'saving')
@@ -226,6 +232,7 @@ function TabCard({ board, sectionId, compact, onSaved }: { board: Board; section
             Save as a link only
           </button>
         </div>
+        {state.noAccess && SHORTCUT_HINT}
       </>
     );
 
