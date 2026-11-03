@@ -163,6 +163,8 @@ describe('model pickers', () => {
     expect(typedFailure('my-model', refused)).toEqual({ refused });
     expect(typedFailure('my-model', new LLMError('x', 'model-not-found'))).toEqual({ line: 'No model called “my-model” in your lists.' });
     expect(typedFailure('my-model', new Error('swapped'))).toEqual({ line: 'No model called “my-model” in your lists.' });
+    expect(typedFailure('my-model', new LLMError('Server down.', 'server'))).toEqual({ line: 'Server down.' });
+    expect(typedFailure('my-model', new LLMError('Odd reply.', 'bad-reply'))).toEqual({ line: 'Odd reply.' });
     expect(typedFailure('my-model', new LLMError('Could not reach the AI service.', 'offline'))).toEqual({ line: 'Could not reach the AI service.' });
     const groups = pickerGroups('notes', s, { keys: ['OPENAI_API_KEY'], builtin: false, lists: { openai: { status: 'done', list: { models: [], source: 'suggested', error: refused } } } });
     expect(groups.find((g) => g.id === 'openai')).toMatchObject({ status: 'key-refused', models: expect.arrayContaining([{ id: 'gpt-6.1-sol', tag: 'Recommended' }]) });

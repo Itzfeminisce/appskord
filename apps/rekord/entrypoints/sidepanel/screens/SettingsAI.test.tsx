@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LLMError } from '@appskord/llm';
 import { DEFAULT_SETTINGS } from '@/lib/settings';
 import type { Settings } from '@/lib/types';
-import { choiceFor, hostsFor, OLLAMA_DOWN, pickerGroups, pickerValue, typedFailure, typedProviderFor } from './SettingsAI';
+import { choiceFor, hostsFor, isListed, loadFailed, openHosts, OLLAMA_DOWN, pickerGroups, pickerValue, typedFailure, typedProviderFor } from './SettingsAI';
 
 const base = (over: Partial<Pick<Settings, 'transcription' | 'summary'>> = {}) => ({
   transcription: DEFAULT_SETTINGS.transcription,
@@ -68,5 +68,24 @@ describe('Rekord model pickers', () => {
   it('turns a failed test question into the picker’s words', () => {
     expect(typedFailure('nope', new LLMError('x', 'model-not-found'))).toEqual({ line: 'No model called “nope” in your lists.' });
     expect('refused' in typedFailure('nope', new LLMError('x', 'auth'))).toBe(true);
+  });
+
+  it('asks for Ollama on the first open, until its list has loaded', () => {
+    expect(openHosts('summary', [], undefined)).toEqual(['http://localhost:11434/*']);
+    expect(openHosts('summary', [], null)).toEqual(['http://localhost:11434/*']);
+    expect(openHosts('summary', [], ['llama3.2'])).toEqual([]);
+    expect(openHosts('transcription', [], undefined)).toEqual([]);
+  });
+
+  it('shows a failed state when the key load rejects', () => {
+    const state = loadFailed(new Error('no vault'));
+    expect(state).toMatchObject({ status: 'done', list: { models: [], source: 'suggested' } });
+    const groups = pickerGroups('summary', base(), { keys: ['GROQ_API_KEY'], status: {}, lists: { groq: state } });
+    expect(groups.find((g) => g.id === 'groq')!.status).toBe('failed');
+  });
+
+  it('never retries Local or Deepgram as a key list', () => {
+    expect(['local', 'deepgram', 'ollama'].some(isListed)).toBe(false);
+    expect(isListed('groq') && isListed('openai')).toBe(true);
   });
 });

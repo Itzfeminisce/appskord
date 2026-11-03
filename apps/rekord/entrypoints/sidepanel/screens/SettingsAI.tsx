@@ -82,6 +82,22 @@ export function hostsFor(partial: Partial<Settings>): string[] {
   return partial.summary ? hostsForKeys([PROVIDERS[partial.summary.provider].keyName ?? '']) : [];
 }
 
+/** The hosts an open asks for: the loading lists' hosts, plus Ollama's until its list has loaded. */
+export function openHosts(job: PickerJob, withKeys: Listed[], ollama: string[] | null | undefined): string[] {
+  return [...hostsForKeys(withKeys.map(keyNameOf)), ...(job === 'summary' && !Array.isArray(ollama) ? OLLAMA_HOSTS : [])];
+}
+
+/** A list that could not load: the suggested models and the error, so the picker shows its failed state. */
+export function loadFailed(error: unknown): ListState {
+  const err = error instanceof LLMError ? error : new LLMError('Could not load the list.', 'no-list');
+  return { status: 'done', list: { models: [], source: 'suggested', error: err } };
+}
+
+/** Only a provider with a key list can retry; Local and Deepgram never reach load(). */
+export function isListed(p: string): p is Listed {
+  return p === 'groq' || p === 'openai' || (p in LLM_PROVIDERS && p !== 'ollama' && p !== 'local');
+}
+
 /** A typed model whose test question failed: a refused key shows picker-key-refused; anything else a line under the picker. */
 export function typedFailure(model: string, error: unknown): { refused: LLMError } | { line: string } {
   const code = error instanceof LLMError ? error.code : undefined;
@@ -160,13 +176,16 @@ function AiPickers({ s, keys, status, save, onAddKey, onConnectCloud, onDenied }
     set({ status: 'loading' });
     loadKeys()
       .then((values) => listModelsFor(p, job === 'transcription' ? 'speech' : 'chat', { key: values[keyNameOf(p)] }))
-      .then((list) => set({ status: 'done', list }), (error) => console.error('Rekord: could not load the model list', error));
+      .then((list) => set({ status: 'done', list }), (error) => {
+        console.error('Rekord: could not load the model list', error);
+        set(loadFailed(error));
+      });
   }
 
   function open(job: PickerJob) {
     const withKeys = PICKER_CLOUD[job].filter((p) => keys.includes(keyNameOf(p)) && !lists[job][p]);
     // Opening is a click: ask for the hosts of the lists about to load (and Ollama's after it did not answer).
-    const asked = requestHosts([...hostsForKeys(withKeys.map(keyNameOf)), ...(job === 'summary' && ollama === null ? OLLAMA_HOSTS : [])]);
+    const asked = requestHosts(openHosts(job, withKeys, ollama));
     void asked.then(() => {
       for (const p of withKeys) load(job, p);
       if (job === 'summary') {
@@ -212,7 +231,7 @@ function AiPickers({ s, keys, status, save, onAddKey, onConnectCloud, onDenied }
               typedProvider={typedProviderFor(job, s, keys)}
               gone={gone ? { old: gone, app: 'Rekord' } : undefined}
               onOpen={() => open(job)}
-              onRetry={(p) => p !== 'deepgram' && load(job, p as Listed)}
+              onRetry={(p) => isListed(p) && load(job, p)}
               onAddKey={onAddKey}
               onConnectCloud={onConnectCloud}
               onPick={(value, typed) => void pick(job, value, typed)}

@@ -232,7 +232,7 @@ export function choiceFor(job: PickerJob, v: PickerValue): ModelChoice<Transcrip
 export function typedFailure(model: string, error: unknown): { refused: LLMError } | { line: string } {
   const code = error instanceof LLMError ? error.code : undefined;
   if (code === 'auth') return { refused: error as LLMError };
-  if (code === 'offline' || code === 'rate-limited' || code === 'cancelled') return { line: (error as LLMError).message };
+  if (error instanceof LLMError && code !== 'model-not-found') return { line: error.message };
   return { line: `No model called “${model}” in your lists.` };
 }
 
