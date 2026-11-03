@@ -103,6 +103,31 @@ export function setArrowDashed(board: Board, id: string, dashed: boolean, now: n
   return touch(board, now, { arrows: board.arrows.map((a) => (a.id === id ? { ...a, dashed } : a)) });
 }
 
+/** Sets an arrow's label; an empty label removes it. */
+export function setArrowLabel(board: Board, id: string, label: string, now: number): Board {
+  const arrow = board.arrows.find((a) => a.id === id);
+  const text = label.trim();
+  if (!arrow || (arrow.label ?? '') === text) return board;
+  const { label: _old, ...rest } = arrow;
+  return touch(board, now, { arrows: board.arrows.map((a) => (a.id === id ? (text ? { ...rest, label: text } : rest) : a)) });
+}
+
+/** Moves one end of an arrow to another card; refused when both ends would meet or the pair already has an arrow. */
+export function reconnectArrow(board: Board, id: string, end: 'from' | 'to', cardId: string, now: number): Board {
+  const arrow = board.arrows.find((a) => a.id === id);
+  if (!arrow || !board.cards[cardId] || arrow[end] === cardId) return board;
+  const next = { ...arrow, [end]: cardId };
+  if (next.from === next.to || board.arrows.some((a) => a.id !== id && a.from === next.from && a.to === next.to)) return board;
+  return touch(board, now, { arrows: board.arrows.map((a) => (a.id === id ? next : a)) });
+}
+
+/** Arrowheads at both ends, or only at the end. */
+export function setArrowBoth(board: Board, id: string, both: boolean, now: number): Board {
+  const arrow = board.arrows.find((a) => a.id === id);
+  if (!arrow || Boolean(arrow.both) === both) return board;
+  return touch(board, now, { arrows: board.arrows.map((a) => (a.id === id ? { ...a, both } : a)) });
+}
+
 export function deleteArrow(board: Board, id: string, now: number): Board {
   if (!board.arrows.some((a) => a.id === id)) return board;
   return touch(board, now, { arrows: board.arrows.filter((a) => a.id !== id) });
@@ -121,6 +146,14 @@ export function renameGroup(board: Board, id: string, title: string, now: number
   const group = board.groups.find((g) => g.id === id);
   if (!group || group.title === title) return board;
   return touch(board, now, { groups: board.groups.map((g) => (g.id === id ? { ...g, title } : g)) });
+}
+
+/** Colours a group; undefined is the default teal look. */
+export function setGroupColour(board: Board, id: string, colour: CardColour | undefined, now: number): Board {
+  const group = board.groups.find((g) => g.id === id);
+  if (!group || group.colour === colour) return board;
+  const { colour: _old, ...rest } = group;
+  return touch(board, now, { groups: board.groups.map((g) => (g.id === id ? (colour ? { ...rest, colour } : rest) : g)) });
 }
 
 /** Ungroups; the cards stay. */

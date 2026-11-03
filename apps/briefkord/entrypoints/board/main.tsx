@@ -8,6 +8,7 @@ import '@appskord/ui/components.css';
 import '@/lib/ui/briefkord.css';
 import './board.css';
 import { createAppRouter } from './router';
+import './diagram/register';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

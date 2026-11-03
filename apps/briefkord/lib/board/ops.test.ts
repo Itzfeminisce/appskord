@@ -18,10 +18,14 @@ import {
   moveSection,
   recolourCards,
   renameGroup,
+  reconnectArrow,
   renameSection,
   reorderList,
   resizeCard,
+  setArrowBoth,
   setArrowDashed,
+  setArrowLabel,
+  setGroupColour,
   setSectionMinutes,
   updateCard,
 } from './ops';
@@ -108,6 +112,28 @@ describe('board ops', () => {
     expect(addArrow(b, { id: 'a4', from: 'flow', to: 'ghost' }, T)).toBe(b);
     expect(setArrowDashed(b, 'a1', true, T).arrows[0]!.dashed).toBe(true);
     expect(deleteArrow(b, 'a1', T).arrows).toEqual([]);
+  });
+
+  it('labels arrows, puts heads on both ends and colours groups', () => {
+    let b = addArrow(sample(), { id: 'a1', from: 'why-now', to: 'flow' }, T);
+    b = setArrowLabel(b, 'a1', '  shows ', T);
+    expect(b.arrows[0]!.label).toBe('shows');
+    expect(setArrowLabel(b, 'a1', 'shows', T)).toBe(b);
+    expect('label' in setArrowLabel(b, 'a1', ' ', T).arrows[0]!).toBe(false);
+    b = setArrowBoth(b, 'a1', true, T);
+    expect(b.arrows[0]!.both).toBe(true);
+    expect(setArrowBoth(b, 'a1', true, T)).toBe(b);
+    expect(setArrowBoth(b, 'ghost', false, T)).toBe(b);
+    const linked = addArrow(b, { id: 'a2', from: 'why-now', to: 'step-2' }, T);
+    expect(reconnectArrow(linked, 'a1', 'to', 'why-now', T)).toBe(linked);
+    expect(reconnectArrow(linked, 'a2', 'to', 'flow', T)).toBe(linked);
+    expect(reconnectArrow(linked, 'a1', 'to', 'ghost', T)).toBe(linked);
+    expect(reconnectArrow(linked, 'a1', 'to', 'report', T).arrows[0]).toMatchObject({ from: 'why-now', to: 'report', label: 'shows' });
+    b = setGroupColour(b, 'payment-flow', 'blue', T);
+    expect(b.groups[0]!.colour).toBe('blue');
+    expect(setGroupColour(b, 'payment-flow', 'blue', T)).toBe(b);
+    expect('colour' in setGroupColour(b, 'payment-flow', undefined, T).groups[0]!).toBe(false);
+    expectSound(b);
   });
 
   it('groups cards, one group per card, and derives the group box from its cards', () => {

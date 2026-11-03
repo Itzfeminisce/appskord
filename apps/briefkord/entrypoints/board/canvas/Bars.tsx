@@ -82,20 +82,40 @@ export function MultiBar({ ids, board, actions }: { ids: string[]; board: Board;
   );
 }
 
-export function ArrowBar({ arrow, actions }: { arrow: Arrow; actions: BarActions }) {
+export interface ArrowBarProps { arrow: Arrow; actions: BarActions; labelling: boolean; onLabel(): void; onBoth(both: boolean): void }
+
+export function ArrowBar({ arrow, actions, labelling, onLabel, onBoth }: ArrowBarProps) {
   return (
     <div role="toolbar" aria-label="Arrow" className="bk-bar bk-bar-xs" data-canvas-control="" onPointerDown={(e) => e.stopPropagation()}>
+      <button type="button" aria-pressed={labelling} onClick={onLabel}>Label</button>
       <button type="button" aria-pressed={!arrow.dashed} onClick={() => actions.setArrowDashed(arrow.id, false)}>Solid</button>
       <button type="button" aria-pressed={!!arrow.dashed} onClick={() => actions.setArrowDashed(arrow.id, true)}>Dashed</button>
+      <button type="button" aria-pressed={!!arrow.both} onClick={() => onBoth(!arrow.both)}>Both ends</button>
       <button type="button" className="bk-bar-icon bk-bar-danger" aria-label="Delete arrow" onClick={() => actions.deleteArrow(arrow.id)}><Trash size={15} /></button>
     </div>
   );
 }
 
-export function GroupBar({ group, actions }: { group: Group; actions: BarActions }) {
+/** CardEditing group-selected colours: no colour is the default teal, white draws grey. */
+const GROUP_COLOURS: { colour: CardColour | undefined; name: string; swatch: string }[] = [
+  { colour: undefined, name: 'Teal', swatch: 'teal' },
+  { colour: 'blue', name: 'Blue', swatch: 'blue' },
+  { colour: 'white', name: 'Grey', swatch: 'grey' },
+];
+
+export function GroupBar({ group, actions, onColour }: { group: Group; actions: BarActions; onColour(colour: CardColour | undefined): void }) {
+  const current = group.colour === 'teal' ? undefined : group.colour;
   return (
-    <div role="toolbar" aria-label="Group" className="bk-bar bk-bar-xs" data-canvas-control="" onPointerDown={(e) => e.stopPropagation()}>
+    <div role="toolbar" aria-label="Group" className="bk-bar bk-bar-xs bk-bar-group" data-canvas-control="" onPointerDown={(e) => e.stopPropagation()}>
+      <span className="bk-swatches bk-swatches-sm" role="radiogroup" aria-label="Colour">
+        {GROUP_COLOURS.map(({ colour, name, swatch }) => (
+          <button key={name} type="button" role="radio" aria-checked={current === colour} aria-label={name} className={`bk-swatch bk-sw-${swatch}`} onClick={() => onColour(colour)} />
+        ))}
+      </span>
       <button type="button" onClick={() => actions.ungroup(group.id)}>Ungroup</button>
     </div>
   );
 }
+
+/** The class that draws a group in its colour. */
+export const groupClass = (group: Group): string => `bk-group-${group.colour === 'blue' ? 'blue' : group.colour === 'white' ? 'grey' : 'teal'}`;

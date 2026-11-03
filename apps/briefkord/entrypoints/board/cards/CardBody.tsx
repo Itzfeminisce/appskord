@@ -17,6 +17,14 @@ export interface CardBodyProps {
   onDone(): void;
 }
 
+const siteOf = (url: string): string => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+};
+
 export function Badge({ n }: { n?: number }) {
   return n ? <span className="bk-badge">{n}</span> : null;
 }
@@ -102,9 +110,22 @@ function NoteBody({ card, number, editing, onCommit, onDone }: CardBodyProps & {
       </div>
     );
   }
+  if (card.source) {
+    return (
+      <div className="bk-note bk-quote">
+        <span className="bk-row">
+          <Badge n={number} />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--bk-accent)" aria-hidden="true"><path d="M5 18c0-5 1.5-8 5-10l1 1.5C9 11 8.3 12.5 8.3 14H11v4H5zm8 0c0-5 1.5-8 5-10l1 1.5c-2 1.5-2.7 3-2.7 4.5H19v4h-6z" /></svg>
+        </span>
+        <span className="bk-quote-text">{card.text}</span>
+        <span className="bk-quote-from">{[siteOf(card.source.url), card.source.title].filter(Boolean).join(' · ')}</span>
+        <a className="bk-quote-open" href={card.source.url} target="_blank" rel="noreferrer" data-canvas-control="" onPointerDown={(e) => e.stopPropagation()}>Open where it came from</a>
+      </div>
+    );
+  }
   return (
     <div className="bk-note">
-      {(number || card.title) && <span className="bk-row"><Badge n={number} />{card.title && <span className="bk-note-title">{card.title}</span>}</span>}
+      {(number || card.title) &&<span className="bk-row"><Badge n={number} />{card.title && <span className="bk-note-title">{card.title}</span>}</span>}
       <span className="bk-note-text">{card.text}</span>
     </div>
   );

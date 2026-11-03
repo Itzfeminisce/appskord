@@ -1,13 +1,13 @@
 /** The board canvas on lib/canvas: cards, groups and arrows, with select, move, resize, marquee, connect, zoom, map and file drop. */
 import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
-import { addArrow, moveCards, newId, resizeCard, updateCard } from '@/lib/board/ops';
+import { addArrow, moveCards, newId, reconnectArrow, resizeCard, setArrowBoth, setArrowLabel, setGroupColour, updateCard } from '@/lib/board/ops';
 import type { Board, Card, Rect } from '@/lib/board/types';
-import { Canvas, centreOn, fitAll, itemsInRect, normalRect, topItemAt, zoomAt, type Camera, type CanvasHandle, type Point } from '@/lib/canvas';
+import { arrowLine, Canvas, centreOn, fitAll, itemsInRect, normalRect, topItemAt, zoomAt, type Camera, type CanvasHandle, type Point } from '@/lib/canvas';
 import { CardBody } from '../cards';
 import { ToolArrow, ToolAttach, ToolChecklist, ToolDiagram, ToolGroup, ToolNote, ToolSelect, UploadIcon, DownloadIcon } from '../icons';
 import { regroup } from '../logic/groups';
 import type { Tool } from '../logic/keys';
-import { ArrowBar, CardBar, GroupBar, MultiBar, type BarActions } from './Bars';
+import { ArrowBar, CardBar, GroupBar, groupClass, MultiBar, type BarActions } from './Bars';
 import { Minimap } from './Minimap';
 import { useUi, type UiStore } from './uiStore';
 
@@ -42,7 +42,8 @@ type Gesture =
   | { kind: 'move'; ids: string[]; from: Point; dx: number; dy: number; moved: boolean; click?: string }
   | { kind: 'resize'; id: string; corner: 'nw' | 'ne' | 'sw' | 'se'; start: Rect; from: Point; rect: Rect }
   | { kind: 'marquee'; from: Point; to: Point; add: boolean }
-  | { kind: 'link'; from: string; to: Point };
+  | { kind: 'link'; from: string; to: Point }
+  | { kind: 'reconnect'; arrow: string; end: 'from' | 'to'; fixed: string; to: Point };
 
 interface Handlers {
   cardDown(e: PointerEvent<HTMLElement>, id: string): void;
@@ -103,6 +104,8 @@ export function BoardCanvas(props: BoardCanvasProps) {
   const selGroup = useUi(store, (s) => s.group);
   const editing = useUi(store, (s) => s.editing);
   const connectFrom = useUi(store, (s) => s.connectFrom);
+  const [labelling, setLabelling] = useState<string>();
+  useEffect(() => setLabelling(undefined), [selArrow]);
 
   const items = useMemo(() => {
     const cards = Object.values(board.cards);
@@ -252,6 +255,23 @@ export function BoardCanvas(props: BoardCanvasProps) {
     store.set({ selected: new Set(), arrow: id, group: undefined, editing: undefined });
   };
 
+  const startReconnect = (e: PointerEvent<HTMLElement>, arrowId: string, end: 'from' | 'to') => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const arrow = board.arrows.find((a) => a.id === arrowId);
+    if (!arrow) return;
+    track(
+      { kind: 'reconnect', arrow: arrowId, end, fixed: end === 'from' ? arrow.to : arrow.from, to: toWorld(e.clientX, e.clientY) },
+      (g, ev) => (g.kind === 'reconnect' ? { ...g, to: toWorld(ev.clientX, ev.clientY) } : g),
+      (g) => {
+        if (g.kind !== 'reconnect') return;
+        const target = topItemAt(Object.values(live.current.board.cards), g.to);
+        if (target) actions.change((b, now) => reconnectArrow(b, g.arrow, g.end, target.id, now));
+      },
+    );
+  };
+
   const onGroupDown = (e: PointerEvent<HTMLElement>, groupId: string) => {
     if (e.button !== 0 || props.spaceHeld) return;
     if ((e.target as Element).closest('input')) return;
@@ -374,7 +394,7 @@ export function BoardCanvas(props: BoardCanvasProps) {
       key={group.id}
       data-canvas-control=""
       aria-label={group.title}
-      className={selGroup === group.id ? 'bk-group is-selected' : 'bk-group'}
+      className={`bk-group ${groupClass(group)}${selGroup === group.id ? ' is-selected' : ''}`}
       style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
       onPointerDown={(e) => onGroupDown(e, group.id)}
     >
@@ -389,13 +409,45 @@ export function BoardCanvas(props: BoardCanvasProps) {
   const selRects = [...selected].map((id) => rectOf.get(id)).filter((r): r is Rect => !!r);
   const selBox = selRects.length > 1 ? { x: Math.min(...selRects.map((r) => r.x)), y: Math.min(...selRects.map((r) => r.y)) } : undefined;
   const arrow = selArrow ? board.arrows.find((a) => a.id === selArrow) : undefined;
-  const arrowMid = arrow && rectOf.get(arrow.from) && rectOf.get(arrow.to) ? midpoint(rectOf.get(arrow.from)!, rectOf.get(arrow.to)!) : undefined;
+  const ends = (a: { from: string; to: string }) => {
+    const from = rectOf.get(a.from), to = rectOf.get(a.to);
+    return from && to ? arrowEnds(from, to) : undefined;
+  };
+  const arrowAt = arrow ? ends(arrow) : undefined;
+  const arrowMid = arrowAt ? half(arrowAt.from, arrowAt.to) : undefined;
   const groupSel = selGroup ? groups.find((g) => g.group.id === selGroup) : undefined;
+  const labels = board.arrows.flatMap((a) => {
+    if (!a.label && labelling !== a.id) return [];
+    const at = ends(a);
+    return at ? [{ arrow: a, at: half(at.from, at.to) }] : [];
+  });
+  const commitLabel = (id: string, label: string) => {
+    setLabelling(undefined);
+    actions.change((b, now) => setArrowLabel(b, id, label, now));
+  };
 
   const overlay = (
     <>
       {gesture?.kind === 'marquee' && <div className="bk-marquee" style={rectStyle(normalRect({ x: gesture.from.x, y: gesture.from.y, w: gesture.to.x - gesture.from.x, h: gesture.to.y - gesture.from.y }))} />}
       {gesture?.kind === 'link' && rectOf.get(gesture.from) && <LinkDraft from={rectOf.get(gesture.from)!} to={gesture.to} />}
+      {gesture?.kind === 'reconnect' && rectOf.get(gesture.fixed) && <LinkDraft from={rectOf.get(gesture.fixed)!} to={gesture.to} />}
+      {labels.map(({ arrow: a, at }) =>
+        labelling === a.id ? (
+          <ArrowLabelInput key={a.id} at={at} label={a.label ?? ''} onDone={(label) => commitLabel(a.id, label)} onCancel={() => setLabelling(undefined)} />
+        ) : (
+          <span key={a.id} className={selArrow === a.id ? 'bk-arrow-label is-selected' : 'bk-arrow-label'} style={{ left: at.x, top: at.y }}>{a.label}</span>
+        ),
+      )}
+      {arrow && arrowAt && !gesture && (['from', 'to'] as const).map((end) => (
+        <span
+          key={end}
+          data-canvas-control=""
+          className="bk-arrow-end"
+          aria-hidden="true"
+          style={{ left: arrowAt[end].x, top: arrowAt[end].y, transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          onPointerDown={(e) => startReconnect(e, arrow.id, end)}
+        />
+      ))}
       {singleRect && singleCard && !(gesture?.kind === 'move' && gesture.moved) && (
         <>
           {(['nw', 'ne', 'sw', 'se'] as const).map((corner) => (
@@ -421,13 +473,19 @@ export function BoardCanvas(props: BoardCanvasProps) {
         </div>
       )}
       {arrow && arrowMid && (
-        <div className="bk-float bk-float-centre" style={{ left: arrowMid.x, top: arrowMid.y - 10, ...unscale }}>
-          <ArrowBar arrow={arrow} actions={actions} />
+        <div className="bk-float bk-float-centre" style={{ left: arrowMid.x, top: arrowMid.y - (arrow.label || labelling ? 36 : 10), ...unscale }}>
+          <ArrowBar
+            arrow={arrow}
+            actions={actions}
+            labelling={labelling === arrow.id}
+            onLabel={() => setLabelling((l) => (l === arrow.id ? undefined : arrow.id))}
+            onBoth={(both) => actions.change((b, now) => setArrowBoth(b, arrow.id, both, now))}
+          />
         </div>
       )}
       {groupSel && (
         <div className="bk-float" style={{ left: groupSel.box.x, top: groupSel.box.y - 8, ...unscale }}>
-          <GroupBar group={groupSel.group} actions={actions} />
+          <GroupBar group={groupSel.group} actions={actions} onColour={(colour) => actions.change((b, now) => setGroupColour(b, groupSel.group.id, colour, now))} />
         </div>
       )}
     </>
@@ -475,7 +533,13 @@ export function BoardCanvas(props: BoardCanvasProps) {
               <span className="bk-zoom-sep" aria-hidden="true" />
               <button type="button" className="bk-zoom-help" aria-label="Keyboard shortcuts (?)" onClick={actions.showHelp}>?</button>
             </div>
-            <p className="bk-canvas-hint">Double-click to add a note. Drop files anywhere. Numbers are the order in the list.</p>
+            <p className="bk-canvas-hint">
+              {arrow
+                ? 'Drag an end to another card to reconnect it.'
+                : groupSel
+                  ? 'Drag cards in or out. Moving the group moves its cards.'
+                  : 'Double-click to add a note. Drop files anywhere. Numbers are the order in the list.'}
+            </p>
             {!props.empty && <Minimap cards={board.cards} canvasRef={canvasRef} register={registerMap} />}
             {drag && <DropOverlay count={drag.count} boardFile={drag.boardFile} />}
           </main>
@@ -544,4 +608,49 @@ function boxAround(rects: readonly Rect[], pad: number): Rect | undefined {
 
 const FILL = { position: 'absolute', inset: 0 } as const;
 const rectStyle = (r: Rect) => ({ left: r.x, top: r.y, width: r.w, height: r.h });
-const midpoint = (a: Rect, b: Rect): Point => ({ x: (a.x + a.w / 2 + b.x + b.w / 2) / 2, y: (a.y + a.h / 2 + b.y + b.h / 2) / 2 });
+const half = (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+/** Where `arrowPath` starts and ends; its curve is symmetric, so their middle is on the line. */
+function arrowEnds(a: Rect, b: Rect): { from: Point; to: Point } {
+  const ca = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, cb = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+  const gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
+  const gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
+  if (gapX <= 0 && gapY <= 0) return arrowLine(a, b);
+  if (gapX >= gapY) {
+    const right = cb.x > ca.x;
+    return { from: { x: right ? a.x + a.w : a.x, y: ca.y }, to: { x: right ? b.x : b.x + b.w, y: cb.y } };
+  }
+  const down = cb.y > ca.y;
+  return { from: { x: ca.x, y: down ? a.y + a.h : a.y }, to: { x: cb.x, y: down ? b.y : b.y + b.h } };
+}
+
+function ArrowLabelInput({ at, label, onDone, onCancel }: { at: Point; label: string; onDone(label: string): void; onCancel(): void }) {
+  const [value, setValue] = useState(label);
+  const done = useRef(false);
+  const finish = (save: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    if (save) onDone(value);
+    else onCancel();
+  };
+  return (
+    <input
+      className="bk-arrow-label bk-arrow-label-input"
+      data-canvas-control=""
+      type="text"
+      aria-label="Label"
+      autoFocus
+      value={value}
+      size={Math.max(4, value.length + 1)}
+      style={{ left: at.x, top: at.y }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => finish(true)}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') finish(true);
+        if (e.key === 'Escape') finish(false);
+      }}
+    />
+  );
+}

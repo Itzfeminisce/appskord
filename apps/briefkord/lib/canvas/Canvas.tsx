@@ -3,7 +3,7 @@ import type { Rect } from '../board/types';
 import { arrowPath, visibleCards, worldRect, zoomAt, ZOOM_MAX, ZOOM_MIN, type Camera, type Point, type Size } from './geometry';
 
 export interface CanvasItem { id: string; rect: Rect; z?: number }
-export interface CanvasArrow { id: string; from: string; to: string; dashed?: boolean }
+export interface CanvasArrow { id: string; from: string; to: string; dashed?: boolean; both?: boolean }
 
 export interface CanvasHandle {
   camera(): Camera;
@@ -200,7 +200,7 @@ export function Canvas<T extends CanvasItem>(props: CanvasProps<T>) {
                 {onArrow && (
                   <path d={line.d} data-canvas-control="" stroke="transparent" strokeWidth={14} fill="none" style={{ pointerEvents: 'stroke', cursor: 'pointer' }} onPointerDown={(e) => onArrow(line.id, e)} />
                 )}
-                <path d={line.d} fill="none" stroke={on ? 'var(--canvas-arrow-selected, #0F766E)' : 'var(--canvas-arrow, #6b7280)'} strokeWidth={on ? 2.2 : 1.5} strokeDasharray={line.dashed ? '5 4' : undefined} markerEnd={`url(#${markerId}${on ? '-on' : ''})`} />
+                <path d={line.d} fill="none" stroke={on ? 'var(--canvas-arrow-selected, #0F766E)' : 'var(--canvas-arrow, #6b7280)'} strokeWidth={on ? 2.2 : 1.5} strokeDasharray={line.dashed ? '5 4' : undefined} markerEnd={`url(#${markerId}${on ? '-on' : ''})`} markerStart={line.both ? `url(#${markerId}${on ? '-on' : ''})` : undefined} />
               </g>
             );
           })}
