@@ -4,7 +4,7 @@ The code in this repository is free software under the GNU AGPL-3.0 (see `LICENS
 
 ## The marks
 
-These are trademarks of Itzfeminisce, used in the Chrome Web Store and elsewhere:
+These are trademarks of Appskord (Itzfeminisce), used in the Chrome Web Store and elsewhere:
 
 - The names **Appskord**, **Rekord**, **Klipkord**, **Motikord**, and any other app name in the "-kord" family published from this repository.
 - The app icons, logos and store art in `apps/*/public/icon/`, `apps/*/public/store/` and `packages/brand/`.
