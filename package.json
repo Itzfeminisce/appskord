@@ -1,6 +1,7 @@
 {
   "name": "appskord",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "build": "vp run -r build",

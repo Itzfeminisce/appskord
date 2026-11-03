@@ -62,4 +62,6 @@ Each app states what it stores and sends in its own `docs/privacy.md`:
 
 ## Licence
 
-MIT. See `LICENSE`.
+GNU AGPL-3.0 only. See `LICENSE` and `NOTICE`. Commits before this change were released under MIT and stay under MIT.
+
+The app names and icons are trademarks and are not covered by the licence. Forks must rename and rebrand. See `TRADEMARKS.md`.
