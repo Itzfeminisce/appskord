@@ -6,7 +6,7 @@ import type { Board, CardColour, Diagram, DiagramNode, DiagramNodeKind } from '@
 import { addEdge, addNode, deleteEdge, deleteNode, labelEdge, linkNode, NODE_COLOUR, updateNode } from '@/lib/diagram/edit';
 import { layoutDiagram, needsLayout } from '@/lib/diagram/layout';
 import { EDGE_FONT, fitNodes, fitSize, LABEL_FONT, nodeLines, relabel } from '@/lib/diagram/size';
-import { fitView, openView, toDiagram, ZOOM_STEP, zoomTo, type View } from '@/lib/diagram/zoom';
+import { fitView, openView, toDiagram, wheelZoom, ZOOM_STEP, zoomTo, type View } from '@/lib/diagram/zoom';
 import { routeEdge } from '../cards/DiagramView';
 import { KIND_LABEL } from '../logic/cards';
 import type { BoardShell } from '../shell/extensions';
@@ -127,6 +127,8 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
       const k = liveKeys.current;
       if (isTyping(e.target) || k.renaming || k.labelling) return;
       if (e.key === ' ') {
+        // A focused button or link keeps Space for pressing it.
+        if (e.target instanceof Element && e.target.closest('button, a, [role="button"], [role="menuitem"]')) return;
         e.preventDefault();
         space.current = true;
         area.current?.setAttribute('data-space', '');
@@ -139,16 +141,21 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
         k.removeSelected();
       }
     };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key !== ' ') return;
+    const releaseSpace = () => {
       space.current = false;
       area.current?.removeAttribute('data-space');
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') releaseSpace();
+    };
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
+    // The keyup is lost when the window loses focus mid-press.
+    window.addEventListener('blur', releaseSpace);
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', releaseSpace);
     };
   }, []);
 
@@ -156,11 +163,13 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
     const el = area.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // Floating menus such as "Link a card" scroll on their own.
+      if (e.target instanceof Element && e.target.closest('.bk-pop')) return;
       e.preventDefault();
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
       const r = el.getBoundingClientRect();
       // Trackpad pinch arrives as a wheel with ctrlKey.
-      if (e.ctrlKey || e.metaKey) setView((v) => zoomTo(v, { x: e.clientX - r.left, y: e.clientY - r.top }, v.zoom * Math.exp(-e.deltaY * unit * 0.01)));
+      if (e.ctrlKey || e.metaKey) setView((v) => zoomTo(v, { x: e.clientX - r.left, y: e.clientY - r.top }, v.zoom * wheelZoom(e.deltaY * unit)));
       else setView((v) => ({ ...v, x: v.x - e.deltaX * unit, y: v.y - e.deltaY * unit }));
     };
     el.addEventListener('wheel', onWheel, { passive: false });

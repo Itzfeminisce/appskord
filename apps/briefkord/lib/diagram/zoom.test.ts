@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { Diagram } from '../board/types';
-import { DIAGRAM_ZOOM, fitView, fitZoom, openView, toDiagram, zoomTo } from './zoom';
+import { DIAGRAM_ZOOM, fitView, fitZoom, openView, toDiagram, wheelZoom, WHEEL_STEP, zoomTo } from './zoom';
 
 const box = (w: number, h: number): Diagram => ({ nodes: [{ id: 'a', kind: 'step', label: 'A', colour: 'white', x: 10, y: 20, w, h }], edges: [] });
 const area = { w: 1200, h: 528 };
 
 describe('diagram zoom', () => {
+  it('zooms one mouse wheel notch by about 12%, and a pinch step by a little', () => {
+    expect(wheelZoom(-100)).toBeCloseTo(WHEEL_STEP);
+    expect(wheelZoom(100)).toBeCloseTo(1 / WHEEL_STEP);
+    expect(wheelZoom(-48)).toBeCloseTo(WHEEL_STEP);
+    expect(wheelZoom(-2)).toBeCloseTo(Math.exp(0.02));
+    expect(wheelZoom(0)).toBe(1);
+  });
+
   it('fits a big diagram below 100% and opens there', () => {
     const d = box(3000, 1200);
     expect(fitZoom(d, area)).toBeLessThan(1);

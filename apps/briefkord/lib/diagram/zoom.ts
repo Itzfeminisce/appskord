@@ -3,6 +3,8 @@ import type { Diagram } from '../board/types';
 
 export const DIAGRAM_ZOOM = { min: 0.25, max: 4 };
 export const ZOOM_STEP = 1.25;
+/** The most one wheel event zooms: one mouse notch is about 12%, while a pinch's small steps stay smooth. */
+export const WHEEL_STEP = 1.12;
 
 export interface View { x: number; y: number; zoom: number }
 export interface Area { w: number; h: number }
@@ -11,6 +13,9 @@ export interface Margin { x: number; top: number; bottom: number }
 export const VIEW_MARGIN: Margin = { x: 48, top: 72, bottom: 72 };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** The zoom factor for a Ctrl + wheel event that scrolled `pixels` down. */
+export const wheelZoom = (pixels: number): number => clamp(Math.exp(-pixels * 0.01), 1 / WHEEL_STEP, WHEEL_STEP);
 
 export function diagramBox(diagram: Diagram): { x: number; y: number; w: number; h: number } | undefined {
   if (diagram.nodes.length === 0) return undefined;
