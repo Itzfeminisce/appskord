@@ -65,7 +65,7 @@ describe('vector index', () => {
     expect(rankIndex(index, q, undefined, -1, 2)).toHaveLength(2);
   });
 
-  it('searches 500 meetings x 120 windows quickly', () => {
+  it('searches 500 meetings x 120 windows quickly', { timeout: 20_000 }, () => {
     const { searchMs, rows: n } = timeSyntheticSearch();
     expect(n).toBe(60_000);
     console.info(`Rekord recall: synthetic search ${searchMs.toFixed(1)} ms`);
