@@ -1,5 +1,6 @@
 /** Meeting mode (Meeting, MeetingFocus, MeetingEnd): one card at a time in list order, agenda, timer, notes and keys. */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { briefPointsFor } from '@/lib/ai/apply';
 import { updateCard } from '@/lib/board/ops';
 import type { Board, Card } from '@/lib/board/types';
 import { agenda, agendaCards, endLine, plannedMinutes, sectionTimes, stepOf } from '@/lib/meeting/agenda';
@@ -218,6 +219,12 @@ export function Meeting({ shell }: { shell: BoardShell }) {
           <aside aria-label="Your notes" className="bk-mt-notes">
             <div className="bk-mt-notes-head"><h2>Your notes</h2><span>Only you see these</span></div>
             {say.map((line, i) => <p key={i}>{line}</p>)}
+            {briefPointsFor(board, current.id).length > 0 && (
+              <div className="bk-mt-brief">
+                <span>From Brief me</span>
+                {briefPointsFor(board, current.id).map((point, i) => <p key={i}>{point}</p>)}
+              </div>
+            )}
             <div className="bk-mt-keys">
               <kbd>→</kbd>next
               <button type="button" onClick={() => setNotesHidden(true)}><kbd>N</kbd>hide notes</button>

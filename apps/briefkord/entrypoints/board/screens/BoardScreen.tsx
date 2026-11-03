@@ -30,6 +30,8 @@ export interface BoardScreenProps {
   id: string;
   card?: string;
   view: 'canvas' | 'list';
+  /** The side panel's "Summarize this page": summarize `card` once the board opens. */
+  summarize?: boolean;
 }
 
 const isTyping = (target: EventTarget | null): boolean => {
@@ -65,7 +67,7 @@ function Missing({ go }: { go(path: string): void }) {
   return null;
 }
 
-function ReadyBoard({ api, board, view, card: focusCard, go }: BoardScreenProps & { api: BoardApi; board: Board; go(path: string): void }) {
+function ReadyBoard({ api, board, view, card: focusCard, summarize, go }: BoardScreenProps & { api: BoardApi; board: Board; go(path: string): void }) {
   const store = useMemo(createUiStore, []);
   const canvasRef = useRef<CanvasHandle>(null);
   const [tool, setTool] = useState<Tool>('select');
@@ -115,6 +117,12 @@ function ReadyBoard({ api, board, view, card: focusCard, go }: BoardScreenProps 
   );
   const shellRef = useRef(shell);
   shellRef.current = shell;
+  const summarizeOnOpen = useRef(summarize);
+  useEffect(() => {
+    if (!summarizeOnOpen.current || !focusCard) return;
+    summarizeOnOpen.current = false;
+    boardExtensions.summarize(shellRef.current, focusCard);
+  }, [focusCard]);
 
   const select = (ids: string[]) => store.select(ids);
 

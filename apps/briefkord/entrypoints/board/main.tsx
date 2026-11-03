@@ -11,6 +11,7 @@ import './list/register';
 import { createAppRouter } from './router';
 import './diagram/register';
 import './share/register';
+import './ai/register';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
