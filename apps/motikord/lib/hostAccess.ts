@@ -10,6 +10,8 @@ export const HOSTS = {
   openai: ['https://api.openai.com/*'],
   anthropic: ['https://api.anthropic.com/*'],
   openrouter: ['https://openrouter.ai/*'],
+  google: ['https://generativelanguage.googleapis.com/*'],
+  xai: ['https://api.x.ai/*'],
   openverse: ['https://api.openverse.org/*'],
   pexels: ['https://api.pexels.com/*', 'https://images.pexels.com/*', 'https://videos.pexels.com/*'],
 } as const;

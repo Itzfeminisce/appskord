@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { connectionCopy, pendingLabel, retryIn, type LostState } from './connection';
+import { connectionCopy, providerName, pendingLabel, retryIn, type LostState } from './connection';
 
 const lost = (p: Partial<LostState>): LostState => ({ ok: false, reason: 'server', pendingChunks: 8, ...p });
 
@@ -18,6 +18,11 @@ describe('connection copy', () => {
     expect(connectionCopy(lost({ reason: 'rate-limited', retryAt: 12_000 }), 'openai', 0).body).toContain('OpenAI is busy');
     expect(connectionCopy(lost({ reason: 'rate-limited', retryAt: 12_000 }), 'openai', 0).body).toContain('0:12');
     expect(connectionCopy(lost({ reason: 'auth' }), 'groq', 0).action.label).toBe('Open Settings');
+  });
+  it('names every provider, Groq when unknown', () => {
+    expect(['anthropic', 'openrouter', 'google', 'xai', 'openai'].map(providerName)).toEqual(['Anthropic', 'OpenRouter', 'Gemini', 'xAI', 'OpenAI']);
+    expect(providerName(undefined)).toBe('Groq');
+    expect(providerName('nope')).toBe('Groq');
   });
   it('retryIn never goes negative', () => {
     expect(retryIn(undefined, 5)).toBeNull();

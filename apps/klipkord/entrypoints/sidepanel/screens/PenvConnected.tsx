@@ -4,7 +4,7 @@ import { useRouter } from '../router';
 import { disconnectPenvApp, forgetAll, loadKeyStatus } from '@/lib/penv';
 import { serviceLabel } from '@appskord/llm';
 import { getSettings, updateSettings } from '@/lib/settings';
-import { canStart, cloudSettings, jobsFor, noUsableKeys, notesEngineFor, PENV_CLOUD_URL, STATUS_WORD, type KeyName } from '@/lib/setup';
+import { aiSettings, canStart, cloudSettings, jobsFor, noUsableKeys, PENV_CLOUD_URL, STATUS_WORD, type KeyName } from '@/lib/setup';
 import type { Settings } from '@/lib/types';
 import { BannerAction, Check, CARD, ExternalLink, Head, Heading, MONO, PAGE, PenvTile, PrimaryButton, StateBanner, STATUS_TEXT, useKeyState } from './Setup';
 
@@ -38,8 +38,7 @@ export default function PenvConnected() {
       await updateSettings({
         keySource: null,
         penvApp: undefined,
-        ai: 'local',
-        notesEngine: notesEngineFor('local', null),
+        ...aiSettings('local', null),
       });
     } catch (error) {
       console.error('Klipkord: could not disconnect Penv Cloud', error);

@@ -4,6 +4,7 @@ import { units } from '../wordCuts';
 import { currentCut, steps, undo } from './history';
 import { fromRecording } from './migrate';
 import { applyCleanup, DEFAULT_CLEANUP, fillerFinds, findAll, listed, pauseFinds, PAUSE_SPEED, retakeFinds, timeSaved } from './cleanup';
+import { captionLines } from './captions';
 import { cutRange } from './ops';
 import { cutLength } from './time';
 import type { Project } from './types';
@@ -82,6 +83,18 @@ describe('clean up finds', () => {
     expect([finds.fillers.length, finds.pauses.length, finds.retakes.length]).toEqual([3, 1, 1]);
     expect(listed(finds, { ...DEFAULT_CLEANUP, retakes: false }).map((f) => f.kind)).toEqual(['filler', 'filler', 'filler', 'pause']);
     expect(timeSaved(listed(finds, DEFAULT_CLEANUP))).toBe(500 + 500 + 2300 + 5000);
+  });
+});
+
+describe('segment-only transcripts (OpenAI text without word times)', () => {
+  it('cleans up by whole lines and still makes captions, with no word-level finds', () => {
+    const plain: Segment[] = transcript.map(({ words: _w, ...seg }) => seg);
+    const p = fromRecording({ ...rec, transcript: plain });
+    const finds = findAll(plain, currentCut(p), DEFAULT_CLEANUP);
+    expect(finds.pauses).toHaveLength(1);
+    expect(finds.fillers.every((f) => plain.some((s) => f.start >= s.start && f.end <= s.end))).toBe(true);
+    expect(() => applyCleanup(p, listed(finds, DEFAULT_CLEANUP), 'cut')).not.toThrow();
+    expect(captionLines(units(plain)).length).toBeGreaterThan(0);
   });
 });
 

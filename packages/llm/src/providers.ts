@@ -1,8 +1,14 @@
 /** The AI providers the apps talk to: where their API lives, how a key authenticates, and what the key is called. */
 
-export type ProviderId = 'groq' | 'openai' | 'anthropic' | 'openrouter' | 'ollama';
+export type ProviderId = 'groq' | 'openai' | 'anthropic' | 'openrouter' | 'google' | 'xai' | 'ollama';
 export type CloudProviderId = Exclude<ProviderId, 'ollama'>;
-export type ProviderKeyName = 'GROQ_API_KEY' | 'OPENAI_API_KEY' | 'ANTHROPIC_API_KEY' | 'OPENROUTER_API_KEY';
+export type ProviderKeyName =
+  | 'GROQ_API_KEY'
+  | 'OPENAI_API_KEY'
+  | 'ANTHROPIC_API_KEY'
+  | 'OPENROUTER_API_KEY'
+  | 'GEMINI_API_KEY'
+  | 'XAI_API_KEY';
 
 export interface ProviderInfo {
   id: ProviderId;
@@ -57,6 +63,26 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     prefix: 'sk-or-',
     keysUrl: 'https://openrouter.ai/keys',
   },
+  google: {
+    id: 'google',
+    label: 'Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    host: 'generativelanguage.googleapis.com',
+    api: 'openai',
+    keyName: 'GEMINI_API_KEY',
+    prefix: 'AIza',
+    keysUrl: 'https://aistudio.google.com/apikey',
+  },
+  xai: {
+    id: 'xai',
+    label: 'xAI',
+    baseUrl: 'https://api.x.ai/v1',
+    host: 'api.x.ai',
+    api: 'openai',
+    keyName: 'XAI_API_KEY',
+    prefix: 'xai-',
+    keysUrl: 'https://console.x.ai',
+  },
   ollama: { id: 'ollama', label: 'Ollama', baseUrl: 'http://localhost:11434/v1', host: 'localhost', api: 'openai' },
 };
 
@@ -94,7 +120,7 @@ export function authHeaders(provider: ProviderId, key: string, openaiCompatible 
   return { Authorization: `Bearer ${key}` };
 }
 
-export const CLOUD_PROVIDER_IDS: CloudProviderId[] = ['groq', 'openai', 'anthropic', 'openrouter'];
+export const CLOUD_PROVIDER_IDS: CloudProviderId[] = ['groq', 'openai', 'anthropic', 'openrouter', 'google', 'xai'];
 
 /** The cloud provider whose key name this is, or undefined. */
 export function providerForKey(name: string): CloudProviderId | undefined {

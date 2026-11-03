@@ -22,6 +22,8 @@ export default defineAppConfig({
     'https://openrouter.ai/*',
     'https://api.openai.com/*',
     'https://api.anthropic.com/*',
+    'https://api.x.ai/*',
+    'https://generativelanguage.googleapis.com/*',
     'http://localhost:11434/*',
     'https://www.googleapis.com/*',
     '<all_urls>',

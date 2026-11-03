@@ -88,7 +88,7 @@ export function TranslatePanel(p: SlotProps) {
     running.current = controller;
     setStatus('thinking');
     try {
-      const out = await translateLines(captions.map((c) => c.text), lang, callWith(s.keys, controller.signal));
+      const out = await translateLines(captions.map((c) => c.text), lang, callWith(s, controller.signal));
       if (running.current !== controller) return;
       setLines(out);
       setStatus('idle');

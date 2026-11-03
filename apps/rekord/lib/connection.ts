@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PROVIDERS, type ProviderId } from '@appskord/llm';
 import { onMessage } from './messages';
 import { formatClock } from './time';
 import type { ConnectionState } from './types';
@@ -59,7 +60,7 @@ export function useRetryGuard(state: ConnectionState, send: () => void): { busy:
 }
 
 export function providerName(provider: string | undefined): string {
-  return provider === 'openai' ? 'OpenAI' : 'Groq';
+  return provider && provider in PROVIDERS ? PROVIDERS[provider as ProviderId].label : 'Groq';
 }
 
 export function pendingLabel(pendingChunks: number): string {

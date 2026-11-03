@@ -63,8 +63,8 @@ describe('chat errors and retired models', () => {
   it('re-picks a listed Groq model once when the default is retired, and keeps it', async () => {
     const gone = () => new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 404 });
     const f = vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'openai/gpt-oss-120b' }] }));
-      return JSON.parse(String(init?.body)).model === 'llama-3.3-70b-versatile' ? gone() : reply('healed');
+      if (url.endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'openai/gpt-oss-20b' }] }));
+      return JSON.parse(String(init?.body)).model === 'openai/gpt-oss-120b' ? gone() : reply('healed');
     });
     expect(await chat(msgs, {}, f)).toBe('healed');
     expect(await chat(msgs, {}, f)).toBe('healed');
@@ -76,6 +76,19 @@ describe('chat errors and retired models', () => {
     const f = vi.fn(async () => new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 404 }));
     await expect(chat(msgs, { keys: { OPENAI_API_KEY: 'sk-test' } }, f)).rejects.toThrow('The AI service returned an error (404).');
     expect(f).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('picked model', () => {
+  it('sends the picked model, and on a gone one moves to a listed model and reports it', async () => {
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'gpt-6.1-sol' }] }));
+      return JSON.parse(String(init?.body)).model === 'gpt-old' ? new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 404 }) : reply('ok');
+    });
+    const onRepick = vi.fn();
+    expect(await chat(msgs, { keys: { OPENAI_API_KEY: 'sk-fake' }, provider: 'openai', model: 'gpt-old', onRepick }, f)).toBe('ok');
+    expect(onRepick).toHaveBeenCalledWith('gpt-6.1-sol');
+    expect(JSON.parse(String((f.mock.calls.at(-1) as unknown as [string, RequestInit])[1].body)).model).toBe('gpt-6.1-sol');
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Segment } from '@/lib/types';
 import { createQueue, type QueueDeps, type QueueStatus } from './queue';
-import { GroqError } from './groq';
+import { SpeechError } from './groq';
 
 const speech = () => new Float32Array(1600).fill(0.2);
 const chunk = (i: number) => ({ start: i * 10_000, end: (i + 1) * 10_000, audio: speech() });
@@ -12,7 +12,7 @@ function deps(over: Partial<QueueDeps> = {}) {
   const statuses: QueueStatus[] = [];
   const d: QueueDeps = {
     local: async () => 'local text',
-    groq: async () => 'groq text',
+    cloud: async () => 'groq text',
     online: () => true,
     onSegment: (s) => segments.push(s),
     onStatus: (s) => statuses.push(s),
@@ -58,8 +58,8 @@ describe('transcript queue', () => {
   });
 
   it('Groq down: this chunk and the rest run locally (cloud-ai-down)', async () => {
-    const groq = vi.fn(async () => { throw new GroqError('down', 'server'); });
-    const { d, segments } = deps({ groq });
+    const groq = vi.fn(async () => { throw new SpeechError('down', 'server'); });
+    const { d, segments } = deps({ cloud: groq });
     const q = createQueue(d, 'groq');
     q.add(chunk(0));
     q.add(chunk(1));
@@ -88,10 +88,20 @@ describe('transcript queue', () => {
     const q = createQueue(d, 'local');
     q.add(chunk(0));
     await q.drain();
-    q.useGroq();
+    q.useCloud('groq');
     q.add(chunk(1));
     await q.drain();
     expect(segments.map((s) => s.text)).toEqual(['local text', 'groq text']);
+    expect(q.status.engine).toBe('groq');
+  });
+
+  it('runs on the picked OpenAI provider and reports it as the engine', async () => {
+    const { d, segments } = deps({ cloud: async () => 'openai text' });
+    const q = createQueue(d, 'openai');
+    q.add(chunk(0));
+    await q.drain();
+    expect(segments.map((s) => s.text)).toEqual(['openai text']);
+    expect(q.status.engine).toBe('openai');
   });
 
   it('cancel drops waiting chunks and reports nothing more', async () => {

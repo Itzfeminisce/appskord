@@ -17,6 +17,8 @@ export default defineAppConfig({
     'https://api.openai.com/*',
     'https://api.anthropic.com/*',
     'https://openrouter.ai/*',
+    'https://api.x.ai/*',
+    'https://generativelanguage.googleapis.com/*',
     'https://api.openverse.org/*',
     'https://api.pexels.com/*',
     'https://images.pexels.com/*',

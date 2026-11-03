@@ -3,7 +3,7 @@ import type { SpeechProvider } from './path';
 /** Speech-to-text endpoints and models (OpenAI-compatible /audio/transcriptions). */
 export const SPEECH_APIS: Record<SpeechProvider, { url: string; model: string }> = {
   groq: { url: 'https://api.groq.com/openai/v1/audio/transcriptions', model: 'whisper-large-v3-turbo' },
-  openai: { url: 'https://api.openai.com/v1/audio/transcriptions', model: 'gpt-4o-mini-transcribe' },
+  openai: { url: 'https://api.openai.com/v1/audio/transcriptions', model: 'gpt-transcribe' },
 };
 
 export type VoiceErrorCode = 'key' | 'busy' | 'down' | 'offline' | 'cancelled' | 'failed';

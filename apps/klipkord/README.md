@@ -68,7 +68,7 @@ There is no account, no analytics and no telemetry.
 | Project (edits, layouts, zooms, overlays, captions) | Your computer (IndexedDB) | Nothing. |
 | Media you add (videos, images, music) | Copied into the project on your computer | Nothing. |
 | Bundled music | Ships inside the extension, CC0 | Nothing. |
-| Transcript | Your computer | Audio goes to Groq only if you turned on cloud transcript. |
+| Transcript | Your computer | Audio goes only to the provider picked under Transcripts in Settings (Groq or OpenAI), and only once you pick one. |
 | Ask the AI to edit, highlights, suggested edits | Your computer when no cloud AI is set | Transcript text, word or segment ids, chapter titles and your request go to the AI you chose. Never video, audio, images or events. |
 | Translate captions | Your computer when no cloud AI is set | Caption text and the target language go to the AI you chose. |
 | Camera background blur, noise removal, loudness | Your computer | Nothing. MediaPipe and RNNoise run locally; the models ship with the extension, never from a third-party CDN. |

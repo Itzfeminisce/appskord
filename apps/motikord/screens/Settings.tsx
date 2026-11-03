@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { canSeeImages } from '@appskord/llm';
-import { criticModelFor, PROVIDER_IDS, PROVIDERS, SUGGESTED_MODELS } from '../lib/providers';
+import { criticModelFor, pickedModel, PROVIDER_IDS, PROVIDERS } from '../lib/providers';
 import { useRouter } from '../entrypoints/sidepanel/router';
 import { getBrandKit } from '../lib/db';
 import { chooseFolder } from '../lib/folder';
@@ -11,7 +11,7 @@ import type { BrandKit, FileKind, LookStyle, Pace, Provider, Quality, Settings a
 import { CODE_URL, appVersion } from './Privacy';
 import { ImageKeyPanel } from './ImageKey';
 import { BackButton, probeMachine } from './Setup';
-import { ModelBuiltIn, ModelField } from './SettingsModel';
+import { ModelSection } from './SettingsModel';
 import { NoBuiltInAi } from './StatesSetup';
 import { voiceSettingsLine } from './StatesVoice';
 import { voiceLanguage, voiceLanguageOptions, useVoicePath } from '../lib/voice/useVoice';
@@ -19,10 +19,10 @@ import { voiceLanguage, voiceLanguageOptions, useVoicePath } from '../lib/voice/
 const KINDS: [FileKind, string][] = [['mp4', 'MP4'], ['webm', 'WebM'], ['webm-alpha', 'See-through WebM'], ['gif', 'GIF']];
 const QUALITIES: Quality[] = ['1080p', '720p'];
 
-function Section({ title, children, first: top }: { title?: string; children: ReactNode; first?: boolean }) {
+function Section({ title, children, first: top, id }: { title?: string; children: ReactNode; first?: boolean; id?: string }) {
   return (
     <>
-      {title && <h2 style={{ margin: top ? '14px 24px 8px' : '22px 24px 8px', fontSize: 13, fontWeight: 600 }}>{title}</h2>}
+      {title && <h2 id={id} style={{ margin: top ? '14px 24px 8px' : '22px 24px 8px', fontSize: 13, fontWeight: 600 }}>{title}</h2>}
       <div style={{ margin: title ? '0 16px' : '22px 16px 0', borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }}>{children}</div>
     </>
   );
@@ -62,7 +62,7 @@ function Status({ ready, children, size = 11 }: { ready: boolean; children: stri
 /** The visual critic's line: whether the chosen model can see images. Built-in AI never can. */
 export function criticStatus(s: SettingsData): { ready: boolean; text: string } {
   const label = PROVIDERS[s.provider].label;
-  const model = criticModelFor(s.provider, s.models[s.provider] ?? SUGGESTED_MODELS[s.provider].models[0]!);
+  const model = criticModelFor(s.provider, pickedModel(s.provider, s.models[s.provider]).model);
   const ready = s.ai === 'cloud' && canSeeImages(s.provider, model);
   return { ready, text: ready ? `${label}'s model can see images · Ready` : `${label}'s model can't see images. The layout check still runs.` };
 }
@@ -103,23 +103,6 @@ export function LookSection({ s, set, onPrivacy, onModel }: { s: SettingsData; s
   );
 }
 
-const tick = <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style={{ position: 'absolute', top: 10, right: 10 }}><circle cx="12" cy="12" r="10" fill="var(--accent)" /><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-const screen = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5" /><path d="M2 19h20" /></svg>;
-
-function Tile({ on, mono, name, status, wide, disabled, onPick }: { on: boolean; mono: ReactNode; name: string; status: ReactNode; wide?: boolean; disabled?: boolean; onPick: () => void }) {
-  return (
-    <button type="button" role="radio" aria-checked={on} disabled={disabled} onClick={onPick}
-      style={{ position: 'relative', display: 'flex', flexDirection: wide ? 'row' : 'column', alignItems: wide ? 'center' : 'flex-start', gap: wide ? 10 : 8, padding: 12, borderRadius: 12, border: on ? '1.5px solid var(--accent)' : '1px solid var(--line)', background: on ? 'var(--tint)' : 'var(--surface)', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.6 : 1, gridColumn: wide ? 'span 2' : undefined, font: 'inherit', color: 'inherit', textAlign: 'left', minWidth: 0 }}>
-      <span className="mono" style={{ width: 28, height: 28, borderRadius: 8, background: wide ? '#F1F1F3' : on ? 'var(--accent)' : 'var(--ink)', color: wide ? 'var(--ink)' : '#fff', fontSize: 11, fontWeight: 500, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{mono}</span>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: wide ? 2 : 8, minWidth: 0 }}>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>{name}</span>
-        {status}
-      </span>
-      {on && tick}
-    </button>
-  );
-}
-
 /** "OpenAI, Groq and Pexels keys": the keys Penv Cloud gave, the chosen provider first; "Not connected" before it gave any. */
 export function penvKeysLine(provider: Provider, keys: Record<string, string>, connected: boolean): string {
   if (!connected) return 'Not connected';
@@ -127,6 +110,11 @@ export function penvKeysLine(provider: Provider, keys: Record<string, string>, c
   if (keys.PEXELS_API_KEY) have.push('Pexels');
   if (!have.length) return 'No keys yet';
   return have.length === 1 ? `${have[0]} key` : `${have.slice(0, -1).join(', ')} and ${have.at(-1)} keys`;
+}
+
+/** The no-built-in-AI card only matters while "On this computer" is the pick. */
+export function showNoBuiltInAi(builtInAi: boolean | null, ai: SettingsData['ai']): boolean {
+  return builtInAi === false && ai === 'local';
 }
 
 export default function Settings() {
@@ -162,27 +150,16 @@ export default function Settings() {
       </div>
 
       <h2 style={{ margin: '14px 24px 8px', fontSize: 13, fontWeight: 600 }}>AI that writes your clips</h2>
-      <div style={{ margin: '0 16px', padding: 14, borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div role="radiogroup" aria-label="AI that writes your clips" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          {PROVIDER_IDS.map((p) => {
-            const ready = !!keys[PROVIDERS[p].keyName];
-            return <Tile key={p} on={s.ai === 'cloud' && provider === p} mono={PROVIDERS[p].mono} name={PROVIDERS[p].label}
-              status={<Status ready={ready}>{ready ? 'Ready' : 'Needs a key'}</Status>} onPick={() => set({ ai: 'cloud', provider: p })} />;
-          })}
-          <Tile wide on={s.ai === 'local'} mono={screen} name="On this computer" disabled={builtInAi === false}
-            status={<Status ready={builtInAi === true}>Ready · nothing is sent</Status>} onPick={() => set({ ai: 'local' })} />
-        </div>
-        <div style={{ height: 1, background: '#EFEFF1', margin: '0 -14px' }} />
-        {s.ai === 'cloud'
-          ? <ModelField key={provider} provider={provider} saved={s.models[provider]} apiKey={keys[PROVIDERS[provider].keyName]}
-              onSave={(m) => set({ models: { [provider]: m } })} onPasteKey={() => navigate('PasteKey')} onPenv={() => navigate('PenvConnect')} />
-          : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><span style={{ fontSize: 13, fontWeight: 600 }}>Model</span><ModelBuiltIn /></div>}
+      <div style={{ margin: '0 16px', padding: '12px 14px', borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <ModelSection s={s} keys={keys} builtInAi={builtInAi} save={set}
+          onKeys={() => document.getElementById('keys')?.scrollIntoView({ behavior: 'smooth' })}
+          onPasteKey={() => navigate('PasteKey')} onPenv={() => navigate('PenvConnect')} />
       </div>
-      {builtInAi === false && <div style={{ margin: '10px 16px 0' }}><NoBuiltInAi provider={provider} onUseGroq={() => set({ ai: 'cloud' })} /></div>}
+      {showNoBuiltInAi(builtInAi, s.ai) && <div style={{ margin: '10px 16px 0' }}><NoBuiltInAi provider={provider} onUseGroq={() => set({ ai: 'cloud' })} /></div>}
 
       <LookSection s={s} set={set} onPrivacy={() => navigate('Privacy')} onModel={() => navigate('SettingsModel')} />
 
-      <Section title="Keys">
+      <Section title="Keys" id="keys">
         <a href="#keys" onClick={(e) => { e.preventDefault(); navigate('PenvConnected'); }} style={{ ...rowStyle, ...first }}>
           <span className="mono" aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--ink)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 500, flexShrink: 0 }}>pv</span>
           {text('Penv Cloud', penvKeysLine(provider, keys, connected))}
@@ -191,6 +168,7 @@ export default function Settings() {
         </a>
         <a href="#paste" onClick={(e) => { e.preventDefault(); navigate('PasteKey'); }} style={{ ...rowStyle, color: 'var(--accent)', fontSize: 13, fontWeight: 500 }}>Paste a key instead</a>
       </Section>
+      <p style={{ margin: '6px 24px 0', fontSize: 12, color: 'var(--muted)' }}>Add a key and its models appear in the list above.</p>
 
       <Section title="Voice prompts">
         <Switch top label="Speak your prompt" hint="Shows the mic in the prompt box. Motikord only listens while the mic is lit." checked={s.voiceOn} onChange={(v) => set({ voiceOn: v })} />

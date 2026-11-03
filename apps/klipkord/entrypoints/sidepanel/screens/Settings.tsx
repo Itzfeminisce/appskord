@@ -1,15 +1,22 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { listModelsFor } from '@appskord/llm';
+import { ModelPicker, type PickerValue } from '@appskord/ui';
 import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { bubbleMode } from '@/lib/bubble';
 import { putFolderHandle } from '@/lib/db';
 import { forgetGoogleToken, getGoogleToken } from '@/lib/googleAuth';
-import { wasDisconnected } from '@/lib/penv';
+import { chat, PROVIDERS } from '@/lib/llm';
+import { builtinAvailable } from '@/lib/notes/engines';
+import { loadKeys, requestHosts, wasDisconnected } from '@/lib/penv';
 import { getSettings, onSettingsChanged, updateSettings } from '@/lib/settings';
-import { notesOptions, penvRowStatus, REPO_URL, SHORTCUTS_URL, transcriptsStatus } from '@/lib/setup';
+import {
+  choiceFor, hostFor, penvRowStatus, PICKER_CLOUD, PICKER_FOOT, PICKER_LABEL, pickerGroups, pickerValue, REPO_URL, SHORTCUTS_URL, typedFailure,
+  type ListState, type PickerJob,
+} from '@/lib/setup';
 import { formatBytes } from '@/lib/time';
 import { videoStore } from '@/lib/videoStore';
-import type { AiMode, NotesEngine, Settings as SettingsData } from '@/lib/types';
+import type { CloudNotes, Settings as SettingsData } from '@/lib/types';
 import { BannerAction, CARD, StateBanner, useKeyState } from './Setup';
 
 const LANGUAGES = ['en', 'es', 'fr', 'de', 'pt', 'it', 'nl', 'pl', 'tr', 'ru', 'ar', 'hi', 'ja', 'ko', 'zh'];
@@ -20,6 +27,92 @@ function languageName(code: string): string {
   } catch {
     return code;
   }
+}
+
+type Lists = Record<PickerJob, Partial<Record<CloudNotes, ListState>>>;
+
+/** "Transcripts" and "Notes and Ask": one model picker each. Lists load from each provider when a picker opens. */
+function AiPickers({ s, loadedKeys, save, navigate }: {
+  s: SettingsData; loadedKeys: string[]; save: (partial: Partial<SettingsData>) => void; navigate: (screen: 'PasteKey' | 'PenvConnect') => void;
+}) {
+  const [lists, setLists] = useState<Lists>({ transcripts: {}, notes: {} });
+  const [builtin, setBuiltin] = useState(false);
+  const [ollama, setOllama] = useState<string[] | null | undefined>(undefined);
+  const [failed, setFailed] = useState<Partial<Record<PickerJob, string>>>({});
+  const keyNames = loadedKeys.join();
+
+  useEffect(() => { builtinAvailable().then(setBuiltin, () => undefined); }, []);
+  // A key added or removed: its lists load again on the next open.
+  useEffect(() => setLists({ transcripts: {}, notes: {} }), [keyNames]);
+
+  function load(job: PickerJob, p: CloudNotes) {
+    const set = (state: ListState) => setLists((l) => ({ ...l, [job]: { ...l[job], [p]: state } }));
+    set({ status: 'loading' });
+    loadKeys()
+      .then((keys) => listModelsFor(p, job === 'transcripts' ? 'speech' : 'chat', { key: keys[PROVIDERS[p].keyName] }))
+      .then((list) => set({ status: 'done', list }), (error) => console.error('Klipkord: could not load the model list', error));
+  }
+
+  function open(job: PickerJob) {
+    for (const p of PICKER_CLOUD[job]) if (loadedKeys.includes(PROVIDERS[p].keyName) && !lists[job][p]) load(job, p);
+    if (job === 'notes') {
+      listModelsFor('ollama', 'chat').then((l) => setOllama(l.error || !l.models.length ? null : l.models.map((m) => m.id)), () => setOllama(null));
+    }
+  }
+
+  async function pick(job: PickerJob, value: PickerValue, typed: boolean) {
+    const choice = choiceFor(job, value);
+    const host = hostFor(choice);
+    // Asked on the click itself, so Chrome shows its prompt; already allowed answers at once.
+    const allowed = host ? requestHosts([host]) : Promise.resolve(true);
+    if (!(await allowed)) return;
+    setFailed((f) => ({ ...f, [job]: undefined }));
+    if (typed && job === 'notes' && choice.provider in PROVIDERS) {
+      const p = choice.provider as CloudNotes;
+      try {
+        // A gone model would be swapped for a listed one; for a typed name that means it did not answer.
+        let swapped = false;
+        await chat([{ role: 'user', content: 'Reply with OK.' }], { provider: p, model: choice.model, maxTokens: 16, onRepick: () => { swapped = true; } });
+        if (swapped) throw new Error('The typed model is not offered.');
+      } catch (error) {
+        console.error('Klipkord: the typed model did not answer', error);
+        const failure = typedFailure(choice.model, error);
+        if ('refused' in failure) {
+          const prev = lists[job][p];
+          const models = prev?.status === 'done' ? prev.list.models : [];
+          setLists((l) => ({ ...l, [job]: { ...l[job], [p]: { status: 'done', list: { models, source: 'suggested', error: failure.refused } } } }));
+        } else setFailed((f) => ({ ...f, [job]: failure.line }));
+        return;
+      }
+    }
+    save({ [job]: choice });
+  }
+
+  const typedProvider = (job: PickerJob) => {
+    const current = pickerValue(job, s).provider;
+    return current !== 'local' ? current : (PICKER_CLOUD[job].find((p) => loadedKeys.includes(PROVIDERS[p].keyName)) ?? 'groq');
+  };
+  const goKeys = (provider?: string) => (provider ? document.getElementById('keys')?.scrollIntoView({ behavior: 'smooth' }) : navigate('PasteKey'));
+
+  return (
+    <>
+      {(['transcripts', 'notes'] as const).map((job) => {
+        const gone = s[job].gone;
+        return (
+          <Fragment key={job}>
+          <ModelPicker label={PICKER_LABEL[job]} foot={PICKER_FOOT[job]}
+            groups={pickerGroups(job, s, { keys: loadedKeys, lists: lists[job], builtin, ...(job === 'notes' ? { ollama } : {}) })}
+            value={pickerValue(job, s)} typedProvider={typedProvider(job)}
+            gone={gone ? { old: gone, app: 'Klipkord' } : undefined}
+            onOpen={() => open(job)} onRetry={(p) => load(job, p as CloudNotes)} onAddKey={goKeys}
+            onConnectCloud={() => navigate('PenvConnect')}
+            onPick={(value, typed) => void pick(job, value, typed)} />
+          {failed[job] && <div role="alert" style={{ fontSize: 12, color: '#B91C1C', margin: '-2px 2px 4px' }}>{failed[job]}</div>}
+          </Fragment>
+        );
+      })}
+    </>
+  );
 }
 
 const LINK = { textDecoration: 'none', fontWeight: 500, color: '#C2410C', background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer' } as const;
@@ -71,18 +164,10 @@ export default function Settings() {
   }
 
   const connected = s.keySource === 'penv-app' && !!s.penvApp && !gone;
-  const penvStatus = penvRowStatus(connected && keys.loaded.length > 0, keys.loaded.length);
-  const usable = keys.loaded.length > 0;
+  const penvStatus = penvRowStatus(connected, keys.loaded);
 
   const save = (partial: Parameters<typeof updateSettings>[0]) =>
     updateSettings(partial).then(setS).catch((error) => console.error('Klipkord: could not save settings', error));
-
-  function pickAi(ai: AiMode) {
-    if (ai === 'local') return void save({ ai, notesEngine: s!.notesEngine === 'groq' ? 'builtin' : s!.notesEngine });
-    if (!usable) return navigate('PenvConnect'); // cloud turns on once a key works
-    void save({ ai, notesEngine: 'groq' });
-    navigate('PenvConnected');
-  }
 
   async function changeFolder() {
     try {
@@ -115,22 +200,9 @@ export default function Settings() {
         )}
 
         <Section title="AI">
-          <div style={{ ...CARD, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div role="radiogroup" aria-label="Where AI runs" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, padding: 4, borderRadius: 10, background: '#F1F1F3' }}>
-              {([['local', 'On this computer'], ['cloud', 'Faster with Groq']] as const).map(([ai, label]) => (
-                <button key={ai} type="button" role="radio" aria-checked={s.ai === ai} onClick={() => pickAi(ai)}
-                  style={{ height: 32, borderRadius: 7, border: 'none', font: 'inherit', fontSize: 12, cursor: 'pointer', ...(s.ai === ai ? { background: '#FFFFFF', fontWeight: 600, boxShadow: '0 1px 2px rgba(16,16,20,0.08)' } : { background: 'transparent', fontWeight: 500, color: '#5F6168' }) }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div style={ROW}><span>Transcripts</span><span style={VALUE}>{transcriptsStatus(s.ai)}</span></div>
-            <label style={ROW}>
-              <span>Notes</span>
-              <select value={s.notesEngine} onChange={(e) => void save({ notesEngine: e.target.value as NotesEngine })} style={SELECT}>
-                {notesOptions(s.ai).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </label>
+          <div style={{ ...CARD, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12, '--tint': '#FFF7ED' } as CSSProperties}>
+            <AiPickers s={s} loadedKeys={keys.loaded} save={(partial) => void save(partial)} navigate={navigate} />
+            <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45, color: '#5F6168' }}>On this computer, nothing is sent. A cloud model is faster and uses your key.</p>
             <div style={ROW}>
               <span>Language</span>
               <span style={{ ...VALUE, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -144,13 +216,13 @@ export default function Settings() {
           </div>
         </Section>
 
-        <Section title="Keys for cloud AI" note="Only needed when AI runs with Groq or another cloud service.">
+        <Section title="Keys for cloud AI" id="keys" note="Only needed for a cloud model. Add a key and its models appear in the list.">
           <div style={{ ...CARD, display: 'flex', flexDirection: 'column' }}>
             <button type="button" onClick={() => navigate(connected ? 'PenvConnected' : 'PenvConnect')} style={{ padding: '12px 14px', border: 'none', background: 'transparent', font: 'inherit', color: '#111114', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
               <span style={{ width: 32, height: 32, borderRadius: 9, background: '#111114', color: '#FFFFFF', fontFamily: 'var(--mono)', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>pv</span>
               <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <span style={{ fontSize: 14, fontWeight: 500 }}>Penv Cloud</span>
-                {penvStatus && <span style={{ fontSize: 12, color: '#15803D' }}>{penvStatus}</span>}
+                {penvStatus && <span style={{ fontSize: 12, color: '#5F6168' }}>{penvStatus}</span>}
               </span>
               <span style={{ fontSize: 13, fontWeight: 500, color: '#C2410C' }}>Manage</span>
             </button>
@@ -224,7 +296,7 @@ export default function Settings() {
         <Section title="Where your data goes" id="privacy">
           <div style={{ ...CARD, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, lineHeight: 1.45, color: '#44464D' }}>
             <span>Video, camera and notes never leave this computer.</span>
-            <span>With Groq on, only your voice and transcript go to Groq.</span>
+            <span>With a cloud model picked, only your voice and transcript go to that provider.</span>
             <span>No account, no analytics, no tracking.</span>
           </div>
         </Section>

@@ -22,6 +22,26 @@ describe('settings', () => {
     expect(s.memory).toMatchObject({ clash: true, recall: true, brief: { on: true, minutes: 10 }, lookBack: { day: 5 } });
   });
 
+  it('moves a retired model to the Recommended one and remembers it as gone', async () => {
+    await fakeBrowser.storage.local.set({ settings: {
+      summary: { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      transcription: { provider: 'openai', model: 'gpt-4o-transcribe' },
+    } });
+    const s = await getSettings();
+    expect(s.summary).toEqual({ provider: 'groq', model: 'openai/gpt-oss-120b', gone: 'llama-3.3-70b-versatile' });
+    expect(s.transcription).toEqual({ provider: 'openai', model: 'gpt-transcribe', gone: 'gpt-4o-transcribe' });
+  });
+
+  it('keeps a current model and a provider with no Recommended model as they are', async () => {
+    await fakeBrowser.storage.local.set({ settings: {
+      summary: { provider: 'ollama', model: 'llama3.2' },
+      transcription: { provider: 'deepgram', model: 'nova-3' },
+    } });
+    const s = await getSettings();
+    expect(s.summary).toEqual({ provider: 'ollama', model: 'llama3.2' });
+    expect(s.transcription).toEqual({ provider: 'deepgram', model: 'nova-3' });
+  });
+
   it('persists partial updates in local storage', async () => {
     await updateSettings({ onboarded: true, language: 'auto' });
     const s = await getSettings();
@@ -72,7 +92,7 @@ describe('settings', () => {
 
     const { setup: _s, realtimeBackup: _r, google: _g, notion: _n, ...v2 } = DEFAULT_SETTINGS;
     await fakeBrowser.storage.local.set({
-      settings: { ...v2, onboarded: true, keySource: 'paste', summary: { provider: 'groq', model: 'llama-3.3-70b-versatile' } },
+      settings: { ...v2, onboarded: true, keySource: 'paste', summary: { provider: 'groq', model: 'openai/gpt-oss-120b' } },
     });
     const s = await getSettings();
     expect(s.onboarded).toBe(true);

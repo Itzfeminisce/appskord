@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkKey, checkRequest, createKeyWatcher, detectKey, looksComplete, serviceLabel, verifyKey } from './keys';
 
 describe('detectKey', () => {
+  it('knows xAI and Gemini keys by prefix', () => {
+    expect(detectKey('xai-test')).toBe('XAI_API_KEY');
+    expect(detectKey('AIza' + 'x'.repeat(30))).toBe('GEMINI_API_KEY');
+    expect(serviceLabel('XAI_API_KEY')).toBe('xAI');
+    expect(serviceLabel('GEMINI_API_KEY')).toBe('Gemini');
+  });
   it('recognises Groq and Pexels keys', () => {
     expect(detectKey('gsk_test')).toBe('GROQ_API_KEY');
     expect(detectKey('  gsk_test  ')).toBe('GROQ_API_KEY');

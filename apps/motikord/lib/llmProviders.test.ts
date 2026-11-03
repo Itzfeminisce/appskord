@@ -29,41 +29,52 @@ const OPENROUTER_MODELS = 'https://openrouter.ai/api/v1/models';
 
 describe('model lists', () => {
   it('keeps only chat models', () => {
-    const data = ['gpt-4.1', 'text-embedding-3-large', 'whisper-1', 'tts-1', 'gpt-image-1', 'omni-moderation-latest', 'dall-e-3', 'gpt-4o-realtime-preview', 'o3-pro', 'gpt-4o'].map((id) => ({ id }));
-    expect(chatModels('openai', data)).toEqual(['gpt-4.1', 'gpt-4o']);
-    expect(chatModels('groq', [{ id: 'llama-3.3-70b-versatile' }, { id: 'llama-guard-4-12b' }, { id: 'whisper-large-v3' }, { id: 'old', active: false }])).toEqual(['llama-3.3-70b-versatile']);
+    const data = ['gpt-6.1-sol', 'text-embedding-3-large', 'gpt-transcribe', 'tts-1', 'gpt-image-1', 'omni-moderation-latest', 'dall-e-3', 'gpt-6-realtime-preview', 'o3-pro', 'gpt-6-luna'].map((id) => ({ id }));
+    expect(chatModels('openai', data)).toEqual(['gpt-6-luna', 'gpt-6.1-sol']);
+    expect(chatModels('groq', [{ id: 'openai/gpt-oss-120b' }, { id: 'llama-guard-4-12b' }, { id: 'whisper-large-v3' }, { id: 'old', active: false }])).toEqual(['openai/gpt-oss-120b']);
     expect(chatModels('openrouter', [{ id: 'a/text', architecture: { output_modalities: ['text'] } }, { id: 'b/pic', architecture: { output_modalities: ['image', 'text'] } }])).toEqual(['a/text']);
-    expect(chatModels('anthropic', [{ id: 'claude-sonnet-4-5' }, { id: 'claude-haiku-4-5' }, { id: 'x' }])).toEqual(['claude-sonnet-4-5', 'claude-haiku-4-5']);
+    expect(chatModels('anthropic', [{ id: 'claude-sonnet-5-5' }, { id: 'claude-haiku-5-5' }, { id: 'x' }])).toEqual(['claude-sonnet-5-5', 'claude-haiku-5-5']);
   });
 
   it('recommends a strong default per provider', () => {
-    expect(recommendedModel('groq', ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'])).toBe('llama-3.3-70b-versatile');
-    expect(recommendedModel('openai', ['gpt-4.1', 'gpt-4.1-mini', 'gpt-5', 'gpt-5-mini', 'gpt-4o', 'o3'])).toBe('gpt-5');
-    expect(recommendedModel('anthropic', ['claude-opus-4-1', 'claude-sonnet-4-5', 'claude-3-7-sonnet-latest'])).toBe('claude-sonnet-4-5');
-    expect(recommendedModel('openrouter', ['openai/gpt-4o', 'anthropic/claude-sonnet-4', 'anthropic/claude-sonnet-4.5', 'anthropic/claude-3.7-sonnet'])).toBe('anthropic/claude-sonnet-4.5');
-    expect(recommendedModel('openrouter', ['meta/llama', 'openai/gpt-4.1', 'openai/gpt-5'])).toBe('openai/gpt-5');
-    expect(recommendedModel('anthropic', [])).toBe('claude-sonnet-4-5');
+    expect(recommendedModel('groq', ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'])).toBe('openai/gpt-oss-120b');
+    expect(recommendedModel('openai', ['gpt-6-luna', 'gpt-6.1-sol', 'o3'])).toBe('gpt-6.1-sol');
+    expect(recommendedModel('anthropic', ['claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5'])).toBe('claude-opus-5-5');
+    expect(recommendedModel('openrouter', ['openai/gpt-6', 'anthropic/claude-sonnet-5', 'anthropic/claude-sonnet-5.5'])).toBe('anthropic/claude-sonnet-5.5');
+    expect(recommendedModel('openrouter', ['meta/llama', 'openai/gpt-6', 'openai/gpt-7'])).toBe('openai/gpt-7');
+    expect(recommendedModel('anthropic', [])).toBe('claude-opus-5-5');
   });
 
-  it('lists recommended first, with each provider’s headers', async () => {
-    const { fetch, calls } = fake({ [ANTHROPIC_MODELS]: [{ id: 'claude-haiku-4-5' }, { id: 'claude-sonnet-4-5' }] });
-    expect(await listModels('anthropic', 'sk-ant-test', fetch)).toEqual({ models: ['claude-sonnet-4-5', 'claude-haiku-4-5'], recommended: 'claude-sonnet-4-5' });
+  it('lists the picker models, recommended first, with each provider’s headers', async () => {
+    const { fetch, calls } = fake({ [ANTHROPIC_MODELS]: [{ id: 'claude-haiku-5-5' }, { id: 'claude-sonnet-5-5' }] });
+    const list = await listModels('anthropic', 'sk-ant-test', fetch);
+    expect(list.source).toBe('live');
+    expect(list.models.map((x) => x.id)).toEqual(['claude-sonnet-5-5', 'claude-haiku-5-5']);
     expect(calls[0]!.init?.headers).toMatchObject({ 'x-api-key': 'sk-ant-test', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' });
     expect(calls[0]!.init?.credentials).toBe('omit');
   });
 
-  it('maps list failures', async () => {
-    expect(await code(listModels('openai', 'sk-test', async () => new Response('{}', { status: 401 })))).toBe('auth');
-    expect(await code(listModels('openai', 'sk-test', async () => new Response('{}', { status: 500 })))).toBe('server');
-    expect(await code(listModels('openai', 'sk-test', async () => { throw new TypeError('Failed to fetch'); }))).toBe('offline');
+  it('shows the suggested models with the failure code when the list fails', async () => {
+    const code = async (f: FetchLike) => (await listModels('openai', 'sk-test', f)).error?.code;
+    expect(await code(async () => new Response('{}', { status: 401 }))).toBe('auth');
+    expect(await code(async () => new Response('{}', { status: 500 }))).toBe('server');
+    expect(await code(async () => { throw new TypeError('Failed to fetch'); })).toBe('offline');
+    expect((await listModels('openai', 'sk-test', async () => new Response('{}', { status: 500 }))).models[0]).toEqual({ id: 'gpt-6.1-sol', tag: 'Recommended' });
   });
 
-  // X's bug: a working OpenAI key without the models scope made Settings say "Couldn't load OpenAI's models".
+  it('asks nothing without a key', async () => {
+    const f = vi.fn<FetchLike>();
+    expect((await listModels('groq', undefined, f)).models.map((x) => x.id)).toEqual(['openai/gpt-oss-120b', 'openai/gpt-oss-20b']);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  // X's bug: a working OpenAI key without the models scope made Settings say the key was refused.
   it('says no-list, not auth, when a key that can chat may not list models', async () => {
     const scope = (status: number) => async () => json({ error: { message: 'You have insufficient permissions for this operation. Missing scopes: api.model.read.', type: 'invalid_request_error' } }, status);
-    expect(await code(listModels('openai', 'sk-proj-test', scope(401)))).toBe('no-list');
-    expect(await code(listModels('openai', 'sk-proj-test', scope(403)))).toBe('no-list');
-    expect(await code(listModels('openai', 'sk-test', async () => json({ error: { message: 'Incorrect API key provided.', code: 'invalid_api_key' } }, 401)))).toBe('auth');
+    const code = async (f: FetchLike) => (await listModels('openai', 'sk-proj-test', f)).error?.code;
+    expect(await code(scope(401))).toBe('no-list');
+    expect(await code(scope(403))).toBe('no-list');
+    expect(await code(async () => json({ error: { message: 'Incorrect API key provided.', code: 'invalid_api_key' } }, 401))).toBe('auth');
   });
 
   it('still chats on the fallback model when the list is not allowed', async () => {
@@ -76,14 +87,22 @@ describe('model lists', () => {
     err.mockRestore();
   });
 
+  it('sends a retired stored model’s clips to Recommended at the picked provider only', async () => {
+    await updateSettings({ ai: 'cloud', provider: 'groq', models: { groq: 'llama-3.3-70b-versatile' } });
+    const { fetch, calls } = fake({}, json({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }));
+    expect((await chat(m, { key: 'gsk_test', fetch })).by).toBe('groq');
+    expect(calls.every((c) => c.url.startsWith('https://api.groq.com/'))).toBe(true);
+    expect(calls.at(-1)!.body?.model).toBe('openai/gpt-oss-120b');
+  });
+
   it('keeps a built-in suggested list per provider, and falls back to its first model', () => {
     for (const [p, s] of Object.entries(SUGGESTED_MODELS)) {
-      expect(s.models.length).toBeGreaterThanOrEqual(2);
-      expect(s.models.length).toBeLessThanOrEqual(3);
+      expect(s.models.length).toBeGreaterThanOrEqual(1);
+      expect(s.models.length).toBeLessThanOrEqual(4);
       expect(s.models).toContain(s.faster);
       expect(FALLBACK_MODEL[p as keyof typeof FALLBACK_MODEL]).toBe(s.models[0]);
     }
-    expect(SUGGESTED_MODELS.openai.models).toEqual(['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o']);
+    expect(SUGGESTED_MODELS.openai.models).toEqual(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra', 'gpt-6-luna']);
   });
 });
 
@@ -91,34 +110,34 @@ describe('Check model', () => {
   it('sends one tiny request to that model with the key and times it', async () => {
     const { fetch, calls } = fake({}, openaiOk('OK'));
     let t = 1000;
-    expect(await checkModel('openai', 'gpt-4o-2024-11-20', 'sk-test', fetch, () => (t += 1400) - 1400)).toBe(1400);
+    expect(await checkModel('openai', 'gpt-6-astra-2026-09-01', 'sk-test', fetch, () => (t += 1400) - 1400)).toBe(1400);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe('https://api.openai.com/v1/chat/completions');
-    expect(calls[0]!.body).toMatchObject({ model: 'gpt-4o-2024-11-20', max_completion_tokens: 16 });
+    expect(calls[0]!.body).toMatchObject({ model: 'gpt-6-astra-2026-09-01', max_completion_tokens: 4016 });
     expect(calls[0]!.init?.headers).toMatchObject({ Authorization: 'Bearer sk-test' });
   });
 
   it('reports a missing model, a model that can’t write and a refused key', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const gone = json({ error: { message: 'The model `gpt-4o-maxi` does not exist or you do not have access to it.', code: 'model_not_found' } }, 404);
-    expect(await code(checkModel('openai', 'gpt-4o-maxi', 'sk-test', fake({}, gone).fetch))).toBe('model-not-found');
+    const gone = json({ error: { message: 'The model `gpt-6-maxi` does not exist or you do not have access to it.', code: 'model_not_found' } }, 404);
+    expect(await code(checkModel('openai', 'gpt-6-maxi', 'sk-test', fake({}, gone).fetch))).toBe('model-not-found');
     const none = fake({});
-    expect(await code(checkModel('openai', 'whisper-1', 'sk-test', none.fetch))).toBe('not-for-text');
+    expect(await code(checkModel('openai', 'gpt-transcribe', 'sk-test', none.fetch))).toBe('not-for-text');
     expect(none.calls).toHaveLength(0);
-    expect(await code(checkModel('groq', 'llama-3.3-70b-versatile', 'gsk_test', fake({}, json({ error: { message: 'Invalid API Key' } }, 401)).fetch))).toBe('auth');
+    expect(await code(checkModel('groq', 'openai/gpt-oss-120b', 'gsk_test', fake({}, json({ error: { message: 'Invalid API Key' } }, 401)).fetch))).toBe('auth');
     err.mockRestore();
   });
 });
 
 describe('OpenAI-compatible providers', () => {
   it('sends OpenAI the recommended model with max_completion_tokens and no temperature for a reasoning model', async () => {
-    const { fetch, chats } = fake({ [OPENAI_MODELS]: [{ id: 'gpt-5' }, { id: 'gpt-4.1' }] }, openaiOk('{"a":1}'));
+    const { fetch, chats } = fake({ [OPENAI_MODELS]: [{ id: 'gpt-6.1-sol' }, { id: 'gpt-6-luna' }] }, openaiOk('{"a":1}'));
     const reply = await chat(m, { ai: 'cloud', provider: 'openai', key: 'sk-test', fetch, json: true, maxTokens: 1000 });
     expect(reply).toEqual({ text: '{"a":1}', by: 'openai' });
     const c = chats()[0]!;
     expect(c.url).toBe('https://api.openai.com/v1/chat/completions');
     expect(c.init?.headers).toMatchObject({ Authorization: 'Bearer sk-test' });
-    expect(c.body).toMatchObject({ model: 'gpt-5', max_completion_tokens: 5000, response_format: { type: 'json_object' }, reasoning_effort: 'low' });
+    expect(c.body).toMatchObject({ model: 'gpt-6.1-sol', max_completion_tokens: 5000, response_format: { type: 'json_object' }, reasoning_effort: 'low' });
     expect(c.body).not.toHaveProperty('temperature');
     expect(c.body).not.toHaveProperty('max_tokens');
   });
@@ -136,7 +155,7 @@ describe('OpenAI-compatible providers', () => {
   it('says model-not-found when the person’s pick is gone, without switching model', async () => {
     await updateSettings({ provider: 'openrouter', models: { openrouter: 'gone/model' } });
     const gone = json({ error: { message: 'gone/model is not a valid model ID', code: 404 } }, 404);
-    const { fetch, chats } = fake({ [OPENROUTER_MODELS]: [{ id: 'anthropic/claude-sonnet-4.5' }] }, gone, openaiOk('ok'));
+    const { fetch, chats } = fake({ [OPENROUTER_MODELS]: [{ id: 'anthropic/claude-sonnet-5.5' }] }, gone, openaiOk('ok'));
     expect(await code(chat(m, { ai: 'cloud', key: 'sk-or-test', fetch }))).toBe('model-not-found');
     expect(chats()).toHaveLength(1);
   });
@@ -144,10 +163,10 @@ describe('OpenAI-compatible providers', () => {
   it('re-picks once from the list when there is no pick and the guess is gone', async () => {
     await updateSettings({ provider: 'openai' });
     const gone = json({ error: { message: 'The model `gpt-9` does not exist', code: 'model_not_found' } }, 404);
-    const { fetch, chats } = fake({ [OPENAI_MODELS]: [{ id: 'gpt-4.1' }, { id: 'gpt-4o' }] }, gone, openaiOk('ok'));
+    const { fetch, chats } = fake({ [OPENAI_MODELS]: [{ id: 'gpt-6.1-sol' }, { id: 'gpt-6-luna' }] }, gone, openaiOk('ok'));
     expect((await chat(m, { ai: 'cloud', key: 'sk-test', fetch })).text).toBe('ok');
     // The re-pick never hands back the model that just failed.
-    expect(chats().map((c) => c.body!.model)).toEqual(['gpt-4.1', 'gpt-4o']);
+    expect(chats().map((c) => c.body!.model)).toEqual(['gpt-6.1-sol', 'gpt-6-luna']);
   });
 
   it('says not-for-text for a model that is not a chat model', async () => {
@@ -162,7 +181,7 @@ describe('OpenAI-compatible providers', () => {
 });
 
 describe('Anthropic', () => {
-  const run = (fetch: FetchLike, extra = {}) => chat(m, { ai: 'cloud', provider: 'anthropic', model: 'claude-sonnet-4-5', key: 'sk-ant-test', fetch, ...extra });
+  const run = (fetch: FetchLike, extra = {}) => chat(m, { ai: 'cloud', provider: 'anthropic', model: 'claude-sonnet-5-5', key: 'sk-ant-test', fetch, ...extra });
 
   it('posts to the Messages API with the system prompt as `system` and pulls out the JSON', async () => {
     const { fetch, chats } = fake({}, anthropicOk('Here it is:\n```json\n{"type":"quote"}\n```'));
@@ -171,7 +190,7 @@ describe('Anthropic', () => {
     expect(c.url).toBe('https://api.anthropic.com/v1/messages');
     expect(c.init?.headers).toMatchObject({ 'x-api-key': 'sk-ant-test', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' });
     expect(c.init?.headers).not.toHaveProperty('Authorization');
-    expect(c.body).toMatchObject({ model: 'claude-sonnet-4-5', max_tokens: 900, messages: [{ role: 'user', content: 'hi' }] });
+    expect(c.body).toMatchObject({ model: 'claude-sonnet-5-5', max_tokens: 900, messages: [{ role: 'user', content: 'hi' }] });
     expect(String(c.body!.system)).toMatch(/^Be brief\.\n\nReply with one JSON object only/);
     expect(c.body).not.toHaveProperty('response_format');
   });
@@ -189,7 +208,7 @@ describe('Anthropic', () => {
 
   it('says model-not-found for a retired model the person picked', async () => {
     const gone = json({ type: 'error', error: { type: 'not_found_error', message: 'model: claude-old' } }, 404);
-    const { fetch } = fake({ [ANTHROPIC_MODELS]: [{ id: 'claude-sonnet-4-5' }] }, gone);
+    const { fetch } = fake({ [ANTHROPIC_MODELS]: [{ id: 'claude-sonnet-5-5' }] }, gone);
     expect(await code(run(fetch, { model: 'claude-old' }))).toBe('model-not-found');
   });
 

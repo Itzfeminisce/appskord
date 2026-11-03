@@ -6,8 +6,13 @@ export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export type BubbleSize = 'S' | 'M' | 'L';
 export type NoteStyle = 'howto' | 'bug' | 'update' | 'meeting' | 'general';
 export type MarkerKind = 'step' | 'bug' | 'important' | 'question';
-export type AiMode = 'local' | 'cloud';                 // "On this computer" / "Faster with Groq"
-export type NotesEngine = 'builtin' | 'ollama' | 'groq';
+export type AiMode = 'local' | 'cloud';                 // first-run choice: "On this computer" / "Faster with Groq"
+export type CloudSpeech = 'groq' | 'openai';
+export type TranscriptsProvider = 'local' | CloudSpeech; // local = Whisper on this computer
+export type CloudNotes = 'groq' | 'openai' | 'anthropic' | 'openrouter' | 'google' | 'xai';
+export type NotesProvider = 'builtin' | 'ollama' | CloudNotes;
+/** A picked provider and model; `gone` is the retired model Klipkord replaced (picker-model-gone). */
+export interface ModelChoice<P extends string> { provider: P; model: string; gone?: string }
 export type RecordingStatus = 'recording' | 'paused' | 'processing' | 'ready' | 'unfinished';
 export type BubbleMode = 'floating' | 'video';           // "Floating on screen" (default) / "Drawn into the video"
 export type DrawTool = 'pen' | 'highlighter' | 'rings';
@@ -16,8 +21,8 @@ export type CleanupKind = 'pause' | 'filler';
 export type SearchField = 'title' | 'transcript' | 'notes';
 
 export interface Settings {
-  ai: AiMode;                                          // default from the machine check
-  notesEngine: NotesEngine;                            // default 'builtin', else 'ollama'
+  transcripts: ModelChoice<TranscriptsProvider>;       // default Whisper on this computer
+  notes: ModelChoice<NotesProvider>;                   // Notes and Ask; default Chrome's built-in AI
   language: string | 'auto';                           // default 'auto'
   keySource: 'penv-app' | 'paste' | null;
   penvApp?: { connectionId: string; org: string; project: string; env: string; keys: string[] }; // grant in session storage

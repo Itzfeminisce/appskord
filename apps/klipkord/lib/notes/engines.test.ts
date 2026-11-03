@@ -8,14 +8,15 @@ const builtin = (availability: string) => ({ LanguageModel: { availability: asyn
 const ids = async (o: Parameters<typeof availableEngines>[0]) => (await availableEngines(o)).map((e) => e.id);
 
 describe('engineOrder', () => {
-  it('puts the pick first, then built-in, Ollama, Groq', () => {
-    expect(engineOrder('builtin')).toEqual(['builtin', 'ollama', 'groq']);
-    expect(engineOrder('groq')).toEqual(['groq', 'builtin', 'ollama']);
+  it('puts the pick first, then only the engines on this computer', () => {
+    expect(engineOrder('builtin')).toEqual(['builtin', 'ollama']);
+    expect(engineOrder('ollama')).toEqual(['ollama', 'builtin']);
+    expect(engineOrder('openai')).toEqual(['openai', 'builtin', 'ollama']);
   });
 });
 
 describe('availableEngines', () => {
-  const base = { settings: { notesEngine: 'builtin' as const }, keys: {}, globalObject: {} };
+  const base = { settings: { notes: { provider: 'builtin' as const, model: 'builtin' } }, keys: {}, globalObject: {} };
 
   it('uses built-in AI when Chrome has it', async () => {
     expect(await ids({ ...base, fetchFn: down, globalObject: builtin('available') })).toEqual(['builtin']);
@@ -23,12 +24,26 @@ describe('availableEngines', () => {
   it('falls back to Ollama when built-in AI is missing and Ollama answers', async () => {
     expect(await ids({ ...base, fetchFn: ollamaUp })).toEqual(['ollama']);
   });
-  it('falls back to Groq only with a key', async () => {
-    expect(await ids({ ...base, fetchFn: down, keys: { GROQ_API_KEY: 'gsk_test' } })).toEqual(['groq']);
-    expect(await ids({ ...base, fetchFn: down })).toEqual([]);
+  it('never falls back to a cloud provider the user did not pick', async () => {
+    expect(await ids({ ...base, fetchFn: down, keys: { GROQ_API_KEY: 'gsk_test', OPENAI_API_KEY: 'sk-fake' } })).toEqual([]);
   });
-  it('lists every engine that works, in order', async () => {
-    expect(await ids({ ...base, fetchFn: ollamaUp, keys: { GROQ_API_KEY: 'gsk_test' }, globalObject: builtin('available') })).toEqual(['builtin', 'ollama', 'groq']);
+  it('picked Ollama down with a Groq key loaded sends nothing to Groq', async () => {
+    const f = vi.fn(async (u: string) => (u.includes('11434') ? Promise.reject(new TypeError('offline')) : json({ choices: [{ message: { content: 'ok' } }] })));
+    const engines = await availableEngines({ settings: { notes: { provider: 'ollama', model: '' } }, keys: { GROQ_API_KEY: 'gsk_test' }, fetchFn: f, globalObject: {} });
+    expect(engines).toEqual([]);
+    expect(f.mock.calls.every(([u]) => u.startsWith('http://localhost:11434'))).toBe(true);
+  });
+  it('picked OpenAI calls only OpenAI, then only engines on this computer', async () => {
+    const f = vi.fn(async (u: string) => (u.includes('11434') ? json({}, 500) : json({ choices: [{ message: { content: 'ok' } }] })));
+    const keys = { OPENAI_API_KEY: 'sk-fake', GROQ_API_KEY: 'gsk_test', ANTHROPIC_API_KEY: 'sk-ant-fake' };
+    const engines = await availableEngines({ settings: { notes: { provider: 'openai', model: 'gpt-6.1-sol' } }, keys, fetchFn: f, globalObject: builtin('available') });
+    expect(engines.map((e) => e.id)).toEqual(['openai', 'builtin']);
+    await engines[0]!.complete('s', 'u');
+    const cloud = f.mock.calls.map(([u]) => u).filter((u) => !u.includes('11434'));
+    expect(cloud).toEqual(['https://api.openai.com/v1/chat/completions']);
+  });
+  it('lists every local engine that works, in order', async () => {
+    expect(await ids({ ...base, fetchFn: ollamaUp, keys: { GROQ_API_KEY: 'gsk_test' }, globalObject: builtin('available') })).toEqual(['builtin', 'ollama']);
   });
   it('treats a model that still needs a download as unavailable', async () => {
     expect(await builtinAvailable(builtin('downloadable'))).toBe(false);
@@ -40,15 +55,60 @@ describe('engines', () => {
   it('asks Ollama for JSON with the first model it has', async () => {
     expect(await ollamaModel(ollamaUp)).toBe('llama3.2');
     expect(await ollamaModel(async () => json({ models: [] }))).toBeNull();
-    const [engine] = await availableEngines({ settings: { notesEngine: 'ollama' }, keys: {}, fetchFn: ollamaUp, globalObject: {} });
+    const [engine] = await availableEngines({ settings: { notes: { provider: 'ollama', model: '' } }, keys: {}, fetchFn: ollamaUp, globalObject: {} });
     expect(await engine!.complete('s', 'u', { json: true })).toBe('{}');
     const call = ollamaUp.mock.calls.find(([u]) => u.endsWith("/api/chat"))!;
     expect(JSON.parse((call[1] as RequestInit).body as string)).toMatchObject({ model: 'llama3.2', format: 'json', stream: false });
   });
   it('calls Groq with the key and no key in the result', async () => {
     const f = vi.fn(async (u: string) => (u.includes('11434') ? json({}, 500) : json({ choices: [{ message: { content: 'ok' } }] })));
-    const [engine] = await availableEngines({ settings: { notesEngine: 'groq' }, keys: { GROQ_API_KEY: 'gsk_test' }, fetchFn: f, globalObject: {} });
+    const [engine] = await availableEngines({ settings: { notes: { provider: 'groq', model: 'openai/gpt-oss-120b' } }, keys: { GROQ_API_KEY: 'gsk_test' }, fetchFn: f, globalObject: {} });
     expect(await engine!.complete('s', 'u')).toBe('ok');
     expect(f.mock.calls.at(-1)![0]).toBe('https://api.groq.com/openai/v1/chat/completions');
+  });
+  it('uses the picked Ollama model when Ollama has it', async () => {
+    const f = vi.fn(async (url: string, _init?: RequestInit) => (url.endsWith('/api/tags') ? json({ models: [{ name: 'llama3.2' }, { name: 'qwen3' }] }) : json({ message: { content: 'ok' } })));
+    const [engine] = await availableEngines({ settings: { notes: { provider: 'ollama', model: 'qwen3' } }, keys: {}, fetchFn: f, globalObject: {} });
+    await engine!.complete('s', 'u');
+    expect(JSON.parse((f.mock.calls.find(([u]) => u.endsWith('/api/chat'))![1] as RequestInit).body as string).model).toBe('qwen3');
+  });
+});
+
+describe('each cloud provider', () => {
+  const cases = [
+    ['groq', 'GROQ_API_KEY', 'gsk_fake', 'openai/gpt-oss-20b', 'https://api.groq.com/openai/v1/chat/completions'],
+    ['openai', 'OPENAI_API_KEY', 'sk-fake', 'gpt-6.1-sol', 'https://api.openai.com/v1/chat/completions'],
+    ['anthropic', 'ANTHROPIC_API_KEY', 'sk-ant-fake', 'claude-opus-5-5', 'https://api.anthropic.com/v1/chat/completions'],
+    ['openrouter', 'OPENROUTER_API_KEY', 'sk-or-fake', 'openai/gpt-oss-120b', 'https://openrouter.ai/api/v1/chat/completions'],
+    ['google', 'GEMINI_API_KEY', 'AIza-fake', 'gemini-3.8-flash', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'],
+    ['xai', 'XAI_API_KEY', 'xai-fake', 'grok-4.7', 'https://api.x.ai/v1/chat/completions'],
+  ] as const;
+  it.each(cases)('%s reaches its URL with its key and the picked model', async (provider, keyName, key, model, url) => {
+    const f = vi.fn(async (u: string, _init?: RequestInit) => (u.includes('11434') ? json({}, 500) : json({ choices: [{ message: { content: 'ok' } }] })));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const [engine] = await availableEngines({ settings: { notes: { provider, model } }, keys: { [keyName]: key }, fetchFn: f, globalObject: {} });
+    expect(engine!.id).toBe(provider);
+    expect(await engine!.complete('s', 'u')).toBe('ok');
+    const [u, init] = f.mock.calls.at(-1)!;
+    expect(u).toBe(url);
+    expect(JSON.stringify((init as RequestInit).headers)).toContain(key);
+    expect(JSON.parse((init as RequestInit).body as string).model).toBe(model);
+    expect(JSON.stringify(log.mock.calls)).not.toContain(key);
+    log.mockRestore();
+  });
+
+  it('a gone picked model moves to a listed one and is reported for picker-model-gone, without the key in logs', async () => {
+    const f = vi.fn(async (u: string, init?: RequestInit) => {
+      if (u.endsWith('/models')) return json({ data: [{ id: 'openai/gpt-oss-120b' }] });
+      if (u.includes('11434')) return json({}, 500);
+      return JSON.parse(String(init?.body)).model === 'llama-3.3-70b-versatile' ? json({ error: { code: 'model_not_found' } }, 404) : json({ choices: [{ message: { content: 'ok' } }] });
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onModelGone = vi.fn();
+    const [engine] = await availableEngines({ settings: { notes: { provider: 'groq', model: 'llama-3.3-70b-versatile' } }, keys: { GROQ_API_KEY: 'gsk_fake' }, fetchFn: f, globalObject: {}, onModelGone });
+    expect(await engine!.complete('s', 'u')).toBe('ok');
+    expect(onModelGone).toHaveBeenCalledWith({ provider: 'groq', model: 'openai/gpt-oss-120b', gone: 'llama-3.3-70b-versatile' });
+    expect(JSON.stringify(log.mock.calls)).not.toContain('gsk_fake');
+    log.mockRestore();
   });
 });

@@ -1,4 +1,6 @@
 /* Rekord and Klipkord share these. Set --btn-primary and --btn-primary-hover (default: the accent) per app. */
+/* Apps that only want the picker import @appskord/ui/ModelPicker.css instead. */
+@import './ModelPicker.css';
 
 /* Every button answers a press, so a click never looks ignored. */
 button,

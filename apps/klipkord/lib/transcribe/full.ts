@@ -1,8 +1,16 @@
-/** The full pass (whisper-base or Groq, with word times) over a whole track, and re-transcribing an edited recording. */
+/** The full pass (whisper-base or the picked cloud provider, with word times) over a whole track, and re-transcribing an edited recording. */
 import { keptRanges, toOriginal } from '@/lib/editList';
-import type { KeptRange, Recording, Segment } from '@/lib/types';
+import type { FetchLike } from '@/lib/llm';
+import type { CloudSpeech, KeptRange, Recording, Segment } from '@/lib/types';
 import { CHUNK_MS, SAMPLE_RATE, chunkAll, isSilent } from './chunker';
+import { transcribeGroq, type SpeechOptions } from './groq';
 import { mergeSegments, toSegment, type Heard } from './merge';
+import { transcribeOpenAI } from './openai';
+
+/** One chunk through the cloud provider's `/audio/transcriptions`. Throws SpeechError. */
+export function transcribeCloud(provider: CloudSpeech, audio: Float32Array, opts: SpeechOptions, fetchFn?: FetchLike): Promise<Heard> {
+  return provider === 'openai' ? transcribeOpenAI(audio, opts, fetchFn) : transcribeGroq(audio, opts, fetchFn);
+}
 
 export interface FullRun {
   transcribe: (audio: Float32Array) => Promise<Heard>;

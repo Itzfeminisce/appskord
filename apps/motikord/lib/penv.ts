@@ -8,7 +8,7 @@ import type { KeyName } from './settings';
 export { PenvAppError, PenvError, type PenvAppConnection, type PenvTarget } from '@appskord/penv';
 
 const NAMES: Record<string, KeyName> = {
-  GROQ_API_KEY: 'groq', OPENAI_API_KEY: 'openai', ANTHROPIC_API_KEY: 'anthropic', OPENROUTER_API_KEY: 'openrouter', PEXELS_API_KEY: 'pexels',
+  GROQ_API_KEY: 'groq', OPENAI_API_KEY: 'openai', ANTHROPIC_API_KEY: 'anthropic', OPENROUTER_API_KEY: 'openrouter', GEMINI_API_KEY: 'google', XAI_API_KEY: 'xai', PEXELS_API_KEY: 'pexels',
   PIXABAY_API_KEY: 'pixabay', FREESOUND_API_KEY: 'freesound', JAMENDO_CLIENT_ID: 'jamendo', UNSPLASH_ACCESS_KEY: 'unsplash',
 };
 

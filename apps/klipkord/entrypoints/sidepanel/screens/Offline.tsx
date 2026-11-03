@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { useRouter } from '../router';
 import { BubblePreview, useCamera } from '../components/BubblePreview';
-import { getSettings, onSettingsChanged } from '@/lib/settings';
+import { getSettings, onSettingsChanged, usesCloud } from '@/lib/settings';
 import type { Settings } from '@/lib/types';
 import { Brand, ICONS, Icon } from './Home';
 
@@ -35,7 +35,7 @@ function useSettings(): Settings | null {
 export function useOffline(): boolean {
   const online = useOnline();
   const settings = useSettings();
-  return settings?.ai === 'cloud' && !online;
+  return !!settings && usesCloud(settings) && !online;
 }
 
 const STATUS = [['Recording', 'Works offline'], ['Transcript', 'On this computer'], ['Notes', 'On this computer']] as const;
@@ -48,7 +48,7 @@ export default function Offline() {
 
   // Back online (or cloud AI turned off): Home again, with Groq.
   useEffect(() => {
-    if (online || (settings && settings.ai !== 'cloud')) replace('Home');
+    if (online || (settings && !usesCloud(settings))) replace('Home');
   }, [online, settings, replace]);
 
   return (

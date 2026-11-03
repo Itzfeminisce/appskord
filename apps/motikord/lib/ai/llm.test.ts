@@ -158,9 +158,9 @@ describe('choosing a Groq model', () => {
   const go = (fetch: FetchLike) => chat(m, { ai: 'cloud', key: KEY, fetch, json: true });
 
   it('takes the best preferred id the list has, skipping non-chat models', async () => {
-    const r = route(() => list('whisper-large-v3', 'llama-guard-4', 'llama-3.1-8b-instant', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile'), okRes('{}'));
+    const r = route(() => list('whisper-large-v3', 'llama-guard-4', 'openai/gpt-oss-20b', 'openai/gpt-oss-20b', 'openai/gpt-oss-120b'), okRes('{}'));
     await go(r.fetch);
-    expect(r.used).toEqual(['llama-3.3-70b-versatile']);
+    expect(r.used).toEqual(['openai/gpt-oss-120b']);
   });
 
   it('takes the first usable id when no preferred one is listed', async () => {
@@ -179,16 +179,16 @@ describe('choosing a Groq model', () => {
   });
 
   it('on 404 model_not_found clears the cache, picks again and retries once', async () => {
-    await fakeBrowser.storage.session.set({ groqModel: 'llama-3.3-70b-versatile' });
+    await fakeBrowser.storage.session.set({ groqModel: 'openai/gpt-oss-20b' });
     const r = route(() => list('openai/gpt-oss-120b'), notFound(), okRes('{"a":1}'));
     expect((await go(r.fetch)).text).toBe('{"a":1}');
-    expect(r.used).toEqual(['llama-3.3-70b-versatile', 'openai/gpt-oss-120b']);
+    expect(r.used).toEqual(['openai/gpt-oss-20b', 'openai/gpt-oss-120b']);
     expect((await fakeBrowser.storage.session.get('groqModel')).groqModel).toBe('openai/gpt-oss-120b');
   });
 
   it('retries on model_decommissioned but only once', async () => {
     const gone = () => new Response(JSON.stringify({ error: { message: 'x', code: 'model_decommissioned' } }), { status: 400 });
-    const r = route(() => list('openai/gpt-oss-120b'), gone(), gone());
+    const r = route(() => list('openai/gpt-oss-120b', 'openai/gpt-oss-20b'), gone(), gone());
     expect(await code(go(r.fetch))).toBe('server');
     expect(r.used).toHaveLength(2);
   });

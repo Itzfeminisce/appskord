@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { discardHighlight, highlightFacts, keptParts, newCutOf } from '@/lib/ai/highlight';
 import { applyDraft, opAt, opDelta, opLabel } from '@/lib/ai/ops';
-import { PROVIDERS } from '@/lib/llm';
 import { quote } from '@/lib/project/ops';
 import { secs } from '@/lib/project/suggest';
 import type { AiOp, Project } from '@/lib/project/types';
@@ -13,7 +12,7 @@ import { TL_ICONS } from '../timeline/controls';
 import { ICON } from '../transcript/icons';
 import { C, Icon, iconButton, MONO } from '../ui';
 import { ask, checkSetup, stop, tryHighlight } from './actions';
-import { aiDeps } from './deps';
+import { aiDeps, speechSetup, type Speech } from './deps';
 import { setAi, useAi, useDraft, useUnits, type Trial } from './store';
 import { BODY, BUBBLE, BUTTON, Check, Header, MIC, NotSetUp, Offline, PANEL, useOnline } from './ui';
 
@@ -42,18 +41,18 @@ function Row({ icon, label, detail }: { icon: ReactNode; label: string; detail: 
 function AskInput({ disabled, onAsk, focus }: { disabled: boolean; onAsk: (text: string) => void; focus: number }) {
   const [text, setText] = useState('');
   const [listening, setListening] = useState<{ stop(): Promise<string>; cancel(): void } | null>(null);
-  const [groq, setGroq] = useState<string | null>(null);
+  const [speech, setSpeech] = useState<Speech | null>(null);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { if (focus) input.current?.focus(); }, [focus]);
   useEffect(() => {
     let live = true;
-    aiDeps().keys().then((k) => { if (live) setGroq(k[PROVIDERS.groq.keyName] ?? null); }, () => {});
+    speechSetup().then((s) => { if (live) setSpeech(s); }, () => {});
     return () => { live = false; };
   }, []);
   useEffect(() => () => listening?.cancel(), [listening]);
   const hear = aiDeps().hear;
   const mic = async () => {
-    if (!groq || !hear) return;
+    if (!speech || !hear) return;
     if (listening) {
       setListening(null);
       try {
@@ -64,7 +63,7 @@ function AskInput({ disabled, onAsk, focus }: { disabled: boolean; onAsk: (text:
       }
       return;
     }
-    try { setListening(await hear(groq)); } catch (error) { console.error('Klipkord: could not start the mic', error); }
+    try { setListening(await hear(speech)); } catch (error) { console.error('Klipkord: could not start the mic', error); }
   };
   const send = () => { if (text.trim() && !disabled) { onAsk(text); setText(''); } };
   return (
@@ -72,7 +71,7 @@ function AskInput({ disabled, onAsk, focus }: { disabled: boolean; onAsk: (text:
       <input ref={input} aria-label="Ask for an edit" placeholder="Ask for another change" value={text} disabled={disabled}
         onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
         style={{ flexGrow: 1, minWidth: 0, border: 0, background: 'transparent', color: C.text, fontFamily: 'inherit', fontSize: 13, outline: 'none' }} />
-      {groq && hear && (
+      {speech && hear && (
         <button type="button" aria-label="Say it instead" title="Say it instead" aria-pressed={!!listening} disabled={disabled} onClick={() => void mic()}
           style={{ ...iconButton(30), color: listening ? C.accentText : C.secondary }}><Icon>{MIC}</Icon></button>
       )}

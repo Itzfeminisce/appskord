@@ -4,7 +4,7 @@ import { loadKeys } from './penv';
 
 export { LLMError, type ChatMessage, type FetchLike, type LLMErrorCode } from '@appskord/llm';
 
-export type ProviderId = 'groq' | 'openai' | 'openrouter' | 'anthropic';
+export type ProviderId = 'groq' | 'openai' | 'openrouter' | 'anthropic' | 'google' | 'xai';
 
 export interface ProviderConfig { id: ProviderId; baseUrl: string; keyName: ProviderKeyName; model: string }
 
@@ -12,14 +12,19 @@ const provider = (id: ProviderId, model: string): ProviderConfig => ({ id, baseU
 
 /** In fallback order: the first provider with a key loaded writes the notes. */
 export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
-  groq: provider('groq', 'llama-3.3-70b-versatile'),
-  openai: provider('openai', 'gpt-4.1-mini'),
+  groq: provider('groq', 'openai/gpt-oss-120b'),
+  openai: provider('openai', 'gpt-6-luna'),
   openrouter: provider('openrouter', 'openai/gpt-oss-120b'),
-  anthropic: provider('anthropic', 'claude-haiku-4-5'),
+  anthropic: provider('anthropic', 'claude-haiku-5-5'),
+  google: provider('google', 'gemini-3.8-flash'),
+  xai: provider('xai', 'grok-4.7'),
 };
 
 export interface ChatOptions {
   provider?: ProviderId;   // default: the first provider with a key
+  model?: string;          // the picked model; default the provider's own
+  /** Told the model used in place of a gone picked one, so Settings can show picker-model-gone. */
+  onRepick?: (model: string) => void;
   json?: boolean;          // ask for a JSON object reply
   maxTokens?: number;
   temperature?: number;    // default 0.2
@@ -61,10 +66,13 @@ export async function chat(
     // Anthropic goes through its OpenAI-compatible endpoint, as before.
     openaiCompatible: true,
     key: keys[p.keyName],
-    model: repicked[p.id] ?? p.model,
-    // Only Groq retires the default under it; any other gone model is reported.
-    modelGone: p.id === 'groq' ? 'repick' : 'report',
-    onRepick: (model) => { repicked[p.id] = model; },
+    model: opts.model || (repicked[p.id] ?? p.model),
+    // A picked model that is gone moves to a listed one; so does Groq's default. Any other gone default is reported.
+    modelGone: opts.model || p.id === 'groq' ? 'repick' : 'report',
+    onRepick: (model) => {
+      if (opts.model) opts.onRepick?.(model);
+      else repicked[p.id] = model;
+    },
     json: opts.json,
     maxTokens: opts.maxTokens,
     temperature: opts.temperature,

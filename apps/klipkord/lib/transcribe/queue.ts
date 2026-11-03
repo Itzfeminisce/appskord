@@ -1,21 +1,22 @@
-import type { Segment } from '@/lib/types';
+import type { CloudSpeech, Segment } from '@/lib/types';
 import { isSilent, type Chunk } from './chunker';
-import { GroqError } from './groq';
+import { SpeechError } from './groq';
 import { toSegment, type Heard } from './merge';
 
-export type Engine = 'local' | 'groq';
+export type Engine = 'local' | CloudSpeech;
 
 export interface QueueStatus {
   pending: number;          // chunks waiting or running
   behind: boolean;          // live text has fallen well behind (transcript-behind)
   engine: Engine;           // where the last chunk ran, or will run
-  cloudDown: boolean;       // Groq failed this recording; local from now on (cloud-ai-down)
-  offline: boolean;         // Groq chosen but no network; local until back online
+  cloudDown: boolean;       // the cloud provider failed this recording; local from now on (cloud-ai-down)
+  offline: boolean;         // a cloud provider chosen but no network; local until back online
 }
 
 export interface QueueDeps {
   local: (audio: Float32Array) => Promise<string | Heard>;
-  groq: (audio: Float32Array) => Promise<string | Heard>;
+  /** The picked cloud provider, or Groq after "Use Groq for this one". */
+  cloud: (audio: Float32Array) => Promise<string | Heard>;
   online: () => boolean;
   onSegment: (seg: Segment) => void;
   onStatus: (status: QueueStatus) => void;
@@ -36,8 +37,8 @@ export const BEHIND_AFTER = 3;
 
 export interface TranscriptQueue {
   add(chunk: Chunk): void;
-  /** "Use Groq for this one": later chunks go to Groq. */
-  useGroq(): void;
+  /** "Use Groq for this one": later chunks go to this provider (`cloud` must send them there). */
+  useCloud(provider: CloudSpeech): void;
   /** Resolves when every queued chunk is done. */
   drain(): Promise<void>;
   /** Drops waiting chunks; the running one finishes but is not reported. */
@@ -61,16 +62,16 @@ export function createQueue(deps: QueueDeps, wanted: Engine, behindAfter = BEHIN
   const report = () => deps.onStatus(status());
 
   async function runOne(chunk: Chunk): Promise<string | Heard> {
-    const cloud = wanted === 'groq' && !cloudDown;
+    const cloud = wanted !== 'local' && !cloudDown;
     offline = cloud && !deps.online();
     if (cloud && !offline) {
       try {
-        lastEngine = 'groq';
-        return await deps.groq(chunk.audio);
+        lastEngine = wanted;
+        return await deps.cloud(chunk.audio);
       } catch (error) {
-        console.error('Klipkord: could not transcribe with Groq', error);
-        // A dropped network is offline (back to Groq later); anything else means Groq is down for this recording.
-        if (error instanceof GroqError && error.code === 'offline' && !deps.online()) offline = true;
+        console.error(`Klipkord: could not transcribe with ${wanted}`, error);
+        // A dropped network is offline (back to the cloud later); anything else means it is down for this recording.
+        if (error instanceof SpeechError && error.code === 'offline' && !deps.online()) offline = true;
         else cloudDown = true;
       }
     }
@@ -108,8 +109,8 @@ export function createQueue(deps: QueueDeps, wanted: Engine, behindAfter = BEHIN
       report();
       void pump();
     },
-    useGroq() {
-      wanted = 'groq';
+    useCloud(provider) {
+      wanted = provider;
       cloudDown = false;
       report();
     },

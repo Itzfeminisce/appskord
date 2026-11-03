@@ -3,7 +3,7 @@ import type { Change, PatchOp } from '../types';
 import { record, undo, type History } from './history';
 import { devSampleRecipe } from './store';
 import { newLook } from './v2';
-import { agoLabel, madeBy, madeState, madeSummary, describe as describeChange, madeLine, metaLine, newestFirst, promptSummary, sceneOf, splitSummary, statesAfter, stepsBack, whenLabel, whoLabel } from './changes';
+import { agoLabel, byLabel, madeBy, madeState, madeSummary, describe as describeChange, madeLine, metaLine, newestFirst, promptSummary, sceneOf, splitSummary, statesAfter, stepsBack, whenLabel, whoLabel } from './changes';
 
 const r0 = devSampleRecipe('c');
 const size = (v: number): PatchOp[] => [{ op: 'replace', path: '/scenes/0/layers/2/sizePx', value: v }];
@@ -25,6 +25,9 @@ function threeChanges() {
 }
 
 describe('changes', () => {
+  it('labels every provider author', () => {
+    expect(['groq', 'openai', 'anthropic', 'openrouter', 'google', 'xai'].map((b) => byLabel(b as never))).toEqual(['Groq', 'OpenAI', 'Anthropic', 'OpenRouter', 'Gemini', 'xAI']);
+  });
   it('lists newest first with time and author', () => {
     const { h } = threeChanges();
     const list = newestFirst(h.past);

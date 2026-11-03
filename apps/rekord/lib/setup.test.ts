@@ -37,7 +37,7 @@ describe('presets', () => {
   });
 
   it('custom keeps the current choices', () => {
-    const current = { transcription: { provider: 'openai' as const, model: 'whisper-1' }, summary: { provider: 'anthropic' as const, model: 'x' }, realtimeBackup: false };
+    const current = { transcription: { provider: 'openai' as const, model: 'gpt-transcribe' }, summary: { provider: 'anthropic' as const, model: 'x' }, realtimeBackup: false };
     expect(applyPreset('custom', current)).toEqual({ setup: 'custom', ...current });
   });
 });
@@ -52,7 +52,7 @@ describe('needed keys', () => {
   });
 
   it('custom lists each service once, and Ollama needs none', () => {
-    expect(neededKeys({ transcription: { provider: 'openai', model: 'whisper-1' }, summary: { provider: 'openai', model: 'm' } })).toEqual(['OPENAI_API_KEY']);
+    expect(neededKeys({ transcription: { provider: 'openai', model: 'gpt-transcribe' }, summary: { provider: 'openai', model: 'm' } })).toEqual(['OPENAI_API_KEY']);
     expect(neededKeys({ transcription: { provider: 'groq', model: 'm' }, summary: { provider: 'ollama', model: 'm' } })).toEqual(['GROQ_API_KEY']);
   });
 

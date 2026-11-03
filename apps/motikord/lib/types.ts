@@ -3,7 +3,7 @@ import type { Aspect, ClipType, Pace, Quality, Scene, StyleId, TemplateId } from
 // The scene model moved to @appskord/scenes; re-exported so these paths keep working.
 export type { Aspect, ClipType, Feel, PresetSlot, Quality, StyleId, Pace, TransitionKind, TemplateId, SlotKind, TypeScale, SlotDef, SceneTemplate, Background, StylePack, SlotValue, Transition, Box, Motion, LayerBase, TextLayer, ShapeLayer, MediaLayer, ChartLayer, Layer, Scene, BrandKit } from '@appskord/scenes';
 export type AiMode = 'cloud' | 'local';                     // "Faster in the cloud" / "On this computer"
-export type Provider = 'groq' | 'openai' | 'anthropic' | 'openrouter';   // who runs the cloud AI
+export type Provider = 'groq' | 'openai' | 'anthropic' | 'openrouter' | 'google' | 'xai';   // who runs the cloud AI
 export type FileKind = 'mp4' | 'webm' | 'gif' | 'webm-alpha';
 export type LicenceId = 'cc0' | 'pdm' | 'cc-by' | 'cc-by-sa' | 'cc-by-nc' | 'pexels' | 'pixabay' | 'unsplash' | 'unknown' | 'page' | 'own' | 'ai';
 // unknown: the source gives no licence ("Check you may use it"); credited like a page grab.

@@ -8,6 +8,7 @@ import { sourceChip } from '@/lib/sourceChip';
 import type { CaptureMode, Marker, MarkerKind, Segment } from '@/lib/types';
 import { getRecording } from '@/lib/db';
 import { loadKeys } from '@/lib/penv';
+import { PROVIDERS as LLM_PROVIDERS } from '@appskord/llm';
 import { PROVIDERS } from '@/lib/llm';
 import { onMessage, send } from '@/lib/messages';
 import type { TranscriptStatus } from '@/lib/transcribe/queue';
@@ -111,7 +112,7 @@ function LiveTranscript({ status, markers }: { status: TranscriptStatus | null; 
     ...markers.map((m) => ({ at: m.at, marker: m.kind })),
   ].sort((a, b) => a.at - b.at);
   const lastText = segments.length ? segments[segments.length - 1]! : null;
-  const where = status?.engine === 'groq' ? 'Groq' : 'On this computer';
+  const where = status && status.engine !== 'local' ? LLM_PROVIDERS[status.engine].label : 'On this computer';
   useEffect(() => {
     body.current?.scrollTo({ top: body.current.scrollHeight });
   }, [lines.length]);

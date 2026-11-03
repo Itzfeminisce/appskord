@@ -3,7 +3,7 @@ import { Spinner } from '../components';
 import { useRouter } from '../router';
 import { checkKeys, loadKeys, loadKeyStatus, saveKeyStatus } from '@/lib/penv';
 import { updateSettings } from '@/lib/settings';
-import { detectMachine, isKeyName, notesEngineFor, setupChoice, type MachineCheck, type RowStatus, type SetupState } from '@/lib/setup';
+import { aiSettings, detectMachine, isKeyName, setupChoice, type MachineCheck, type RowStatus, type SetupState } from '@/lib/setup';
 import type { AiMode } from '@/lib/types';
 
 // ---- Shared by the onboarding and key screens (inline styles follow the frames) ----
@@ -137,8 +137,8 @@ export default function Setup() {
 
   async function choose(ai: AiMode, next: 'ModelDownload' | 'PenvConnect') {
     try {
-      // Cloud is saved once a key works; local is confirmed here.
-      await updateSettings({ notesEngine: notesEngineFor(ai, check.builtinAi), ...(ai === 'local' ? { ai, onboarded: true } : {}) });
+      // Groq for both pickers is saved once a key works; local is confirmed here.
+      if (ai === 'local') await updateSettings({ ...aiSettings(ai, check.builtinAi), onboarded: true });
     } catch (error) {
       console.error('Klipkord: could not save the AI choice', error);
     }

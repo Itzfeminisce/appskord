@@ -47,14 +47,14 @@ describe('settings', () => {
   it('gives settings from before providers Groq and no model pick', () => {
     const s = mergeSettings({ ai: 'cloud', keySource: 'paste', onboarded: true } as never);
     expect(s).toMatchObject({ provider: 'groq', models: {}, keySource: 'paste', onboarded: true });
-    expect(mergeSettings({ provider: 'mistral', models: { openai: 'gpt-4.1', x: 'y', groq: '' } } as never)).toMatchObject({ provider: 'groq', models: { openai: 'gpt-4.1' } });
+    expect(mergeSettings({ provider: 'mistral', models: { openai: 'gpt-6.1-sol', x: 'y', groq: '' } } as never)).toMatchObject({ provider: 'groq', models: { openai: 'gpt-6.1-sol' } });
   });
 
   it('keeps one model per provider', async () => {
     await updateSettings({ provider: 'anthropic', models: { anthropic: 'claude-x' } });
-    const s = await updateSettings({ models: { openai: 'gpt-4.1' } });
+    const s = await updateSettings({ models: { openai: 'gpt-6.1-sol' } });
     expect(s.provider).toBe('anthropic');
-    expect(s.models).toEqual({ anthropic: 'claude-x', openai: 'gpt-4.1' });
+    expect(s.models).toEqual({ anthropic: 'claude-x', openai: 'gpt-6.1-sol' });
   });
 
   it('returns defaults when nothing is stored', async () => {

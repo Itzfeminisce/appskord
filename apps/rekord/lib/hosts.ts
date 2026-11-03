@@ -1,5 +1,6 @@
 /** Optional host permissions: which sites each feature talks to, and asking Chrome for them inside a click. */
 import { requestOrigins } from '@appskord/platform';
+import { PROVIDERS } from '@appskord/llm';
 import type { Settings } from './types';
 
 export const PENV_HOSTS = ['https://penv.cloud/*'];
@@ -19,6 +20,8 @@ const KEY_HOSTS: Record<string, string[]> = {
   OPENAI_API_KEY: ['https://api.openai.com/*'],
   OPENROUTER_API_KEY: ['https://openrouter.ai/*'],
   ANTHROPIC_API_KEY: ['https://api.anthropic.com/*'],
+  GEMINI_API_KEY: ['https://generativelanguage.googleapis.com/*'],
+  XAI_API_KEY: ['https://api.x.ai/*'],
   DEEPGRAM_API_KEY: DEEPGRAM_HOSTS,
   NOTION_TOKEN: NOTION_HOSTS,
   LINEAR_API_KEY: LINEAR_HOSTS,
@@ -34,7 +37,7 @@ export function hostsForKeys(names: string[]): string[] {
 
 /** Hosts the chosen providers talk to, plus Deepgram for speaker names when its key is among `keyNames`. */
 export function hostsForSettings(s: Pick<Settings, 'transcription' | 'summary' | 'features' | 'diarization'>, keyNames: string[] = []): string[] {
-  const names = [`${s.transcription.provider.toUpperCase()}_API_KEY`, `${s.summary.provider.toUpperCase()}_API_KEY`];
+  const names = [`${s.transcription.provider.toUpperCase()}_API_KEY`, PROVIDERS[s.summary.provider].keyName ?? ''];
   if (s.features.speakerNames && keyNames.includes(s.diarization.keyName)) names.push(s.diarization.keyName);
   return [...new Set([...hostsForKeys(names), ...(s.summary.provider === 'ollama' ? OLLAMA_HOSTS : [])])];
 }

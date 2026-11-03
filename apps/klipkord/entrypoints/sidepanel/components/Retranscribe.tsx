@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getRecording, updateRecording } from '@/lib/db';
 import type { Recording } from '@/lib/types';
-import { retranscribe, retranscribedPatch } from '@/lib/transcribe/full';
-import { GROQ_CHUNK_MS, GroqError, loadTranscriptConfig, transcribeGroq } from '@/lib/transcribe/groq';
+import { retranscribe, retranscribedPatch, transcribeCloud } from '@/lib/transcribe/full';
+import { CLOUD_CHUNK_MS, loadTranscriptConfig, SpeechError } from '@/lib/transcribe/groq';
 import { hasWords } from '@/lib/transcribe/merge';
 import { readVoice } from '@/lib/transcribe/voice';
 import { BASE_MODEL, Whisper } from '@/lib/transcribe/whisper';
@@ -45,22 +45,23 @@ function Message({ icon, title, body }: { icon: ReactNode; title: string; body: 
 
 interface Job { stop: () => void; stopped: boolean }
 
-/** Runs where Settings say: Groq with a key in cloud mode, else whisper-base here. Groq failing falls back to this computer. */
+/** Runs where Settings say: the picked cloud provider with its key, else whisper-base here. A cloud failure falls back to this computer. */
 async function run(rec: Recording, job: Job, onPct: (pct: number) => void) {
   const cfg = await loadTranscriptConfig();
   const onProgress = (done: number, total: number) => onPct(total ? Math.floor((done / total) * 100) : 0);
   const stopped = () => job.stopped;
-  if (cfg.ai === 'cloud' && cfg.groqKey) {
+  const provider = cfg.provider;
+  if (provider !== 'local' && cfg.key) {
     const abort = new AbortController();
     job.stop = () => abort.abort();
     try {
       return await retranscribe(rec, {
-        readVoice, stopped, onProgress, chunkMs: GROQ_CHUNK_MS,
-        transcribe: (audio) => transcribeGroq(audio, { key: cfg.groqKey ?? '', language: cfg.language, signal: abort.signal }),
+        readVoice, stopped, onProgress, chunkMs: CLOUD_CHUNK_MS,
+        transcribe: (audio) => transcribeCloud(provider, audio, { key: cfg.key ?? '', model: cfg.model, language: cfg.language, signal: abort.signal }),
       });
     } catch (error) {
-      if (job.stopped || !(error instanceof GroqError)) throw error;
-      console.error('Klipkord: could not re-transcribe with Groq', error);
+      if (job.stopped || !(error instanceof SpeechError)) throw error;
+      console.error(`Klipkord: could not re-transcribe with ${provider}`, error);
     }
   }
   const whisper = new Whisper(() => new Worker(new URL('../../offscreen/whisper.worker.ts', import.meta.url), { type: 'module' }));

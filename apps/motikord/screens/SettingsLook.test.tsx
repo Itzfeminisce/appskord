@@ -6,10 +6,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import type { Settings as S } from '../lib/types';
 import { PrivacyView } from './Privacy';
-import { criticStatus, LookSection } from './Settings';
+import { criticStatus, LookSection, showNoBuiltInAi } from './Settings';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-const base: S = { ...DEFAULT_SETTINGS, provider: 'openai', ai: 'cloud', models: { openai: 'gpt-4o' } } as S;
+const base: S = { ...DEFAULT_SETTINGS, provider: 'openai', ai: 'cloud', models: { openai: 'gpt-6-astra' } } as S;
 
 function mount(s: S) {
   const set = vi.fn(); const onPrivacy = vi.fn();
@@ -18,6 +18,15 @@ function mount(s: S) {
   return { el, set, onPrivacy };
 }
 const sw = (el: HTMLElement, i: number) => el.querySelectorAll<HTMLInputElement>('input[role=switch]')[i]!;
+
+describe('No built-in AI card', () => {
+  it('shows only when On this computer is picked and Chrome has no built-in AI', () => {
+    expect(showNoBuiltInAi(false, 'local')).toBe(true);
+    expect(showNoBuiltInAi(false, 'cloud')).toBe(false);
+    expect(showNoBuiltInAi(true, 'local')).toBe(false);
+    expect(showNoBuiltInAi(null, 'local')).toBe(false);
+  });
+});
 
 describe('Look and quality', () => {
   it('saves each switch and shows On/Off', () => {
@@ -44,12 +53,12 @@ describe('Look and quality', () => {
   });
   it('says whether the model can see images', () => {
     expect(criticStatus(base)).toEqual({ ready: true, text: "OpenAI's model can see images · Ready" });
-    expect(criticStatus({ ...base, models: { openai: 'whisper-1' } }).text).toBe("OpenAI's model can't see images. The layout check still runs.");
+    expect(criticStatus({ ...base, models: { openai: 'gpt-transcribe' } }).text).toBe("OpenAI's model can't see images. The layout check still runs.");
     const groq = { ...DEFAULT_SETTINGS, ai: 'cloud', provider: 'groq', models: {} } as S;
     expect(criticStatus(groq)).toEqual({ ready: true, text: "Groq's model can see images · Ready" });
-    expect(criticStatus({ ...groq, models: { groq: 'llama-3.3-70b-versatile' } }).ready).toBe(true);
+    expect(criticStatus({ ...groq, models: { groq: 'openai/gpt-oss-120b' } }).ready).toBe(true);
     expect(criticStatus({ ...groq, ai: 'local' }).ready).toBe(false);
-    expect(criticStatus({ ...base, models: { openai: 'whisper-1' } }).ready).toBe(false);
+    expect(criticStatus({ ...base, models: { openai: 'gpt-transcribe' } }).ready).toBe(false);
     expect(criticStatus({ ...base, ai: 'local' }).ready).toBe(false);
   });
 });
