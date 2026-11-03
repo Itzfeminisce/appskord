@@ -1,11 +1,16 @@
 import { PROVIDERS as LLM_PROVIDERS } from '@appskord/llm';
 import { chat, pickProvider, type FetchLike, type ProviderConfig } from '@/lib/llm';
+import { isCloudNotes } from '@/lib/notes/engines';
 import { loadKeys } from '@/lib/penv';
+import { getSettings } from '@/lib/settings';
 import type { Call } from '@/lib/ai/ops';
+import type { Settings } from '@/lib/types';
 
 /** Everything Ask AI reaches outside React; tests set fakes with `setAiDeps`. Keys never leave this object. */
 export interface AiDeps {
   keys(): Promise<Record<string, string>>;
+  /** The Notes and Ask pick from Settings; absent means the first provider with a key. */
+  notes?(): Promise<Settings['notes']>;
   fetch: FetchLike;
   online(): boolean;
   /** Calls `onChange` when the computer goes on or off line. */
@@ -17,6 +22,7 @@ export interface AiDeps {
 function browserAiDeps(): AiDeps {
   return {
     keys: loadKeys,
+    notes: async () => (await getSettings()).notes,
     fetch: (u, i) => fetch(u, i),
     online: () => navigator.onLine,
     watchOnline(onChange) {
@@ -56,14 +62,19 @@ export function header(p: ProviderConfig): string {
 }
 export const providerName = (p: ProviderConfig): string => LLM_PROVIDERS[p.id].label;
 
-/** The loaded keys and the provider they give, or null when AI is not set up. */
-export async function setup(): Promise<{ keys: Record<string, string>; provider: ProviderConfig } | null> {
+export interface AiSetup { keys: Record<string, string>; provider: ProviderConfig }
+
+/** The loaded keys and the provider to use: the cloud one picked in Settings when its key is loaded, else the first with a key. Null when AI is not set up. */
+export async function setup(): Promise<AiSetup | null> {
   const keys = await aiDeps().keys();
-  const provider = pickProvider(keys);
+  const notes = await aiDeps().notes?.().catch(() => undefined);
+  const picked = notes && isCloudNotes(notes.provider) ? pickProvider(keys, notes.provider) : undefined;
+  const provider = picked && notes?.model ? { ...picked, model: notes.model } : (picked ?? pickProvider(keys));
   return provider ? { keys, provider } : null;
 }
 
-/** One JSON call through `@appskord/llm` with these keys. */
-export function callWith(keys: Record<string, string>, signal?: AbortSignal): Call {
-  return (messages, { maxTokens }) => chat(messages, { json: true, maxTokens, keys, signal }, aiDeps().fetch);
+/** One JSON call through `@appskord/llm` with the set-up provider and model. */
+export function callWith(s: AiSetup, signal?: AbortSignal): Call {
+  return (messages, { maxTokens }) =>
+    chat(messages, { json: true, maxTokens, keys: s.keys, provider: s.provider.id, model: s.provider.model, signal }, aiDeps().fetch);
 }

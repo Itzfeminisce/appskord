@@ -22,6 +22,9 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
 
 export interface ChatOptions {
   provider?: ProviderId;   // default: the first provider with a key
+  model?: string;          // the picked model; default the provider's own
+  /** Told the model used in place of a gone picked one, so Settings can show picker-model-gone. */
+  onRepick?: (model: string) => void;
   json?: boolean;          // ask for a JSON object reply
   maxTokens?: number;
   temperature?: number;    // default 0.2
@@ -63,10 +66,13 @@ export async function chat(
     // Anthropic goes through its OpenAI-compatible endpoint, as before.
     openaiCompatible: true,
     key: keys[p.keyName],
-    model: repicked[p.id] ?? p.model,
-    // Only Groq retires the default under it; any other gone model is reported.
-    modelGone: p.id === 'groq' ? 'repick' : 'report',
-    onRepick: (model) => { repicked[p.id] = model; },
+    model: opts.model || (repicked[p.id] ?? p.model),
+    // A picked model that is gone moves to a listed one; so does Groq's default. Any other gone default is reported.
+    modelGone: opts.model || p.id === 'groq' ? 'repick' : 'report',
+    onRepick: (model) => {
+      if (opts.model) opts.onRepick?.(model);
+      else repicked[p.id] = model;
+    },
     json: opts.json,
     maxTokens: opts.maxTokens,
     temperature: opts.temperature,

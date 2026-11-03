@@ -79,6 +79,19 @@ describe('chat errors and retired models', () => {
   });
 });
 
+describe('picked model', () => {
+  it('sends the picked model, and on a gone one moves to a listed model and reports it', async () => {
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'gpt-6.1-sol' }] }));
+      return JSON.parse(String(init?.body)).model === 'gpt-old' ? new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 404 }) : reply('ok');
+    });
+    const onRepick = vi.fn();
+    expect(await chat(msgs, { keys: { OPENAI_API_KEY: 'sk-fake' }, provider: 'openai', model: 'gpt-old', onRepick }, f)).toBe('ok');
+    expect(onRepick).toHaveBeenCalledWith('gpt-6.1-sol');
+    expect(JSON.parse(String((f.mock.calls.at(-1) as unknown as [string, RequestInit])[1].body)).model).toBe('gpt-6.1-sol');
+  });
+});
+
 describe('pickProvider', () => {
   it('takes the first provider with a key, or the requested one', () => {
     expect(pickProvider({ OPENAI_API_KEY: 'sk-test', GROQ_API_KEY: 'gsk_test' })?.id).toBe('groq');

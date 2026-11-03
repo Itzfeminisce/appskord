@@ -5,7 +5,7 @@ import { loadKeys } from '../penv';
 import type { FetchLike } from '../llm';
 import { getSettings } from '../settings';
 import { formatClock } from '../time';
-import type { Chapter, Marker, NoteStyle, NotesEngine, Notes, Recording, Segment, Settings, TimedNote } from '../types';
+import type { Chapter, Marker, NoteStyle, NotesProvider, Notes, Recording, Segment, Settings, TimedNote } from '../types';
 import { checkChapters, checkTimedLines } from './chapters';
 import { availableEngines, type Engine } from './engines';
 import { buildDetectPrompt, cleanTitle, guessStyle, parseDetect, STYLE_SECTIONS } from './style';
@@ -196,7 +196,7 @@ export interface NotesProgress {
   style?: NoteStyle;
   suggestedTitle?: string;
   startedAt?: number;           // when writing began, for "About N seconds left"
-  engines?: NotesEngine[];      // those that could run, in the order tried
+  engines?: NotesProvider[];      // those that could run, in the order tried
   error?: string;
 }
 

@@ -1,12 +1,13 @@
-import { chat, type FetchLike } from '../llm';
-import type { NotesEngine, Settings } from '../types';
+import { chat, PROVIDERS, type FetchLike } from '../llm';
+import { updateSettings } from '../settings';
+import type { CloudNotes, ModelChoice, NotesProvider, Settings } from '../types';
 
 export const OLLAMA_URL = 'http://localhost:11434';
 
 export interface CompleteOptions { json?: boolean; signal?: AbortSignal }
 
 export interface Engine {
-  id: NotesEngine;
+  id: NotesProvider;
   /** Characters of transcript one call can take; longer transcripts are condensed in chunks. */
   maxChars: number;
   complete(system: string, user: string, opts?: CompleteOptions): Promise<string>;
@@ -73,37 +74,64 @@ function ollamaEngine(model: string, fetchFn: FetchLike): Engine {
   };
 }
 
-function groqEngine(keys: Record<string, string>, fetchFn: FetchLike): Engine {
+/** The Ollama model to use: the picked one when Ollama has it, else the first it has. */
+async function ollamaPick(wanted: string, fetchFn: FetchLike): Promise<string | null> {
+  if (!wanted) return ollamaModel(fetchFn);
+  try {
+    const res = await fetchFn(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(2_000) });
+    if (!res.ok) return null;
+    const names = ((await res.json()) as { models?: { name?: unknown }[] }).models?.map((m) => m.name) ?? [];
+    return names.includes(wanted) ? wanted : ((names.find((n) => typeof n === 'string') as string | undefined) ?? null);
+  } catch {
+    return null;
+  }
+}
+
+function cloudEngine(id: CloudNotes, model: string, deps: EngineDeps): Engine {
   return {
-    id: 'groq', maxChars: 30_000,
+    id, maxChars: 30_000,
     complete: (system, user, opts) =>
-      chat([{ role: 'system', content: system }, { role: 'user', content: user }], { provider: 'groq', keys, json: opts?.json, signal: opts?.signal }, fetchFn),
+      chat([{ role: 'system', content: system }, { role: 'user', content: user }], {
+        provider: id, model, keys: deps.keys, json: opts?.json, signal: opts?.signal,
+        onRepick: model ? (next) => (deps.onModelGone ?? saveGone)({ provider: id, model: next, gone: model }) : undefined,
+      }, deps.fetchFn),
   };
 }
 
-/** The user's pick first, then built-in AI, Ollama and Groq in that order. */
-export function engineOrder(preferred: NotesEngine): NotesEngine[] {
-  return [preferred, ...(['builtin', 'ollama', 'groq'] as const).filter((e) => e !== preferred)];
+const saveGone = (notes: ModelChoice<NotesProvider>) =>
+  void updateSettings({ notes }).catch((error) => console.error('Klipkord: could not save the new notes model', error));
+
+/** Cloud notes providers, in fallback order. */
+export const CLOUD_NOTES: CloudNotes[] = ['groq', 'openai', 'anthropic', 'openrouter', 'google', 'xai'];
+export const isCloudNotes = (p: NotesProvider): p is CloudNotes => (CLOUD_NOTES as string[]).includes(p);
+
+/** The user's pick first, then built-in AI, Ollama and the cloud providers in that order. */
+export function engineOrder(preferred: NotesProvider): NotesProvider[] {
+  return [preferred, ...(['builtin', 'ollama', ...CLOUD_NOTES] as const).filter((e) => e !== preferred)];
 }
 
 export interface EngineDeps {
-  settings: Pick<Settings, 'notesEngine'>;
+  settings: Pick<Settings, 'notes'>;
   keys: Record<string, string>;
   fetchFn: FetchLike;
   /** Defaults to Chrome's `LanguageModel`; tests pass a fake. */
   globalObject?: object;
+  /** The picked model was gone and the provider's listed one answered instead. */
+  onModelGone?: (choice: ModelChoice<NotesProvider>) => void;
 }
 
-/** Engines that can run now, in the order to try them. Empty when none can. */
+/** Engines that can run now, in the order to try them. Empty when none can. Only the picked one uses the picked model. */
 export async function availableEngines(deps: EngineDeps): Promise<Engine[]> {
   const g = deps.globalObject ?? globalThis;
+  const picked = deps.settings.notes;
   const out: Engine[] = [];
-  for (const id of engineOrder(deps.settings.notesEngine)) {
+  for (const id of engineOrder(picked.provider)) {
+    const model = id === picked.provider ? picked.model : '';
     if (id === 'builtin' && (await builtinAvailable(g))) out.push(builtinEngine(g));
     else if (id === 'ollama') {
-      const model = await ollamaModel(deps.fetchFn);
-      if (model) out.push(ollamaEngine(model, deps.fetchFn));
-    } else if (id === 'groq' && deps.keys.GROQ_API_KEY) out.push(groqEngine(deps.keys, deps.fetchFn));
+      const name = await ollamaPick(model, deps.fetchFn);
+      if (name) out.push(ollamaEngine(name, deps.fetchFn));
+    } else if (isCloudNotes(id) && deps.keys[PROVIDERS[id].keyName]) out.push(cloudEngine(id, model, deps));
   }
   return out;
 }

@@ -3,8 +3,8 @@ import { updateRecording } from '@/lib/db';
 import { send } from '@/lib/messages';
 import type { Recording, Segment, TranscriptModel } from '@/lib/types';
 import { SAMPLE_RATE, createChunker, resample, type Chunk, type Chunker } from '@/lib/transcribe/chunker';
-import { transcribeAll } from '@/lib/transcribe/full';
-import { transcribeGroq, type TranscriptConfig } from '@/lib/transcribe/groq';
+import { transcribeAll, transcribeCloud } from '@/lib/transcribe/full';
+import { GROQ_MODEL, LOCAL_CONFIG, type TranscriptConfig } from '@/lib/transcribe/groq';
 import { appendSegment, replaceTranscript } from '@/lib/transcribe/merge';
 import { readVoice } from '@/lib/transcribe/voice';
 import { createQueue, type QueueStatus, type TranscriptPhase, type TranscriptQueue, type TranscriptStatus } from '@/lib/transcribe/queue';
@@ -73,7 +73,7 @@ function report(l: Live, q?: QueueStatus) {
 
 async function config(): Promise<TranscriptConfig> {
   const c = await send<TranscriptConfig>({ type: 'transcript/config' });
-  return c ?? { ai: 'local', language: 'auto', groqKey: null };
+  return c ?? LOCAL_CONFIG;
 }
 
 /** Taps the mic, resamples to 16 kHz and feeds the chunker while recording (not while paused). */
@@ -105,7 +105,7 @@ export async function startTranscript(recordingId: string, mic: MediaStreamTrack
   const early: Chunk[] = [];
   let queue: TranscriptQueue | null = null;
   const l: Live = {
-    recordingId, config: { ai: 'local', language: 'auto', groqKey: null }, segments: [], phase: 'live', paused: false, aborted: false, usedLocal: false,
+    recordingId, config: LOCAL_CONFIG, segments: [], phase: 'live', paused: false, aborted: false, usedLocal: false,
     stopCapture: () => undefined,
     chunker: createChunker((chunk) => (queue ? queue.add(chunk) : early.push(chunk))),
     get queue() { return queue ?? idleQueue; },
@@ -123,22 +123,25 @@ export async function startTranscript(recordingId: string, mic: MediaStreamTrack
       await ensureModel(model);
       return whisper!.transcribe(audio, l.config.language);
     },
-    groq: (audio) => transcribeGroq(audio, { key: l.config.groqKey ?? '', language: l.config.language }),
+    cloud: (audio) => {
+      const c = l.config;
+      return transcribeCloud(c.provider === 'openai' ? 'openai' : 'groq', audio, { key: c.key ?? '', model: c.model, language: c.language });
+    },
     online: () => navigator.onLine,
     onSegment: (seg) => {
       l.segments = appendSegment(l.segments, seg);
     },
     onStatus: (q) => report(l, q),
-  }, cfg.ai === 'cloud' && cfg.groqKey ? 'groq' : 'local');
+  }, cfg.provider !== 'local' && cfg.key ? cfg.provider : 'local');
   early.splice(0).forEach((chunk) => queue!.add(chunk));
   // Fetch the model now so the first chunk does not wait on the download.
-  if (cfg.ai === 'local') void ensureModel(model).catch((error) => console.error('Klipkord: could not load Whisper', error));
+  if (cfg.provider === 'local') void ensureModel(model).catch((error) => console.error('Klipkord: could not load Whisper', error));
   report(l);
 }
 
 // Stands in until settings arrive; holds nothing.
 const idleQueue: TranscriptQueue = createQueue({
-  local: async () => '', groq: async () => '', online: () => true, onSegment: () => undefined, onStatus: () => undefined,
+  local: async () => '', cloud: async () => '', online: () => true, onSegment: () => undefined, onStatus: () => undefined,
 }, 'local');
 
 export function pauseTranscript(paused: boolean) {
@@ -158,8 +161,8 @@ export async function useGroq() {
   if (!l) return;
   const cfg = await config();
   if (!cfg.groqKey) return;
-  l.config = { ...l.config, groqKey: cfg.groqKey };
-  l.queue.useGroq();
+  l.config = { ...l.config, provider: 'groq', model: GROQ_MODEL, key: cfg.groqKey, groqKey: cfg.groqKey };
+  l.queue.useCloud('groq');
 }
 
 export function currentStatus(): TranscriptStatus | null {
@@ -226,7 +229,7 @@ export async function finishTranscript(recordingId: string, durationMs: number):
   await save(recordingId, { transcript: l.segments, transcriptPending: true });
   const q = l.queue.status;
   // Groq for every chunk is already the full model; otherwise only a finished base pass is.
-  let model: TranscriptModel = drained && !l.usedLocal && q.engine === 'groq' ? 'full' : 'live';
+  let model: TranscriptModel = drained && !l.usedLocal && q.engine !== 'local' ? 'full' : 'live';
   if (drained && !l.aborted && q.engine === 'local') {
     l.phase = 'base';
     report(l);

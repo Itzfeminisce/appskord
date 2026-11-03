@@ -5,8 +5,10 @@
  */
 import { availabilityOf } from './check/results';
 import { type KeyStatus } from './penv';
-import { detectKey, isProviderKeyName, serviceLabel, type ProviderKeyName } from '@appskord/llm';
-import type { AiMode, NotesEngine, Settings } from './types';
+import { detectKey, isProviderKeyName, PROVIDERS as LLM_PROVIDERS, providerForKey, serviceLabel, SUGGESTED, type PickerList, type ProviderKeyName } from '@appskord/llm';
+import type { PickerGroup, PickerOption, PickerValue } from '@appskord/ui';
+import { BUILTIN, DEFAULT_SETTINGS, GROQ_BOTH, WHISPER } from './settings';
+import type { AiMode, CloudNotes, ModelChoice, NotesProvider, Settings, TranscriptsProvider } from './types';
 
 /** The keys Klipkord uses. */
 export type KeyName = ProviderKeyName;
@@ -16,9 +18,9 @@ const KEY_NAMES: KeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_K
 /** True for a key name Klipkord can use. */
 export const isKeyName = (name: string): name is KeyName => isProviderKeyName(name);
 
-/** What a key covers in Klipkord: Groq does transcripts and notes; the others write notes. */
+/** What a key covers in Klipkord: Groq and OpenAI do transcripts and notes; the others write notes. */
 export function jobsFor(name: KeyName): KeyJob[] {
-  return name === 'GROQ_API_KEY' ? ['transcripts', 'notes'] : ['notes'];
+  return name === 'GROQ_API_KEY' || name === 'OPENAI_API_KEY' ? ['transcripts', 'notes'] : ['notes'];
 }
 
 export const PENV_CLOUD_URL = 'https://penv.cloud';
@@ -35,14 +37,14 @@ export type SetupState = 'no-built-in-ai' | 'slow-computer';
 
 export interface SetupChoice {
   ai: AiMode;                // the option marked Recommended and selected by default
-  notesEngine: NotesEngine;  // what writes notes under that option
   states: SetupState[];      // messages Setup shows
 }
 
-/** The notes engine for an AI option: Groq when cloud, else Chrome's built-in AI, else Ollama. */
-export function notesEngineFor(ai: AiMode, builtinAi: boolean | null): NotesEngine {
-  if (ai === 'cloud') return 'groq';
-  return builtinAi === false ? 'ollama' : 'builtin';
+/** Both pickers for a first-run option: Groq for both when cloud, else Whisper and Chrome's built-in AI, or Ollama without it. */
+export function aiSettings(ai: AiMode, builtinAi: boolean | null): Pick<Settings, 'transcripts' | 'notes'> {
+  if (ai === 'cloud') return GROQ_BOTH;
+  const notes: Settings['notes'] = builtinAi === false ? { provider: 'ollama', model: '' } : DEFAULT_SETTINGS.notes;
+  return { transcripts: DEFAULT_SETTINGS.transcripts, notes };
 }
 
 /** Local needs WebGPU for usable speed; without it Groq is the default. Missing built-in AI only moves notes. */
@@ -51,7 +53,7 @@ export function setupChoice(check: MachineCheck): SetupChoice {
   const states: SetupState[] = [];
   if (check.builtinAi === false) states.push('no-built-in-ai');
   if (check.webgpu === false) states.push('slow-computer');
-  return { ai, notesEngine: notesEngineFor(ai, check.builtinAi), states };
+  return { ai, states };
 }
 
 /** True when either built-in AI API can run or fetch its model. */
@@ -161,34 +163,106 @@ export function noUsableKeys(loaded: string[], status: StatusMap): boolean {
   return loaded.every((n) => status[n] === 'rejected');
 }
 
-/** The AI settings "Start recording" saves once keys work: cloud only when a Groq key can transcribe. */
-export function cloudSettings(loaded: string[], status: StatusMap): Pick<Settings, 'ai' | 'notesEngine'> | null {
+/** The AI settings "Start recording" saves once keys work: Groq for both pickers only when a Groq key can transcribe. */
+export function cloudSettings(loaded: string[], status: StatusMap): Pick<Settings, 'transcripts' | 'notes'> | null {
   const groq = status.GROQ_API_KEY === 'ok' || status.GROQ_API_KEY === 'unreachable';
-  return loaded.includes('GROQ_API_KEY') && groq ? { ai: 'cloud', notesEngine: 'groq' } : null;
+  return loaded.includes('GROQ_API_KEY') && groq ? GROQ_BOTH : null;
 }
 
 // ---- Settings rows ----
 
-/** The Transcripts row: the engine and, for Whisper, whether the model is on this computer. */
-export function transcriptsStatus(ai: AiMode, modelDownloaded?: boolean): string {
-  if (ai === 'cloud') return 'Groq';
-  return modelDownloaded ? 'Whisper · downloaded' : 'Whisper';
+/** "Connected · Groq and OpenAI keys" for the Penv Cloud row; null when not connected. */
+export function penvRowStatus(connected: boolean, loaded: string[]): string | null {
+  const names = loaded.filter(isKeyName).map((n) => LLM_PROVIDERS[providerForKey(n)!].label);
+  if (!connected || !names.length) return null;
+  const list = names.length < 2 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  return `Connected · ${list} ${names.length === 1 ? 'key' : 'keys'}`;
 }
 
-/** "Connected · 1 key" for the Penv Cloud row; null when not connected. */
-export function penvRowStatus(connected: boolean, keyCount: number): string | null {
-  if (!connected) return null;
-  return `Connected · ${keyCount} ${keyCount === 1 ? 'key' : 'keys'}`;
+// ---- Model pickers ----
+
+export type PickerJob = 'transcripts' | 'notes';
+
+export const PICKER_LABEL: Record<PickerJob, string> = { transcripts: 'Transcripts', notes: 'Notes and Ask' };
+export const PICKER_FOOT: Record<PickerJob, string> = {
+  transcripts: 'Other providers don’t turn speech into text here, so they aren’t listed.',
+  notes: 'Each list comes from the provider, using your key.',
+};
+/** The cloud groups of each picker, in the frame's order. */
+export const PICKER_CLOUD: Record<PickerJob, CloudNotes[]> = {
+  transcripts: ['groq', 'openai'],
+  notes: ['groq', 'openai', 'anthropic', 'google', 'xai', 'openrouter'],
+};
+const MARK: Record<CloudNotes, string> = { groq: 'Gq', openai: 'OA', anthropic: 'An', google: 'Gm', xai: 'xA', openrouter: 'OR' };
+const ADD_KEY: Record<CloudNotes, string> = {
+  groq: 'Add a Groq key', openai: 'Add an OpenAI key', anthropic: 'Add an Anthropic key',
+  google: 'Add a Gemini key', xai: 'Add an xAI key', openrouter: 'Add an OpenRouter key',
+};
+const ALIASES: Partial<Record<CloudNotes, string[]>> = { anthropic: ['claude'], google: ['google'], xai: ['grok'] };
+const OLLAMA = 'ollama:';
+export const OLLAMA_DOWN = 'Ollama isn’t running. Start it, then open this list again.';
+
+/** A provider's list in the picker: being fetched, or fetched (live, or suggested with the error). */
+export type ListState = { status: 'loading' } | { status: 'done'; list: PickerList };
+
+export interface PickerInputs {
+  keys: string[];                              // loaded key names, never values
+  lists: Partial<Record<CloudNotes, ListState>>;
+  builtin: boolean;                            // Chrome's built-in AI can run
+  ollama?: string[] | null;                    // Ollama's models; null when it did not answer, absent before asking
 }
 
-/** Notes engines Settings offers: Groq only while cloud AI is on. */
-export function notesOptions(ai: AiMode): { value: NotesEngine; label: string }[] {
-  const options: { value: NotesEngine; label: string }[] = [
-    { value: 'builtin', label: 'Chrome’s built-in AI' },
-    { value: 'ollama', label: 'Ollama on this computer' },
-  ];
-  if (ai === 'cloud') options.push({ value: 'groq', label: 'Groq' });
-  return options;
+/** The picker's value for a saved choice. Both local notes engines sit in the "On this computer" group. */
+export function pickerValue(job: PickerJob, s: Pick<Settings, 'transcripts' | 'notes'>): PickerValue {
+  if (job === 'transcripts') return s.transcripts.provider === 'local' ? { provider: 'local', model: WHISPER } : { ...s.transcripts };
+  const { provider, model } = s.notes;
+  if (provider === 'builtin') return { provider: 'local', model: BUILTIN };
+  if (provider === 'ollama') return { provider: 'local', model: OLLAMA + model };
+  return { provider, model };
+}
+
+/** The choice to save for a picked row. */
+export function choiceFor(job: PickerJob, v: PickerValue): ModelChoice<TranscriptsProvider> | ModelChoice<NotesProvider> {
+  if (job === 'transcripts') return v.provider === 'local' ? DEFAULT_SETTINGS.transcripts : { provider: v.provider as TranscriptsProvider, model: v.model };
+  if (v.provider !== 'local') return { provider: v.provider as CloudNotes, model: v.model };
+  return v.model.startsWith(OLLAMA) ? { provider: 'ollama', model: v.model.slice(OLLAMA.length) } : DEFAULT_SETTINGS.notes;
+}
+
+/** The host Chrome must allow before a provider is used; none for Whisper and built-in AI. */
+export function hostFor(choice: ModelChoice<string>): string | null {
+  if (choice.provider === 'ollama') return 'http://localhost:11434/*';
+  const info = LLM_PROVIDERS[choice.provider as CloudNotes];
+  return info && choice.provider !== 'local' && choice.provider !== 'builtin' ? `https://${info.host}/*` : null;
+}
+
+function cloudGroup(job: PickerJob, p: CloudNotes, value: PickerValue, inp: PickerInputs): PickerGroup {
+  const info = LLM_PROVIDERS[p];
+  const base = { id: p, name: info.label, mark: MARK[p], aliases: ALIASES[p], addKeyLabel: ADD_KEY[p] };
+  if (!inp.keys.includes(info.keyName!)) return { ...base, status: 'needs-key', models: [] };
+  const state = inp.lists[p];
+  const suggested = (SUGGESTED[p][job === 'transcripts' ? 'speech' : 'chat'] ?? []).map((id, i): PickerOption => (i === 0 ? { id, tag: 'Recommended' } : { id }));
+  const list = state?.status === 'done' ? state.list : undefined;
+  const models: PickerOption[] = list ? [...list.models] : suggested;
+  if (value.provider === p && value.model && !models.some((m) => m.id === value.model)) models.push({ id: value.model, tag: 'Your choice' });
+  if (state?.status === 'loading') return { ...base, status: 'loading', models };
+  if (list?.error?.code === 'auth') return { ...base, status: 'key-refused', models };
+  return { ...base, status: list?.error ? 'failed' : 'ready', models };
+}
+
+/** Every group of one picker: "On this computer" first, then the cloud providers. */
+export function pickerGroups(job: PickerJob, s: Pick<Settings, 'transcripts' | 'notes'>, inp: PickerInputs): PickerGroup[] {
+  const value = pickerValue(job, s);
+  const local: PickerGroup = { id: 'local', name: 'On this computer', status: 'local', models: [] };
+  if (job === 'transcripts') local.models = [{ id: WHISPER, name: 'Whisper' }];
+  else {
+    if (inp.builtin || value.model === BUILTIN) local.models.push({ id: BUILTIN, name: 'Chrome’s built-in AI' });
+    local.models.push(...(inp.ollama ?? []).map((n) => ({ id: OLLAMA + n, name: `Ollama · ${n}` })));
+    if (s.notes.provider === 'ollama' && !local.models.some((m) => m.id === value.model)) {
+      local.models.push({ id: value.model, name: s.notes.model ? `Ollama · ${s.notes.model}` : 'Ollama' });
+    }
+    if (inp.ollama === null) local.note = OLLAMA_DOWN;
+  }
+  return [local, ...PICKER_CLOUD[job].map((p) => cloudGroup(job, p, value, inp))];
 }
 
 // ---- Permissions (helper tab) ----

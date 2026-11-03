@@ -51,7 +51,7 @@ export async function ask(request: string, { project, units, edit }: { project: 
   setAi({ status: 'thinking', request: text, planned: 0, provider: header(s.provider) });
   try {
     const checked = await askOps({
-      request: text, project: project(), units, cards: true, call: callWith(s.keys, controller.signal),
+      request: text, project: project(), units, cards: true, call: callWith(s, controller.signal),
       onPart: (_done, _of, n) => { if (running === controller) setAi({ planned: n }); },
     });
     if (running !== controller) return;
@@ -103,7 +103,7 @@ export function useAiWins(project: Project, units: Unit[], wanted: boolean) {
     void (async () => {
       const s = await setup();
       if (!s || controller.signal.aborted) return;
-      const found = await aiWins(project, units, callWith(s.keys, controller.signal));
+      const found = await aiWins(project, units, callWith(s, controller.signal));
       // A stopped ask is asked again next time.
       if (controller.signal.aborted) clearWins(project.id);
       else setWins(project.id, found);

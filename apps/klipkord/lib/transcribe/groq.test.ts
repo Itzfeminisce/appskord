@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GroqError, GROQ_MODEL, parseWords, transcribeGroq } from './groq';
+import { SpeechError, GROQ_MODEL, parseWords, transcribeGroq } from './groq';
 
 const KEY = 'gsk_test';
 const audio = new Float32Array(1600).fill(0.1);
@@ -36,8 +36,8 @@ describe('transcribeGroq', () => {
     [401, 'auth'], [429, 'rate-limited'], [503, 'server'], [400, 'bad-request'],
   ])('maps HTTP %i to %s without the key in the message', async (status, code) => {
     const error = await transcribeGroq(audio, { key: KEY }, async () => reply(status)).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(GroqError);
-    expect((error as GroqError).code).toBe(code);
+    expect(error).toBeInstanceOf(SpeechError);
+    expect((error as SpeechError).code).toBe(code);
     expect(String((error as Error).message)).not.toContain(KEY);
   });
   it('a failed fetch is offline; no key never fetches', async () => {

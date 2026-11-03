@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { askRecording, buildAskPrompt, checkTimes, parseTimes, stripUnsupported } from './ask';
+import { askRecording, buildAskPrompt, ENGINE_FOOTER, checkTimes, parseTimes, stripUnsupported } from './ask';
 import type { Segment } from './types';
 
 const transcript: Segment[] = [
@@ -10,7 +10,7 @@ const json = (body: unknown) => new Response(JSON.stringify(body));
 const down = async (): Promise<Response> => { throw new TypeError('offline'); };
 const ollama = (content: string) => vi.fn(async (url: string) => (url.endsWith('/api/tags') ? json({ models: [{ name: 'llama3.2' }] }) : json({ message: { content } })));
 type Deps = Parameters<typeof askRecording>[3];
-const deps = (fetchFn: Deps['fetchFn'], keys: Record<string, string> = {}): Deps => ({ settings: { notesEngine: 'ollama' }, keys, fetchFn, globalObject: {} });
+const deps = (fetchFn: Deps['fetchFn'], keys: Record<string, string> = {}): Deps => ({ settings: { notes: { provider: 'ollama', model: '' } }, keys, fetchFn, globalObject: {} });
 
 describe('time check', () => {
   it('parses unique m:ss and h:mm:ss times', () => {
@@ -46,13 +46,22 @@ describe('askRecording', () => {
   });
   it('answers through Groq with an injected fetch', async () => {
     const fetchFn = vi.fn(async () => json({ choices: [{ message: { content: 'Safari [03:41]' } }] }));
-    const r = await askRecording('t', transcript, 'q', { ...deps(fetchFn, { GROQ_API_KEY: 'gsk_test' }), settings: { notesEngine: 'groq' } });
+    const r = await askRecording('t', transcript, 'q', { ...deps(fetchFn, { GROQ_API_KEY: 'gsk_test' }), settings: { notes: { provider: 'groq', model: 'openai/gpt-oss-120b' } } });
     expect(r).toMatchObject({ kind: 'answer', answer: { engine: 'groq' } });
+  });
+  it('answers through the picked provider and names it in the footer', async () => {
+    const fetchFn = vi.fn(async (_u: string, _i?: RequestInit) => json({ choices: [{ message: { content: 'Safari [03:41]' } }] }));
+    const r = await askRecording('t', transcript, 'q', { ...deps(fetchFn, { ANTHROPIC_API_KEY: 'sk-ant-fake' }), settings: { notes: { provider: 'anthropic', model: 'claude-sonnet-5-5' } } });
+    expect(r).toMatchObject({ kind: 'answer', answer: { engine: 'anthropic' } });
+    const call = fetchFn.mock.calls.find(([u]) => u.startsWith('https://api.anthropic.com/'))!;
+    expect(JSON.parse(call[1]!.body as string).model).toBe('claude-sonnet-5-5');
+    expect(ENGINE_FOOTER.anthropic).toBe('Answered by Anthropic. Only the transcript text was sent.');
+    expect(ENGINE_FOOTER.groq).toBe('Answered by Groq. Only the transcript text was sent.');
   });
   it('answers through built-in AI', async () => {
     const prompt = vi.fn(async () => 'Safari [03:41]');
     const globalObject = { LanguageModel: { availability: async () => 'available', create: async () => ({ prompt, destroy() {} }) } };
-    const r = await askRecording('t', transcript, 'q', { ...deps(down), settings: { notesEngine: 'builtin' }, globalObject });
+    const r = await askRecording('t', transcript, 'q', { ...deps(down), settings: { notes: { provider: 'builtin', model: 'builtin' } }, globalObject });
     expect(r).toMatchObject({ kind: 'answer', answer: { engine: 'builtin' } });
   });
   it('says not set up when no engine is ready', async () => {
