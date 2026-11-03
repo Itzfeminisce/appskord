@@ -54,19 +54,28 @@ describe('regroup', () => {
     const b = sampleBoard(T);
     const grouped = { ...b, groups: [{ id: 'g', title: 'G', cards: ['why-now', 'before-ship'] }] };
     const moved = { ...grouped, cards: { ...grouped.cards, 'before-ship': { ...grouped.cards['before-ship']!, rect: { x: 3000, y: 3000, w: 220, h: 176 } } } };
-    expect(regroup(moved, ['before-ship'], T).groups).toEqual([{ id: 'g', title: 'G', cards: ['why-now'] }]);
+    expect(regroup(grouped, moved, ['before-ship'], T).groups).toEqual([{ id: 'g', title: 'G', cards: ['why-now'] }]);
   });
 
   it('adds a loose card dropped inside a group', () => {
     const b = sampleBoard(T);
     const flow = b.cards['flow']!.rect;
     const moved = { ...b, cards: { ...b.cards, report: { ...b.cards['report']!, rect: { ...b.cards['report']!.rect, x: flow.x + 10, y: flow.y + 10 } } } };
-    expect(regroup(moved, ['report'], T).groups[0]!.cards).toEqual(['flow', 'report']);
+    expect(regroup(b, moved, ['report'], T).groups[0]!.cards).toEqual(['flow', 'report']);
+  });
+
+  it('keeps a card nudged within its group, even away from the other cards', () => {
+    const b = sampleBoard(T);
+    const a = b.cards['why-now']!.rect;
+    const grouped = { ...b, groups: [{ id: 'g', title: 'G', cards: ['why-now', 'before-ship'] }] };
+    const box = { ...grouped.cards['before-ship']!.rect };
+    const moved = { ...grouped, cards: { ...grouped.cards, 'before-ship': { ...grouped.cards['before-ship']!, rect: { ...box, x: box.x + (box.x > a.x ? 40 : -40) } } } };
+    expect(regroup(grouped, moved, ['before-ship'], T).groups[0]!.cards).toEqual(['why-now', 'before-ship']);
   });
 
   it('leaves a whole group moving together alone', () => {
     const b = sampleBoard(T);
-    expect(regroup(b, ['flow'], T)).toBe(b);
+    expect(regroup(b, b, ['flow'], T)).toBe(b);
   });
 });
 

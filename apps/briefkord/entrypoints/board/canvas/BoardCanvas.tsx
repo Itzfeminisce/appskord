@@ -164,7 +164,7 @@ export function BoardCanvas(props: BoardCanvasProps) {
       (g) => {
         if (g.kind !== 'move') return;
         if (g.moved) {
-          live.current.actions.change((b, now) => regroup(moveCards(b, g.ids, g.dx, g.dy, now), g.ids, now));
+          live.current.actions.change((b, now) => regroup(b, moveCards(b, g.ids, g.dx, g.dy, now), g.ids, now));
           live.current.actions.moved(g.ids.length);
         } else if (g.click) store.select([g.click]);
       },
@@ -570,7 +570,9 @@ export function BoardCanvas(props: BoardCanvasProps) {
               <button type="button" className="bk-zoom-help" aria-label="Keyboard shortcuts (?)" onClick={actions.showHelp}>?</button>
             </div>
             <p className="bk-canvas-hint">
-              {arrow
+              {connectFrom
+                ? 'Click another card to draw an arrow to it. Esc cancels.'
+                : arrow
                 ? 'Drag an end to another card to reconnect it.'
                 : groupSel
                   ? 'Drag cards in or out. Moving the group moves its cards.'
