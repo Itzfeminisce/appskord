@@ -51,9 +51,12 @@ describe('chatCloud requests', () => {
     await chatCloud(msgs, base({ provider: 'xai', key: 'xai-test', model: 'grok-4.7', fetch: f }));
     expect(sent(f).url).toBe('https://api.x.ai/v1/chat/completions');
     expect(sent(f).headers.Authorization).toBe('Bearer xai-test');
-    await chatCloud(msgs, base({ provider: 'google', key: 'AIza-test', model: 'gemini-3.8-flash', fetch: f }));
+    await chatCloud(
+      msgs,
+      base({ provider: 'google', key: 'AIza' + 'x'.repeat(30), model: 'gemini-3.8-flash', fetch: f }),
+    );
     expect(sent(f, 1).url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
-    expect(sent(f, 1).headers.Authorization).toBe('Bearer AIza-test');
+    expect(sent(f, 1).headers.Authorization).toBe('Bearer AIza' + 'x'.repeat(30));
   });
   it('OpenAI: max_completion_tokens, and reasoning models drop temperature', async () => {
     const f = vi.fn(async () => reply('ok'));

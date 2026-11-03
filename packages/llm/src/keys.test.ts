@@ -4,7 +4,7 @@ import { checkKey, checkRequest, createKeyWatcher, detectKey, looksComplete, ser
 describe('detectKey', () => {
   it('knows xAI and Gemini keys by prefix', () => {
     expect(detectKey('xai-test')).toBe('XAI_API_KEY');
-    expect(detectKey('AIza-test')).toBe('GEMINI_API_KEY');
+    expect(detectKey('AIza' + 'x'.repeat(30))).toBe('GEMINI_API_KEY');
     expect(serviceLabel('XAI_API_KEY')).toBe('xAI');
     expect(serviceLabel('GEMINI_API_KEY')).toBe('Gemini');
   });

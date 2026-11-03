@@ -189,6 +189,9 @@ describe('canSeeImages', () => {
       'pixtral-12b',
       'qwen2.5-vl-7b',
       'x-vision',
+      'qwen/qwen3.8-27b',
+      'claude-fable-5-1',
+      'gpt-6-astra',
     ])
       expect(canSeeImages('groq', m)).toBe(true);
     for (const m of ['llama-3.3-70b', 'gpt-3.5-turbo', 'openai/gpt-oss-120b'])
@@ -207,7 +210,7 @@ describe('Gemini and xAI lists', () => {
         'models/gemini-3.5-flash-lite',
       ),
     );
-    const r = await listModelsFor('google', 'chat', { key: 'AIza-test', fetch: f });
+    const r = await listModelsFor('google', 'chat', { key: 'AIza' + 'x'.repeat(30), fetch: f });
     expect(r.models).toEqual([
       { id: 'gemini-3.8-flash', tag: 'Recommended' },
       { id: 'gemini-3.5-flash-lite', tag: 'Fastest' },
@@ -215,7 +218,7 @@ describe('Gemini and xAI lists', () => {
     ]);
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/models');
-    expect(init.headers).toEqual({ Authorization: 'Bearer AIza-test' });
+    expect(init.headers).toEqual({ Authorization: 'Bearer AIza' + 'x'.repeat(30) });
   });
   it('xAI: grok-4.7 recommended, no Fastest tag; no speech kind', async () => {
     const f = ok(ids('grok-4.7'));
@@ -226,7 +229,7 @@ describe('Gemini and xAI lists', () => {
       models: [],
       source: 'suggested',
     });
-    expect(await listModelsFor('google', 'speech', { key: 'AIza-test', fetch: f })).toEqual({
+    expect(await listModelsFor('google', 'speech', { key: 'AIza' + 'x'.repeat(30), fetch: f })).toEqual({
       models: [],
       source: 'suggested',
     });

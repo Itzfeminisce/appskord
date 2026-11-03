@@ -42,7 +42,7 @@ export const SUGGESTED_MODELS: Record<Provider, { models: string[]; faster: stri
 
 /** A model of the provider that can see images, for the visual critic when the chat model can't; absent = keep the chat model. */
 export const VISION_MODEL: Partial<Record<Provider, string>> = {
-  groq: 'meta-llama/llama-4-scout-17b-16e-instruct',
+  groq: 'qwen/qwen3.8-27b',
 };
 
 /** The model the critic asks for `chat`: the chat model when it can see images, else the provider's vision model, else the blind chat model. */

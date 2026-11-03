@@ -16,7 +16,7 @@ const OPENAI_NOT_CHAT = /-pro(\b|-)|deep-research|codex/i;
 /** True when a model id names something that can't write text (speech, images, embeddings…). */
 export const notForText = (model: string) => NOT_CHAT.test(model);
 
-const VISION = /vision|llama-4|gpt-[4-9]|claude|gemini|grok-4|pixtral|qwen[\w.-]*vl/i;
+const VISION = /vision|llama-4|gpt-[4-9]|claude|gemini|grok-4|pixtral|qwen[\w.-]*vl|qwen3\.8/i;
 
 /** True when a model id names a model that can read images. */
 export const canSeeImages = (_provider: ProviderId, model: string) => VISION.test(model);

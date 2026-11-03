@@ -12,7 +12,7 @@ export const newestFirst = (past: readonly Change[]): Change[] => [...past].reve
 /** "Groq" (or the other provider), "built-in AI" or "by hand", as the Changes tab shows the author. */
 export function byLabel(by: Author): string | undefined {
   switch (by) {
-    case 'groq': case 'openai': case 'anthropic': case 'openrouter': return PROVIDERS[by].label;
+    case 'groq': case 'openai': case 'anthropic': case 'openrouter': case 'google': case 'xai': return PROVIDERS[by].label;
     case 'builtin': return 'built-in AI';
     case 'hand': return 'by hand';
     case 'template': case 'check': return undefined;
