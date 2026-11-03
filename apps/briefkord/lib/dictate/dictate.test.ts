@@ -32,6 +32,12 @@ describe('dictate machine', () => {
     expect(dictate(writing, { type: 'listen', at: 1 })).toBe(writing);
   });
 
+  it('a mic that answers after a cancel does not start listening', () => {
+    const cancelled = dictate(dictate(IDLE, { type: 'ask' }), { type: 'reset' });
+    expect(dictate(cancelled, { type: 'listen', at: 1 })).toEqual(IDLE);
+    expect(dictate(dictate(IDLE, { type: 'blocked' }), { type: 'listen', at: 1 }).kind).toBe('blocked');
+  });
+
   it('shows the timer and bar heights', () => {
     expect(clock(7000)).toBe('0:07');
     expect(clock(75_500)).toBe('1:15');

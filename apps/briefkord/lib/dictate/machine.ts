@@ -30,7 +30,8 @@ export function dictate(phase: DictatePhase, event: DictateEvent): DictatePhase 
     case 'ask':
       return phase.kind === 'listening' || phase.kind === 'writing' ? phase : { kind: 'asking' };
     case 'listen':
-      return phase.kind === 'asking' || phase.kind === 'idle' ? { kind: 'listening', since: event.at } : phase;
+      // Only an open ask may start: a reset (Esc, card switch) while asking means the press was withdrawn.
+      return phase.kind === 'asking' ? { kind: 'listening', since: event.at } : phase;
     case 'stop':
       return phase.kind === 'listening' ? { kind: 'writing' } : phase;
     case 'reset':

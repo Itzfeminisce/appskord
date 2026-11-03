@@ -136,6 +136,8 @@ export function useDictation({ field, where, bars = 9, onAddKey, onInserted }: D
   const provider = useRef<SpeechProvider | undefined>(undefined);
   const ctrl = useRef<AbortController | undefined>(undefined);
   const micTab = useRef<number | undefined>(undefined);
+  /** Bumped by every discard: a pending press from an older turn must not open the mic. */
+  const turn = useRef(0);
   const [levels, setLevels] = useState<number[]>(() => Array(bars).fill(4));
   const [now, setNow] = useState(0);
   const [tint, setTint] = useState<{ from: number; to: number }>();
@@ -143,6 +145,7 @@ export function useDictation({ field, where, bars = 9, onAddKey, onInserted }: D
   live.current = { onInserted };
 
   const discard = useCallback(() => {
+    turn.current++;
     rec.current?.discard();
     rec.current = undefined;
     ctrl.current?.abort();
@@ -205,11 +208,15 @@ export function useDictation({ field, where, bars = 9, onAddKey, onInserted }: D
     };
   }, [tint, field]);
 
-  const listen = async (p: SpeechProvider, asked: Promise<boolean>) => {
-    if (!(await asked)) return send({ type: 'fail', why: 'site', provider: p });
+  const listen = async (p: SpeechProvider, asked: Promise<boolean>, mine: number) => {
+    const stale = () => mine !== turn.current;
+    const ok = await asked;
+    if (stale()) return;
+    if (!ok) return send({ type: 'fail', why: 'site', provider: p });
     keys.host.current[p] = true;
     if (where === 'panel') {
       const state = await micPermission();
+      if (stale()) return;
       if (state === 'denied') return send({ type: 'blocked' });
       if (state === 'prompt') {
         micTab.current = (await browser.tabs.create({ url: browser.runtime.getURL('/mic.html') })).id;
@@ -217,6 +224,10 @@ export function useDictation({ field, where, bars = 9, onAddKey, onInserted }: D
       }
     }
     const stream = await openMic();
+    if (stale()) {
+      for (const t of stream?.getTracks() ?? []) t.stop();
+      return;
+    }
     if (!stream) return send({ type: 'blocked' });
     try {
       rec.current = new Recording(stream);
@@ -270,15 +281,19 @@ export function useDictation({ field, where, bars = 9, onAddKey, onInserted }: D
     live.current.onInserted?.(el.value);
   };
 
+  const stop = () => {
+    // A second Stop before React re-renders finds no recording and does nothing.
+    if (!rec.current) return;
+    send({ type: 'stop' });
+    void write();
+  };
+
   // Called from a click: Chrome's site prompt goes first, before any await.
   const press = () => {
     const action = pressAction(phase);
-    if (action === 'stop') {
-      send({ type: 'stop' });
-      void write();
-      return;
-    }
+    if (action === 'stop') return stop();
     if (action !== 'start') return;
+    const mine = turn.current;
     const names = keys.names.current;
     const p = names && speechProvider(names);
     if (!p) {
@@ -289,21 +304,31 @@ export function useDictation({ field, where, bars = 9, onAddKey, onInserted }: D
           keys.names.current = list;
           const q = speechProvider(list);
           if (!q) return send({ type: 'no-key' });
-          return listen(q, hasHostAccess(q));
+          return listen(q, hasHostAccess(q), mine);
         })
         .catch((error: unknown) => {
           console.error('Briefkord: could not load the speech key', error);
-          send({ type: 'reset' });
+          if (mine === turn.current) send({ type: 'reset' });
         });
       return;
     }
     const asked = keys.host.current[p] ? Promise.resolve(true) : requestHostAccess(p);
     send({ type: 'ask' });
-    void listen(p, asked).catch((error: unknown) => {
+    void listen(p, asked, mine).catch((error: unknown) => {
       console.error('Briefkord: could not open the microphone', error);
-      send({ type: 'blocked' });
+      if (mine === turn.current) send({ type: 'blocked' });
     });
   };
+
+  // The page went out of sight while listening: stop and write it down, so the mic is never on unseen.
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
+  useEffect(() => {
+    if (phase.kind !== 'listening') return;
+    const on = () => document.visibilityState === 'hidden' && stopRef.current();
+    document.addEventListener('visibilitychange', on);
+    return () => document.removeEventListener('visibilitychange', on);
+  }, [phase.kind]);
 
   // Keeps the cursor in the field while the mic is pressed, and the canvas from taking the press.
   const hold = {
