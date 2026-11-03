@@ -20,6 +20,8 @@ export interface BoardShell {
 export interface BoardExtensions {
   /** The List view behind the Canvas / List switch. */
   ListView: ComponentType<{ shell: BoardShell }>;
+  /** The List's "Suggest an order" (T7). */
+  suggestOrder(shell: BoardShell): void;
   briefMe(shell: BoardShell): void;
   share(shell: BoardShell): void;
   startMeeting(shell: BoardShell): void;
@@ -43,6 +45,7 @@ const noop = () => undefined;
 
 export const boardExtensions: BoardExtensions = {
   ListView: ListPlaceholder,
+  suggestOrder: noop,
   briefMe: noop,
   share: noop,
   startMeeting: noop,

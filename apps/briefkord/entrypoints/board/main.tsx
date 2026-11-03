@@ -7,6 +7,7 @@ import '@appskord/ui/tokens.css';
 import '@appskord/ui/components.css';
 import '@/lib/ui/briefkord.css';
 import './board.css';
+import './list/register';
 import { createAppRouter } from './router';
 
 createRoot(document.getElementById('root')!).render(
