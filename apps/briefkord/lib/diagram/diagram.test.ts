@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { sampleBoard } from '../board/sample';
 import type { Diagram, DiagramNode } from '../board/types';
 import { addEdge, addNode, deleteEdge, deleteNode, edgesValid, labelEdge, linkNode, updateNode } from './edit';
-import { layoutDiagram, needsLayout, type UnplacedDiagram } from './layout';
+import { LAYOUT_ROOM, layoutCost, layoutDiagram, needsLayout, type UnplacedDiagram } from './layout';
+import { routeEdge, routeSegments } from './route';
 
 const sample = (): Diagram => {
   const card = sampleBoard(1).cards.flow!;
@@ -16,21 +17,51 @@ const overlaps = (a: DiagramNode, b: DiagramNode) => a.x < b.x + b.w && b.x < a.
 const noOverlaps = (d: Diagram) => d.nodes.every((a, i) => d.nodes.slice(i + 1).every((b) => !overlaps(a, b)));
 
 describe('layoutDiagram', () => {
-  it('lays the sample out left to right: Cart, Address, Payment, Confirm', () => {
+  const fitScale = (d: Diagram) => {
+    const w = Math.max(...d.nodes.map((n) => n.x + n.w)) - Math.min(...d.nodes.map((n) => n.x)) + 32;
+    const h = Math.max(...d.nodes.map((n) => n.y + n.h)) - Math.min(...d.nodes.map((n) => n.y)) + 32;
+    return Math.min(LAYOUT_ROOM.w / w, LAYOUT_ROOM.h / h);
+  };
+  /** Every connector clear of other nodes, and every label clear of nodes and other connectors. */
+  const readable = (d: Diagram) => {
+    const byId = new Map(d.nodes.map((n) => [n.id, n]));
+    const inside = (x: number, y: number, n: DiagramNode) => x > n.x + 2 && x < n.x + n.w - 2 && y > n.y + 2 && y < n.y + n.h - 2;
+    return d.edges.every((e) => {
+      const route = routeEdge(byId.get(e.from)!, byId.get(e.to)!);
+      const points = routeSegments(route.d).flatMap((s) => Array.from({ length: 21 }, (_, i) => [s.x1 + ((s.x2 - s.x1) * i) / 20, s.y1 + ((s.y2 - s.y1) * i) / 20] as const));
+      const clear = d.nodes.every((n) => n.id === e.from || n.id === e.to || points.every(([x, y]) => !inside(x, y, n)));
+      const label = !e.label || d.nodes.every((n) => !inside(route.label!.x, route.label!.y - 4, n));
+      return clear && label;
+    });
+  };
+
+  it('lays the sample out in reading order, wrapped to fit the preview at full size', () => {
     const d = layoutDiagram(unplaced(sample()));
-    const x = (label: string) => d.nodes.find((n) => n.label === label)!.x;
-    expect(x('Cart')).toBeLessThan(x('Address'));
-    expect(x('Address')).toBeLessThan(x('Payment'));
-    expect(x('Payment')).toBeLessThan(x('Confirm'));
-    expect(x('Payment')).toBeLessThan(x('Card saved?'));
+    const at = (label: string) => d.nodes.find((n) => n.label === label)!;
+    expect(at('Cart').x).toBeLessThan(at('Address').x);
+    expect(at('Address').x).toBeLessThan(at('Payment').x);
+    expect(at('Card saved?').y).toBeGreaterThan(at('Payment').y);
+    expect(fitScale(d)).toBeGreaterThanOrEqual(0.98);
     expect(noOverlaps(d)).toBe(true);
     expect(edgesValid(d)).toBe(true);
+    expect(layoutCost(d.nodes, d.edges)).toBeLessThan(10);
   });
 
-  it('keeps the main path on one row', () => {
+  it('keeps the yes line from Card saved? to Confirm and its label in sight', () => {
     const d = layoutDiagram(unplaced(sample()));
-    const mid = (label: string) => { const n = d.nodes.find((m) => m.label === label)!; return n.y + n.h / 2; };
-    expect(new Set(['Cart', 'Address', 'Payment', 'Confirm'].map(mid)).size).toBe(1);
+    expect(readable(d)).toBe(true);
+    const saved = d.nodes.find((n) => n.id === 'saved')!, confirm = d.nodes.find((n) => n.id === 'confirm')!;
+    expect(saved.y === confirm.y && saved.x < confirm.x).toBe(false);
+  });
+
+  it('puts a choice that skips a step on its own lane (Cart, address, choice; No: Pay; Yes: Confirm)', () => {
+    const nodes = [['a', 'step', 'Cart'], ['b', 'step', 'Enter address'], ['c', 'choice', 'Card saved?'], ['d', 'step', 'Pay'], ['e', 'end', 'Confirm']]
+      .map(([id, kind, label]) => ({ id: id!, kind: kind as DiagramNode['kind'], label: label!, colour: 'white' as const }));
+    const edges = [{ id: 'e1', from: 'a', to: 'b' }, { id: 'e2', from: 'b', to: 'c' }, { id: 'e3', from: 'c', to: 'd', label: 'No' }, { id: 'e4', from: 'c', to: 'e', label: 'Yes' }, { id: 'e5', from: 'd', to: 'e' }];
+    const d = layoutDiagram({ nodes, edges });
+    expect(readable(d)).toBe(true);
+    expect(fitScale(d)).toBeGreaterThanOrEqual(0.98);
+    expect(noOverlaps(d)).toBe(true);
   });
 
   it('never overlaps, with loops, loose nodes and many branches', () => {
@@ -40,6 +71,10 @@ describe('layoutDiagram', () => {
     expect(d.nodes).toHaveLength(14);
     expect(d.nodes.every((n) => [n.x, n.y, n.w, n.h].every(Number.isFinite))).toBe(true);
     expect(noOverlaps(d)).toBe(true);
+  });
+
+  it('lays out an empty diagram', () => {
+    expect(layoutDiagram({ nodes: [], edges: [] })).toEqual({ nodes: [], edges: [] });
   });
 
   it('drops edges to missing nodes', () => {

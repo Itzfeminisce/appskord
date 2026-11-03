@@ -1,5 +1,6 @@
 // The view file renderer. It is inlined into a standalone HTML page, so it imports only types and pure helpers that bundle in.
 import type { Board, Card, Diagram, Rect, Section } from '../../lib/board/types';
+import { routeEdge } from '../../lib/diagram/route';
 import { formatBytes, formatDay } from '../../lib/share/prepare';
 
 type Files = Record<string, string>;
@@ -96,29 +97,6 @@ function arrowHead(defs: SVGElement, cls: string): string {
   return `url(#${id})`;
 }
 
-const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.max(a0, b0) < Math.min(a1, b1);
-
-// Right-angle connectors, as the board draws them (entrypoints/board/cards/DiagramView.tsx).
-function routeEdge(a: Rect, b: Rect): { d: string; x: number; y: number; anchor: string } {
-  const ca = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, cb = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
-  if (overlap(a.x, a.x + a.w, b.x, b.x + b.w)) {
-    const x = (Math.max(a.x, b.x) + Math.min(a.x + a.w, b.x + b.w)) / 2;
-    const down = cb.y > ca.y;
-    const y1 = down ? a.y + a.h : a.y, y2 = down ? b.y - 2 : b.y + b.h + 2;
-    return { d: `M${x} ${y1}V${y2}`, x: x + 6, y: (y1 + y2) / 2, anchor: 'start' };
-  }
-  if (overlap(a.y, a.y + a.h, b.y, b.y + b.h)) {
-    const y = (Math.max(a.y, b.y) + Math.min(a.y + a.h, b.y + b.h)) / 2;
-    const right = cb.x > ca.x;
-    const x1 = right ? a.x + a.w : a.x, x2 = right ? b.x - 2 : b.x + b.w + 2;
-    return { d: `M${x1} ${y}H${x2}`, x: (x1 + x2) / 2, y: y - 6, anchor: 'middle' };
-  }
-  const right = cb.x > ca.x, down = cb.y > ca.y;
-  const x1 = right ? a.x + a.w : a.x;
-  const y2 = down ? b.y - 2 : b.y + b.h + 2;
-  return { d: `M${x1} ${ca.y}H${cb.x}V${y2}`, x: (x1 + cb.x) / 2, y: ca.y - 6, anchor: 'middle' };
-}
-
 function diagramSvg(diagram: Diagram, label: string): SVGElement {
   const pad = 16;
   const nodes = diagram.nodes;
@@ -136,8 +114,8 @@ function diagramSvg(diagram: Diagram, label: string): SVGElement {
     if (!a || !b) continue;
     const route = routeEdge(a, b);
     root.append(svg('path', { d: route.d, class: 'edge', 'marker-end': head }));
-    if (edge.label) {
-      const t = svg('text', { x: route.x, y: route.y, 'text-anchor': route.anchor, class: 'edge-label' });
+    if (edge.label && route.label) {
+      const t = svg('text', { x: route.label.x, y: route.label.y, 'text-anchor': route.label.anchor, class: 'edge-label' });
       t.textContent = edge.label;
       root.append(t);
     }
@@ -229,8 +207,10 @@ function canvasCard(card: Card, n: number, files: Files): HTMLElement {
   switch (card.kind) {
     case 'note': {
       const pad = el('div', 'vf-pad');
-      if (card.title) pad.append(el('span', 'vf-card-title', card.title));
-      pad.append(el('span', 'vf-note-text', card.text));
+      const head = el('div', 'vf-row');
+      head.append(badge(n));
+      if (card.title) head.append(el('span', 'vf-card-title', card.title));
+      pad.append(head, el('span', 'vf-note-text', card.text));
       const s = say(card);
       if (s) pad.append(s);
       node.append(pad);
@@ -239,6 +219,7 @@ function canvasCard(card: Card, n: number, files: Files): HTMLElement {
     case 'link': {
       const m = media(card, files);
       m.style.height = '48%';
+      m.append(badge(n));
       const text = el('div', 'vf-text');
       text.append(el('span', 'vf-site', `${card.site || hostOf(card.url)} · opens in a new tab`), el('span', 'vf-card-title', card.title));
       const s = say(card);
@@ -249,13 +230,16 @@ function canvasCard(card: Card, n: number, files: Files): HTMLElement {
     case 'image': {
       const m = media(card, files, 'vf-media vf-image-media');
       if (!m.firstChild && safeHref(card.pageUrl)) m.append(newTab(el('a', 'vf-missing', hostOf(card.pageUrl)), card.pageUrl!));
+      m.append(badge(n));
       node.append(m, el('div', 'vf-image-title', card.title));
       break;
     }
     case 'file': {
       const box = el('div', 'vf-file');
       const text = el('div', 'vf-file-text');
-      text.append(el('span', 'vf-card-title', card.title || card.file.name));
+      const num = el('span', 'vf-row');
+      num.append(badge(n));
+      text.append(num, el('span', 'vf-card-title', card.title || card.file.name));
       const open = fileOpen(card, files);
       if (open) text.append(open);
       const s = say(card);
@@ -267,7 +251,7 @@ function canvasCard(card: Card, n: number, files: Files): HTMLElement {
     case 'checklist': {
       const pad = el('div', 'vf-pad');
       const head = el('div', 'vf-row');
-      head.append(el('span', 'vf-card-title vf-grow', card.title), el('span', 'vf-count', doneCount(card)));
+      head.append(badge(n), el('span', 'vf-card-title vf-grow', card.title), el('span', 'vf-count', doneCount(card)));
       pad.append(head, checks(card));
       node.append(pad);
       break;

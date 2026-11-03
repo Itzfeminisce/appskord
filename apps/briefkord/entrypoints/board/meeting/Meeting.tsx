@@ -152,7 +152,8 @@ export function Meeting({ shell }: { shell: BoardShell }) {
   const say = (card?.say ?? '').split('\n').filter((line) => line.trim());
   const focus = full || notesHidden;
   const boxW = Math.min(640 * (focus ? 1.18 : 1), room.w - 64);
-  const boxH = Math.min(400 * (focus ? 1.18 : 1), room.h - 120);
+  // Centred, the card clears the bottom bar (18 + 48) with a 16 px gap.
+  const boxH = Math.min(400 * (focus ? 1.18 : 1), room.h - 164);
 
   return (
     <div className="bk-mt" role="dialog" aria-label="Meeting" tabIndex={-1} ref={root}>
@@ -192,7 +193,7 @@ export function Meeting({ shell }: { shell: BoardShell }) {
           {focus && (
             <div className="bk-mt-corner">
               {notesHidden && <button type="button" onClick={() => setNotesHidden(false)}>Show notes<span>N</span></button>}
-              {full && <button type="button" onClick={toggleFull}>Exit full screen<span>F</span></button>}
+              <button type="button" onClick={toggleFull}>{full ? 'Exit full screen' : 'Full screen'}<span>F</span></button>
             </div>
           )}
           <div className="bk-mt-bar">

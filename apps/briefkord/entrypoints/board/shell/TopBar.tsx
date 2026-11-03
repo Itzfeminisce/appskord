@@ -69,7 +69,11 @@ function BoardName({ name, from, onRename }: { name: string; from?: string; onRe
     }
   };
   if (draft === null) {
-    return <h1 className="bk-board-name"><button type="button" onClick={() => setDraft(name)}>{name}</button>{from && <span className="bk-board-from"> (from {from})</span>}</h1>;
+    // The stored name already ends in "(from {sender})"; that part is shown once, in grey.
+    const tail = from ? ` (from ${from})` : '';
+    const base = tail && name.endsWith(tail) ? name.slice(0, -tail.length) : name;
+    const grey = tail && base !== name;
+    return <h1 className="bk-board-name"><button type="button" onClick={() => setDraft(name)}>{base}{grey && <span className="bk-board-from">{tail}</span>}</button></h1>;
   }
   return (
     <span className="bk-rename">

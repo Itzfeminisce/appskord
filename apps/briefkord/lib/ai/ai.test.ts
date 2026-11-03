@@ -3,7 +3,7 @@ import { estimateTokens } from '@appskord/llm';
 import { listOrder, updateCard } from '../board/ops';
 import { sampleBoard } from '../board/sample';
 import type { Board, LinkCard } from '../board/types';
-import { addBriefNote, addSummary, briefPointsFor, briefText, diagramCounts, diagramFromReply, keptBrief, movedCount, orderMoves, summaryNote, withBrief } from './apply';
+import { addBriefNote, addSummary, briefPointsFor, briefText, diagramCounts, diagramFromReply, keptBrief, movedCount, orderMoves, summaryHeight, summaryNote, summarySentences, withBrief } from './apply';
 import { parseBrief, parseDiagram, parseOrder, parseSummary } from './parse';
 import { briefPrompt, diagramPrompt, fitTexts, orderPrompt, PROMPT_BUDGET, summaryPrompt } from './prompts';
 import { AiError, askAi } from './run';
@@ -170,6 +170,16 @@ describe('askAi', () => {
 describe('apply', () => {
   const meta = { model: 'model-x', provider: 'openai' };
 
+  it('makes the summary card tall enough for the frame summary, every point and the footer', () => {
+    const text = 'Most people who leave checkout do it for reasons the page could fix. A visible coupon field sends people off to search for codes. Card errors that appear only after Pay make people start again. Shipping costs shown on the last step feel like a surprise. Guest checkout hidden behind sign-in loses first-time buyers.';
+    expect(summarySentences(text)).toHaveLength(5);
+    const h = summaryHeight(text, 'From the page text saved 3 Nov · claude-sonnet-5-5 · Anthropic'.length);
+    // The frame card is 340 tall for this text at 380 wide.
+    expect(h).toBeGreaterThanOrEqual(330);
+    expect(h).toBeLessThan(440);
+    expect(summaryHeight('One line.', 'From the page text saved 3 Nov · gpt-5 · OpenAI'.length)).toBeLessThan(160);
+  });
+
   it('puts a summary next to its link, after it in the list, joined by a dashed arrow', () => {
     const b = board();
     const link = b.cards.findings as LinkCard;
@@ -179,8 +189,9 @@ describe('apply', () => {
     expect(order[order.indexOf('findings') + 1]).toBe('sum');
     expect(next.arrows.find((a) => a.id === 'arrow')).toEqual({ id: 'arrow', from: 'findings', to: 'sum', dashed: true });
     const placed = next.cards.sum!;
-    // Right and below are taken on the sample board, so it goes above the link.
-    expect(placed.rect).toEqual({ x: link.rect.x, y: link.rect.y - 80 - note.rect.h, w: note.rect.w, h: note.rect.h });
+    // To the right of the link, top-aligned, past the cards already on that row.
+    expect(placed.rect.y).toBe(link.rect.y);
+    expect(placed.rect.x).toBeGreaterThan(link.rect.x + link.rect.w);
     expect(placed.kind === 'note' && placed.summary).toEqual({ of: 'findings', model: 'model-x', provider: 'openai', from: link.savedAt });
     for (const c of Object.values(b.cards)) {
       const r = placed.rect;
@@ -202,6 +213,17 @@ describe('apply', () => {
     const kinds = moves.map((m) => m.move.kind);
     expect(kinds.filter((k) => k === 'up' || k === 'down')).toHaveLength(1);
     expect(orderMoves(['a', 'b', 'c'], ['c', 'a', 'b']).map((m) => m.move)).toEqual([{ kind: 'up', from: 3 }, { kind: 'near', from: 1 }, { kind: 'near', from: 2 }]);
+  });
+
+  it('counts and labels moves as the SuggestOrder frame does', () => {
+    const was = ['why', 'findings', 'flow', 'step-2', 'report', 'new', 'ship'];
+    const moves = orderMoves(was, ['why', 'flow', 'report', 'findings', 'step-2', 'new', 'ship']);
+    expect(movedCount(moves)).toBe(3);
+    expect(moves.map((m) => m.move)).toEqual([
+      { kind: 'stays' }, { kind: 'up', from: 3 }, { kind: 'up', from: 5 }, { kind: 'down', from: 2 }, { kind: 'near', from: 4 }, { kind: 'stays' }, { kind: 'stays' },
+    ]);
+    expect(movedCount(orderMoves(['a', 'b', 'c', 'd'], ['b', 'c', 'd', 'a']))).toBe(1);
+    expect(movedCount(orderMoves(['a', 'b', 'c', 'd'], ['a', 'b', 'c', 'd']))).toBe(0);
   });
 
   it('keeps Brief me points by card id and finds them per card', () => {

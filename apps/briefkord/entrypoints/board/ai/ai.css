@@ -3,7 +3,6 @@
 .bk-ai-accent { color: var(--bk-accent); display: inline-flex; }
 .bk-ai-grow { flex-grow: 1; }
 .bk-ai-push { margin-top: auto; }
-.bk-ai-end { align-self: flex-end; }
 .bk-ai-close { width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--bk-text-2); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
 .bk-ai-close:hover { background: var(--bk-chip); }
 .bk-ai-link { border: 0; padding: 0; background: none; font: inherit; color: var(--bk-accent); text-decoration: underline; cursor: pointer; }
