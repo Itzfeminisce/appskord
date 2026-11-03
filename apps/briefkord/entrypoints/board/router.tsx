@@ -1,31 +1,35 @@
-import { createRootRoute, createRoute, createSurfaceRouter, Outlet, type AnyRouter, type RouterHistory } from '@appskord/platform/router';
-import { useEffect, useState } from 'react';
-import { loadBoard } from '@/lib/store/db';
-import { onBoardChanged } from '@/lib/store/channel';
+import { createRootRoute, createRoute, createSurfaceRouter, Outlet, redirect, searchParams, type AnyRouter, type RouterHistory } from '@appskord/platform/router';
+import { Logo } from './icons';
+import { AllBoards } from './screens/AllBoards';
+import { BoardScreen } from './screens/BoardScreen';
 
-// Placeholder until T3 builds the canvas: shows the board's name, kept fresh by the channel.
-function BoardScreen({ id }: { id: string }) {
-  const [name, setName] = useState<string>();
-  useEffect(() => {
-    const load = () =>
-      loadBoard(id)
-        .then((board) => setName(board?.name))
-        .catch((error: unknown) => console.error('Briefkord: could not load the board', error));
-    void load();
-    return onBoardChanged((changed) => changed === id && void load());
-  }, [id]);
-  return <h1>{name ?? 'Briefkord'}</h1>;
+// T6 replaces this screen with Import.
+function ImportScreen() {
+  return (
+    <div className="bk-boards">
+      <header className="bk-topbar">
+        <Logo />
+        <a className="bk-crumb" href="#/boards">Boards</a>
+      </header>
+      <main className="bk-center-page"><h1 className="bk-import-title">Import a .briefkord file</h1></main>
+    </div>
+  );
 }
 
 export function createAppRouter(history?: RouterHistory): AnyRouter {
   const root = createRootRoute({ component: Outlet });
-  const home = createRoute({ getParentRoute: () => root, path: '/', component: () => <h1>Briefkord</h1> });
+  const home = createRoute({ getParentRoute: () => root, path: '/', beforeLoad: () => { throw redirect({ to: '/boards' } as never); } });
+  const boards = createRoute({ getParentRoute: () => root, path: '/boards', component: AllBoards });
+  const importing = createRoute({ getParentRoute: () => root, path: '/import', component: ImportScreen });
   const board = createRoute({
     getParentRoute: () => root,
     path: '/b/$id',
+    validateSearch: searchParams({ card: 'string', view: 'string' }),
     component: function Board() {
-      return <BoardScreen id={board.useParams().id} />;
+      const { id } = board.useParams();
+      const search = board.useSearch();
+      return <BoardScreen id={id} card={search.card} view={search.view === 'list' ? 'list' : 'canvas'} />;
     },
   });
-  return createSurfaceRouter(root.addChildren([home, board]), history);
+  return createSurfaceRouter(root.addChildren([home, boards, importing, board]), history);
 }
