@@ -61,6 +61,8 @@ const note = (id: string, now: number, rect: Rect, fields: Pick<NoteCard, 'title
 export const summarySentences = (text: string): string[] => text.split(/(?<=[.!?])\s+|\n+/).map((t) => t.trim()).filter(Boolean);
 
 const SUMMARY_W = 380;
+// The footer at its longest date.
+const SUMMARY_FOOTER = 'From the page text saved 30 Sept';
 
 /** Lines `text` takes at `px` per character in `room` px, rounded up generously. */
 const linesOf = (chars: number, room: number, px: number) => Math.max(1, Math.ceil((chars * px) / room));
@@ -78,9 +80,7 @@ export function summaryHeight(summary: string, footerChars: number): number {
 }
 
 export function summaryNote(link: LinkCard, reply: SummaryReply, meta: AiMeta, id: string, now: number): NoteCard {
-  // "From the page text saved {date} · {model} · {provider}", at its longest date and provider name.
-  const footerChars = 'From the page text saved 30 Sept ·  · '.length + meta.model.length + 12;
-  const rect = { x: link.rect.x + link.rect.w + GAP, y: link.rect.y, w: SUMMARY_W, h: summaryHeight(reply.summary, footerChars) };
+  const rect = { x: link.rect.x + link.rect.w + GAP, y: link.rect.y, w: SUMMARY_W, h: summaryHeight(reply.summary, SUMMARY_FOOTER.length) };
   return note(id, now, rect, {
     title: reply.title, text: reply.summary, colour: 'white',
     summary: { of: link.id, model: meta.model, provider: meta.provider, from: link.savedAt },

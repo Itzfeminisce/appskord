@@ -173,11 +173,11 @@ describe('apply', () => {
   it('makes the summary card tall enough for the frame summary, every point and the footer', () => {
     const text = 'Most people who leave checkout do it for reasons the page could fix. A visible coupon field sends people off to search for codes. Card errors that appear only after Pay make people start again. Shipping costs shown on the last step feel like a surprise. Guest checkout hidden behind sign-in loses first-time buyers.';
     expect(summarySentences(text)).toHaveLength(5);
-    const h = summaryHeight(text, 'From the page text saved 3 Nov · claude-sonnet-5-5 · Anthropic'.length);
+    const h = summaryHeight(text, 'From the page text saved 3 Nov'.length);
     // The frame card is 340 tall for this text at 380 wide.
-    expect(h).toBeGreaterThanOrEqual(330);
+    expect(h).toBeGreaterThanOrEqual(310);
     expect(h).toBeLessThan(440);
-    expect(summaryHeight('One line.', 'From the page text saved 3 Nov · gpt-5 · OpenAI'.length)).toBeLessThan(160);
+    expect(summaryHeight('One line.', 'From the page text saved 3 Nov'.length)).toBeLessThan(160);
   });
 
   it('puts a summary next to its link, after it in the list, joined by a dashed arrow', () => {

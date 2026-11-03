@@ -1,6 +1,6 @@
 /** StatesAI and ai-site-blocked: the cards an AI surface shows while it works and when it can't. */
 import type { ReactNode } from 'react';
-import { providerLabel, type Choice } from './choice';
+import { providerLabel } from './choice';
 import type { AiStateName } from './run';
 
 export type Surface = 'brief' | 'diagram' | 'order' | 'summary';
@@ -14,7 +14,7 @@ const Spin = () => (
 
 export const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
-export function AiWorking({ choice, steps, onStop }: { choice: Choice | undefined; steps?: string[]; onStop(): void }) {
+export function AiWorking({ steps, onStop }: { steps?: string[]; onStop(): void }) {
   return (
     <div aria-busy="true" className="bk-ai-state">
       <span className="bk-ai-state-title">Getting you ready…</span>
@@ -25,7 +25,7 @@ export function AiWorking({ choice, steps, onStop }: { choice: Choice | undefine
         </span>
       ))}
       <span className="bk-ai-state-foot">
-        <span>{choice ? `${choice.value.model} · ${providerLabel(choice.value.provider)}` : ''}</span>
+        <span />
         <button type="button" className="bk-ai-btn is-small" onClick={onStop}>Stop</button>
       </span>
     </div>
@@ -100,7 +100,7 @@ export function AiState({ state, provider, surface, actions }: { state: AiStateN
           title={`Briefkord can’t reach ${name} yet`}
           text={
             surface === 'brief'
-              ? `Chrome needs your OK once so Briefkord can send this board to ${name}. Only the parts listed in Brief me are sent. Nothing else changes.`
+              ? `Chrome needs your OK once so Briefkord can send this board to ${name}. Nothing else changes.`
               : `Chrome needs your OK once so Briefkord can send this board to ${name}. Nothing else changes.`
           }
         >

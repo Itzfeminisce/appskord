@@ -4,7 +4,6 @@ import { newId } from '@/lib/board/ops';
 import type { Card, ChecklistCard, ChecklistItem, DiagramCard, FileCard, ImageCard, LinkCard, NoteCard } from '@/lib/board/types';
 import { formatBytes } from '../logic/drop';
 import { KIND_LABEL, webUrl } from '../logic/cards';
-import { providerLabel } from '../ai/choice';
 import { DiagramView } from './DiagramView';
 import { useFileUrl } from './useFileUrl';
 
@@ -132,7 +131,7 @@ function NoteBody({ card, number, editing, onCommit, onDone }: CardBodyProps & {
         </span>
         {lead && <p className="bk-summary-lead">{lead}</p>}
         {rest.length > 0 && <ul className="bk-summary-points">{rest.map((s, i) => <li key={i}>{s}</li>)}</ul>}
-        <span className="bk-summary-foot">{`From the page text saved ${shortDate(card.summary.from)} · ${card.summary.model} · ${providerLabel(card.summary.provider)}`}</span>
+        <span className="bk-summary-foot">{`From the page text saved ${shortDate(card.summary.from)}`}</span>
       </div>
     );
   }

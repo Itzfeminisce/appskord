@@ -10,7 +10,7 @@ import { DiagramView, diagramBounds } from '../cards/DiagramView';
 import { liveBoard } from '../diagram/DiagramEdit';
 import { Close, Sparkle } from '../icons';
 import { boardExtensions, type BoardShell } from '../shell/extensions';
-import { askHost, openAiSettings, providerLabel, useChoice } from './choice';
+import { askHost, openAiSettings, useChoice } from './choice';
 import { AiPicker, openPicker } from './Picker';
 import { useAiRun } from './run';
 import { AiState, AiWorking, plural } from './States';
@@ -104,8 +104,7 @@ export function DiagramFromText({ shell, cardId }: { shell: BoardShell; cardId?:
             />
             <span className="bk-ai-hint">Plain steps work best: who does what, and what happens when.</span>
             {choice && <div className="bk-ai-model"><AiPicker choice={choice} label="Model" /></div>}
-            <span className="bk-ai-hint bk-ai-push">{current ? `Only this description and the diagram’s labels are sent to ${providerLabel(choice?.value.provider ?? '')}.` : `Only this description is sent to ${providerLabel(choice?.value.provider ?? '')}.`}</span>
-            <button type="button" className="bk-ai-btn is-wide is-big" disabled={!text.trim() || phase.kind === 'working'} onClick={make}>
+            <button type="button" className="bk-ai-btn is-wide is-big bk-ai-push" disabled={!text.trim() || phase.kind === 'working'} onClick={make}>
               {made ? 'Make it again' : 'Make it'}
             </button>
           </div>
@@ -113,7 +112,7 @@ export function DiagramFromText({ shell, cardId }: { shell: BoardShell; cardId?:
             <div className="bk-ai-dft-area">
               {counts && <span className="bk-ai-badge">{`Preview · ${plural(counts.steps, 'step', 'steps')}${counts.choices ? `, ${plural(counts.choices, 'choice', 'choices')}` : ''}`}</span>}
               {made && <Preview diagram={made} />}
-              {phase.kind === 'working' && <div className="bk-ai-center"><AiWorking choice={choice} onStop={stop} /></div>}
+              {phase.kind === 'working' && <div className="bk-ai-center"><AiWorking onStop={stop} /></div>}
               {phase.kind === 'failed' && (
                 <div className="bk-ai-center">
                   <AiState

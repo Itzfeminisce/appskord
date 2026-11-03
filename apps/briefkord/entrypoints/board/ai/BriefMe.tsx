@@ -11,7 +11,7 @@ import { hasHostAccess, isAiProvider, requestHostAccess } from '@/lib/keys';
 import { liveBoard } from '../diagram/DiagramEdit';
 import { Close } from '../icons';
 import type { BoardShell } from '../shell/extensions';
-import { askHost, openAiSettings, providerLabel, useChoice } from './choice';
+import { askHost, openAiSettings, useChoice } from './choice';
 import { AiPicker, openPicker } from './Picker';
 import { useAiRun } from './run';
 import { AiState, AiWorking, BriefEmptyBoard, plural } from './States';
@@ -76,21 +76,16 @@ export function BriefMe({ shell, asked }: { shell: BoardShell; asked?: Promise<b
           <button type="button" className="bk-ai-close" aria-label="Close Brief me" onClick={shell.closeOverlay}><Close /></button>
         </div>
         {choice && <div className="bk-ai-quiet-label"><AiPicker choice={choice} label="Model" /></div>}
-        <span className="bk-ai-sent">
-          {`Sent to ${providerLabel(provider)}: card titles, your notes and the text of ${plural(pages, 'saved page', 'saved pages')}. Images and files stay here.`}
-          {!host && isAiProvider(provider) && (
-            <>
-              {' '}
-              <button type="button" className="bk-ai-link" onClick={() => void requestHostAccess(provider).then(setHost)}>Chrome asks once</button>.
-            </>
-          )}
-        </span>
+        {!host && isAiProvider(provider) && (
+          <span className="bk-ai-sent">
+            <button type="button" className="bk-ai-link" onClick={() => void requestHostAccess(provider).then(setHost)}>Chrome asks once</button> to let Briefkord reach its site.
+          </span>
+        )}
       </div>
       <div className="bk-ai-brief-body">
         {cards === 0 && <BriefEmptyBoard />}
         {phase.kind === 'working' && (
           <AiWorking
-            choice={choice}
             steps={[`Read ${plural(cards, 'card', 'cards')} and ${plural(pages, 'saved page', 'saved pages')}`, 'Writing talking points', 'Finding open questions']}
             onStop={stop}
           />

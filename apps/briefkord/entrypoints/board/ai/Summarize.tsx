@@ -12,7 +12,7 @@ import { shortDate } from '../logic/cards';
 import { readOpenPage } from '../logic/refresh';
 import { Toast } from '../screens/States';
 import type { BoardShell } from '../shell/extensions';
-import { askHost, openAiSettings, providerLabel, useChoice } from './choice';
+import { askHost, openAiSettings, useChoice } from './choice';
 import { useAiRun } from './run';
 import { AiState, AiWorking, SummaryNoText } from './States';
 
@@ -75,9 +75,9 @@ export function Summarize({ shell, cardId, asked }: { shell: BoardShell; cardId:
         <button type="button" className="bk-ai-close bk-ai-float-close" aria-label="Close" onClick={close}><Close size={16} /></button>
       )}
       {noText && phase.kind !== 'working' && <SummaryNoText busy={refreshing} onRefresh={() => void refresh()} />}
-      {phase.kind === 'working' && <AiWorking choice={choice} onStop={close} />}
+      {phase.kind === 'working' && <AiWorking onStop={close} />}
       {phase.kind === 'working' && choice && saved !== undefined && (
-        <span className="bk-ai-hint">{`From the page text saved ${shortDate(saved)} · ${choice.value.model} · ${providerLabel(choice.value.provider)}`}</span>
+        <span className="bk-ai-hint">{`From the page text saved ${shortDate(saved)}`}</span>
       )}
       {phase.kind === 'failed' && (
         <AiState

@@ -10,7 +10,7 @@ import type { Board } from '@/lib/board/types';
 import { liveBoard } from '../diagram/DiagramEdit';
 import { Sparkle } from '../icons';
 import type { BoardShell } from '../shell/extensions';
-import { askHost, openAiSettings, providerLabel, useChoice } from './choice';
+import { askHost, openAiSettings } from './choice';
 import { useAiRun } from './run';
 import { AiState, AiWorking } from './States';
 
@@ -35,7 +35,6 @@ function Reason({ why }: { why: string }) {
 interface Result { reply: OrderReply; board: Board; current: string[] }
 
 export function SuggestOrder({ shell, asked }: { shell: BoardShell; asked?: Promise<boolean> }) {
-  const choice = useChoice();
   const [opened] = useState(() => liveBoard(shell));
   const { phase, run, stop } = useAiRun<Result>(async (call) => {
     const board = liveBoard(shell);
@@ -74,7 +73,7 @@ export function SuggestOrder({ shell, asked }: { shell: BoardShell; asked?: Prom
   return (
     <div className="bk-ai-order">
       <div className="bk-ai-order-main">
-        {phase.kind === 'working' && <AiWorking choice={choice} onStop={close} />}
+        {phase.kind === 'working' && <AiWorking onStop={close} />}
         {phase.kind === 'failed' && (
           <AiState
             state={phase.state}
@@ -88,7 +87,7 @@ export function SuggestOrder({ shell, asked }: { shell: BoardShell; asked?: Prom
             <span className="bk-ai-accent"><Sparkle size={18} small /></span>
             <span className="bk-ai-banner-text">
               <strong>{result.reply.headline ? `Suggested order: ${result.reply.headline}` : 'Suggested order'}</strong>
-              <span>{`${moved === 1 ? '1 card moves' : `${moved} cards move`}. Nothing changes until you choose. ${phase.meta.model} · ${providerLabel(phase.meta.provider)}`}</span>
+              <span>{`${moved === 1 ? '1 card moves' : `${moved} cards move`}. Nothing changes until you choose.`}</span>
             </span>
             <button type="button" className="bk-ai-btn is-mid" onClick={close}>Keep mine</button>
             <button type="button" className="bk-ai-btn is-primary is-mid" onClick={use}>Use this order</button>
@@ -121,7 +120,7 @@ export function SuggestOrder({ shell, asked }: { shell: BoardShell; asked?: Prom
             {result.reply.reasons.map((r) => <Reason key={r.card} why={r.why} />)}
           </>
         )}
-        <span className="bk-ai-hint">Sent: card titles, types and your notes. One Undo puts your order back.</span>
+        <span className="bk-ai-hint">One Undo puts your order back.</span>
       </aside>
     </div>
   );
