@@ -148,7 +148,7 @@ export function BriefMe({ shell, asked }: { shell: BoardShell; asked?: Promise<b
         <div className="bk-ai-row">
           <button type="button" className="bk-ai-btn is-primary is-grow is-tall" disabled={!result} onClick={addNote}>Add as a note card</button>
           <button type="button" className="bk-ai-btn is-tall" disabled={!result} onClick={copy}>Copy</button>
-          <button type="button" className="bk-ai-btn is-tall" disabled={cards === 0 || phase.kind === 'working'} onClick={again}>Run again</button>
+          <button type="button" className="bk-ai-btn is-tall" disabled={cards === 0 || !result} onClick={again}>Run again</button>
         </div>
         <span className="bk-ai-hint">AI can get things wrong. Check each point against its card.</span>
       </div>

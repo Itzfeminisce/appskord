@@ -76,15 +76,12 @@ export function SuggestOrder({ shell, asked }: { shell: BoardShell; asked?: Prom
       <div className="bk-ai-order-main">
         {phase.kind === 'working' && <AiWorking choice={choice} onStop={close} />}
         {phase.kind === 'failed' && (
-          <>
-            <AiState
-              state={phase.state}
-              provider={phase.provider}
-              surface="order"
-              actions={{ onRetry: again, onAskChrome: again, onPick: openAiSettings, onSettings: openAiSettings }}
-            />
-            <button type="button" className="bk-ai-btn is-mid bk-ai-end" onClick={close}>Keep mine</button>
-          </>
+          <AiState
+            state={phase.state}
+            provider={phase.provider}
+            surface="order"
+            actions={{ onRetry: again, onAskChrome: again, onPick: openAiSettings, onSettings: openAiSettings }}
+          />
         )}
         {result && phase.kind === 'done' && (
           <div role="status" className="bk-ai-banner">

@@ -25,19 +25,9 @@ export function freeSpot(board: Board, rect: Rect): Rect {
   return at;
 }
 
-/** A free spot for a `size` card beside `next`: right of it, else below, left or above, else further right. */
+/** A free spot for a `size` card to the right of `next`, top-aligned with it, past any cards on that row. */
 export function besideSpot(board: Board, next: Rect, { w, h }: { w: number; h: number }): Rect {
-  const size = { w, h };
-  const free = (r: Rect) => !Object.values(board.cards).some((c) => overlaps(r, c.rect));
-  const tries: Rect[] = [
-    { x: next.x + next.w + GAP, y: next.y, ...size },
-    { x: next.x, y: next.y + next.h + GAP, ...size },
-    { x: next.x - GAP - size.w, y: next.y, ...size },
-    { x: next.x, y: next.y - GAP - size.h, ...size },
-  ];
-  const found = tries.find(free);
-  if (found) return found;
-  let at = tries[0]!;
+  let at = { x: next.x + next.w + GAP, y: next.y, w, h };
   for (let i = 0; i < 200; i++) {
     const hit = Object.values(board.cards).find((c) => overlaps(at, c.rect));
     if (!hit) return at;
@@ -67,10 +57,30 @@ const note = (id: string, now: number, rect: Rect, fields: Pick<NoteCard, 'title
 
 // ---- Summarize ----
 
+/** The summary as the card shows it: the first sentence leads, each other one is a point. */
+export const summarySentences = (text: string): string[] => text.split(/(?<=[.!?])\s+|\n+/).map((t) => t.trim()).filter(Boolean);
+
+const SUMMARY_W = 380;
+
+/** Lines `text` takes at `px` per character in `room` px, rounded up generously. */
+const linesOf = (chars: number, room: number, px: number) => Math.max(1, Math.ceil((chars * px) / room));
+
+/** A summary card tall enough for the lead, every point and the footer at SUMMARY_W (frame SummarizeLink). */
+export function summaryHeight(summary: string, footerChars: number): number {
+  const [lead = '', ...points] = summarySentences(summary);
+  const inner = SUMMARY_W - 32;
+  const head = 20;
+  const leadH = linesOf(lead.length, inner, 7.6) * 21;
+  const pointsH = points.reduce((sum, p) => sum + linesOf(p.length, inner - 18, 7.1) * 19.5, 0) + Math.max(0, points.length - 1) * 6;
+  const footH = linesOf(footerChars, inner, 6.4) * 17;
+  const gaps = 10 * (points.length ? 3 : 2);
+  return Math.ceil(32 + head + leadH + pointsH + footH + gaps + 12);
+}
+
 export function summaryNote(link: LinkCard, reply: SummaryReply, meta: AiMeta, id: string, now: number): NoteCard {
-  const w = 340;
-  // addSummary finds the free spot beside the link.
-  const rect = { x: link.rect.x + link.rect.w + GAP, y: link.rect.y, w, h: noteHeight(reply.summary, w) };
+  // "From the page text saved {date} · {model} · {provider}", at its longest date and provider name.
+  const footerChars = 'From the page text saved 30 Sept ·  · '.length + meta.model.length + 12;
+  const rect = { x: link.rect.x + link.rect.w + GAP, y: link.rect.y, w: SUMMARY_W, h: summaryHeight(reply.summary, footerChars) };
   return note(id, now, rect, {
     title: reply.title, text: reply.summary, colour: 'white',
     summary: { of: link.id, model: meta.model, provider: meta.provider, from: link.savedAt },
@@ -127,38 +137,22 @@ export function replaceDiagram(board: Board, cardId: string, diagram: Diagram, n
 
 export type Move = { kind: 'stays' } | { kind: 'near'; from: number } | { kind: 'up'; from: number } | { kind: 'down'; from: number };
 
-/** Indexes into `seq` of one longest increasing run, found in O(n log n). */
-function longestRun(seq: readonly number[]): Set<number> {
-  const tails: number[] = [];
-  const prev: number[] = [];
-  for (let i = 0; i < seq.length; i++) {
-    let lo = 0, hi = tails.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (seq[tails[mid]!]! < seq[i]!) lo = mid + 1;
-      else hi = mid;
-    }
-    prev[i] = lo > 0 ? tails[lo - 1]! : -1;
-    tails[lo] = i;
-  }
-  const keep = new Set<number>();
-  for (let i = tails.length ? tails[tails.length - 1]! : -1; i >= 0; i = prev[i]!) keep.add(i);
-  return keep;
-}
-
 /**
- * How each card moves from `current` to `next`: the fewest cards are "moved" (Up from / Down from);
- * the rest keep their relative order and only "stay" or "stay near" their old number.
+ * How each card moves from `current` to `next`. A card that changes place is moved (Up from / Down from),
+ * except one that shifts a single place the way the bigger moves push the rest: it "stays near" its old number.
  */
 export function orderMoves(current: readonly string[], next: readonly string[]): { id: string; move: Move }[] {
   const was = new Map(current.map((id, i) => [id, i]));
-  const seq = next.map((id) => was.get(id) ?? Number.MAX_SAFE_INTEGER);
-  const kept = longestRun(seq);
+  const shift = next.map((id, i) => (was.has(id) ? i - was.get(id)! : 0));
+  // Big moves up push the rest down a place, and the other way round; on a tie a one-place drop is the side effect.
+  const push = shift.filter((d) => Math.abs(d) >= 2).reduce((sum, d) => sum + d, 0);
+  const near = push > 0 ? -1 : 1;
   return next.map((id, i) => {
     const old = was.get(id);
-    if (old === undefined || old === i) return { id, move: { kind: 'stays' } };
-    if (kept.has(i)) return { id, move: { kind: 'near', from: old + 1 } };
-    return { id, move: { kind: i < old ? 'up' : 'down', from: old + 1 } };
+    const d = shift[i]!;
+    if (old === undefined || d === 0) return { id, move: { kind: 'stays' } };
+    if (d === near) return { id, move: { kind: 'near', from: old + 1 } };
+    return { id, move: { kind: d < 0 ? 'up' : 'down', from: old + 1 } };
   });
 }
 
