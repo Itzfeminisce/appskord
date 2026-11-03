@@ -277,7 +277,13 @@ export function ModelPicker({
               />
             </label>
           </div>
-          <div className="mp-list" id={listId} role="listbox" aria-label={`${label} model`}>
+          <div className="mp-list">
+            <div
+              id={listId}
+              role="listbox"
+              aria-label={`${label} model`}
+              aria-owns={options.map((_, i) => optId(i)).join(' ') || undefined}
+            />
             {shown.map(({ g, models, keyRow }) => (
               <div key={g.id} className={`mp-group is-${g.status}`}>
                 <div className="mp-group-head">
@@ -381,7 +387,14 @@ export function ModelPicker({
                       Connect Penv Cloud
                     </button>
                   )}
-                  <button type="button" className="mp-link is-quiet" onClick={() => onAddKey()}>
+                  <button
+                    type="button"
+                    className="mp-link is-quiet"
+                    onClick={() => {
+                      close(true);
+                      onAddKey();
+                    }}
+                  >
                     Paste a key instead
                   </button>
                 </span>

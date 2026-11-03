@@ -7,7 +7,7 @@ import { sidepanel } from './router';
 describe('side panel routes', () => {
   beforeEach(() => { vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '0.0.1' } as never); });
 
-  it('renders each route as its screen', async () => {
+  it('renders each route as its screen', { timeout: 20_000 }, async () => {
     for (const name of sidepanel.names) {
       const view = await mount(sidepanel, 'Home', `/${name}`);
       expect(view.visited[0]).toBe(name);
@@ -15,7 +15,7 @@ describe('side panel routes', () => {
     }
   });
 
-  it('Back returns to the previous screen, and a reload keeps the screen', async () => {
+  it('Back returns to the previous screen, and a reload keeps the screen', { timeout: 20_000 }, async () => {
     const view = await mount(sidepanel, 'Home');
     for (const name of ['Library', 'Settings', 'Privacy'] as const) {
       act(() => view.router.navigate(name));

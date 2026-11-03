@@ -65,6 +65,7 @@ function mount(over: Partial<ModelPickerProps> = {}) {
 
 const button = () => host.querySelector<HTMLButtonElement>('.mp-button')!;
 const listbox = () => host.querySelector('[role="listbox"]');
+const panel = () => host.querySelector('.mp-list');
 const input = () => host.querySelector<HTMLInputElement>('input')!;
 const options = () => [...host.querySelectorAll<HTMLElement>('[role="option"]')];
 const click = (el: Element) => act(() => (el as HTMLElement).click());
@@ -123,7 +124,7 @@ describe('ModelPicker', () => {
   it('lists groups with their status, tags and a check on the current model', () => {
     mount();
     click(button());
-    const text = listbox()!.textContent!;
+    const text = panel()!.textContent!;
     for (const s of ['On this computer', 'Nothing is sent', 'Groq', 'Ready', 'Recommended', 'Fastest', 'Needs a key'])
       expect(text).toContain(s);
     const selected = options().filter((o) => o.getAttribute('aria-selected') === 'true');
@@ -145,8 +146,8 @@ describe('ModelPicker', () => {
     ]);
     type('claude');
     expect(options()).toHaveLength(0);
-    expect(listbox()!.textContent).toContain('Add an Anthropic key');
-    expect(listbox()!.textContent).not.toContain('No model called');
+    expect(panel()!.textContent).toContain('Add an Anthropic key');
+    expect(panel()!.textContent).not.toContain('No model called');
   });
 
   it('picking a row calls onPick and closes', () => {
@@ -173,7 +174,7 @@ describe('ModelPicker', () => {
     const props = mount({ typedProvider: 'openai' });
     click(button());
     type('gpt-6-astra-2026-09-01');
-    expect(listbox()!.textContent).toContain('No model called “gpt-6-astra-2026-09-01” in your lists.');
+    expect(panel()!.textContent).toContain('No model called “gpt-6-astra-2026-09-01” in your lists.');
     expect(host.querySelector('.mp-foot')?.textContent).toBe(
       'A typed name is checked once with a short test question before it is used.',
     );
@@ -196,12 +197,13 @@ describe('ModelPicker', () => {
     click(button());
     const box = input();
     const list = listbox()!;
-    expect(list.classList.contains('mp-list')).toBe(true);
+    expect(list.children).toHaveLength(0);
+    expect(list.getAttribute('aria-owns')!.split(' ')).toEqual(options().map((o) => o.id));
     expect(box.getAttribute('role')).toBe('combobox');
     expect(box.getAttribute('aria-expanded')).toBe('true');
     expect(box.getAttribute('aria-controls')).toBe(list.id);
     expect(box.getAttribute('aria-activedescendant')).toBe(options()[0]!.id);
-    expect(list.contains(options()[0]!)).toBe(true);
+    expect(panel()!.contains(options()[0]!)).toBe(true);
     expect(options()[0]!.getAttribute('aria-selected')).not.toBeNull();
   });
 });
@@ -212,7 +214,7 @@ describe('ModelPicker states', () => {
   it('picker-loading', () => {
     mount({ groups: groq('loading') });
     click(button());
-    expect(listbox()!.textContent).toContain('Getting the list…');
+    expect(panel()!.textContent).toContain('Getting the list…');
     expect(host.querySelectorAll('.mp-skeleton span')).toHaveLength(3);
     expect(host.querySelector('.mp-foot')?.textContent).toBe('Getting Groq’s list… You can keep typing.');
   });
@@ -220,7 +222,7 @@ describe('ModelPicker states', () => {
   it('picker-list-failed', () => {
     const props = mount({ groups: groq('failed') });
     click(button());
-    expect(listbox()!.textContent).toContain(
+    expect(panel()!.textContent).toContain(
       'Groq’s full list didn’t load, so the suggested models show instead. You can still type any model name.',
     );
     click([...host.querySelectorAll('.mp-link')].find((b) => b.textContent === 'Try again')!);
@@ -239,7 +241,7 @@ describe('ModelPicker states', () => {
   it('picker-key-refused', () => {
     const props = mount({ groups: groq('key-refused') });
     click(button());
-    const text = listbox()!.textContent!;
+    const text = panel()!.textContent!;
     expect(text).toContain('Key refused');
     expect(text).toContain('Groq refused the key. Check it in Keys, then open this list again.');
     click([...host.querySelectorAll('.mp-key')].find((b) => b.textContent === 'Check the Groq key')!);
@@ -260,7 +262,7 @@ describe('ModelPicker states', () => {
     const onConnectCloud = vi.fn();
     const props = mount({ groups: [local, ...cloud], value: { provider: 'local', model: 'builtin' }, onConnectCloud });
     click(button());
-    const text = listbox()!.textContent!;
+    const text = panel()!.textContent!;
     expect(text).toContain('Ollama isn’t running. Start it, then open this list again.');
     expect(text).toContain('Add a key to pick models from Groq, OpenAI, Anthropic or OpenRouter.');
     expect(text).not.toContain('Needs a key');
@@ -269,5 +271,15 @@ describe('ModelPicker states', () => {
     expect(onConnectCloud).toHaveBeenCalledOnce();
     click(links.find((b) => b.textContent === 'Paste a key instead')!);
     expect(props.onAddKey).toHaveBeenCalledWith();
+  });
+
+  it('Paste a key instead closes the list and calls onAddKey once', () => {
+    const local: PickerGroup = { ...GROUPS[0]!, models: [] };
+    const cloud = GROUPS.slice(1).map((g) => ({ ...g, status: 'needs-key' as const, models: [] }));
+    const props = mount({ groups: [local, ...cloud], value: { provider: 'local', model: 'builtin' } });
+    click(button());
+    click([...host.querySelectorAll('.mp-link')].find((b) => b.textContent === 'Paste a key instead')!);
+    expect(listbox()).toBeNull();
+    expect(props.onAddKey).toHaveBeenCalledTimes(1);
   });
 });
