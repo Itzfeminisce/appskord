@@ -10,7 +10,7 @@ export default defineAppConfig({
   description: 'One board for every meeting',
   publicKey: BRIEFKORD_KEY,
   // The machine check page (T0) ships in the test build only.
-  devOnlyEntrypoints: ['check'],
+  devOnlyEntrypoints: ['check', 'check-view'],
   icons: { 16: 'icon/16.png', 32: 'icon/32.png', 48: 'icon/48.png', 128: 'icon/128.png' },
   // activeTab + scripting read the page being saved; contextMenus adds "Save to Briefkord".
   permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'activeTab', 'scripting', 'contextMenus'],
