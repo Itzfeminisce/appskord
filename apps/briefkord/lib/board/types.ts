@@ -70,6 +70,11 @@ export interface Board {
   /** At least one. Their card ids, in order, are the list; a card's number is its 1-based place in that order. */
   sections: Section[];
   imported?: Imported;
+  /** Brief me points the user kept; meeting mode shows the ones about the current card. */
+  brief?: KeptBrief;
 }
+
+/** Card refs are card ids, so numbers stay right after a reorder. */
+export interface KeptBrief { at: number; model: string; provider: string; points: { text: string; cards: string[] }[]; questions: string[] }
 
 export interface BoardMeta { id: string; name: string; pinned: boolean; cards: number; updatedAt: number; bytes: number; imported?: Board['imported'] }
