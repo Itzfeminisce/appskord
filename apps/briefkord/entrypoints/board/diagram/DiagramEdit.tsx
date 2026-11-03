@@ -1,10 +1,12 @@
 /** DiagramEdit: a diagram card opened over the board. Edits stay in a draft; Done saves them as one undo step. */
-import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { cardLabel } from '@/lib/board/label';
 import { cardNumbers, listOrder, newId, updateCard } from '@/lib/board/ops';
 import type { Board, CardColour, Diagram, DiagramNode, DiagramNodeKind } from '@/lib/board/types';
-import { addEdge, addNode, deleteEdge, deleteNode, labelEdge, linkNode, NODE_COLOUR, NODE_SIZE, updateNode } from '@/lib/diagram/edit';
+import { addEdge, addNode, deleteEdge, deleteNode, labelEdge, linkNode, NODE_COLOUR, updateNode } from '@/lib/diagram/edit';
 import { layoutDiagram, needsLayout } from '@/lib/diagram/layout';
+import { EDGE_FONT, fitNodes, fitSize, LABEL_FONT, nodeLines, relabel } from '@/lib/diagram/size';
+import { fitView, openView, toDiagram, ZOOM_STEP, zoomTo, type View } from '@/lib/diagram/zoom';
 import { routeEdge } from '../cards/DiagramView';
 import { KIND_LABEL } from '../logic/cards';
 import type { BoardShell } from '../shell/extensions';
@@ -19,6 +21,7 @@ type Gesture =
   | { kind: 'move'; id: string; start: Point; from: Point; moved: boolean }
   | { kind: 'arrow'; from: string; to: Point }
   | { kind: 'pan'; start: Point; from: Point };
+interface Pinch { a: number; b: number; dist: number; mid: Point; view: View }
 
 const TOOLS: { tool: Tool; label: string; icon?: ReactNode }[] = [
   { tool: 'step', label: 'Step', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="3" /></svg> },
@@ -37,7 +40,6 @@ const STEP_COLOURS: { colour: CardColour; name: string; swatch: string }[] = [
 ];
 
 const AREA_FALLBACK = { w: 1200, h: 528 };
-const MARGIN = { x: 76, y: 92 };
 
 /** The board as it is now: `shell.board` can be a render behind, and a change that edits nothing only reads it. */
 export function liveBoard(shell: BoardShell): Board {
@@ -46,23 +48,14 @@ export function liveBoard(shell: BoardShell): Board {
   return board;
 }
 
-/** Diagram units to screen pixels: big enough to read, the whole diagram in view when it fits. */
-function initialView(diagram: Diagram, area: { w: number; h: number }) {
-  if (diagram.nodes.length === 0) return { zoom: 1, x: 0, y: 0 };
-  const x0 = Math.min(...diagram.nodes.map((n) => n.x)), y0 = Math.min(...diagram.nodes.map((n) => n.y));
-  const w = Math.max(...diagram.nodes.map((n) => n.x + n.w)) - x0, h = Math.max(...diagram.nodes.map((n) => n.y + n.h)) - y0;
-  const zoom = Math.min(2, Math.max(0.5, Math.min((area.w - 2 * MARGIN.x) / Math.max(w, 1), (area.h - MARGIN.y - 60) / Math.max(h, 1))));
-  return { zoom, x: MARGIN.x - x0 * zoom, y: MARGIN.y - y0 * zoom };
-}
-
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
 
 export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: string }) {
   const [board] = useState(() => liveBoard(shell));
   const card = board.cards[cardId];
   const original = card?.kind === 'diagram' ? card.diagram : { nodes: [], edges: [] };
-  const [draft, setDraft] = useState<Diagram>(() => (needsLayout(original) ? layoutDiagram(original) : original));
-  const [view, setView] = useState(() => initialView(draft, AREA_FALLBACK));
+  const [draft, setDraft] = useState<Diagram>(() => fitNodes(needsLayout(original) ? layoutDiagram(original) : original));
+  const [view, setView] = useState<View>(() => openView(draft, AREA_FALLBACK));
   const [tool, setTool] = useState<Tool | undefined>(original.nodes.length === 0 ? 'step' : undefined);
   const [selection, setSelection] = useState<Selection>();
   const [renaming, setRenaming] = useState<string>();
@@ -73,6 +66,20 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
   const marker = `de-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const live = useRef({ draft, view });
   live.current = { draft, view };
+  const space = useRef(false);
+  const pinch = useRef<Pinch | null>(null);
+  const touches = useRef(new Map<number, Point>());
+
+  const areaSize = () => {
+    const r = area.current?.getBoundingClientRect();
+    return r && r.width > 0 ? { w: r.width, h: r.height } : AREA_FALLBACK;
+  };
+  useLayoutEffect(() => setView(openView(live.current.draft, areaSize())), []);
+  const zoomBy = (factor: number, at?: Point) => {
+    const size = areaSize();
+    setView((v) => zoomTo(v, at ?? { x: size.w / 2, y: size.h / 2 }, v.zoom * factor));
+  };
+  const fit = () => setView(fitView(live.current.draft, areaSize()));
 
   const number = cardNumbers(board)[cardId] ?? (card ? undefined : listOrder(board).length + 1);
   const title = card?.title || KIND_LABEL.diagram;
@@ -83,7 +90,6 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
     const r = area.current?.getBoundingClientRect();
     return { x: clientX - (r?.left ?? 0), y: clientY - (r?.top ?? 0) };
   };
-  const toData = (p: Point): Point => ({ x: (p.x - view.x) / view.zoom, y: (p.y - view.y) / view.zoom });
   const nodeAt = (p: Point): DiagramNode | undefined => {
     const { draft: d, view: v } = live.current;
     return [...d.nodes].reverse().find((n) => {
@@ -120,7 +126,11 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
     const onKey = (e: KeyboardEvent) => {
       const k = liveKeys.current;
       if (isTyping(e.target) || k.renaming || k.labelling) return;
-      if (e.key === 'Escape') {
+      if (e.key === ' ') {
+        e.preventDefault();
+        space.current = true;
+        area.current?.setAttribute('data-space', '');
+      } else if (e.key === 'Escape') {
         e.preventDefault();
         if (k.linkMenu) setLinkMenu(false);
         else k.done();
@@ -129,14 +139,83 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
         k.removeSelected();
       }
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key !== ' ') return;
+      space.current = false;
+      area.current?.removeAttribute('data-space');
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, []);
+
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
+      const r = el.getBoundingClientRect();
+      // Trackpad pinch arrives as a wheel with ctrlKey.
+      if (e.ctrlKey || e.metaKey) setView((v) => zoomTo(v, { x: e.clientX - r.left, y: e.clientY - r.top }, v.zoom * Math.exp(-e.deltaY * unit * 0.01)));
+      else setView((v) => ({ ...v, x: v.x - e.deltaX * unit, y: v.y - e.deltaY * unit }));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const pinchFrom = (a: number, b: number): Pinch => {
+    const p = touches.current.get(a)!, q = touches.current.get(b)!;
+    return { a, b, dist: Math.max(1, Math.hypot(p.x - q.x, p.y - q.y)), mid: { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, view: live.current.view };
+  };
+  const onTouchDown = (e: ReactPointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    touches.current.set(e.pointerId, toLocal(e.clientX, e.clientY));
+    if (touches.current.size !== 2) return;
+    e.stopPropagation();
+    const [a, b] = [...touches.current.keys()];
+    pinch.current = pinchFrom(a!, b!);
+    const onMove = (ev: PointerEvent) => {
+      const g = pinch.current;
+      if (!g || !touches.current.has(ev.pointerId)) return;
+      touches.current.set(ev.pointerId, toLocal(ev.clientX, ev.clientY));
+      const now = pinchFrom(g.a, g.b);
+      const moved = zoomTo(g.view, g.mid, (g.view.zoom * now.dist) / g.dist);
+      setView({ ...moved, x: moved.x + now.mid.x - g.mid.x, y: moved.y + now.mid.y - g.mid.y });
+    };
+    const onUp = (ev: PointerEvent) => {
+      touches.current.delete(ev.pointerId);
+      if (touches.current.size >= 2) return;
+      pinch.current = null;
+      touches.current.clear();
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
+  const pan = (e: ReactPointerEvent) => {
+    track(
+      { kind: 'pan', start: { x: live.current.view.x, y: live.current.view.y }, from: toLocal(e.clientX, e.clientY) },
+      (g, q) => {
+        if (g.kind === 'pan') setView((v) => ({ ...v, x: g.start.x + q.x - g.from.x, y: g.start.y + q.y - g.from.y }));
+        return g;
+      },
+      () => undefined,
+    );
+  };
 
   const track = (start: Gesture, move: (g: Gesture, p: Point) => Gesture, up: (g: Gesture) => void) => {
     let current = start;
     setGesture(start);
     const onMove = (e: PointerEvent) => {
+      if (pinch.current) return;
       current = move(current, toLocal(e.clientX, e.clientY));
       setGesture(current);
     };
@@ -171,8 +250,13 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
   };
 
   const onNodeDown = (e: ReactPointerEvent, node: DiagramNode) => {
-    if (e.button !== 0 || renaming === node.id) return;
+    if (e.button !== 0 || renaming === node.id || pinch.current) return;
     setLinkMenu(false);
+    if (space.current) {
+      e.stopPropagation();
+      e.preventDefault();
+      return pan(e);
+    }
     if (tool === 'arrow') return startArrow(e, node.id);
     e.stopPropagation();
     e.preventDefault();
@@ -195,31 +279,25 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
   };
 
   const onAreaDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || e.target !== e.currentTarget) return;
+    if (e.button !== 0 || pinch.current) return;
+    if (e.target !== e.currentTarget && !space.current) return;
     setLinkMenu(false);
     const p = toLocal(e.clientX, e.clientY);
-    if (tool && tool !== 'arrow') {
+    if (tool && tool !== 'arrow' && !space.current) {
       // Keeps the browser from moving focus off the new step's name field.
       e.preventDefault();
-      const size = NODE_SIZE[tool];
-      const at = toData(p);
-      const w = Math.round(size.w / view.zoom), h = Math.round(size.h / view.zoom);
-      const node: DiagramNode = { id: newId(), kind: tool, label: TOOLS.find((t) => t.tool === tool)!.label, x: Math.round(at.x - w / 2), y: Math.round(at.y - h / 2), w, h, colour: NODE_COLOUR[tool] };
+      const label = TOOLS.find((t) => t.tool === tool)!.label;
+      const { w, h } = fitSize(tool, label);
+      const at = toDiagram(view, p);
+      const node: DiagramNode = { id: newId(), kind: tool, label, x: Math.round(at.x - w / 2), y: Math.round(at.y - h / 2), w, h, colour: NODE_COLOUR[tool] };
       setDraft((d) => addNode(d, node));
       setSelection({ kind: 'node', id: node.id });
       setRenaming(node.id);
       setTool(undefined);
       return;
     }
-    setSelection(undefined);
-    track(
-      { kind: 'pan', start: { x: view.x, y: view.y }, from: p },
-      (g, q) => {
-        if (g.kind === 'pan') setView((v) => ({ ...v, x: g.start.x + q.x - g.from.x, y: g.start.y + q.y - g.from.y }));
-        return g;
-      },
-      () => undefined,
-    );
+    if (!space.current) setSelection(undefined);
+    pan(e);
   };
 
   const byId = new Map(draft.nodes.map((n) => [n.id, n]));
@@ -255,8 +333,8 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
           ref={area}
           className="bk-de-area"
           data-tool={tool ?? ''}
+          onPointerDownCapture={onTouchDown}
           onPointerDown={onAreaDown}
-          onWheel={(e) => setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }))}
         >
           <svg className="bk-de-edges" aria-hidden="true">
             <defs>
@@ -285,7 +363,7 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
                   />
                   <path d={route.d} fill="none" stroke={on ? 'var(--bk-accent)' : 'var(--bk-text)'} strokeWidth={on ? 2.2 : 1.6} markerEnd={`url(#${marker}${on ? '-on' : ''})`} />
                   {edge.label && labelling !== edge.id && route.label && (
-                    <text x={route.label.x} y={route.label.y} textAnchor={route.label.anchor} fontSize={13} fill="var(--bk-text-2)" fontFamily="var(--bk-font)">{edge.label}</text>
+                    <text x={route.label.x} y={route.label.y} textAnchor={route.label.anchor} fontSize={EDGE_FONT * view.zoom} fill="var(--bk-text-2)" fontFamily="var(--bk-font)">{edge.label}</text>
                   )}
                 </g>
               );
@@ -300,12 +378,17 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
               key={node.id}
               node={node}
               box={screen(node)}
+              zoom={view.zoom}
               selected={selectedNode?.id === node.id}
               renaming={renaming === node.id}
               onPointerDown={(e) => onNodeDown(e, node)}
               onRename={(label) => {
                 setRenaming(undefined);
-                if (label.trim()) setDraft((d) => updateNode(d, node.id, { label: label.trim() }));
+                const text = label.trim();
+                if (text && text !== node.label) setDraft((d) => {
+                  const { label: l, x, y, w, h } = relabel(node, text);
+                  return updateNode(d, node.id, { label: l, x, y, w, h });
+                });
               }}
               onStartRename={() => setRenaming(node.id)}
             />
@@ -372,7 +455,14 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
               </div>
             </>
           )}
-          <p className="bk-de-hint">Drag from a dot to draw an arrow. Double-click a step to rename it. Esc or Done goes back to the board.</p>
+          <p className="bk-de-hint">Drag from a dot to draw an arrow. Double-click a step to rename it. Ctrl + scroll to zoom. Space + drag to move. Esc or Done goes back to the board.</p>
+          <div role="group" aria-label="Zoom" className="bk-zoom bk-de-zoom" onPointerDown={(e) => e.stopPropagation()}>
+            <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1 / ZOOM_STEP)}>−</button>
+            <span className="bk-zoom-pc">{Math.round(view.zoom * 100)}%</span>
+            <button type="button" aria-label="Zoom in" onClick={() => zoomBy(ZOOM_STEP)}>+</button>
+            <span className="bk-zoom-sep" aria-hidden="true" />
+            <button type="button" className="bk-zoom-fit" onClick={fit}>Fit</button>
+          </div>
         </div>
       </section>
     </div>
@@ -382,6 +472,7 @@ export function DiagramEdit({ shell, cardId }: { shell: BoardShell; cardId: stri
 interface NodeViewProps {
   node: DiagramNode;
   box: Box;
+  zoom: number;
   selected: boolean;
   renaming: boolean;
   onPointerDown(e: ReactPointerEvent): void;
@@ -389,12 +480,13 @@ interface NodeViewProps {
   onStartRename(): void;
 }
 
-function NodeView({ node, box, selected, renaming, onPointerDown, onRename, onStartRename }: NodeViewProps) {
+function NodeView({ node, box, zoom, selected, renaming, onPointerDown, onRename, onStartRename }: NodeViewProps) {
   const style = {
     left: box.x,
     top: box.y,
     width: box.w,
     height: box.h,
+    fontSize: LABEL_FONT * zoom,
     '--n-fill': `var(--bk-d-${node.colour}-fill)`,
     '--n-line': `var(--bk-d-${node.colour}-line)`,
     '--n-ink': `var(--bk-d-${node.colour}-ink)`,
@@ -419,7 +511,9 @@ function NodeView({ node, box, selected, renaming, onPointerDown, onRename, onSt
         <InlineInput className="bk-de-rename" label="Step name" value={node.label} onDone={onRename} onCancel={() => onRename(node.label)} select />
       ) : (
         <span className="bk-de-label">
-          {node.label}
+          {nodeLines(node).map((line, i) => (
+            <span key={i} className="bk-de-line">{line}</span>
+          ))}
           {node.card && (
             <svg className="bk-de-linked" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>
           )}

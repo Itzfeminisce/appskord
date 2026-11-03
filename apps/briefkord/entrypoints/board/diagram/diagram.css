@@ -20,16 +20,20 @@
 .bk-de-area { flex-grow: 1; position: relative; overflow: hidden; background: radial-gradient(circle at 1px 1px, var(--bk-map-card) 1px, transparent 1.3px) 0 0 / 16px 16px, var(--bk-foot); cursor: grab; touch-action: none; }
 .bk-de-area[data-tool='step'], .bk-de-area[data-tool='choice'], .bk-de-area[data-tool='end'], .bk-de-area[data-tool='text'] { cursor: copy; }
 .bk-de-area[data-tool='arrow'], .bk-de-area[data-tool='arrow'] .bk-de-node { cursor: crosshair; }
+.bk-de-area[data-space], .bk-de-area[data-space] .bk-de-node { cursor: grab; }
+.bk-de-area[data-space]:active, .bk-de-area[data-space]:active .bk-de-node { cursor: grabbing; }
 .bk-de-edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .bk-de-edge-hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
 .bk-de-draft { stroke: var(--bk-accent); stroke-width: 2; stroke-dasharray: 5 4; }
 
-.bk-de-node { position: absolute; box-sizing: border-box; display: grid; place-items: center; padding: 0 8px; text-align: center; font-size: 14px; font-weight: 500; line-height: 1.25; color: var(--n-ink); border-radius: 12px; border: 1.6px solid var(--n-line); background: var(--n-fill); cursor: move; user-select: none; }
-.bk-de-choice { border: 0; background: transparent; padding: 0 24px; }
+.bk-de-node { position: absolute; box-sizing: border-box; display: grid; place-items: center; padding: 0; text-align: center; font-size: 14px; font-weight: 500; line-height: 1.25; color: var(--n-ink); border-radius: 12px; border: 1.6px solid var(--n-line); background: var(--n-fill); cursor: move; user-select: none; }
+.bk-de-choice { border: 0; background: transparent; }
 .bk-de-diamond { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: var(--n-fill); stroke: var(--n-line); stroke-width: 1.6; }
 .bk-de-text { border-color: transparent; background: transparent; }
-.bk-de-label { position: relative; display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
-.bk-de-linked { flex-shrink: 0; color: var(--bk-accent); }
+.bk-de-label { position: static; display: flex; flex-direction: column; align-items: center; }
+.bk-de-line { position: relative; display: block; white-space: nowrap; }
+.bk-de-linked { position: absolute; top: 4px; right: 4px; color: var(--bk-accent); }
+.bk-de-choice .bk-de-linked { top: 22%; right: 22%; }
 .bk-de-node.is-selected { border-width: 2px; border-color: var(--bk-accent); box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.12); font-weight: 600; }
 .bk-de-choice.is-selected, .bk-de-text.is-selected { box-shadow: none; }
 .bk-de-choice.is-selected .bk-de-diamond { stroke: var(--bk-accent); stroke-width: 2; filter: drop-shadow(0 0 4px rgba(15, 118, 110, 0.3)); }
@@ -56,4 +60,5 @@
 .bk-de-links button { display: flex; align-items: center; gap: 8px; color: var(--bk-text); height: 32px; place-items: initial; }
 .bk-de-links button[aria-checked='true'] { background: var(--bk-tint); }
 .bk-de-link-title { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
-.bk-de-hint { position: absolute; left: 20px; bottom: 16px; margin: 0; font-size: 12px; color: var(--bk-text-2); pointer-events: none; }
+.bk-de-hint { position: absolute; left: 20px; bottom: 24px; margin: 0; font-size: 12px; color: var(--bk-text-2); pointer-events: none; }
+.bk-de-zoom { left: auto; right: 16px; bottom: 16px; }
