@@ -87,8 +87,15 @@ describe('label sizing', () => {
 });
 
 describe('layout of a long 20-step flow', () => {
+  const started = performance.now();
   const d = layoutDiagram(longFlow());
+  const took = performance.now() - started;
   const byId = new Map(d.nodes.map((n) => [n.id, n]));
+
+  it('lays out quickly enough to run on the board page', () => {
+    // About 80 ms on a laptop; the bound leaves room for slow test machines.
+    expect(took).toBeLessThan(1000);
+  });
 
   it('fits every label inside its shape, in at most two lines', () => {
     expect(d.nodes).toHaveLength(20);

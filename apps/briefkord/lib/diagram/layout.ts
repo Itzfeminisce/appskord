@@ -1,6 +1,6 @@
 /** Layered layout for diagrams whose nodes have no places yet, such as the ones AI makes: wraps to fit, branches on their own lanes. */
 import type { Diagram, DiagramEdge, DiagramNode } from '../board/types';
-import { routeEdge, routeSegments, type Box, type Segment } from './route';
+import { routeEdgeSegments, type Box, type Segment } from './route';
 import { EDGE_FONT, fitSize, LABEL_FONT, measureText } from './size';
 
 export { fitSize } from './size';
@@ -104,31 +104,62 @@ function crosses(a: Segment, b: Segment): boolean {
 
 /** How bad a placed diagram reads: lines through nodes, hidden labels, shared lines, crossings and a small preview. */
 export function layoutCost(nodes: DiagramNode[], edges: DiagramEdge[], room = LAYOUT_ROOM): number {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const routes = edges
-    .filter((e) => e.from !== e.to && byId.has(e.from) && byId.has(e.to))
-    .map((e) => ({ e, route: routeEdge(byId.get(e.from)!, byId.get(e.to)!) }))
-    .map(({ e, route }) => ({ e, route, segs: routeSegments(route.d) }));
-  let cost = 0;
-  for (const { e, route, segs } of routes) {
-    for (const n of nodes) if (n.id !== e.from && n.id !== e.to && segs.some((s) => segHits(s, n, 2))) cost += 100;
-    if (e.label && route.label) {
-      const w = measureText(e.label, EDGE_FONT) + 4;
-      const box = { x: route.label.anchor === 'middle' ? route.label.x - w / 2 : route.label.x, y: route.label.y - EDGE_FONT, w, h: EDGE_FONT + 2 };
-      if (nodes.some((n) => boxesMeet(box, n))) cost += 30;
-      for (const other of routes) if (other.e !== e && other.segs.some((s) => segHits(s, box, 0))) cost += 30;
-    }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + n.w);
+    maxY = Math.max(maxY, n.y + n.h);
   }
-  routes.forEach((a, i) => routes.slice(i + 1).forEach((b) => {
-    const shared = a.e.from === b.e.from || a.e.to === b.e.to;
-    for (const s of a.segs) for (const t of b.segs) {
-      if (!shared && collinear(s, t) > 4) cost += 40;
-      if (crosses(s, t)) cost += 2;
+  return lineCost(nodes, links(nodes.map((n) => n.id), edges), roomCost(minX, minY, maxX, maxY, room), Infinity);
+}
+
+/** How much a layout spanning these bounds is shrunk to fit `room`, as cost. */
+const roomCost = (minX: number, minY: number, maxX: number, maxY: number, room: { w: number; h: number }) =>
+  (1 - Math.min(1, room.w / (maxX - minX + 32), room.h / (maxY - minY + 32))) * 200;
+
+/** An edge by node index, with its label's width; worked out once so each candidate layout only routes. */
+interface Link { from: number; to: number; labelW?: number }
+
+function links(ids: string[], edges: DiagramEdge[]): Link[] {
+  const at = new Map<string, number>();
+  ids.forEach((id, i) => { if (!at.has(id)) at.set(id, i); });
+  return edges.flatMap((e): Link[] => {
+    const from = at.get(e.from), to = at.get(e.to);
+    if (e.from === e.to || from === undefined || to === undefined) return [];
+    return [{ from, to, labelW: e.label ? measureText(e.label, EDGE_FONT) + 4 : undefined }];
+  });
+}
+
+/** `cost` plus the cost of the lines between `boxes`, or Infinity as soon as it passes `limit`. */
+function lineCost(boxes: Box[], links: Link[], cost: number, limit: number): number {
+  if (cost > limit) return Infinity;
+  const routes = links.map(({ from, to, labelW: w }) => {
+    const { segs, label } = routeEdgeSegments(boxes[from]!, boxes[to]!);
+    const box = w === undefined ? undefined : { x: label.anchor === 'middle' ? label.x - w / 2 : label.x, y: label.y - EDGE_FONT, w, h: EDGE_FONT + 2 };
+    return { from, to, segs, box };
+  });
+  for (const [i, { from, to, segs, box }] of routes.entries()) {
+    for (let n = 0; n < boxes.length; n++) if (n !== from && n !== to && segs.some((s) => segHits(s, boxes[n]!, 2))) cost += 100;
+    if (box) {
+      if (boxes.some((n) => boxesMeet(box, n))) cost += 30;
+      for (let j = 0; j < routes.length; j++) if (j !== i && routes[j]!.segs.some((s) => segHits(s, box, 0))) cost += 30;
     }
-  }));
-  const minX = Math.min(...nodes.map((n) => n.x)), minY = Math.min(...nodes.map((n) => n.y));
-  const w = Math.max(...nodes.map((n) => n.x + n.w)) - minX + 32, h = Math.max(...nodes.map((n) => n.y + n.h)) - minY + 32;
-  return cost + (1 - Math.min(1, room.w / w, room.h / h)) * 200;
+    if (cost > limit) return Infinity;
+  }
+  for (let i = 0; i < routes.length; i++) {
+    const a = routes[i]!;
+    for (let j = i + 1; j < routes.length; j++) {
+      const b = routes[j]!;
+      const shared = a.from === b.from || a.to === b.to;
+      for (const s of a.segs) for (const t of b.segs) {
+        if (!shared && collinear(s, t) > 4) cost += 40;
+        if (crosses(s, t)) cost += 2;
+      }
+    }
+    if (cost > limit) return Infinity;
+  }
+  return cost;
 }
 
 /** Places every node: a node's layer is its longest path from a start; layers run in bands that wrap to fit `room`. */
@@ -187,64 +218,125 @@ export function layoutDiagram(diagram: UnplacedDiagram, origin = { x: 0, y: 0 },
 
   let options = layers.map((items) => slotOptions(items.length));
   if (options.reduce((a, o) => a * o.length, 1) > 216) options = layers.map((items) => slotOptions(items.length).slice(0, 1));
-  const slotSets: number[][][] = options.reduce<number[][][]>((acc, o) => acc.flatMap((pre) => o.map((s) => [...pre, s])), [[]]);
 
-  const place = (band: Band, slots: number[][]): DiagramNode[] | undefined => {
-    const cells = new Map<string, Cell>();
-    const taken = new Set<string>();
-    let axis: Cell = { c: 0, r: 0 };
-    let maxC = 0, maxR = 0;
+  // Items by number: the nodes first, in diagram order, so cells and sizes share an index.
+  const index = new Map<string, number>(ids.map((id, i) => [id, i]));
+  for (const id of itemLayer.keys()) if (!index.has(id)) index.set(id, index.size);
+  const layerItems = layers.map((items) => items.map((id) => index.get(id)!));
+  const ws = ids.map((id) => size.get(id)!.w), hs = ids.map((id) => size.get(id)!.h);
+  const cellC = Array<number>(index.size).fill(0), cellR = Array<number>(index.size).fill(0);
+  const boxes: Box[] = ids.map((_, i) => ({ x: 0, y: 0, w: ws[i]!, h: hs[i]! }));
+  const lines = links(ids, edges);
+  const taken = new Set<number>();
+
+  /** Puts every item in a grid cell and every node's box at its spot; returns the space cost, or undefined when two items share a cell. */
+  const place = (band: Band, slots: number[][]): number | undefined => {
+    taken.clear();
+    let axisC = 0, axisR = 0, maxC = 0, maxR = 0, end = 0, minSlot = 0;
     for (let l = 0; l < count; l++) {
       const { dir, wrap } = band[l]!;
-      let end = l + 1;
-      while (end < count && !band[end]!.wrap) end++;
-      // Lanes on the near side of any layer in the band, so a new band keeps clear of the last one's lanes.
-      const minSlot = Math.min(...slots.slice(l, end).flat());
+      if (l >= end) {
+        // Lanes on the near side of any layer in the band, so a new band keeps clear of the last one's lanes.
+        end = l + 1;
+        while (end < count && !band[end]!.wrap) end++;
+        minSlot = Infinity;
+        for (let k = l; k < end; k++) for (const v of slots[k]!) minSlot = Math.min(minSlot, v);
+      }
       // A new band starts past everything placed so far, beside the last layer.
-      if (wrap && across(band[l - 1]!.dir)) axis = { c: axis.c, r: maxR + 1 - (across(dir) ? minSlot : 0) };
-      else if (wrap) axis = { c: maxC + 1 - (across(dir) ? 0 : minSlot), r: axis.r };
-      else if (l > 0) axis = { c: axis.c + STEP[dir].c, r: axis.r + STEP[dir].r };
-      for (const [i, id] of layers[l]!.entries()) {
-        const s = slots[l]![i]!;
-        const cell = across(dir) ? { c: axis.c, r: axis.r + s } : { c: axis.c + s, r: axis.r };
-        const key = `${cell.c},${cell.r}`;
+      if (wrap && across(band[l - 1]!.dir)) axisR = maxR + 1 - (across(dir) ? minSlot : 0);
+      else if (wrap) axisC = maxC + 1 - (across(dir) ? 0 : minSlot);
+      else if (l > 0) {
+        axisC += STEP[dir].c;
+        axisR += STEP[dir].r;
+      }
+      const items = layerItems[l]!, lane = slots[l]!;
+      for (let i = 0; i < items.length; i++) {
+        const c = across(dir) ? axisC : axisC + lane[i]!, r = across(dir) ? axisR + lane[i]! : axisR;
+        const key = c * 4096 + r;
         if (taken.has(key)) return undefined;
         taken.add(key);
-        cells.set(id, cell);
+        cellC[items[i]!] = c;
+        cellR[items[i]!] = r;
       }
-      for (const id of layers[l]!) {
-        maxC = Math.max(maxC, cells.get(id)!.c);
-        maxR = Math.max(maxR, cells.get(id)!.r);
+      for (const item of items) {
+        maxC = Math.max(maxC, cellC[item]!);
+        maxR = Math.max(maxR, cellR[item]!);
       }
     }
-    const all = [...cells.values()];
-    const c0 = Math.min(...all.map((c) => c.c)), r0 = Math.min(...all.map((c) => c.r));
-    const cols = Math.max(...all.map((c) => c.c)) - c0 + 1, rows = Math.max(...all.map((c) => c.r)) - r0 + 1;
-    const colW = Array<number>(cols).fill(0), rowH = Array<number>(rows).fill(0);
-    for (const id of ids) {
-      const { c, r } = cells.get(id)!;
-      colW[c - c0] = Math.max(colW[c - c0]!, size.get(id)!.w);
-      rowH[r - r0] = Math.max(rowH[r - r0]!, size.get(id)!.h);
+    let c0 = Infinity, r0 = Infinity, c1 = -Infinity, r1 = -Infinity;
+    for (let i = 0; i < index.size; i++) {
+      c0 = Math.min(c0, cellC[i]!);
+      r0 = Math.min(r0, cellR[i]!);
+      c1 = Math.max(c1, cellC[i]!);
+      r1 = Math.max(r1, cellR[i]!);
+    }
+    const colW = Array<number>(c1 - c0 + 1).fill(0), rowH = Array<number>(r1 - r0 + 1).fill(0);
+    for (let i = 0; i < ids.length; i++) {
+      colW[cellC[i]! - c0] = Math.max(colW[cellC[i]! - c0]!, ws[i]!);
+      rowH[cellR[i]! - r0] = Math.max(rowH[cellR[i]! - r0]!, hs[i]!);
     }
     const colX = [origin.x], rowY = [origin.y];
-    for (let c = 1; c < cols; c++) colX.push(colX[c - 1]! + colW[c - 1]! + layoutGap(LAYOUT_GAP.x, colW[c - 1]!, colW[c]!, labelRoom));
-    for (let r = 1; r < rows; r++) rowY.push(rowY[r - 1]! + rowH[r - 1]! + layoutGap(LAYOUT_GAP.y, rowH[r - 1]!, rowH[r]!, EDGE_FONT));
-    return diagram.nodes.map((n): DiagramNode => {
-      const { w, h } = size.get(n.id)!;
-      const { c, r } = cells.get(n.id)!;
-      return { ...n, w, h, x: Math.round(colX[c - c0]! + (colW[c - c0]! - w) / 2), y: Math.round(rowY[r - r0]! + (rowH[r - r0]! - h) / 2) };
-    });
+    for (let c = 1; c < colW.length; c++) colX.push(colX[c - 1]! + colW[c - 1]! + layoutGap(LAYOUT_GAP.x, colW[c - 1]!, colW[c]!, labelRoom));
+    for (let r = 1; r < rowH.length; r++) rowY.push(rowY[r - 1]! + rowH[r - 1]! + layoutGap(LAYOUT_GAP.y, rowH[r - 1]!, rowH[r]!, EDGE_FONT));
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i < ids.length; i++) {
+      const c = cellC[i]! - c0, r = cellR[i]! - r0;
+      const box = boxes[i]!;
+      box.x = Math.round(colX[c]! + (colW[c]! - box.w) / 2);
+      box.y = Math.round(rowY[r]! + (rowH[r]! - box.h) / 2);
+      minX = Math.min(minX, box.x);
+      minY = Math.min(minY, box.y);
+      maxX = Math.max(maxX, box.x + box.w);
+      maxY = Math.max(maxY, box.y + box.h);
+    }
+    return roomCost(minX, minY, maxX, maxY, room);
   };
 
-  let best: { nodes: DiagramNode[]; cost: number } | undefined;
-  for (const band of bandPatterns(count)) {
-    const wraps = band.filter((b) => b.wrap).length;
-    for (const slots of slotSets) {
-      const nodes = place(band, slots);
-      if (!nodes) continue;
-      const spread = slots.flat().reduce((a, s) => a + Math.abs(s), 0);
-      const cost = layoutCost(nodes, edges, room) + wraps * 2 + spread * 0.1 + (band[0]!.dir === 'TB' ? 0.5 : 0);
-      if (!best || cost < best.cost - 1e-9) best = { nodes, cost };
+  const bands = bandPatterns(count);
+  const radix = options.map((o) => o.length);
+  const total = radix.reduce((a, r) => a * r, 1);
+  let best: { nodes: DiagramNode[]; cost: number; key: number } | undefined;
+  /** Scores band `b` with lane choice `pick` (an index into each layer's options), keeping a new best; Infinity once past `limit` and the best. */
+  const score = (b: number, pick: number[], limit: number): number => {
+    const band = bands[b]!;
+    const slots = pick.map((p, l) => options[l]![p]!);
+    // Equal costs go to the earlier candidate, so the result does not depend on search order.
+    const key = b * total + pick.reduce((a, p, l) => a * radix[l]! + p, 0);
+    const beat = !best ? Infinity : key < best.key ? best.cost + 1e-9 : best.cost - 1e-9;
+    const cap = Math.max(limit, beat);
+    let base = band.filter((s) => s.wrap).length * 2 + (band[0]!.dir === 'TB' ? 0.5 : 0);
+    for (const lane of slots) for (const s of lane) base += Math.abs(s) * 0.1;
+    if (base > cap) return Infinity;
+    const space = place(band, slots);
+    if (space === undefined) return Infinity;
+    // Every cost term only adds, so scoring stops as soon as the candidate cannot win.
+    const cost = lineCost(boxes, lines, base + space, cap);
+    if (cost < beat) best = { nodes: diagram.nodes.map((n, k): DiagramNode => ({ ...n, ...boxes[k]! })), cost, key };
+    return cost;
+  };
+  // Lanes are tuned one layer at a time for every band pattern; only the most promising patterns try every lane combination.
+  const ranked = bands.map((_, b) => {
+    let pick = radix.map(() => 0);
+    let cost = score(b, pick, Infinity);
+    for (let round = 0, better = true; better && round < 3; round++) {
+      better = false;
+      for (let l = 0; l < count; l++) for (let p = 0; p < radix[l]!; p++) {
+        if (p === pick[l]) continue;
+        const next = pick.map((q, k) => (k === l ? p : q));
+        const c = score(b, next, cost - 1e-9);
+        if (c < cost - 1e-9) [pick, cost, better] = [next, c, true];
+      }
+    }
+    return { b, cost };
+  });
+  for (const { b } of ranked.sort((x, y) => x.cost - y.cost).slice(0, 12)) {
+    for (let i = 0; i < total; i++) {
+      const pick = radix.map(() => 0);
+      for (let l = count - 1, rest = i; l >= 0; l--) {
+        pick[l] = rest % radix[l]!;
+        rest = Math.floor(rest / radix[l]!);
+      }
+      score(b, pick, -Infinity);
     }
   }
   return { nodes: best?.nodes ?? [], edges };
