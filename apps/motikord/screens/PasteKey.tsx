@@ -12,7 +12,7 @@ import { Footer, Page, StepHead, Title } from './Setup';
 import { KeyChecking, KeyCheckUnreachable, KeyNotRecognised, KeyRejected, KeyWrongProvider, PexelsKeyRejected, ProviderAccess } from './StatesSetup';
 
 type EnvKeyName = ProviderKeyName | 'PEXELS_API_KEY';
-const KEY_NAMES: EnvKeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'PEXELS_API_KEY'];
+const KEY_NAMES: EnvKeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY', 'PEXELS_API_KEY'];
 
 type Status =
   | { kind: 'empty' }
@@ -50,7 +50,7 @@ function useKeyField(field: KeyField, expected: EnvKeyName) {
     const mine = ++run.current;
     setStatus({ kind: 'checking', name: expected });
     verifyKey(expected, key, origins(expected), { request: requestHost, save: async (n, v) => { await mergeKeys({ [n]: v }); if (n !== 'PEXELS_API_KEY') await updateSettings({ keySource: 'paste' }); } })
-      .then((verdict) => { if (mine === run.current) setStatus({ kind: verdict === 'ready' ? 'ready' : verdict === 'denied' ? 'blocked' : verdict, name: expected }); })
+      .then((verdict) => { if (mine === run.current) setStatus({ kind: verdict === 'ready' ? 'ready' : verdict === 'denied' ? 'blocked' : verdict, name: expected } as Status); })
       .catch((error: unknown) => {
         console.error('Motikord: could not check the key', error);
         if (mine === run.current) setStatus({ kind: 'unreachable', name: expected });

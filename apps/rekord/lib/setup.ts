@@ -11,7 +11,7 @@ import type { SetupPreset, Settings } from './types';
 /** The keys Rekord uses. */
 export type KeyName = Exclude<AnyKeyName, 'PEXELS_API_KEY'>;
 export type KeyJob = 'transcription' | 'assistant';
-const KEY_NAMES: KeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'DEEPGRAM_API_KEY', 'NOTION_TOKEN'];
+const KEY_NAMES: KeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY', 'DEEPGRAM_API_KEY', 'NOTION_TOKEN'];
 
 /** What a key can do in Rekord: transcribe audio, power the assistant (summary, ask), both, or neither. */
 export function jobsFor(name: KeyName): KeyJob[] {
@@ -23,6 +23,8 @@ export function jobsFor(name: KeyName): KeyJob[] {
       return ['transcription'];
     case 'ANTHROPIC_API_KEY':
     case 'OPENROUTER_API_KEY':
+    case 'GEMINI_API_KEY':
+    case 'XAI_API_KEY':
       return ['assistant'];
     case 'NOTION_TOKEN':
       return [];
@@ -111,6 +113,8 @@ export const SERVICE_CHOICES: KeyName[] = [
   'DEEPGRAM_API_KEY',
   'ANTHROPIC_API_KEY',
   'OPENROUTER_API_KEY',
+  'GEMINI_API_KEY',
+  'XAI_API_KEY',
 ];
 
 /** Where a user creates a new key for a service. */
@@ -120,6 +124,8 @@ export const KEY_PAGE: Record<KeyName, string> = {
   DEEPGRAM_API_KEY: 'https://console.deepgram.com/',
   ANTHROPIC_API_KEY: 'https://console.anthropic.com/settings/keys',
   OPENROUTER_API_KEY: 'https://openrouter.ai/keys',
+  GEMINI_API_KEY: 'https://aistudio.google.com/apikey',
+  XAI_API_KEY: 'https://console.x.ai',
   NOTION_TOKEN: 'https://www.notion.so/profile/integrations',
 };
 

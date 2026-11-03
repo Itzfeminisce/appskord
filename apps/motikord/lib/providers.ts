@@ -19,6 +19,8 @@ const COPY: Record<Provider, { mono: string; getKey: string }> = {
   openai: { mono: 'OA', getKey: 'Get an OpenAI key' },
   anthropic: { mono: 'An', getKey: 'Get an Anthropic key' },
   openrouter: { mono: 'OR', getKey: 'Get an OpenRouter key' },
+  google: { mono: 'Gm', getKey: 'Get a Gemini key' },
+  xai: { mono: 'xA', getKey: 'Get an xAI key' },
 };
 
 const info = (id: Provider): ProviderInfo => {
@@ -26,7 +28,7 @@ const info = (id: Provider): ProviderInfo => {
   return { id, label: p.label, prefix: p.prefix!, keyName: p.keyName!, host: p.host, keysUrl: p.keysUrl!, ...COPY[id] };
 };
 
-export const PROVIDERS: Record<Provider, ProviderInfo> = { groq: info('groq'), openai: info('openai'), anthropic: info('anthropic'), openrouter: info('openrouter') };
+export const PROVIDERS: Record<Provider, ProviderInfo> = { groq: info('groq'), openai: info('openai'), anthropic: info('anthropic'), openrouter: info('openrouter'), google: info('google'), xai: info('xai') };
 
 /** Models built into Motikord, so Settings always has something to pick: best first, then `faster` (a small one). */
 export const SUGGESTED_MODELS: Record<Provider, { models: string[]; faster: string }> = {
@@ -34,6 +36,8 @@ export const SUGGESTED_MODELS: Record<Provider, { models: string[]; faster: stri
   openai: { models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o'], faster: 'gpt-4.1-mini' },
   anthropic: { models: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1'], faster: 'claude-haiku-4-5' },
   openrouter: { models: ['anthropic/claude-sonnet-4.5', 'openai/gpt-4.1', 'openai/gpt-4.1-mini'], faster: 'openai/gpt-4.1-mini' },
+  google: { models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'], faster: 'gemini-2.5-flash-lite' },
+  xai: { models: ['grok-4', 'grok-3-mini'], faster: 'grok-3-mini' },
 };
 
 /** A model of the provider that can see images, for the visual critic when the chat model can't; absent = keep the chat model. */
@@ -50,7 +54,7 @@ export function criticModelFor(provider: Provider, chat: string): string {
 export const withArticle = (name: string) => `${/^[AEIOU]/i.test(name) ? 'an' : 'a'} ${name}`;
 
 /** Settings and Setup order; Groq is the default. */
-export const PROVIDER_IDS: Provider[] = ['groq', 'openai', 'anthropic', 'openrouter'];
+export const PROVIDER_IDS: Provider[] = ['groq', 'openai', 'anthropic', 'openrouter', 'google', 'xai'];
 export const DEFAULT_PROVIDER: Provider = 'groq';
 
 export const isProvider = (v: unknown): v is Provider => typeof v === 'string' && (PROVIDER_IDS as string[]).includes(v);

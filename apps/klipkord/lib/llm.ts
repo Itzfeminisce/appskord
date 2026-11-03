@@ -4,7 +4,7 @@ import { loadKeys } from './penv';
 
 export { LLMError, type ChatMessage, type FetchLike, type LLMErrorCode } from '@appskord/llm';
 
-export type ProviderId = 'groq' | 'openai' | 'openrouter' | 'anthropic';
+export type ProviderId = 'groq' | 'openai' | 'openrouter' | 'anthropic' | 'google' | 'xai';
 
 export interface ProviderConfig { id: ProviderId; baseUrl: string; keyName: ProviderKeyName; model: string }
 
@@ -16,6 +16,8 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
   openai: provider('openai', 'gpt-4.1-mini'),
   openrouter: provider('openrouter', 'openai/gpt-oss-120b'),
   anthropic: provider('anthropic', 'claude-haiku-4-5'),
+  google: provider('google', 'gemini-2.5-flash'),
+  xai: provider('xai', 'grok-3-mini'),
 };
 
 export interface ChatOptions {

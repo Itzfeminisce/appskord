@@ -41,6 +41,8 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
   ollama: provider('ollama'),
   openai: provider('openai'),
   anthropic: provider('anthropic'),
+  google: provider('google'),
+  xai: provider('xai'),
 };
 
 function merge(stored: Partial<Settings> | undefined): Settings {

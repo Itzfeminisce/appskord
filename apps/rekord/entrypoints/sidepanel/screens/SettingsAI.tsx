@@ -13,7 +13,7 @@ import { BackIcon, CARD, LINK, MONO, PenvCloudLink, StatusDot, useKeyState } fro
 
 const ICON = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: '#4F46E5', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
 
-const PROVIDER_NAME: Record<ProviderId, string> = { groq: 'Groq', openai: 'OpenAI', openrouter: 'OpenRouter', anthropic: 'Anthropic', ollama: 'Ollama' };
+const PROVIDER_NAME: Record<ProviderId, string> = { groq: 'Groq', openai: 'OpenAI', openrouter: 'OpenRouter', anthropic: 'Anthropic', google: 'Gemini', xai: 'xAI', ollama: 'Ollama' };
 const TRANSCRIPTION_LINE: Record<TranscriptionProvider, string> = {
   deepgram: 'Deepgram · real time, tells voices apart',
   groq: 'Groq · a few seconds behind',

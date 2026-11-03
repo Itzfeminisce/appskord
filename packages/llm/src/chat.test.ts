@@ -46,6 +46,15 @@ describe('chatCloud requests', () => {
     await chatCloud(msgs, base({ provider: 'openrouter', key: 'sk-or-test', fetch: f }));
     expect(sent(f, 1).url).toBe('https://openrouter.ai/api/v1/chat/completions');
   });
+  it('xAI and Gemini: OpenAI chat API on their own hosts with a Bearer key', async () => {
+    const f = vi.fn(async () => reply('ok'));
+    await chatCloud(msgs, base({ provider: 'xai', key: 'xai-test', model: 'grok-4', fetch: f }));
+    expect(sent(f).url).toBe('https://api.x.ai/v1/chat/completions');
+    expect(sent(f).headers.Authorization).toBe('Bearer xai-test');
+    await chatCloud(msgs, base({ provider: 'google', key: 'AIza-test', model: 'gemini-2.5-flash', fetch: f }));
+    expect(sent(f, 1).url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+    expect(sent(f, 1).headers.Authorization).toBe('Bearer AIza-test');
+  });
   it('OpenAI: max_completion_tokens, and reasoning models drop temperature', async () => {
     const f = vi.fn(async () => reply('ok'));
     await chatCloud(msgs, base({ provider: 'openai', key: 'sk-test', model: 'gpt-4.1', maxTokens: 100, fetch: f }));

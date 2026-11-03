@@ -92,6 +92,8 @@ const SUMMARY_MODEL: Record<ProviderId, string> = {
   ollama: 'llama3.2',
   openai: 'gpt-4.1-mini',
   anthropic: 'claude-haiku-4-5',
+  google: 'gemini-2.5-flash',
+  xai: 'grok-3-mini',
 };
 /** True when the provider can be used with these results (Ollama needs no key). */
 export function providerWorks(id: ProviderId, results: KeyResults): boolean {

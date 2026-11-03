@@ -11,7 +11,7 @@ import type { AiMode, NotesEngine, Settings } from './types';
 /** The keys Klipkord uses. */
 export type KeyName = ProviderKeyName;
 export type KeyJob = 'transcripts' | 'notes';
-const KEY_NAMES: KeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY'];
+const KEY_NAMES: KeyName[] = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY'];
 
 /** True for a key name Klipkord can use. */
 export const isKeyName = (name: string): name is KeyName => isProviderKeyName(name);
@@ -128,7 +128,7 @@ export function classifyPaste(value: string): PasteClass {
 }
 
 /** Services offered as chips when a pasted key isn't recognised. */
-export const SERVICE_CHOICES: KeyName[] = ['GROQ_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'];
+export const SERVICE_CHOICES: KeyName[] = ['GROQ_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY'];
 
 /** Where a user creates a new key for a service. */
 export const KEY_PAGE: Record<KeyName, string> = {
@@ -136,6 +136,8 @@ export const KEY_PAGE: Record<KeyName, string> = {
   OPENROUTER_API_KEY: 'https://openrouter.ai/keys',
   OPENAI_API_KEY: 'https://platform.openai.com/api-keys',
   ANTHROPIC_API_KEY: 'https://console.anthropic.com/settings/keys',
+  GEMINI_API_KEY: 'https://aistudio.google.com/apikey',
+  XAI_API_KEY: 'https://console.x.ai',
 };
 
 /** Key names the chosen setup needs. Groq does both jobs. */

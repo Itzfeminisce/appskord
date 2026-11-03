@@ -86,7 +86,7 @@ export interface Summary {
   generatedAt: number; model: string;
 }
 
-export type ProviderId = 'groq' | 'openrouter' | 'ollama' | 'openai' | 'anthropic';
+export type ProviderId = 'groq' | 'openrouter' | 'ollama' | 'openai' | 'anthropic' | 'google' | 'xai';
 export interface ProviderConfig { id: ProviderId; baseUrl: string; keyName?: string } // keyName: e.g. 'GROQ_API_KEY'; none for ollama
 
 export interface Settings {

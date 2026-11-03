@@ -134,5 +134,5 @@ export default function PasteKey() {
 }
 
 function originOf(name: KeyName): string {
-  return { GROQ_API_KEY: 'https://api.groq.com', OPENROUTER_API_KEY: 'https://openrouter.ai', OPENAI_API_KEY: 'https://api.openai.com', ANTHROPIC_API_KEY: 'https://api.anthropic.com' }[name];
+  return { GROQ_API_KEY: 'https://api.groq.com', OPENROUTER_API_KEY: 'https://openrouter.ai', OPENAI_API_KEY: 'https://api.openai.com', ANTHROPIC_API_KEY: 'https://api.anthropic.com', GEMINI_API_KEY: 'https://generativelanguage.googleapis.com', XAI_API_KEY: 'https://api.x.ai' }[name];
 }

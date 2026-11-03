@@ -8,6 +8,8 @@ const OPTIONAL_HOSTS = [
   'https://api.openai.com/*',
   'https://openrouter.ai/*',
   'https://api.anthropic.com/*',
+  'https://generativelanguage.googleapis.com/*',
+  'https://api.x.ai/*',
   'https://api.deepgram.com/*',
   'wss://api.deepgram.com/*',
   'https://api.notion.com/*',

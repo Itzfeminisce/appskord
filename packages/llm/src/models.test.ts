@@ -189,6 +189,54 @@ describe('canSeeImages', () => {
   });
 });
 
+describe('Gemini and xAI lists', () => {
+  const ok = (data: unknown) => vi.fn(async () => list(data));
+  it('Gemini: drops the models/ prefix, keeps gemini chat models, requests the right URL and key', async () => {
+    const f = ok(
+      ids(
+        'models/gemini-2.5-pro',
+        'models/gemini-2.5-flash',
+        'models/text-embedding-004',
+        'models/gemini-2.5-flash-lite',
+      ),
+    );
+    const r = await listModelsFor('google', 'chat', { key: 'AIza-test', fetch: f });
+    expect(r.models).toEqual([
+      { id: 'gemini-2.5-flash', tag: 'Recommended' },
+      { id: 'gemini-2.5-flash-lite', tag: 'Fastest' },
+      { id: 'gemini-2.5-pro', tag: 'Sees images' },
+    ]);
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/models');
+    expect(init.headers).toEqual({ Authorization: 'Bearer AIza-test' });
+  });
+  it('xAI: grok-4 recommended, grok-3-mini fastest; no speech kind', async () => {
+    const f = ok(ids('grok-3-mini', 'grok-4'));
+    const r = await listModelsFor('xai', 'chat', { key: 'xai-test', fetch: f });
+    expect(r.models).toEqual([
+      { id: 'grok-4', tag: 'Recommended' },
+      { id: 'grok-3-mini', tag: 'Fastest' },
+    ]);
+    expect((f.mock.calls[0] as unknown as [string])[0]).toBe('https://api.x.ai/v1/models');
+    expect(await listModelsFor('xai', 'speech', { key: 'xai-test', fetch: f })).toEqual({
+      models: [],
+      source: 'suggested',
+    });
+    expect(await listModelsFor('google', 'speech', { key: 'AIza-test', fetch: f })).toEqual({
+      models: [],
+      source: 'suggested',
+    });
+  });
+  it('suggested lists without a key', async () => {
+    expect((await listModelsFor('google', 'chat')).models.map((m) => m.id)).toEqual([
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
+      'gemini-2.5-flash-lite',
+    ]);
+    expect((await listModelsFor('xai', 'chat')).models[0]).toEqual({ id: 'grok-4', tag: 'Recommended' });
+  });
+});
+
 describe('listModelsFor', () => {
   const ok = (data: unknown) => vi.fn(async () => list(data));
   it('Groq chat: live, filtered, recommended first, tags', async () => {
@@ -221,7 +269,7 @@ describe('listModelsFor', () => {
       fetch: f,
     });
     expect(r.models.map((m) => m.id)).toEqual(['whisper-large-v3-turbo', 'whisper-large-v3']);
-    expect(r.models[0].tag).toBe('Recommended');
+    expect(r.models[0]?.tag).toBe('Recommended');
   });
   it('OpenAI speech: whisper-1 and transcribe models; chat marks -mini Fastest', async () => {
     const data = ids('whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe', 'gpt-4.1', 'gpt-4.1-mini', 'tts-1');
