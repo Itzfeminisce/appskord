@@ -1,18 +1,34 @@
 /** Model lists from each provider's `/models`, and the model picked from them. */
-import { fail, isAbort, LLMError, readError, type ApiError, type ErrorText } from './errors';
-import { authHeaders, modelsUrl, PROVIDERS, type Endpoint, type ProviderId } from './providers';
+import {
+  fail,
+  isAbort,
+  LLMError,
+  readError,
+  type ApiError,
+  type ErrorText,
+} from "./errors";
+import {
+  authHeaders,
+  modelsUrl,
+  PROVIDERS,
+  type Endpoint,
+  type ProviderId,
+} from "./providers";
 
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+export type FetchLike = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
 
 /** Capable Groq chat models with JSON mode, best first. Groq retires models, so the one used is picked from /models. */
 export const GROQ_MODEL_PREFERENCE = [
   // Models that answer without reasoning first, so the whole token budget goes to the reply.
-  'moonshotai/kimi-k2-instruct-0905',
-  'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'llama-3.3-70b-versatile',
-  'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
-  'llama-3.1-8b-instant',
+  "moonshotai/kimi-k2-instruct-0905",
+  "meta-llama/llama-4-maverick-17b-128e-instruct",
+  "llama-3.3-70b-versatile",
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
+  "llama-3.1-8b-instant",
 ];
 
 // Listed models that can't chat: speech, images, embeddings, moderation and agent systems.
@@ -24,10 +40,12 @@ const OPENAI_NOT_CHAT = /-pro(\b|-)|deep-research|codex/i;
 /** True when a model id names something that can't write text (speech, images, embeddings…). */
 export const notForText = (model: string) => NOT_CHAT.test(model);
 
-const VISION = /vision|llama-4|gpt-4o|gpt-4\.1|gpt-5|claude|gemini|pixtral|qwen[\w.-]*vl/i;
+const VISION =
+  /vision|llama-4|gpt-4o|gpt-4\.1|gpt-5|claude|gemini|pixtral|qwen[\w.-]*vl/i;
 
 /** True when a model id names a model that can read images. */
-export const canSeeImages = (_provider: ProviderId, model: string) => VISION.test(model);
+export const canSeeImages = (_provider: ProviderId, model: string) =>
+  VISION.test(model);
 
 const ver = (s: string) => (s.match(/\d+/g) ?? []).map(Number);
 function newer(a: string, b: string): number {
@@ -37,23 +55,40 @@ function newer(a: string, b: string): number {
     if ((x[i] ?? -1) !== (y[i] ?? -1)) return (y[i] ?? -1) - (x[i] ?? -1);
   return 0;
 }
-const newest = (ids: string[], re: RegExp) => ids.filter((id) => re.test(id)).sort(newer)[0];
+const newest = (ids: string[], re: RegExp) =>
+  ids.filter((id) => re.test(id)).sort(newer)[0];
 
 /** The chat model ids in a provider's /models `data`, active only. Anthropic keeps its newest-first order; the rest are sorted. */
 export function chatModels(provider: ProviderId, data: unknown): string[] {
   const list = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
   const ids = list
     .filter((m) => {
-      if (typeof m?.id !== 'string' || !m.id || NOT_CHAT.test(m.id) || m.active === false) return false;
-      if (provider === 'openai' && (OPENAI_NOT_CHAT.test(m.id) || !/^(gpt-|o\d|chatgpt-)/.test(m.id))) return false;
-      if (provider === 'anthropic' && !m.id.startsWith('claude')) return false;
-      const out = (m.architecture as { output_modalities?: unknown } | undefined)?.output_modalities;
-      if (Array.isArray(out) && (!out.includes('text') || out.includes('image'))) return false;
+      if (
+        typeof m?.id !== "string" ||
+        !m.id ||
+        NOT_CHAT.test(m.id) ||
+        m.active === false
+      )
+        return false;
+      if (
+        provider === "openai" &&
+        (OPENAI_NOT_CHAT.test(m.id) || !/^(gpt-|o\d|chatgpt-)/.test(m.id))
+      )
+        return false;
+      if (provider === "anthropic" && !m.id.startsWith("claude")) return false;
+      const out = (
+        m.architecture as { output_modalities?: unknown } | undefined
+      )?.output_modalities;
+      if (
+        Array.isArray(out) &&
+        (!out.includes("text") || out.includes("image"))
+      )
+        return false;
       return true;
     })
     .map((m) => m.id as string);
   const unique = [...new Set(ids)];
-  return provider === 'anthropic' ? unique : unique.sort();
+  return provider === "anthropic" ? unique : unique.sort();
 }
 
 export interface PickOptions {
@@ -64,16 +99,31 @@ export interface PickOptions {
 }
 
 /** The recommended model from a provider's chat model ids, else `fallback`. */
-export function recommendedModel(provider: ProviderId, ids: string[], opts: PickOptions = {}): string | undefined {
+export function recommendedModel(
+  provider: ProviderId,
+  ids: string[],
+  opts: PickOptions = {},
+): string | undefined {
   const { fallback } = opts;
   switch (provider) {
-    case 'groq':
-      return (opts.preference ?? GROQ_MODEL_PREFERENCE).find((id) => ids.includes(id)) ?? ids[0] ?? fallback;
-    case 'openai':
-      return newest(ids, /^gpt-\d+(\.\d+)?o?$/) ?? newest(ids, /^gpt-\d/) ?? ids[0] ?? fallback;
-    case 'anthropic':
+    case "groq":
+      return (
+        (opts.preference ?? GROQ_MODEL_PREFERENCE).find((id) =>
+          ids.includes(id),
+        ) ??
+        ids[0] ??
+        fallback
+      );
+    case "openai":
+      return (
+        newest(ids, /^gpt-\d+(\.\d+)?o?$/) ??
+        newest(ids, /^gpt-\d/) ??
+        ids[0] ??
+        fallback
+      );
+    case "anthropic":
       return ids.find((id) => /sonnet/.test(id)) ?? ids[0] ?? fallback;
-    case 'openrouter':
+    case "openrouter":
       return (
         newest(ids, /^anthropic\/claude-sonnet-[\d.]+$/) ??
         newest(ids, /^anthropic\/claude-[\d.]+-sonnet$/) ??
@@ -81,7 +131,7 @@ export function recommendedModel(provider: ProviderId, ids: string[], opts: Pick
         ids[0] ??
         fallback
       );
-    case 'ollama':
+    case "ollama":
       return ids[0] ?? fallback;
   }
 }
@@ -101,7 +151,9 @@ export interface ListOptions extends Endpoint, PickOptions {
 // A key that works for chat but may not list models: OpenAI restricted and project keys without the "Models: Read" scope.
 const missingScope = (e: ApiError) =>
   (e.status === 401 || e.status === 403) &&
-  /scope|insufficient permissions|not allowed to|permission/i.test(e.message ?? '');
+  /scope|insufficient permissions|not allowed to|permission/i.test(
+    e.message ?? "",
+  );
 
 /** Asks the provider for its models: recommended first, then the rest. Throws LLMError (offline, auth, no-list, server, cancelled). */
 export async function listModels(opts: ListOptions): Promise<ModelList> {
@@ -111,31 +163,40 @@ export async function listModels(opts: ListOptions): Promise<ModelList> {
   let res: Response;
   try {
     res = await fetchFn(modelsUrl(opts), {
-      method: 'GET',
+      method: "GET",
       headers: authHeaders(provider, opts.key, opts.openaiCompatible),
-      credentials: 'omit',
+      credentials: "omit",
       signal,
     });
   } catch (e) {
-    if (isAbort(e) || signal?.aborted) throw fail(text, { reason: 'cancelled', label });
-    throw fail(text, { reason: 'offline', label });
+    if (isAbort(e) || signal?.aborted)
+      throw fail(text, { reason: "cancelled", label });
+    throw fail(text, { reason: "offline", label });
   }
   if (!res.ok) {
     const err = await readError(res);
-    if (missingScope(err)) throw fail(text, { reason: 'no-list', label, status: err.status });
-    if (res.status === 401 || res.status === 403) throw fail(text, { reason: 'auth', label, status: res.status });
-    throw fail(text, { reason: 'status', label, status: res.status });
+    if (missingScope(err))
+      throw fail(text, { reason: "no-list", label, status: err.status });
+    if (res.status === 401 || res.status === 403)
+      throw fail(text, { reason: "auth", label, status: res.status });
+    throw fail(text, { reason: "status", label, status: res.status });
   }
   let data: unknown;
   try {
     data = ((await res.json()) as { data?: unknown }).data;
   } catch (e) {
-    if (isAbort(e) || signal?.aborted) throw fail(text, { reason: 'cancelled', label });
-    throw fail(text, { reason: 'unexpected-list', label });
+    if (isAbort(e) || signal?.aborted)
+      throw fail(text, { reason: "cancelled", label });
+    throw fail(text, { reason: "unexpected-list", label });
   }
   const ids = chatModels(provider, data);
   const recommended = recommendedModel(provider, ids, opts);
-  return { models: recommended ? [recommended, ...ids.filter((id) => id !== recommended)] : ids, recommended };
+  return {
+    models: recommended
+      ? [recommended, ...ids.filter((id) => id !== recommended)]
+      : ids,
+    recommended,
+  };
 }
 
 /** Where the picked model is remembered for the session. A model id is not a secret. */
@@ -147,7 +208,12 @@ export interface ModelCache {
 
 /** The recommended model, cached when a cache is given. A failed list is not cached and gives `fallback`. */
 export async function recommendedFor(
-  opts: ListOptions & { cache?: ModelCache; fresh: boolean; app: string; exclude?: string },
+  opts: ListOptions & {
+    cache?: ModelCache;
+    fresh: boolean;
+    app: string;
+    exclude?: string;
+  },
 ): Promise<string | undefined> {
   const { cache, provider, exclude } = opts;
   if (opts.fresh) await cache?.remove(provider).catch(() => undefined);
@@ -167,13 +233,174 @@ export async function recommendedFor(
         )
       : recommended;
   } catch (e) {
-    if (e instanceof LLMError && e.code === 'cancelled') throw e;
-    if (e instanceof LLMError && e.code !== 'offline' && e.code !== 'no-list') {
-      console.error(`${opts.app}: could not list ${PROVIDERS[provider].label} models`, e.message);
+    if (e instanceof LLMError && e.code === "cancelled") throw e;
+    if (e instanceof LLMError && e.code !== "offline" && e.code !== "no-list") {
+      console.error(
+        `${opts.app}: could not list ${PROVIDERS[provider].label} models`,
+        e.message,
+      );
     }
     return opts.fallback === exclude ? undefined : opts.fallback;
   }
   if (id === exclude) id = undefined;
   if (id) await cache?.set(provider, id).catch(() => undefined);
   return id;
+}
+
+export type ModelKind = "chat" | "speech";
+export type ModelTag = "Recommended" | "Fastest" | "Sees images";
+export interface PickerModel {
+  id: string;
+  tag?: ModelTag;
+}
+export interface PickerList {
+  models: PickerModel[];
+  source: "live" | "suggested";
+  /** Why the live list did not load (code `auth`, `offline`, `rate-limited`…); the suggested list shows instead. */
+  error?: LLMError;
+}
+export interface PickerOptions {
+  key?: string;
+  fetch?: FetchLike;
+  signal?: AbortSignal;
+}
+
+/** Sample lists shown when `/models` fails or no key is loaded; the first of each is "Recommended". */
+export const SUGGESTED: Record<
+  ProviderId,
+  Partial<Record<ModelKind, readonly string[]>>
+> = {
+  groq: {
+    chat: [
+      "llama-3.3-70b-versatile",
+      "moonshotai/kimi-k2-instruct-0905",
+      "openai/gpt-oss-120b",
+      "llama-3.1-8b-instant",
+    ],
+    speech: ["whisper-large-v3-turbo", "whisper-large-v3"],
+  },
+  openai: {
+    chat: ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"],
+    speech: ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"],
+  },
+  anthropic: { chat: ["claude-sonnet-4-5", "claude-haiku-4-5"] },
+  openrouter: {
+    chat: [
+      "anthropic/claude-sonnet-4.5",
+      "openai/gpt-4.1",
+      "openai/gpt-4.1-mini",
+    ],
+  },
+  ollama: { chat: [] },
+};
+
+/** The speech-to-text model ids in a provider's /models `data`. Only Groq and OpenAI have any. */
+export function speechModels(provider: ProviderId, data: unknown): string[] {
+  const re =
+    provider === "groq"
+      ? /^whisper-/
+      : provider === "openai"
+        ? /^whisper-1$|-transcribe$/
+        : undefined;
+  if (!re || !Array.isArray(data)) return [];
+  const ids = (data as Record<string, unknown>[])
+    .filter(
+      (m) => typeof m?.id === "string" && re.test(m.id) && m.active !== false,
+    )
+    .map((m) => m.id as string);
+  return [...new Set(ids)].sort();
+}
+
+const FASTEST = /8b-instant/;
+const FASTEST_OPENAI = /-mini$/;
+
+function tagged(
+  provider: ProviderId,
+  kind: ModelKind,
+  ids: string[],
+  recommended?: string,
+): PickerModel[] {
+  return ids.map((id) => {
+    let tag: ModelTag | undefined;
+    if (id === recommended) tag = "Recommended";
+    else if (
+      kind === "chat" &&
+      (FASTEST.test(id) || (provider === "openai" && FASTEST_OPENAI.test(id)))
+    )
+      tag = "Fastest";
+    else if (kind === "chat" && canSeeImages(provider, id)) tag = "Sees images";
+    return tag ? { id, tag } : { id };
+  });
+}
+
+const suggested = (
+  provider: ProviderId,
+  kind: ModelKind,
+  error?: LLMError,
+): PickerList => ({
+  models: tagged(
+    provider,
+    kind,
+    [...(SUGGESTED[provider][kind] ?? [])],
+    SUGGESTED[provider][kind]?.[0],
+  ),
+  source: "suggested",
+  ...(error ? { error } : {}),
+});
+
+const plainText: ErrorText = (f) =>
+  `${f.label}: ${f.reason}${f.status ? ` (${f.status})` : ""}`;
+
+/** The models a provider offers for a job, tagged for the picker. Never throws: a failed list gives the suggested ones plus `error`. */
+export async function listModelsFor(
+  provider: ProviderId,
+  kind: ModelKind,
+  opts: PickerOptions = {},
+): Promise<PickerList> {
+  if (!SUGGESTED[provider][kind]) return { models: [], source: "suggested" };
+  if (!opts.key && provider !== "ollama") return suggested(provider, kind);
+  const label = PROVIDERS[provider].label;
+  const fetchFn = opts.fetch ?? ((u, i) => fetch(u, i));
+  try {
+    let res: Response;
+    try {
+      res = await fetchFn(modelsUrl({ provider }), {
+        method: "GET",
+        headers: authHeaders(provider, opts.key ?? ""),
+        credentials: "omit",
+        signal: opts.signal,
+      });
+    } catch (e) {
+      throw fail(plainText, {
+        reason: isAbort(e) || opts.signal?.aborted ? "cancelled" : "offline",
+        label,
+      });
+    }
+    if (!res.ok) {
+      const reason =
+        res.status === 401 || res.status === 403
+          ? "auth"
+          : res.status === 429
+            ? "busy"
+            : "status";
+      throw fail(plainText, { reason, label, status: res.status });
+    }
+    let data: unknown;
+    try {
+      data = ((await res.json()) as { data?: unknown }).data;
+    } catch {
+      throw fail(plainText, { reason: "unexpected-list", label });
+    }
+    const ids =
+      kind === "chat"
+        ? chatModels(provider, data)
+        : speechModels(provider, data);
+    if (!ids.length) return suggested(provider, kind);
+    const first = SUGGESTED[provider][kind]!.find((id) => ids.includes(id));
+    const ordered = first ? [first, ...ids.filter((id) => id !== first)] : ids;
+    return { models: tagged(provider, kind, ordered, first), source: "live" };
+  } catch (e) {
+    if (e instanceof LLMError) return suggested(provider, kind, e);
+    throw e;
+  }
 }
