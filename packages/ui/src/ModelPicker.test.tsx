@@ -19,11 +19,11 @@ const GROUPS: PickerGroup[] = [
     status: 'ready',
     mark: 'Gq',
     models: [
-      { id: 'llama-3.3-70b-versatile', tag: 'Recommended' },
-      { id: 'llama-3.1-8b-instant', tag: 'Fastest' },
+      { id: 'openai/gpt-oss-120b', tag: 'Recommended' },
+      { id: 'openai/gpt-oss-20b', tag: 'Fastest' },
     ],
   },
-  { id: 'openai', name: 'OpenAI', status: 'ready', mark: 'OA', models: [{ id: 'gpt-4.1-mini', tag: 'Recommended' }] },
+  { id: 'openai', name: 'OpenAI', status: 'ready', mark: 'OA', models: [{ id: 'gpt-6-luna', tag: 'Recommended' }] },
   {
     id: 'anthropic',
     name: 'Anthropic',
@@ -48,7 +48,7 @@ function mount(over: Partial<ModelPickerProps> = {}) {
   const props: ModelPickerProps = {
     label: 'Notes and Ask',
     groups: GROUPS,
-    value: { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+    value: { provider: 'groq', model: 'openai/gpt-oss-120b' },
     foot: FOOT,
     onPick: vi.fn(),
     onAddKey: vi.fn(),
@@ -86,7 +86,7 @@ describe('ModelPicker', () => {
     expect(button().getAttribute('aria-haspopup')).toBe('listbox');
     expect(button().getAttribute('aria-expanded')).toBe('false');
     expect(button().textContent).toContain('Gq');
-    expect(button().textContent).toContain('llama-3.3-70b-versatile');
+    expect(button().textContent).toContain('openai/gpt-oss-120b');
     expect(button().textContent).toContain('Groq · Ready');
   });
 
@@ -127,7 +127,7 @@ describe('ModelPicker', () => {
     for (const s of ['On this computer', 'Nothing is sent', 'Groq', 'Ready', 'Recommended', 'Fastest', 'Needs a key'])
       expect(text).toContain(s);
     const selected = options().filter((o) => o.getAttribute('aria-selected') === 'true');
-    expect(selected.map((o) => o.textContent)).toEqual(['llama-3.3-70b-versatile' + 'Recommended']);
+    expect(selected.map((o) => o.textContent)).toEqual(['openai/gpt-oss-120b' + 'Recommended']);
     expect(selected[0]!.querySelector('.mp-check svg')).not.toBeNull();
     expect(text).toContain('Add an Anthropic key');
   });
@@ -135,10 +135,14 @@ describe('ModelPicker', () => {
   it('search filters by model id and by provider name or alias', () => {
     mount();
     click(button());
-    type('8b');
-    expect(options().map((o) => o.textContent)).toEqual(['llama-3.1-8b-instant' + 'Fastest']);
+    type('oss-20');
+    expect(options().map((o) => o.textContent)).toEqual(['openai/gpt-oss-20b' + 'Fastest']);
     type('openai');
-    expect(options().map((o) => o.textContent)).toEqual(['gpt-4.1-mini' + 'Recommended']);
+    expect(options().map((o) => o.textContent)).toEqual([
+      'openai/gpt-oss-120bRecommended',
+      'openai/gpt-oss-20bFastest',
+      'gpt-6-lunaRecommended',
+    ]);
     type('claude');
     expect(options()).toHaveLength(0);
     expect(listbox()!.textContent).toContain('Add an Anthropic key');
@@ -148,8 +152,8 @@ describe('ModelPicker', () => {
   it('picking a row calls onPick and closes', () => {
     const props = mount();
     click(button());
-    click(options().find((o) => o.textContent?.startsWith('gpt-4.1-mini'))!);
-    expect(props.onPick).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-4.1-mini' }, false);
+    click(options().find((o) => o.textContent?.startsWith('gpt-6-luna'))!);
+    expect(props.onPick).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-6-luna' }, false);
     expect(listbox()).toBeNull();
   });
 
@@ -161,22 +165,22 @@ describe('ModelPicker', () => {
     key(input(), 'ArrowDown');
     expect(input().getAttribute('aria-activedescendant')).toBe(options()[2]!.id);
     key(input(), 'Enter');
-    expect(props.onPick).toHaveBeenCalledWith({ provider: 'groq', model: 'llama-3.1-8b-instant' }, false);
+    expect(props.onPick).toHaveBeenCalledWith({ provider: 'groq', model: 'openai/gpt-oss-20b' }, false);
     expect(listbox()).toBeNull();
   });
 
   it('no match offers the typed name with the typed provider', () => {
     const props = mount({ typedProvider: 'openai' });
     click(button());
-    type('gpt-4o-2024-11-20');
-    expect(listbox()!.textContent).toContain('No model called “gpt-4o-2024-11-20” in your lists.');
+    type('gpt-6-astra-2026-09-01');
+    expect(listbox()!.textContent).toContain('No model called “gpt-6-astra-2026-09-01” in your lists.');
     expect(host.querySelector('.mp-foot')?.textContent).toBe(
       'A typed name is checked once with a short test question before it is used.',
     );
     const typed = options()[0]!;
-    expect(typed.textContent).toBe('Use “gpt-4o-2024-11-20” with OpenAI');
+    expect(typed.textContent).toBe('Use “gpt-6-astra-2026-09-01” with OpenAI');
     click(typed);
-    expect(props.onPick).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-4o-2024-11-20' }, true);
+    expect(props.onPick).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-6-astra-2026-09-01' }, true);
   });
 
   it('the key row calls onAddKey with its provider', () => {
@@ -209,11 +213,11 @@ describe('ModelPicker states', () => {
   });
 
   it('picker-model-gone', () => {
-    mount({ gone: { old: 'llama-3.1-70b-versatile', app: 'Klipkord' } });
+    mount({ gone: { old: 'old-groq-model', app: 'Klipkord' } });
     expect(button().className).toContain('is-gone');
     expect(button().textContent).toContain('Groq · picked for you');
     expect(host.querySelector('.mp-gone')?.textContent).toBe(
-      'Groq no longer offers llama-3.1-70b-versatile, so Klipkord uses llama-3.3-70b-versatile. Open the list to pick another.',
+      'Groq no longer offers old-groq-model, so Klipkord uses openai/gpt-oss-120b. Open the list to pick another.',
     );
   });
 

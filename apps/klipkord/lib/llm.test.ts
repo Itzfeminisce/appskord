@@ -63,8 +63,8 @@ describe('chat errors and retired models', () => {
   it('re-picks a listed Groq model once when the default is retired, and keeps it', async () => {
     const gone = () => new Response(JSON.stringify({ error: { code: 'model_not_found' } }), { status: 404 });
     const f = vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'openai/gpt-oss-120b' }] }));
-      return JSON.parse(String(init?.body)).model === 'llama-3.3-70b-versatile' ? gone() : reply('healed');
+      if (url.endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'openai/gpt-oss-20b' }] }));
+      return JSON.parse(String(init?.body)).model === 'openai/gpt-oss-120b' ? gone() : reply('healed');
     });
     expect(await chat(msgs, {}, f)).toBe('healed');
     expect(await chat(msgs, {}, f)).toBe('healed');

@@ -14,7 +14,7 @@ describe('connect', () => {
   it('lists the key names the chosen providers need', () => {
     expect(requiredKeyNames(DEFAULT_SETTINGS)).toEqual(['GROQ_API_KEY']);
     expect(
-      requiredKeyNames({ transcription: { provider: 'openai', model: 'whisper-1' }, summary: { provider: 'ollama', model: 'x' } }),
+      requiredKeyNames({ transcription: { provider: 'openai', model: 'gpt-transcribe' }, summary: { provider: 'ollama', model: 'x' } }),
     ).toEqual(['OPENAI_API_KEY']);
   });
 
@@ -67,7 +67,7 @@ describe('connect', () => {
       { GROQ_API_KEY: 'rejected', OPENAI_API_KEY: 'ok', ANTHROPIC_API_KEY: 'ok', DEEPGRAM_API_KEY: 'unreachable' },
       base,
     );
-    expect(groqBad.transcription).toEqual({ provider: 'openai', model: 'whisper-1' });
+    expect(groqBad.transcription).toEqual({ provider: 'openai', model: 'gpt-transcribe' });
     expect(groqBad.summary.provider).toBe('openai');
     expect(groqBad.features).toEqual({ ...base.features, speakerNames: false });
     const onlyAnthropic = pickProviders({ GROQ_API_KEY: 'rejected', ANTHROPIC_API_KEY: 'ok' }, base);

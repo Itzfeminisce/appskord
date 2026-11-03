@@ -102,7 +102,7 @@ describe('chat', () => {
 
     it('does not loop when the picked model also fails, and leaves injected config unsaved', async () => {
       const settings = { ...DEFAULT_SETTINGS, summary: { provider: 'groq' as const, model: 'old-model' } };
-      const f = groq({ 'old-model': gone, 'llama-3.1-8b-instant': gone }, ['llama-3.1-8b-instant']);
+      const f = groq({ 'old-model': gone, 'openai/gpt-oss-20b': gone }, ['openai/gpt-oss-20b']);
       await expect(chat(msgs, { config: { settings, keys: { GROQ_API_KEY: 'gsk_test' } } }, f)).rejects.toMatchObject({ code: 'server' });
       expect(f).toHaveBeenCalledTimes(3);
       expect((await getSettings()).summary.model).toBe(DEFAULT_SETTINGS.summary.model);

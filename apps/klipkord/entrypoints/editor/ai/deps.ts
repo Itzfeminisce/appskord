@@ -35,7 +35,7 @@ export const setAiDeps = (next: AiDeps | null): void => { deps = next; };
 const LOWER = new Set(['mini', 'nano', 'oss', 'turbo', 'flash', 'pro']);
 const DROP = /^(versatile|instant|latest|preview|chat|instruct|\d+b|\d{4,8})$/i;
 
-/** The short model name for people, never the id: "llama-3.3-70b-versatile" is "Llama 3.3", "claude-haiku-4-5" is "Claude Haiku 4.5". */
+/** The short model name for people, never the id: "openai/gpt-oss-120b" is "GPT-oss", "claude-haiku-5-5" is "Claude Haiku 5.5". */
 export function shortModel(id: string): string {
   const parts = (id.split('/').pop() ?? id).split(/[-_:]/).filter((t) => t && !DROP.test(t));
   const out: string[] = [];

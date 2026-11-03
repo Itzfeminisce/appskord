@@ -83,17 +83,17 @@ export const TRANSCRIPTION_ORDER: Extract<TranscriptionProvider, ProviderId>[] =
 export const SUMMARY_ORDER: ProviderId[] = ['groq', 'openai', 'openrouter', 'anthropic'];
 const TRANSCRIPTION_MODEL: Record<TranscriptionProvider, string> = {
   groq: 'whisper-large-v3-turbo',
-  openai: 'whisper-1',
+  openai: 'gpt-transcribe',
   deepgram: 'nova-3',
 };
 const SUMMARY_MODEL: Record<ProviderId, string> = {
   groq: 'openai/gpt-oss-120b',
   openrouter: 'openai/gpt-oss-120b',
   ollama: 'llama3.2',
-  openai: 'gpt-4.1-mini',
-  anthropic: 'claude-haiku-4-5',
-  google: 'gemini-2.5-flash',
-  xai: 'grok-3-mini',
+  openai: 'gpt-6-luna',
+  anthropic: 'claude-haiku-5-5',
+  google: 'gemini-3.8-flash',
+  xai: 'grok-4.7',
 };
 /** True when the provider can be used with these results (Ollama needs no key). */
 export function providerWorks(id: ProviderId, results: KeyResults): boolean {

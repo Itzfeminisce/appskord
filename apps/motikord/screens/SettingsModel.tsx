@@ -281,19 +281,19 @@ export function ModelField({ provider, saved, apiKey, onSave, onPasteKey, onPenv
 }
 
 const SHEET: [string, ReactNode][] = [
-  ['model-picker-open · Settings (Model)', <><ModelInput value="gpt-4" look="focus" open /><ModelOptions provider="openai" live={['gpt-4o', 'gpt-4o-mini', 'gpt-4.1-nano']} query="gpt-4" chosen="gpt-4.1" onPick={() => undefined} /><span style={s}>Typing filters the list. Enter uses exactly what you typed.</span></>],
-  ['model-list-loading · Settings (Model)', <><ModelInput value="gpt-4.1" busy /><ModelListLoading provider="openai" /></>],
-  ['model-list-failed · Settings (Model)', <><ModelInput value="gpt-4.1" /><ModelListFailed provider="openai" /></>],
-  ['model-typed · Settings (Model, a name not in the list)', <><ModelInput value="gpt-4o-2024-11-20" yours /><ModelTyped /></>],
-  ['model-checking · Settings (Model)', <><ModelInput value="gpt-4o-2024-11-20" yours hideChevron /><ModelChecking model="gpt-4o-2024-11-20" /></>],
-  ['model-check-ok · Settings (Model)', <ModelCheckOk model="gpt-4o-2024-11-20" ms={1400} />],
-  ['model-check-key-refused · Settings (Model)', <ModelCheckProblem problem="key-refused" provider="openai" model="gpt-4.1" />],
-  ['model-check-offline · Settings (Model)', <ModelCheckProblem problem="offline" provider="openai" model="gpt-4.1" />],
-  ['model-check-busy · Settings (Model)', <ModelCheckProblem problem="busy" provider="openai" model="gpt-4.1" />],
-  ['model-check-server-error · Settings (Model)', <ModelCheckProblem problem="server-error" provider="openai" model="gpt-4.1" />],
-  ['model-not-found · Settings (Model), Making your clip', <><ModelInput value="gpt-4o-maxi" look="bad" hideChevron /><ModelNotFound provider="openai" model="gpt-4o-maxi" previous="gpt-4.1" /></>],
-  ['model-not-for-text · Settings (Model)', <ModelNotForText provider="openai" model="whisper-1" />],
-  ['model-needs-key · Settings (Model)', <><ModelInput value="claude-sonnet-4-5" /><ModelNeedsKey provider="anthropic" /></>],
+  ['model-picker-open · Settings (Model)', <><ModelInput value="gpt-6" look="focus" open /><ModelOptions provider="openai" live={['gpt-6-astra', 'gpt-6-luna-preview', 'gpt-6-nano']} query="gpt-6" chosen="gpt-6.1-sol" onPick={() => undefined} /><span style={s}>Typing filters the list. Enter uses exactly what you typed.</span></>],
+  ['model-list-loading · Settings (Model)', <><ModelInput value="gpt-6.1-sol" busy /><ModelListLoading provider="openai" /></>],
+  ['model-list-failed · Settings (Model)', <><ModelInput value="gpt-6.1-sol" /><ModelListFailed provider="openai" /></>],
+  ['model-typed · Settings (Model, a name not in the list)', <><ModelInput value="gpt-6-astra-2026-09-01" yours /><ModelTyped /></>],
+  ['model-checking · Settings (Model)', <><ModelInput value="gpt-6-astra-2026-09-01" yours hideChevron /><ModelChecking model="gpt-6-astra-2026-09-01" /></>],
+  ['model-check-ok · Settings (Model)', <ModelCheckOk model="gpt-6-astra-2026-09-01" ms={1400} />],
+  ['model-check-key-refused · Settings (Model)', <ModelCheckProblem problem="key-refused" provider="openai" model="gpt-6.1-sol" />],
+  ['model-check-offline · Settings (Model)', <ModelCheckProblem problem="offline" provider="openai" model="gpt-6.1-sol" />],
+  ['model-check-busy · Settings (Model)', <ModelCheckProblem problem="busy" provider="openai" model="gpt-6.1-sol" />],
+  ['model-check-server-error · Settings (Model)', <ModelCheckProblem problem="server-error" provider="openai" model="gpt-6.1-sol" />],
+  ['model-not-found · Settings (Model), Making your clip', <><ModelInput value="gpt-6-maxi" look="bad" hideChevron /><ModelNotFound provider="openai" model="gpt-6-maxi" previous="gpt-6.1-sol" /></>],
+  ['model-not-for-text · Settings (Model)', <ModelNotForText provider="openai" model="gpt-transcribe" />],
+  ['model-needs-key · Settings (Model)', <><ModelInput value="claude-sonnet-5-5" /><ModelNeedsKey provider="anthropic" /></>],
   ['model-built-in · Settings (On this computer chosen)', <ModelBuiltIn />],
 ];
 

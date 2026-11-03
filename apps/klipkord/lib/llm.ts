@@ -12,12 +12,12 @@ const provider = (id: ProviderId, model: string): ProviderConfig => ({ id, baseU
 
 /** In fallback order: the first provider with a key loaded writes the notes. */
 export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
-  groq: provider('groq', 'llama-3.3-70b-versatile'),
-  openai: provider('openai', 'gpt-4.1-mini'),
+  groq: provider('groq', 'openai/gpt-oss-120b'),
+  openai: provider('openai', 'gpt-6-luna'),
   openrouter: provider('openrouter', 'openai/gpt-oss-120b'),
-  anthropic: provider('anthropic', 'claude-haiku-4-5'),
-  google: provider('google', 'gemini-2.5-flash'),
-  xai: provider('xai', 'grok-3-mini'),
+  anthropic: provider('anthropic', 'claude-haiku-5-5'),
+  google: provider('google', 'gemini-3.8-flash'),
+  xai: provider('xai', 'grok-4.7'),
 };
 
 export interface ChatOptions {

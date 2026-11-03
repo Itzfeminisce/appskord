@@ -10,7 +10,7 @@ describe.skipIf(!process.env.QUALITY_SHEET)('quality sheet data', () => {
   it('writes the recorded clips and their checker issues', async () => {
     const rows = [];
     for (const r of prompts as Recorded[]) {
-      const model = r.model ?? 'llama-3.3-70b-versatile';
+      const model = r.model ?? 'openai/gpt-oss-120b';
       const out = await writeClip(
         { prompt: r.prompt, type: r.type, aspect: r.aspect, assets: r.assets ?? [], id: r.id, style: r.style, pace: r.pace, critic: true, settings: { ai: 'cloud', provider: 'groq', models: { groq: model } } },
         { ai: 'cloud', provider: 'groq', model, key: 'gsk_test', fetch: replay(r).fetch },

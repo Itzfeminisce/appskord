@@ -5,15 +5,7 @@ import { authHeaders, modelsUrl, PROVIDERS, type Endpoint, type ProviderId } fro
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 /** Capable Groq chat models with JSON mode, best first. Groq retires models, so the one used is picked from /models. */
-export const GROQ_MODEL_PREFERENCE = [
-  // Models that answer without reasoning first, so the whole token budget goes to the reply.
-  'moonshotai/kimi-k2-instruct-0905',
-  'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'llama-3.3-70b-versatile',
-  'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
-  'llama-3.1-8b-instant',
-];
+export const GROQ_MODEL_PREFERENCE = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'];
 
 // Listed models that can't chat: speech, images, embeddings, moderation and agent systems.
 const NOT_CHAT =
@@ -24,7 +16,7 @@ const OPENAI_NOT_CHAT = /-pro(\b|-)|deep-research|codex/i;
 /** True when a model id names something that can't write text (speech, images, embeddings…). */
 export const notForText = (model: string) => NOT_CHAT.test(model);
 
-const VISION = /vision|llama-4|gpt-4o|gpt-4\.1|gpt-5|claude|gemini|pixtral|qwen[\w.-]*vl/i;
+const VISION = /vision|llama-4|gpt-[4-9]|claude|gemini|grok-4|pixtral|qwen[\w.-]*vl/i;
 
 /** True when a model id names a model that can read images. */
 export const canSeeImages = (_provider: ProviderId, model: string) => VISION.test(model);
@@ -64,6 +56,9 @@ export interface PickOptions {
   fallback?: string;
 }
 
+// The first suggested chat model the provider actually lists.
+const listed = (provider: ProviderId, ids: string[]) => SUGGESTED[provider].chat?.find((id) => ids.includes(id));
+
 /** The recommended model from a provider's chat model ids, else `fallback`. */
 export function recommendedModel(provider: ProviderId, ids: string[], opts: PickOptions = {}): string | undefined {
   const { fallback } = opts;
@@ -71,9 +66,11 @@ export function recommendedModel(provider: ProviderId, ids: string[], opts: Pick
     case 'groq':
       return (opts.preference ?? GROQ_MODEL_PREFERENCE).find((id) => ids.includes(id)) ?? ids[0] ?? fallback;
     case 'openai':
-      return newest(ids, /^gpt-\d+(\.\d+)?o?$/) ?? newest(ids, /^gpt-\d/) ?? ids[0] ?? fallback;
+      return (
+        listed('openai', ids) ?? newest(ids, /^gpt-\d+(\.\d+)?o?$/) ?? newest(ids, /^gpt-\d/) ?? ids[0] ?? fallback
+      );
     case 'anthropic':
-      return ids.find((id) => /sonnet/.test(id)) ?? ids[0] ?? fallback;
+      return listed('anthropic', ids) ?? ids.find((id) => /sonnet/.test(id)) ?? ids[0] ?? fallback;
     case 'openrouter':
       return (
         newest(ids, /^anthropic\/claude-sonnet-[\d.]+$/) ??
@@ -83,9 +80,9 @@ export function recommendedModel(provider: ProviderId, ids: string[], opts: Pick
         fallback
       );
     case 'google':
-      return ids.find((id) => id === 'gemini-2.5-flash') ?? ids[0] ?? fallback;
+      return listed('google', ids) ?? ids[0] ?? fallback;
     case 'xai':
-      return ids.find((id) => id === 'grok-4') ?? ids[0] ?? fallback;
+      return listed('xai', ids) ?? ids[0] ?? fallback;
     case 'ollama':
       return ids[0] ?? fallback;
   }
@@ -212,32 +209,23 @@ export interface PickerOptions {
 /** Sample lists shown when `/models` fails or no key is loaded; the first of each is "Recommended". */
 export const SUGGESTED: Record<ProviderId, Partial<Record<ModelKind, readonly string[]>>> = {
   groq: {
-    chat: [
-      'llama-3.3-70b-versatile',
-      'moonshotai/kimi-k2-instruct-0905',
-      'openai/gpt-oss-120b',
-      'llama-3.1-8b-instant',
-    ],
+    chat: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
     speech: ['whisper-large-v3-turbo', 'whisper-large-v3'],
   },
   openai: {
-    chat: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
-    speech: ['gpt-4o-mini-transcribe', 'gpt-4o-transcribe', 'whisper-1'],
+    chat: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra', 'gpt-6-luna'],
+    speech: ['gpt-transcribe'],
   },
-  anthropic: { chat: ['claude-sonnet-4-5', 'claude-haiku-4-5'] },
-  openrouter: {
-    chat: ['anthropic/claude-sonnet-4.5', 'openai/gpt-4.1', 'openai/gpt-4.1-mini'],
-  },
-  google: {
-    chat: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
-  },
-  xai: { chat: ['grok-4', 'grok-3-mini'] },
+  anthropic: { chat: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'] },
+  openrouter: { chat: [] },
+  google: { chat: ['gemini-3.8-flash', 'gemini-4-argon', 'gemini-3.5-flash-lite'] },
+  xai: { chat: ['grok-4.7'] },
   ollama: { chat: [] },
 };
 
 /** The speech-to-text model ids in a provider's /models `data`. Only Groq and OpenAI have any. */
 export function speechModels(provider: ProviderId, data: unknown): string[] {
-  const re = provider === 'groq' ? /^whisper-/ : provider === 'openai' ? /^whisper-1$|-transcribe$/ : undefined;
+  const re = provider === 'groq' ? /^whisper-/ : provider === 'openai' ? /^gpt-transcribe$/ : undefined;
   if (!re || !Array.isArray(data)) return [];
   const ids = (data as Record<string, unknown>[])
     .filter((m) => typeof m?.id === 'string' && re.test(m.id) && m.active !== false)
@@ -245,15 +233,13 @@ export function speechModels(provider: ProviderId, data: unknown): string[] {
   return [...new Set(ids)].sort();
 }
 
-const FASTEST = /8b-instant|flash-lite|grok-3-mini/;
-const FASTEST_OPENAI = /-mini$/;
+const FASTEST = /gpt-oss-20b|-luna$|haiku|flash-lite/;
 
 function tagged(provider: ProviderId, kind: ModelKind, ids: string[], recommended?: string): PickerModel[] {
   return ids.map((id) => {
     let tag: ModelTag | undefined;
     if (id === recommended) tag = 'Recommended';
-    else if (kind === 'chat' && (FASTEST.test(id) || (provider === 'openai' && FASTEST_OPENAI.test(id))))
-      tag = 'Fastest';
+    else if (kind === 'chat' && FASTEST.test(id)) tag = 'Fastest';
     else if (kind === 'chat' && canSeeImages(provider, id)) tag = 'Sees images';
     return tag ? { id, tag } : { id };
   });

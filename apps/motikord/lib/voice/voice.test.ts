@@ -39,7 +39,7 @@ describe('transcription request', () => {
   it('builds the OpenAI request', () => {
     const { url, init } = buildTranscriptionRequest('openai', 'sk-test', audio(), 'fr');
     expect(url).toBe('https://api.openai.com/v1/audio/transcriptions');
-    expect((init.body as FormData).get('model')).toBe('gpt-4o-mini-transcribe');
+    expect((init.body as FormData).get('model')).toBe('gpt-transcribe');
     expect(isoLanguage('pt-BR')).toBe('pt');
   });
   it('returns the trimmed text through the injected fetch', async () => {

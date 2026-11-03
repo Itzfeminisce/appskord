@@ -102,7 +102,7 @@ function retryAfter(res: Response): number | undefined {
 
 // OpenAI reasoning models: no temperature, a reasoning budget on top of the reply.
 const reasoning = (provider: ProviderId, model: string) =>
-  provider === 'openai' && /^(o\d|gpt-5)/.test(model) && !/chat/.test(model);
+  provider === 'openai' && /^(o\d|gpt-[5-9])/.test(model) && !/chat/.test(model);
 const REASONING_TOKENS = 4000;
 const ANTHROPIC_MAX_TOKENS = 4096;
 const JSON_ONLY = 'Reply with one JSON object only, with no text before or after it.';

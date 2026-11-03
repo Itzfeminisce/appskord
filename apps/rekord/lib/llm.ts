@@ -10,11 +10,7 @@ export { LLMError, type ChatMessage, type FetchLike, type LLMErrorCode } from '@
 /** Best first. The first entry is Rekord's default Groq summary model; a retired model is re-picked from this list. */
 export const GROQ_CHAT_PREFERENCE = [
   'openai/gpt-oss-120b',
-  'llama-3.3-70b-versatile',
-  'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'qwen/qwen3-32b',
   'openai/gpt-oss-20b',
-  'llama-3.1-8b-instant',
 ];
 
 export interface ChatOptions {

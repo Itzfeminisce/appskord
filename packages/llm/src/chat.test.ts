@@ -48,18 +48,21 @@ describe('chatCloud requests', () => {
   });
   it('xAI and Gemini: OpenAI chat API on their own hosts with a Bearer key', async () => {
     const f = vi.fn(async () => reply('ok'));
-    await chatCloud(msgs, base({ provider: 'xai', key: 'xai-test', model: 'grok-4', fetch: f }));
+    await chatCloud(msgs, base({ provider: 'xai', key: 'xai-test', model: 'grok-4.7', fetch: f }));
     expect(sent(f).url).toBe('https://api.x.ai/v1/chat/completions');
     expect(sent(f).headers.Authorization).toBe('Bearer xai-test');
-    await chatCloud(msgs, base({ provider: 'google', key: 'AIza-test', model: 'gemini-2.5-flash', fetch: f }));
+    await chatCloud(msgs, base({ provider: 'google', key: 'AIza-test', model: 'gemini-3.8-flash', fetch: f }));
     expect(sent(f, 1).url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
     expect(sent(f, 1).headers.Authorization).toBe('Bearer AIza-test');
   });
   it('OpenAI: max_completion_tokens, and reasoning models drop temperature', async () => {
     const f = vi.fn(async () => reply('ok'));
-    await chatCloud(msgs, base({ provider: 'openai', key: 'sk-test', model: 'gpt-4.1', maxTokens: 100, fetch: f }));
+    await chatCloud(
+      msgs,
+      base({ provider: 'openai', key: 'sk-test', model: 'gpt-6-chat-latest', maxTokens: 100, fetch: f }),
+    );
     expect(sent(f).body).toMatchObject({ max_completion_tokens: 100, temperature: 0.2 });
-    await chatCloud(msgs, base({ provider: 'openai', key: 'sk-test', model: 'gpt-5', maxTokens: 100, fetch: f }));
+    await chatCloud(msgs, base({ provider: 'openai', key: 'sk-test', model: 'gpt-6.1-sol', maxTokens: 100, fetch: f }));
     expect(sent(f, 1).body).toMatchObject({ max_completion_tokens: 4100, reasoning_effort: 'low' });
     expect(sent(f, 1).body.temperature).toBeUndefined();
   });
@@ -249,7 +252,7 @@ describe('chatCloud retries', () => {
     expect(sent(t, 1).body.max_tokens).toBe(2000);
   });
   it('uses the recommended model when none is given', async () => {
-    const f = byModel({ 'openai/gpt-oss-120b': () => reply('ok') }, ['llama-3.1-8b-instant', 'openai/gpt-oss-120b']);
+    const f = byModel({ 'openai/gpt-oss-120b': () => reply('ok') }, ['openai/gpt-oss-20b', 'openai/gpt-oss-120b']);
     expect(await chatCloud(msgs, base({ fetch: f, model: '' }))).toBe('ok');
   });
 });

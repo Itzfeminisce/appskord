@@ -29,7 +29,7 @@ function fake(r: { storyboard?: (string | Response)[]; fill?: (i: number, last: 
     const n = r.critic?.() ?? '{"notes":[]}';
     return typeof n === 'string' ? ok(n) : n;
   });
-  return { fetch, sent, opts: { ai: 'cloud' as const, provider: 'groq' as const, model: 'llama-3.3-70b-versatile', key: 'gsk_test', fetch } };
+  return { fetch, sent, opts: { ai: 'cloud' as const, provider: 'groq' as const, model: 'openai/gpt-oss-120b', key: 'gsk_test', fetch } };
 }
 
 const SB = (beats: { template: string; line: string }[]) => `Plan: a hook, then the build.\n${JSON.stringify({ name: 'Shoes', hook: 'Run more', beats })}`;
@@ -116,18 +116,18 @@ describe('critic', () => {
   it('is skipped when off, on Chrome AI, or when the model cannot see images', () => {
     const groq = (model: string) => ({ ai: 'cloud' as const, provider: 'groq' as const, model });
     expect(criticSkip(false, groq('meta-llama/llama-4-scout-17b-16e-instruct'))).toBe('critic-off');
-    expect(criticSkip(true, groq('llama-3.3-70b-versatile'))).toBe('critic-not-available');
-    expect(criticSkip(true, { ...groq('gpt-4o'), ai: 'local' })).toBe('critic-not-available');
+    expect(criticSkip(true, groq('openai/gpt-oss-120b'))).toBe('critic-not-available');
+    expect(criticSkip(true, { ...groq('gpt-6.1-sol'), ai: 'local' })).toBe('critic-not-available');
     expect(criticSkip(true, groq('meta-llama/llama-4-scout-17b-16e-instruct'))).toBeUndefined();
   });
 
   it("asks the provider's vision model when the chat model can't see images, and keeps a chat model that can", async () => {
     const scout = 'meta-llama/llama-4-scout-17b-16e-instruct';
     const cloud = { ai: 'cloud' as const, provider: 'groq' as const, models: {} };
-    expect(await criticModel({ ...cloud, models: { groq: 'moonshotai/kimi-k2-instruct-0905' } })).toEqual({ ai: 'cloud', provider: 'groq', model: scout });
-    expect(await criticModel({ ...cloud, models: { groq: 'meta-llama/llama-4-maverick-17b-128e-instruct' } })).toMatchObject({ model: 'meta-llama/llama-4-maverick-17b-128e-instruct' });
+    expect(await criticModel({ ...cloud, models: { groq: 'openai/gpt-oss-120b' } })).toEqual({ ai: 'cloud', provider: 'groq', model: scout });
+    expect(await criticModel({ ...cloud, provider: 'anthropic', models: { anthropic: 'claude-opus-5-5' } })).toMatchObject({ model: 'claude-opus-5-5' });
     expect(await criticModel({ ...cloud, provider: 'openai', models: { openai: 'gpt-3.5-turbo' } })).toMatchObject({ model: 'gpt-3.5-turbo' });
-    const listed: FetchLike = async () => new Response(JSON.stringify({ data: [{ id: 'moonshotai/kimi-k2-instruct-0905', active: true }] }), { status: 200 });
+    const listed: FetchLike = async () => new Response(JSON.stringify({ data: [{ id: 'openai/gpt-oss-120b', active: true }] }), { status: 200 });
     expect(await criticModel(cloud, { key: 'gsk_test', fetch: listed })).toMatchObject({ model: scout });
   });
 
@@ -137,7 +137,7 @@ describe('critic', () => {
     const bodies = vi.mocked(g.fetch).mock.calls.map(([, init]) => JSON.parse(String(init?.body)) as { model: string; messages: { content: unknown }[] });
     const critic = bodies.filter((b) => JSON.stringify(b.messages[0]!.content).includes('checking small frames'));
     expect(critic.map((b) => b.model)).toEqual(['meta-llama/llama-4-scout-17b-16e-instruct']);
-    expect(new Set(bodies.filter((b) => !critic.includes(b)).map((b) => b.model))).toEqual(new Set(['llama-3.3-70b-versatile']));
+    expect(new Set(bodies.filter((b) => !critic.includes(b)).map((b) => b.model))).toEqual(new Set(['openai/gpt-oss-120b']));
   });
 
   it('looks at 2 to 4 scenes and keeps notes only for scenes it saw', () => {

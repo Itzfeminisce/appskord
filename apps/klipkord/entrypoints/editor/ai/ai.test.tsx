@@ -72,7 +72,7 @@ describe('Ask AI', () => {
     const f = useAi(key, { ops: [{ op: 'cut', from: 3, to: 3, label: 'Cut 1 filler word' }, { op: 'caption', style: 'bold', label: 'Bold captions' }] });
     act(() => { openAsk(); root.render(<Harness />); });
     await flush();
-    expect(text()).toContain('Groq · Llama 3.3');
+    expect(text()).toContain('Groq · GPT-oss');
     await send('Tighten it up');
     expect(f).toHaveBeenCalledTimes(1);
     expect(text()).toContain('Draft · 2 changes · 0:10 → 0:09');

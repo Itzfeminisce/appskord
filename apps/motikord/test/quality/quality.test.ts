@@ -19,7 +19,7 @@ describe('quality set: 20 recorded prompts through the whole v2 pipeline', () =>
   for (const r of set) {
     it(`${r.id} passes the checker, every call under ${CALL_BUDGET} tokens`, async () => {
       const { fetch, calls } = replay(r);
-      const model = r.model ?? 'llama-3.3-70b-versatile';
+      const model = r.model ?? 'openai/gpt-oss-120b';
       const out = await writeClip(
         { prompt: r.prompt, type: r.type, aspect: r.aspect, assets: r.assets ?? [], id: r.id, style: r.style, pace: r.pace, critic: true, settings: { ai: 'cloud', provider: 'groq', models: { groq: model } } },
         { ai: 'cloud', provider: 'groq', model, key: 'gsk_test', fetch },

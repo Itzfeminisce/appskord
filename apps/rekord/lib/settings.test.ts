@@ -72,7 +72,7 @@ describe('settings', () => {
 
     const { setup: _s, realtimeBackup: _r, google: _g, notion: _n, ...v2 } = DEFAULT_SETTINGS;
     await fakeBrowser.storage.local.set({
-      settings: { ...v2, onboarded: true, keySource: 'paste', summary: { provider: 'groq', model: 'llama-3.3-70b-versatile' } },
+      settings: { ...v2, onboarded: true, keySource: 'paste', summary: { provider: 'groq', model: 'openai/gpt-oss-120b' } },
     });
     const s = await getSettings();
     expect(s.onboarded).toBe(true);

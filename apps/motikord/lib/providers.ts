@@ -32,12 +32,12 @@ export const PROVIDERS: Record<Provider, ProviderInfo> = { groq: info('groq'), o
 
 /** Models built into Motikord, so Settings always has something to pick: best first, then `faster` (a small one). */
 export const SUGGESTED_MODELS: Record<Provider, { models: string[]; faster: string }> = {
-  groq: { models: ['moonshotai/kimi-k2-instruct-0905', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'], faster: 'llama-3.1-8b-instant' },
-  openai: { models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o'], faster: 'gpt-4.1-mini' },
-  anthropic: { models: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1'], faster: 'claude-haiku-4-5' },
-  openrouter: { models: ['anthropic/claude-sonnet-4.5', 'openai/gpt-4.1', 'openai/gpt-4.1-mini'], faster: 'openai/gpt-4.1-mini' },
-  google: { models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'], faster: 'gemini-2.5-flash-lite' },
-  xai: { models: ['grok-4', 'grok-3-mini'], faster: 'grok-3-mini' },
+  groq: { models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'], faster: 'openai/gpt-oss-20b' },
+  openai: { models: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra', 'gpt-6-luna'], faster: 'gpt-6-luna' },
+  anthropic: { models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'], faster: 'claude-haiku-5-5' },
+  openrouter: { models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'], faster: 'openai/gpt-oss-20b' },
+  google: { models: ['gemini-3.8-flash', 'gemini-4-argon', 'gemini-3.5-flash-lite'], faster: 'gemini-3.5-flash-lite' },
+  xai: { models: ['grok-4.7'], faster: 'grok-4.7' },
 };
 
 /** A model of the provider that can see images, for the visual critic when the chat model can't; absent = keep the chat model. */
