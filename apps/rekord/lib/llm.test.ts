@@ -95,7 +95,7 @@ describe('chat', () => {
       await updateSettings({ summary: { provider: 'groq', model: 'old-model' } });
       const f = groq({ 'old-model': gone, 'qwen/qwen3-32b': () => reply('healed') }, ['whisper-large-v3', 'qwen/qwen3-32b']);
       expect(await chat(msgs, {}, f)).toBe('healed');
-      expect((await getSettings()).summary).toEqual({ provider: 'groq', model: 'qwen/qwen3-32b' });
+      expect((await getSettings()).summary).toEqual({ provider: 'groq', model: 'qwen/qwen3-32b', gone: 'old-model' });
       expect(await chat(msgs, {}, f)).toBe('healed');
       expect(f.mock.calls.filter(([u]) => u.endsWith('/models'))).toHaveLength(1);
     });

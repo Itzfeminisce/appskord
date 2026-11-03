@@ -90,8 +90,9 @@ export type ProviderId = 'groq' | 'openrouter' | 'ollama' | 'openai' | 'anthropi
 export interface ProviderConfig { id: ProviderId; baseUrl: string; keyName?: string } // keyName: e.g. 'GROQ_API_KEY'; none for ollama
 
 export interface Settings {
-  transcription: { provider: TranscriptionProvider; model: string }; // groq: whisper-large-v3-turbo; openai: gpt-transcribe; deepgram: nova-3
-  summary: { provider: ProviderId; model: string; baseUrl?: string }; // baseUrl overrides the provider default (Ollama)
+  // `gone`: the retired model Rekord replaced, shown by the picker until another is picked (picker-model-gone).
+  transcription: { provider: TranscriptionProvider; model: string; gone?: string }; // groq: whisper-large-v3-turbo; openai: gpt-transcribe; deepgram: nova-3
+  summary: { provider: ProviderId; model: string; baseUrl?: string; gone?: string }; // baseUrl overrides the provider default (Ollama)
   keySource: 'penv' | 'penv-app' | 'paste';         // 'penv-app' = one-click Penv Cloud connection (T11)
   penvApp?: { connectionId: string; org: string; project: string; env: string; keys: string[] }; // grant itself in session storage
   penv: { org: string; project: string; env: string };             // token itself lives in storage.session only

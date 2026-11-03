@@ -20,6 +20,8 @@ export interface ChatOptions {
   signal?: AbortSignal;
   /** Settings and keys to use instead of storage (e.g. from `transcriber/config` in the offscreen document). */
   config?: { settings: Settings; keys: Record<string, string> };
+  /** A typed model's test question: a gone model is reported, never swapped. */
+  typed?: boolean;
 }
 
 const text: ErrorText = ({ reason, status }) => {
@@ -35,7 +37,7 @@ const text: ErrorText = ({ reason, status }) => {
 async function saveRepick(failed: string, picked: string): Promise<void> {
   const current = await getSettings();
   if (current.summary.provider === 'groq' && current.summary.model === failed) {
-    await updateSettings({ summary: { ...current.summary, model: picked } });
+    await updateSettings({ summary: { ...current.summary, model: picked, gone: failed } });
   }
 }
 
@@ -60,7 +62,7 @@ export async function chat(
     key: keyName ? keys[keyName] : undefined,
     model,
     // Groq retires models: pick a listed one, remember it, and retry once.
-    modelGone: provider === 'groq' ? 'repick' : 'report',
+    modelGone: provider === 'groq' && !opts.typed ? 'repick' : 'report',
     preference: GROQ_CHAT_PREFERENCE,
     onRepick: opts.config || provider !== 'groq' ? undefined : (picked) => saveRepick(model, picked),
     json: opts.json,
