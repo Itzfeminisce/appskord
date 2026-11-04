@@ -8,6 +8,7 @@ import { endDraw, toggleDrawShortcut } from '@/lib/draw';
 import { eventsTab, injectEvents, stopEvents } from '@/lib/events';
 import type { MarkerKind } from '@/lib/types';
 import { loadTranscriptConfig } from '@/lib/transcribe/groq';
+import { handleInstalled } from '@/lib/whatsNew';
 import { IDLE, badgeTitle, clockElapsed, shortClock, type RecorderState } from '@/lib/recorder';
 
 const DEFAULT_TITLE = 'Open Klipkord';
@@ -194,6 +195,10 @@ export default defineBackground(() => {
     if (msg?.type === 'marker/add') {
       void shortcutMarker(msg.kind, tab?.id).catch((error) => console.error('Klipkord: could not save the marker', error));
     } else if (msg) void send(msg);
+  });
+
+  browser.runtime.onInstalled.addListener(({ reason, previousVersion }) => {
+    handleInstalled(reason, previousVersion).catch((error) => console.error('Klipkord: could not mark what\'s new', error));
   });
 
   // A browser restart ends any capture, so whatever was live is now unfinished (Recovered offers it).

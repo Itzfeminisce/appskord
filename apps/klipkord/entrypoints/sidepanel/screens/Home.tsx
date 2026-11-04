@@ -9,6 +9,7 @@ import { meterBars, rms } from '@/lib/mix';
 import { shortClock } from '@/lib/recorder';
 import type { CaptureMode, NoteStyle, Quality, Recording, Settings } from '@/lib/types';
 import { micForStart, onPermissionResult, openPermissionTab } from '@/lib/setup';
+import { markWhatsNewSeen, showWhatsNew } from '@/lib/whatsNew';
 import { wasDisconnected } from '@/lib/penv';
 import { useOffline } from './Offline';
 import { BannerAction, openSetup, StateBanner, useKeyState } from './Setup';
@@ -211,7 +212,8 @@ export default function Home() {
     setToast(value);
     setHintHidden(value).catch((error) => console.error('Klipkord: could not save the hint', error));
   };
-  const hint = !!settings && keys.ready && cached !== null && hidden !== null && showSetupHint(aiReady(settings, keys.loaded, cached), hidden);
+  const hint = !!settings && keys.ready && cached !== null && hidden !== null && !showWhatsNew(settings) && showSetupHint(aiReady(settings, keys.loaded, cached), hidden); // What's new wins over the hint
+  const whatsNew = !!settings && showWhatsNew(settings);
 
   const starting = useRef(false);
   const start = useCallback(async () => {
@@ -274,6 +276,22 @@ export default function Home() {
           <button type="button" aria-label="Settings" onClick={() => navigate('Settings')} style={ICON_LINK}><Icon>{ICONS.settings}</Icon></button>
         </>}
       />
+
+      {whatsNew && (
+        <div role="region" aria-label="What's new" style={{ margin: '8px 24px 0', padding: '10px 12px 10px 14px', borderRadius: 14, background: '#FFFFFF', border: '1px solid #E8E8EB', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#C2410C' }}>What's new in 3.1</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Start recording sooner</span>
+            <ul style={{ margin: '2px 0 0', paddingLeft: 16, fontSize: 12, lineHeight: 1.4, color: '#5F6168' }}>
+              <li>First run goes straight to recording.</li>
+              <li>The mic is asked the first time you record.</li>
+              <li>AI setup lives in Settings. Nothing changed for you.</li>
+            </ul>
+          </span>
+          <button type="button" onClick={() => markWhatsNewSeen().catch((error) => console.error('Klipkord: could not save what\'s new', error))}
+            style={{ height: 44, padding: '0 12px', border: 'none', borderRadius: 9, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 13, fontWeight: 500, flexShrink: 0, cursor: 'pointer' }}>Got it</button>
+        </div>
+      )}
 
       {hint && (
         <div role="region" aria-label="Set up AI" style={{ margin: '12px 24px 0', padding: '12px 8px 12px 14px', borderRadius: 14, background: '#FFF7ED', border: '1px solid #F5DCC8', display: 'flex', alignItems: 'flex-start', gap: 8 }}>

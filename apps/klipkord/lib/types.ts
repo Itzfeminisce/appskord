@@ -36,6 +36,8 @@ export interface Settings {
   onboarded?: boolean;                                 // set once the first-run AI choice is made (T2)
   localModelAsked?: boolean;                           // T2: the person pressed Make transcript, so the Whisper download is allowed
   setupHintHidden?: boolean;                           // the person hid the Home "Set up AI" hint
+  whatsNewDue?: string;                                // T4: version whose What's new card is waiting on Home
+  whatsNewSeen?: string;                               // T4: version whose card the person closed
   bakeCamera: boolean;                                 // v3: bake the camera into the next recording; default false
 }
 
