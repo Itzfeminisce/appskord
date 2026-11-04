@@ -16,6 +16,20 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 const DONE_DOT = { width: 24, height: 24, borderRadius: '50%', background: '#ECFDF3', color: '#15803D', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } as const;
 const SPIN_DOT = { width: 24, height: 24, borderRadius: '50%', border: '3px solid #F1F1F3', borderTopColor: '#C2410C', boxSizing: 'border-box', flexShrink: 0 } as const;
 
+const GREY_DOT = { width: 24, height: 24, borderRadius: '50%', background: '#F1F1F3', color: '#44464D', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } as const;
+
+function DashStep({ title, body }: { title: string; body: string }) {
+  return (
+    <li style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <span style={GREY_DOT}><Icon size={14}><path d="M5 12h14" /></Icon></span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{title}</span>
+        <span style={{ fontSize: 12, color: '#6E7079' }}>{body}</span>
+      </span>
+    </li>
+  );
+}
+
 export default function Processing() {
   const { route, navigate } = useRouter();
   const id = route.params.recordingId;
@@ -72,6 +86,8 @@ export default function Processing() {
   const sharingStopped = recorder?.endedBy === 'sharing-stopped' && recorder.recordingId === id;
   const watch = () => id && navigate('Review', { recordingId: id });
 
+  const noAi = Boolean(rec?.transcriptDeferred);
+
   return (
     <main className="screen" style={{ minHeight: '100vh', background: '#F6F6F7', color: '#111114' }}>
       <Brand />
@@ -93,15 +109,16 @@ export default function Processing() {
       )}
 
       <div style={{ padding: '20px 24px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <h1 style={{ margin: 0, fontSize: 26, lineHeight: 1.2, fontWeight: 600, letterSpacing: '-0.02em' }}>Nice one. Finishing up.</h1>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: '#5F6168' }}>Your video is safe. Klipkord is writing the notes on this computer.</p>
+        <h1 style={{ margin: 0, fontSize: 26, lineHeight: 1.2, fontWeight: 600, letterSpacing: '-0.02em' }}>{noAi ? 'Nice one. Video saved.' : 'Nice one. Finishing up.'}</h1>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: '#5F6168' }}>{noAi ? 'Your video is safe. No AI was set up, so there is no transcript yet.' : 'Your video is safe. Klipkord is writing the notes on this computer.'}</p>
       </div>
 
       <label style={{ margin: '20px 24px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ fontSize: 13, fontWeight: 500 }}>Title</span>
         <input type="text" value={title} onChange={(e) => changeTitle(e.target.value)} disabled={!rec}
           style={{ height: 44, padding: '0 12px', borderRadius: 10, border: '1px solid #DCDCE0', background: '#FFFFFF', font: 'inherit', fontSize: 14, color: '#111114', boxSizing: 'border-box' }} />
-        {suggested && title === suggested && <span style={{ fontSize: 12, color: '#6E7079' }}>Suggested from what you said. Change it any time.</span>}
+        {noAi && <span style={{ fontSize: 12, color: '#6E7079' }}>Change it any time.</span>}
+        {!noAi && suggested && title === suggested && <span style={{ fontSize: 12, color: '#6E7079' }}>Suggested from what you said. Change it any time.</span>}
       </label>
 
       <ol style={{ listStyle: 'none', margin: '18px 24px 0', padding: 16, borderRadius: 16, background: '#FFFFFF', border: '1px solid #E8E8EB', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -112,7 +129,13 @@ export default function Processing() {
             {rec && <span style={{ fontSize: 12, color: '#6E7079' }}>{shortClock(rec.duration)} · {rec.height ? `${rec.height}p` : rec.quality} · {formatBytes(rec.bytes)}</span>}
           </span>
         </li>
-        {rec && !noSpeech(rec) && (
+        {noAi && (
+          <>
+            <DashStep title="No transcript yet" body="Set up AI, or make one from the Transcript tab." />
+            <DashStep title="No notes yet" body="Notes need a transcript first." />
+          </>
+        )}
+        {rec && !noAi && !noSpeech(rec) && (
           <li style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             {rec.transcriptPending ? <span style={SPIN_DOT} aria-hidden="true" /> : <span style={DONE_DOT}><Icon size={14}>{ICONS.check}</Icon></span>}
             <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -126,7 +149,7 @@ export default function Processing() {
             </span>
           </li>
         )}
-        {progress?.style && (
+        {!noAi && progress?.style && (
           <li style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <span style={DONE_DOT}><Icon size={14}>{ICONS.check}</Icon></span>
             <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -137,7 +160,7 @@ export default function Processing() {
               style={{ border: 'none', background: 'none', padding: 0, font: 'inherit', fontSize: 13, fontWeight: 500, color: '#C2410C', cursor: 'pointer' }}>Change</button>
           </li>
         )}
-        {progress && (phase === 'writing' || phase === 'done') && (
+        {!noAi && progress && (phase === 'writing' || phase === 'done') && (
           <li style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             {phase === 'done' ? <span style={DONE_DOT}><Icon size={14}>{ICONS.check}</Icon></span> : <span style={SPIN_DOT} aria-hidden="true" />}
             <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -148,8 +171,8 @@ export default function Processing() {
         )}
       </ol>
 
-      {noSpeech(rec) && <div style={{ margin: '12px 24px 0' }}><NoSpeechFound /></div>}
-      {!noSpeech(rec) && (phase === 'no-engine' || phase === 'failed') && (
+      {!noAi && noSpeech(rec) && <div style={{ margin: '12px 24px 0' }}><NoSpeechFound /></div>}
+      {!noAi && !noSpeech(rec) && (phase === 'no-engine' || phase === 'failed') && (
         <div style={{ margin: '12px 24px 0' }}>
           <NotesUnavailable groqDown={phase === 'failed' && progress?.engines?.length === 1 && progress.engines[0] === 'groq'} failed={phase === 'failed'} recordingId={id} />
         </div>
@@ -161,7 +184,7 @@ export default function Processing() {
           style={{ height: 48, border: 'none', borderRadius: 12, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
           Watch it now
         </button>
-        <span style={{ textAlign: 'center', fontSize: 12, color: '#6E7079' }}>Notes appear as soon as they’re ready.</span>
+        <span style={{ textAlign: 'center', fontSize: 12, color: '#6E7079' }}>{noAi ? 'Your video is ready to watch.' : 'Notes appear as soon as they’re ready.'}</span>
       </div>
     </main>
   );

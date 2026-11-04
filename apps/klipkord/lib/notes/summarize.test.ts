@@ -135,6 +135,20 @@ describe('startNotes', () => {
     expect(getProgress('r1')).toMatchObject({ phase: 'done', pct: 100, style: 'bug', suggestedTitle: 'Checkout button freezes' });
   });
 
+  it('writes no notes for a deferred recording with no transcript', async () => {
+    const t = setup(rec({ transcript: [], transcriptDeferred: true, status: 'processing' }), []);
+    await startNotes('r1', {}, t.deps);
+    expect(t.complete).not.toHaveBeenCalled();
+    expect(t.stored.summary).toBeUndefined();
+    expect(t.stored.status).toBe('ready');
+  });
+
+  it('writes notes once the deferred transcript exists', async () => {
+    const t = setup(rec({ transcriptDeferred: false }), ['{"style":"bug"}', NOTES]);
+    await startNotes('r1', {}, t.deps);
+    expect(t.stored.summary).toMatchObject({ summary: 'Pay freezes.' });
+  });
+
   it('keeps a title the person already set', async () => {
     const t = setup(rec({ title: 'My title' }), ['{"style":"bug","title":"Other"}', NOTES]);
     await startNotes('r1', {}, t.deps);

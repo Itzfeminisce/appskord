@@ -43,10 +43,10 @@ function Message({ icon, title, body }: { icon: ReactNode; title: string; body: 
   );
 }
 
-interface Job { stop: () => void; stopped: boolean }
+export interface Job { stop: () => void; stopped: boolean }
 
 /** Runs where Settings say: the picked cloud provider with its key, else whisper-base here. A cloud failure falls back to this computer. */
-async function run(rec: Recording, job: Job, onPct: (pct: number) => void) {
+export async function run(rec: Recording, job: Job, onPct: (pct: number) => void) {
   const cfg = await loadTranscriptConfig();
   const onProgress = (done: number, total: number) => onPct(total ? Math.floor((done / total) * 100) : 0);
   const stopped = () => job.stopped;

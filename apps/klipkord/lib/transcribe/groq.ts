@@ -82,7 +82,7 @@ export async function transcribeGroq(audio: Float32Array, opts: SpeechOptions, f
 }
 
 /** Where transcripts run, with the picked provider's key, and the Groq key for "Use Groq for this one". */
-export interface TranscriptConfig { provider: TranscriptsProvider; model: string; language: string; key: string | null; groqKey: string | null }
+export interface TranscriptConfig { provider: TranscriptsProvider; model: string; language: string; key: string | null; groqKey: string | null; localAsked?: boolean }
 
 export const LOCAL_CONFIG: TranscriptConfig = { provider: 'local', model: 'whisper', language: 'auto', key: null, groqKey: null };
 
@@ -91,5 +91,5 @@ export async function loadTranscriptConfig(): Promise<TranscriptConfig> {
   const [settings, keys] = await Promise.all([getSettings(), loadKeys()]);
   const { provider, model } = settings.transcripts;
   const key = provider === 'local' ? null : (keys[PROVIDERS[provider].keyName] ?? null);
-  return { provider, model, language: settings.language, key, groqKey: keys[PROVIDERS.groq.keyName] ?? null };
+  return { provider, model, language: settings.language, key, groqKey: keys[PROVIDERS.groq.keyName] ?? null, localAsked: settings.localModelAsked === true };
 }

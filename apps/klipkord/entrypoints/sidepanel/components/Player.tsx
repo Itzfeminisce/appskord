@@ -21,6 +21,8 @@ export interface ReviewContext {
   now: number;
   seek: (ms: number) => void;
   setComments: (comments: Comment[]) => void;
+  /** Replaces the shared record after a screen saved a change, so other tabs see it. */
+  setRec?: (rec: Recording) => void;
 }
 
 const PLAY = <svg width="18" height="18" viewBox="0 0 24 24" fill="#111114" aria-hidden="true"><path d="M8 5l12 7-12 7z" /></svg>;
@@ -294,7 +296,7 @@ export function ReviewShell({ tab, window: own = false, children }: { tab: Revie
         <button type="button" role="tab" aria-selected={tab === 'ReviewAsk'} onClick={() => tabTo('ReviewAsk')} style={tabStyle(tab === 'ReviewAsk')}>Ask</button>
       </div>
 
-      {children({ rec, now, seek, setComments })}
+      {children({ rec, now, seek, setComments, setRec })}
     </main>
   );
 }
