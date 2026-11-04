@@ -6,6 +6,7 @@ import { SAMPLE_RATE, createChunker, resample, type Chunk, type Chunker } from '
 import { transcribeAll, transcribeCloud } from '@/lib/transcribe/full';
 import { GROQ_MODEL, LOCAL_CONFIG, type TranscriptConfig } from '@/lib/transcribe/groq';
 import { appendSegment, replaceTranscript } from '@/lib/transcribe/merge';
+import { shouldDefer } from '@/lib/transcribe/cache';
 import { readVoice } from '@/lib/transcribe/voice';
 import { createQueue, type QueueStatus, type TranscriptPhase, type TranscriptQueue, type TranscriptStatus } from '@/lib/transcribe/queue';
 import { BASE_MODEL, Whisper, liveModel } from '@/lib/transcribe/whisper';
@@ -30,6 +31,8 @@ interface Live {
   stopCapture: () => void;
   aborted: boolean;
   usedLocal: boolean;       // a chunk ran on the live model, so the text is not full quality
+  deferred: boolean;        // no model and never asked: no download, no live text
+  deferral: Promise<boolean>; // the shouldDefer answer, so a stop before it lands waits for it
 }
 
 let live: Live | null = null;
@@ -105,7 +108,7 @@ export async function startTranscript(recordingId: string, mic: MediaStreamTrack
   const early: Chunk[] = [];
   let queue: TranscriptQueue | null = null;
   const l: Live = {
-    recordingId, config: LOCAL_CONFIG, segments: [], phase: 'live', paused: false, aborted: false, usedLocal: false,
+    recordingId, config: LOCAL_CONFIG, segments: [], phase: 'live', paused: false, aborted: false, usedLocal: false, deferred: false, deferral: Promise.resolve(false),
     stopCapture: () => undefined,
     chunker: createChunker((chunk) => (queue ? queue.add(chunk) : early.push(chunk))),
     get queue() { return queue ?? idleQueue; },
@@ -113,9 +116,20 @@ export async function startTranscript(recordingId: string, mic: MediaStreamTrack
   live = l;
   l.stopCapture = capture(mic, (s) => l.chunker.push(s), () => l.paused);
 
-  const [cfg, webgpu] = await Promise.all([config(), hasWebGpu()]);
-  if (l.aborted) return;
+  let decide!: (v: boolean) => void;
+  l.deferral = new Promise<boolean>((r) => { decide = r; });
+  const [cfg, webgpu] = await Promise.all([config(), hasWebGpu()]).catch((e) => { decide(false); throw e; });
+  if (l.aborted) return decide(false);
   l.config = cfg;
+  const defer = await shouldDefer(cfg).catch(() => false);
+  decide(defer);
+  if (defer) {
+    l.deferred = true;
+    l.stopCapture();
+    report(l);
+    return;
+  }
+  if (l.aborted) return;
   const model = liveModel(webgpu);
   queue = createQueue({
     local: async (audio) => {
@@ -152,6 +166,7 @@ export function pauseTranscript(paused: boolean) {
 export function transcriptPatch(recordingId: string): Partial<Recording> {
   const l = live;
   if (!l || l.recordingId !== recordingId) return {};
+  if (l.deferred) return { transcript: [], transcriptPending: false, transcriptDeferred: true };
   return { transcript: l.segments, transcriptPending: l.queue.status.pending > 0 };
 }
 
@@ -217,6 +232,14 @@ async function basePass(l: Live, durationMs: number): Promise<Segment[] | null> 
 export async function finishTranscript(recordingId: string, durationMs: number): Promise<void> {
   const l = live?.recordingId === recordingId ? live : null;
   if (!l) return void send({ type: 'transcript/idle' });
+  if (l.deferred || (await l.deferral)) {
+    l.deferred = true;
+    await save(recordingId, { transcript: [], transcriptPending: false, transcriptDeferred: true });
+    l.phase = 'done';
+    report(l);
+    if (live === l) live = null;
+    return void send({ type: 'transcript/idle' });
+  }
   l.phase = 'catch-up';
   report(l);
   // Chunks still queued past the limit are dropped, so a stuck engine cannot hold the row.

@@ -1,4 +1,4 @@
-import { SUGGESTED } from '@appskord/llm';
+import { PROVIDERS, SUGGESTED } from '@appskord/llm';
 import type { CloudNotes, CloudSpeech, ModelChoice, NotesProvider, Settings, TranscriptsProvider } from './types';
 
 const STORAGE_KEY = 'settings';
@@ -110,3 +110,16 @@ export function onSettingsChanged(cb: (settings: Settings) => void): () => void 
   browser.storage.onChanged.addListener(listener);
   return () => browser.storage.onChanged.removeListener(listener);
 }
+
+export const getHintHidden = async (): Promise<boolean> => (await getSettings()).setupHintHidden === true;
+
+export const setHintHidden = async (hidden: boolean): Promise<void> => void (await updateSettings({ setupHintHidden: hidden }));
+
+/** Transcripts can be made without asking: a cloud provider with its key, or the local model already downloaded. */
+export function aiReady(s: Pick<Settings, 'transcripts'>, keyNames: string[], modelCached: boolean): boolean {
+  const { provider } = s.transcripts;
+  return provider === 'local' ? modelCached : keyNames.includes(PROVIDERS[provider].keyName ?? '');
+}
+
+/** The Home "Set up AI" hint: no AI ready and not hidden. */
+export const showSetupHint = (ready: boolean, hidden: boolean): boolean => !ready && !hidden;

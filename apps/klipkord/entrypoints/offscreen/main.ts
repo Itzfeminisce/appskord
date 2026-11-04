@@ -180,6 +180,9 @@ async function openScreen(msg: MessageOf<'recorder/prepare'>, streamId: string, 
 
 async function openMic(): Promise<MediaStream | null> {
   try {
+    // Without a grant getUserMedia would wait out the guard for nothing.
+    const state = await navigator.permissions.query({ name: 'microphone' as PermissionName }).then((s) => s.state, () => 'granted');
+    if (state !== 'granted') return null;
     return await guard(
       navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }),
       { ms: 15_000, what: 'Microphone', dispose: stopTracks },

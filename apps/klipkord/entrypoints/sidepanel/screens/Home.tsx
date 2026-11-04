@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useRouter } from '../router';
 import { BubbleControls, BubblePreview, useCamera } from '../components/BubblePreview';
-import { getSettings, onSettingsChanged, updateSettings } from '@/lib/settings';
+import { aiReady, getHintHidden, getSettings, onSettingsChanged, setHintHidden, showSetupHint, updateSettings } from '@/lib/settings';
+import { isModelCached } from '@/lib/transcribe/cache';
 import { listRecordings } from '@/lib/db';
 import { command, onStartRequest, takeStartRequest, useRecorder } from '@/lib/capture';
 import { meterBars, rms } from '@/lib/mix';
 import { shortClock } from '@/lib/recorder';
 import type { CaptureMode, NoteStyle, Quality, Recording, Settings } from '@/lib/types';
 import { micForStart, onPermissionResult, openPermissionTab } from '@/lib/setup';
+import { markWhatsNewSeen, showWhatsNew } from '@/lib/whatsNew';
 import { wasDisconnected } from '@/lib/penv';
 import { useOffline } from './Offline';
-import { BannerAction, StateBanner } from './Setup';
+import { BannerAction, openSetup, StateBanner, useKeyState } from './Setup';
 
 export const MONO = 'var(--mono)';
 
@@ -197,6 +199,22 @@ export default function Home() {
     wasDisconnected().then(setPenvGone, () => undefined);
   }, []);
 
+  const keys = useKeyState();
+  const [cached, setCached] = useState<boolean | null>(null);
+  const [hidden, setHidden] = useState<boolean | null>(null);
+  const [toast, setToast] = useState(false);
+  useEffect(() => {
+    isModelCached().then(setCached, () => setCached(false));
+    getHintHidden().then(setHidden, (error) => { console.error('Klipkord: could not read the hint', error); setHidden(false); });
+  }, []);
+  const hideHint = (value: boolean) => {
+    setHidden(value);
+    setToast(value);
+    setHintHidden(value).catch((error) => console.error('Klipkord: could not save the hint', error));
+  };
+  const hint = !!settings && keys.ready && cached !== null && hidden !== null && !showWhatsNew(settings) && showSetupHint(aiReady(settings, keys.loaded, cached), hidden); // What's new wins over the hint
+  const whatsNew = !!settings && showWhatsNew(settings);
+
   const starting = useRef(false);
   const start = useCallback(async () => {
     if (starting.current) return; // a second press must not open a second helper tab
@@ -205,7 +223,7 @@ export default function Home() {
       const wantMic = (await getSettings()).capture.mic;
       const mic = await micForStart(wantMic, {
         state: () => navigator.permissions.query({ name: 'microphone' as PermissionName }).then((s) => s.state, () => null),
-        open: openPermissionTab,
+        open: (camera) => openPermissionTab(camera, true),
         wait: onPermissionResult,
         closed: (tabId, cb) => {
           const l = (id: number) => { if (id === tabId) cb(); };
@@ -258,6 +276,37 @@ export default function Home() {
           <button type="button" aria-label="Settings" onClick={() => navigate('Settings')} style={ICON_LINK}><Icon>{ICONS.settings}</Icon></button>
         </>}
       />
+
+      {whatsNew && (
+        <div role="region" aria-label="What's new" style={{ margin: '8px 24px 0', padding: '10px 12px 10px 14px', borderRadius: 14, background: '#FFFFFF', border: '1px solid #E8E8EB', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#C2410C' }}>What's new in 3.1</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Start recording sooner</span>
+            <ul style={{ margin: '2px 0 0', paddingLeft: 16, fontSize: 12, lineHeight: 1.4, color: '#5F6168' }}>
+              <li>First run goes straight to recording.</li>
+              <li>The mic is asked the first time you record.</li>
+              <li>AI setup lives in Settings. Nothing changed for you.</li>
+            </ul>
+          </span>
+          <button type="button" onClick={() => markWhatsNewSeen().catch((error) => console.error('Klipkord: could not save what\'s new', error))}
+            style={{ height: 44, padding: '0 12px', border: 'none', borderRadius: 9, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 13, fontWeight: 500, flexShrink: 0, cursor: 'pointer' }}>Got it</button>
+        </div>
+      )}
+
+      {hint && (
+        <div role="region" aria-label="Set up AI" style={{ margin: '12px 24px 0', padding: '12px 8px 12px 14px', borderRadius: 14, background: '#FFF7ED', border: '1px solid #F5DCC8', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Set up AI for transcripts and notes</span>
+            <span style={{ fontSize: 12, lineHeight: 1.45, color: '#5F6168' }}>Recording works now. You can add AI any time.</span>
+            <button type="button" onClick={() => openSetup(navigate, 'Home')}
+              style={{ marginTop: 2, alignSelf: 'flex-start', height: 44, padding: '0 12px', borderRadius: 9, background: '#FFFFFF', border: '1px solid #E8E8EB', boxSizing: 'border-box', color: '#111114', font: 'inherit', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Set up AI</button>
+          </span>
+          <button type="button" aria-label="Hide this" onClick={() => hideHint(true)}
+            style={{ margin: '-8px -8px 0 0', width: 44, height: 44, border: 'none', borderRadius: 8, background: 'transparent', color: '#5F6168', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0, cursor: 'pointer' }}>
+            <Icon size={14}><path d="M6 6l12 12M18 6L6 18" /></Icon>
+          </button>
+        </div>
+      )}
 
       {(capture.mic && meter.blocked) || (capture.camera && camera.busy) || (capture.mode === 'window' && capture.sound) || penvGone ? (
         <div style={{ margin: '12px 24px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -363,6 +412,12 @@ export default function Home() {
               <span style={{ fontSize: 12, color: '#6E7079' }}>{[last.summary && STYLE_NAMES[last.summary.style], dayAndTime(last.createdAt)].filter(Boolean).join(' · ')}</span>
             </span>
           </button>
+        </div>
+      )}
+      {toast && (
+        <div role="status" style={{ position: 'fixed', left: 24, right: 24, bottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '4px 4px 4px 14px', borderRadius: 12, background: '#111114', color: '#FFFFFF', fontSize: 13 }}>
+          <span>Hidden. Set up AI any time in Settings.</span>
+          <button type="button" onClick={() => hideHint(false)} style={{ height: 44, padding: '0 10px', border: 'none', borderRadius: 8, background: 'transparent', color: '#FDBA74', font: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Undo</button>
         </div>
       )}
     </main>

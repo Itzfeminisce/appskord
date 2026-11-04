@@ -34,6 +34,10 @@ export interface Settings {
   defaultStyle?: NoteStyle;                            // "Always use this style": skips detection
   folderName?: string;                                 // handle itself kept in IndexedDB
   onboarded?: boolean;                                 // set once the first-run AI choice is made (T2)
+  localModelAsked?: boolean;                           // T2: the person pressed Make transcript, so the Whisper download is allowed
+  setupHintHidden?: boolean;                           // the person hid the Home "Set up AI" hint
+  whatsNewDue?: string;                                // T4: version whose What's new card is waiting on Home
+  whatsNewSeen?: string;                               // T4: version whose card the person closed
   bakeCamera: boolean;                                 // v3: bake the camera into the next recording; default false
 }
 
@@ -59,6 +63,7 @@ export interface Recording {
   bytes: number; thumbnail?: Blob;
   markers: Marker[]; notes: TimedNote[]; comments: Comment[];
   transcript: Segment[]; transcriptPending: boolean;   // chunks still queued
+  transcriptDeferred?: boolean;                        // saved with no transcript: no model yet and never asked (T2)
   summary?: Notes; edits: KeptRange[];                 // empty = whole video
   savedTo?: { folder: string; at: number; files: string[] };
   transcriptModel?: TranscriptModel;                   // the DB upgrade fills 'live' or 'full' on v1 records

@@ -281,11 +281,11 @@ const PERMISSION_RESULT_KEY = 'permissionResult';
 export interface PermissionResult { mic: boolean; camera: boolean }
 
 /** Opens the extension tab that shows Chrome's prompt; the side panel can't. */
-export async function openPermissionTab(camera: boolean): Promise<{ id?: number; back: () => Promise<void> }> {
+export async function openPermissionTab(camera: boolean, keep = false): Promise<{ id?: number; back: () => Promise<void> }> {
   const url = (browser.runtime.getURL as (p: string) => string)('/permission.html');
   const [from] = await browser.tabs.query({ active: true, currentWindow: true }).catch(() => []);
   const tab = await browser.tabs.create({
-    url: `${url}?camera=${camera ? 1 : 0}`,
+    url: `${url}?camera=${camera ? 1 : 0}${keep ? '&keep=1' : ''}`,
     ...(from?.id !== undefined && { index: from.index + 1, openerTabId: from.id }),
   });
   // Chrome leaves the person on another tab once the helper closes; put them back on the one they came from.
@@ -299,6 +299,31 @@ export async function openPermissionTab(camera: boolean): Promise<{ id?: number;
     }
   };
   return { id: tab.id, back };
+}
+
+const PERMISSION_RELEASE_KEY = 'permissionRelease';
+const KEEP_MS = 60_000;
+
+/** Tells a kept-open helper tab it can close: the recorder is done with the one-time grant. */
+export function releasePermissionTab(): Promise<void> {
+  return browser.storage.session.set({ [PERMISSION_RELEASE_KEY]: Date.now() });
+}
+
+/** Resolves when the side panel releases the helper tab, or after a safety timeout. */
+export function whenReleased(ms = KEEP_MS): Promise<void> {
+  return new Promise((resolve) => {
+    // A "this time only" grant dies with the tab, so the tab outlives its answer until released.
+    const listener = (changes: Record<string, unknown>, area: string) => {
+      if (area === 'session' && PERMISSION_RELEASE_KEY in changes) done();
+    };
+    const timer = setTimeout(() => done(), ms);
+    function done() {
+      clearTimeout(timer);
+      browser.storage.onChanged.removeListener(listener);
+      resolve();
+    }
+    browser.storage.onChanged.addListener(listener);
+  });
 }
 
 /** Called by the helper tab once Chrome has answered. */

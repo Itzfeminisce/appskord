@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import {
   aiSettings, builtinAiPresent, canStart, choiceFor, hostFor, isKeyName, jobsFor, noUsableKeys, classifyPaste, cloudSettings, detectMachine, isFirstRun,
-  micForStart, missingKeys, OLLAMA_DOWN, penvRowStatus, pickerGroups, pickerValue, requestAccess, setupChoice, typedFailure,
+  micForStart, missingKeys, OLLAMA_DOWN, penvRowStatus, pickerGroups, pickerValue, releasePermissionTab, requestAccess, setupChoice, typedFailure, whenReleased,
 } from './setup';
 import { DEFAULT_SETTINGS, GROQ_BOTH } from './settings';
 import { LLMError } from '@appskord/llm';
@@ -303,6 +304,20 @@ describe('micForStart', () => {
     expect(await result).toBeNull();
     expect(offWait).toHaveBeenCalledOnce();
     expect(offClosed).toHaveBeenCalledOnce();
+  });
+});
+
+describe('whenReleased', () => {
+  it('resolves on the release message and on the safety timeout', async () => {
+    fakeBrowser.reset();
+    const released = whenReleased(60_000);
+    await releasePermissionTab();
+    await released;
+    vi.useFakeTimers();
+    const timed = whenReleased(50);
+    await vi.advanceTimersByTimeAsync(50);
+    await timed;
+    vi.useRealTimers();
   });
 });
 

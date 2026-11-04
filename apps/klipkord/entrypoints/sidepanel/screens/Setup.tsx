@@ -112,6 +112,16 @@ function Option({ checked, recommended, title, text, onPick }: { checked: boolea
   );
 }
 
+type Opener = 'Home' | 'Settings';
+let openedFrom: Opener = 'Home';
+/** Where Setup and ModelDownload return to: the screen that opened them. */
+export const setupOrigin = (): Opener => openedFrom;
+/** Opens Setup from Home or Settings and remembers which. */
+export function openSetup(navigate: (screen: 'Setup') => void, from: Opener): void {
+  openedFrom = from;
+  navigate('Setup');
+}
+
 const PENDING: MachineCheck = { webgpu: null, builtinAi: null };
 
 export default function Setup() {
@@ -138,7 +148,7 @@ export default function Setup() {
   async function choose(ai: AiMode, next: 'ModelDownload' | 'PenvConnect') {
     try {
       // Groq for both pickers is saved once a key works; local is confirmed here.
-      if (ai === 'local') await updateSettings({ ...aiSettings(ai, check.builtinAi), onboarded: true });
+      if (ai === 'local') await updateSettings({ ...aiSettings(ai, check.builtinAi), onboarded: true, localModelAsked: true });
     } catch (error) {
       console.error('Klipkord: could not save the AI choice', error);
     }
@@ -156,7 +166,7 @@ export default function Setup() {
 
   return (
     <main className="screen" style={PAGE}>
-      <Head right="Step 2 of 2" onBack={() => (canGoBack ? back() : replace('Permissions'))} />
+      <Head right="Step 2 of 2" onBack={() => (canGoBack ? back() : replace(setupOrigin()))} />
       <Heading title="Where should the AI run?" text="The AI turns your voice into a transcript and notes. You can change this later in Settings." />
 
       {(running || lines.length > 0) && (

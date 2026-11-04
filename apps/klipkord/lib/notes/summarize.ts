@@ -301,6 +301,8 @@ async function run(id: string, opts: StartOptions, deps: JobDeps, signal: AbortS
   if (!rec) throw new NotesError('That recording is not here any more.');
   if (rec.status === 'recording' || rec.status === 'paused') return;
   if (rec.summary && !opts.style) { set({ phase: 'done', pct: 100, style: rec.summary.style }); return; }
+  // Saved with no transcript on purpose: notes wait for Make transcript, which starts them.
+  if (rec.transcriptDeferred && !rec.transcript.length) { await markReady(id, deps); return; }
   // Waits only while the offscreen document is transcribing this recording, and never past WAIT_MAX_MS.
   const waitUntil = deps.now() + WAIT_MAX_MS;
   while (rec.transcriptPending && deps.now() < waitUntil && (await deps.transcribing(id))) {
