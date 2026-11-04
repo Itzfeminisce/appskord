@@ -4,12 +4,16 @@ import { BASE_MODEL, LIVE_MODEL } from './whisper';
 // transformers.js keeps downloaded model files in this browser cache.
 export const MODEL_CACHE = 'transformers-cache';
 
+const WEIGHTS = ['encoder_model', 'decoder_model_merged'];
+
 /** True when files of `model` are already in the browser cache. */
 export async function isModelCached(model = BASE_MODEL, cacheStorage: Pick<CacheStorage, 'open'> | undefined = globalThis.caches): Promise<boolean> {
   if (!cacheStorage) return false;
   try {
     const cache = await cacheStorage.open(MODEL_CACHE);
-    return (await cache.keys()).some((r) => r.url.includes(`/${model}/`));
+    const urls = (await cache.keys()).map((r) => r.url.split('?')[0] ?? '').filter((u) => u.includes(`/${model}/`) && u.endsWith('.onnx'));
+    // Config files alone are not the model; both weights the worker loads must be there.
+    return WEIGHTS.every((w) => urls.some((u) => u.includes(`/${w}`)));
   } catch (error) {
     console.error('Klipkord: could not check the speech model', error);
     return false;

@@ -55,9 +55,18 @@ describe('first recording without AI', () => {
     cancelTranscript();
   });
 
+  it('a stop before the decision lands still saves it deferred', async () => {
+    cfg = local;
+    const { startTranscript, finishTranscript } = await import('./transcript');
+    const started = startTranscript('r4', track);
+    await finishTranscript('r4', 1000);
+    await started;
+    expect(saves).toEqual([{ transcript: [], transcriptPending: false, transcriptDeferred: true }]);
+  });
+
   it('loads the model as before when it is already cached', async () => {
     cfg = local;
-    vi.stubGlobal('caches', { open: async () => ({ keys: async () => [{ url: 'https://huggingface.co/onnx-community/whisper-base_timestamped/resolve/main/x' }] }) });
+    vi.stubGlobal('caches', { open: async () => ({ keys: async () => ['encoder_model_q8', 'decoder_model_merged_q8'].map((f) => ({ url: `https://huggingface.co/onnx-community/whisper-base_timestamped/resolve/main/onnx/${f}.onnx` })) }) });
     const { startTranscript, cancelTranscript } = await import('./transcript');
     await startTranscript('r3', track);
     expect(workers).toHaveLength(1);

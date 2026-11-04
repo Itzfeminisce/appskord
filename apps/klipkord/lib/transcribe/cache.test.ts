@@ -4,7 +4,8 @@ import { isModelCached, removeCachedModels, shouldDefer } from './cache';
 import { BASE_MODEL } from './whisper';
 
 const store = (urls: string[]) => ({ open: async () => ({ keys: async () => urls.map((url) => ({ url })) }) }) as unknown as CacheStorage;
-const cached = store([`https://huggingface.co/${BASE_MODEL}/resolve/main/config.json`]);
+const base = `https://huggingface.co/${BASE_MODEL}/resolve/main`;
+const cached = store([`${base}/onnx/encoder_model_q8.onnx`, `${base}/onnx/decoder_model_merged_q8.onnx`]);
 const empty = store([]);
 
 describe('model cache', () => {
@@ -12,6 +13,11 @@ describe('model cache', () => {
     expect(await isModelCached(BASE_MODEL, cached)).toBe(true);
     expect(await isModelCached(BASE_MODEL, empty)).toBe(false);
     expect(await isModelCached(BASE_MODEL, undefined)).toBe(false);
+  });
+
+  it('needs both weights, not just config files', async () => {
+    expect(await isModelCached(BASE_MODEL, store([`${base}/config.json`]))).toBe(false);
+    expect(await isModelCached(BASE_MODEL, store([`${base}/onnx/encoder_model_q8.onnx`]))).toBe(false);
   });
 
   it('defers only on this computer, with no model and never asked', async () => {

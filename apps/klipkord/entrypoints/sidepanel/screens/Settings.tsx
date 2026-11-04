@@ -142,6 +142,7 @@ const QUIET_BTN: CSSProperties = { ...ROW_BTN, border: '1px solid #E8E8EB', back
 function LocalModelRow() {
   const [local, setLocal] = useState<Local>({ phase: 'checking' });
   const whisper = useRef<{ stop: () => void } | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     isModelCached().then((c) => setLocal({ phase: c ? 'ready' : 'none' }), () => setLocal({ phase: 'none' }));
@@ -173,11 +174,16 @@ function LocalModelRow() {
   }
 
   async function remove() {
+    if (whisper.current || removing) return;
+    setRemoving(true);
     try {
       await removeCachedModels();
+      await updateSettings({ localModelAsked: false });
       setLocal({ phase: 'none' });
     } catch (error) {
       console.error('Klipkord: could not remove the speech model', error);
+    } finally {
+      setRemoving(false);
     }
   }
 
@@ -198,9 +204,9 @@ function LocalModelRow() {
           </span>
         )}
       </span>
-      {local.phase === 'none' && <button type="button" onClick={() => void download()} style={{ ...ROW_BTN, border: 'none', background: '#C2410C', color: '#FFFFFF' }}>Download</button>}
+      {local.phase === 'none' && <button type="button" onClick={() => void download()} disabled={removing} style={{ ...ROW_BTN, border: 'none', background: '#C2410C', color: '#FFFFFF' }}>Download</button>}
       {downloading && <button type="button" onClick={cancel} style={QUIET_BTN}>Cancel</button>}
-      {local.phase === 'ready' && <button type="button" onClick={() => void remove()} style={QUIET_BTN}>Remove</button>}
+      {local.phase === 'ready' && <button type="button" onClick={() => void remove()} disabled={removing || downloading} style={QUIET_BTN}>Remove</button>}
     </div>
   );
 }

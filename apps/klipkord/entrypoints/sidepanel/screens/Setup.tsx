@@ -148,7 +148,7 @@ export default function Setup() {
   async function choose(ai: AiMode, next: 'ModelDownload' | 'PenvConnect') {
     try {
       // Groq for both pickers is saved once a key works; local is confirmed here.
-      if (ai === 'local') await updateSettings({ ...aiSettings(ai, check.builtinAi), onboarded: true });
+      if (ai === 'local') await updateSettings({ ...aiSettings(ai, check.builtinAi), onboarded: true, localModelAsked: true });
     } catch (error) {
       console.error('Klipkord: could not save the AI choice', error);
     }

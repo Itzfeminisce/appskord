@@ -22,7 +22,10 @@ export const isWhatsNewDue = (reason: string, previous: string | undefined): boo
 
 /** Handles onInstalled: marks What's new due for people who had an older version. */
 export async function handleInstalled(reason: string, previous: string | undefined): Promise<void> {
-  if (isWhatsNewDue(reason, previous)) await updateSettings({ whatsNewDue: WHATS_NEW_VERSION });
+  if (!isWhatsNewDue(reason, previous)) return;
+  // They chose local in v3, so keep fetching the model without a prompt.
+  const local = (await getSettings()).transcripts.provider === 'local';
+  await updateSettings({ whatsNewDue: WHATS_NEW_VERSION, ...(local ? { localModelAsked: true } : {}) });
 }
 
 /** Home shows the card while a version is due and not yet seen. */

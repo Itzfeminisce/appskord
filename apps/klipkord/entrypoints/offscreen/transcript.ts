@@ -32,6 +32,7 @@ interface Live {
   aborted: boolean;
   usedLocal: boolean;       // a chunk ran on the live model, so the text is not full quality
   deferred: boolean;        // no model and never asked: no download, no live text
+  deferral: Promise<boolean>; // the shouldDefer answer, so a stop before it lands waits for it
 }
 
 let live: Live | null = null;
@@ -107,7 +108,7 @@ export async function startTranscript(recordingId: string, mic: MediaStreamTrack
   const early: Chunk[] = [];
   let queue: TranscriptQueue | null = null;
   const l: Live = {
-    recordingId, config: LOCAL_CONFIG, segments: [], phase: 'live', paused: false, aborted: false, usedLocal: false, deferred: false,
+    recordingId, config: LOCAL_CONFIG, segments: [], phase: 'live', paused: false, aborted: false, usedLocal: false, deferred: false, deferral: Promise.resolve(false),
     stopCapture: () => undefined,
     chunker: createChunker((chunk) => (queue ? queue.add(chunk) : early.push(chunk))),
     get queue() { return queue ?? idleQueue; },
@@ -115,10 +116,14 @@ export async function startTranscript(recordingId: string, mic: MediaStreamTrack
   live = l;
   l.stopCapture = capture(mic, (s) => l.chunker.push(s), () => l.paused);
 
-  const [cfg, webgpu] = await Promise.all([config(), hasWebGpu()]);
-  if (l.aborted) return;
+  let decide!: (v: boolean) => void;
+  l.deferral = new Promise<boolean>((r) => { decide = r; });
+  const [cfg, webgpu] = await Promise.all([config(), hasWebGpu()]).catch((e) => { decide(false); throw e; });
+  if (l.aborted) return decide(false);
   l.config = cfg;
-  if (await shouldDefer(cfg)) {
+  const defer = await shouldDefer(cfg).catch(() => false);
+  decide(defer);
+  if (defer) {
     l.deferred = true;
     l.stopCapture();
     report(l);
@@ -227,7 +232,8 @@ async function basePass(l: Live, durationMs: number): Promise<Segment[] | null> 
 export async function finishTranscript(recordingId: string, durationMs: number): Promise<void> {
   const l = live?.recordingId === recordingId ? live : null;
   if (!l) return void send({ type: 'transcript/idle' });
-  if (l.deferred) {
+  if (l.deferred || (await l.deferral)) {
+    l.deferred = true;
     await save(recordingId, { transcript: [], transcriptPending: false, transcriptDeferred: true });
     l.phase = 'done';
     report(l);

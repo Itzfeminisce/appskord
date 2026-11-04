@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { useRouter } from '../router';
 import { getRecording, updateRecording } from '@/lib/db';
 import { updateSettings } from '@/lib/settings';
+import { loadTranscriptConfig } from '@/lib/transcribe/groq';
 import { isModelCached } from '@/lib/transcribe/cache';
 import { retranscribedPatch } from '@/lib/transcribe/full';
 import { downloadModel } from '@/lib/transcribe/download';
@@ -19,6 +20,7 @@ const MONO = "var(--mono, 'Geist Mono', monospace)";
 export const transcriptTab = ({ rec, now, seek, setRec }: ReviewContext) => <Transcript rec={rec} now={now} seek={seek} setRec={setRec} />;
 
 export interface MakeDeps {
+  local: () => Promise<boolean>;
   asked: () => Promise<unknown>;
   cached: () => Promise<boolean>;
   download: (job: Job, onBytes: (loaded: number, total: number) => void) => Promise<void>;
@@ -31,10 +33,15 @@ export async function makeTranscript(
   rec: Recording, job: Job, deps: MakeDeps,
   on: { onStep: (step: 'download' | 'write') => void; onBytes: (loaded: number, total: number) => void; onPct: (pct: number) => void },
 ): Promise<boolean> {
-  await deps.asked();
-  if (!(await deps.cached())) {
-    on.onStep('download');
-    await deps.download(job, on.onBytes);
+  // A cloud provider needs no model, so no ask and no download.
+  if (await deps.local()) {
+    await deps.asked();
+    if (job.stopped) return false;
+    if (!(await deps.cached())) {
+      if (job.stopped) return false;
+      on.onStep('download');
+      await deps.download(job, on.onBytes);
+    }
   }
   if (job.stopped) return false;
   on.onStep('write');
@@ -45,6 +52,7 @@ export async function makeTranscript(
 }
 
 const realDeps: MakeDeps = {
+  local: async () => (await loadTranscriptConfig()).provider === 'local',
   asked: () => updateSettings({ localModelAsked: true }),
   cached: () => isModelCached(),
   download: downloadModel,
@@ -71,9 +79,11 @@ export function MakeTranscript({ rec, onDone, deps = realDeps }: { rec: Recordin
   const { navigate } = useRouter();
   const [state, setState] = useState<Make>({ phase: 'idle' });
   const [online, setOnline] = useState(() => navigator.onLine);
+  const [local, setLocal] = useState(true);
   const job = useRef<Job | null>(null);
 
   useEffect(() => {
+    deps.local().then(setLocal, () => undefined);
     const on = () => setOnline(true);
     const off = () => setOnline(false);
     window.addEventListener('online', on);
@@ -159,7 +169,7 @@ export function MakeTranscript({ rec, onDone, deps = realDeps }: { rec: Recordin
   return (
     <div style={{ padding: '16px 16px 0' }}>
       <div style={card}>
-        {online ? (
+        {online || !local ? (
           <>
             <span style={{ fontSize: 16, fontWeight: 600 }}>No transcript yet</span>
             <span style={{ fontSize: 13, lineHeight: 1.5, color: '#5F6168' }}>No AI was set up, so your video was saved without one. Make transcript downloads a small model to this computer once and writes it. Nothing from the recording is sent.</span>
