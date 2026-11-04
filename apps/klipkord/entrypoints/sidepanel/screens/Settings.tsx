@@ -92,7 +92,7 @@ function AiPickers({ s, loadedKeys, save, navigate }: {
     const current = pickerValue(job, s).provider;
     return current !== 'local' ? current : (PICKER_CLOUD[job].find((p) => loadedKeys.includes(PROVIDERS[p].keyName)) ?? 'groq');
   };
-  const goKeys = (provider?: string) => (provider ? document.getElementById('keys')?.scrollIntoView({ behavior: 'smooth' }) : navigate('PasteKey'));
+  const goKeys = () => navigate('PasteKey'); // PasteKey detects the provider from the pasted key
 
   return (
     <>
