@@ -375,7 +375,7 @@ export default function SettingsAI() {
   }
 
   // A key row scrolls to Your keys; "Paste a key instead" opens Setup, where keys are pasted.
-  const addKey = (provider?: string) => (provider ? document.getElementById('keys')?.scrollIntoView({ behavior: 'smooth' }) : navigate('connect'));
+  const addKey = () => navigate('connect');
 
   return (
     <main className="screen" style={{ background: '#F6F6F7', color: '#111114' }}>

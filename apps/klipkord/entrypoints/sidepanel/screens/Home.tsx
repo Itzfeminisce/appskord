@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useRouter } from '../router';
 import { BubbleControls, BubblePreview, useCamera } from '../components/BubblePreview';
 import { getSettings, onSettingsChanged, updateSettings } from '@/lib/settings';
@@ -7,6 +7,7 @@ import { command, onStartRequest, takeStartRequest, useRecorder } from '@/lib/ca
 import { meterBars, rms } from '@/lib/mix';
 import { shortClock } from '@/lib/recorder';
 import type { CaptureMode, NoteStyle, Quality, Recording, Settings } from '@/lib/types';
+import { micForStart, onPermissionResult, openPermissionTab } from '@/lib/setup';
 import { wasDisconnected } from '@/lib/penv';
 import { useOffline } from './Offline';
 import { BannerAction, StateBanner } from './Setup';
@@ -132,6 +133,7 @@ function useMicMeter(enabled: boolean) {
       try {
         const status = await navigator.permissions.query({ name: 'microphone' as PermissionName }).catch(() => null);
         if (status?.state === 'denied') return live && setBlocked(true);
+        if (status?.state !== 'granted') return;
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (!live) return stream.getTracks().forEach((t) => t.stop());
         setBlocked(false);
@@ -195,11 +197,35 @@ export default function Home() {
     wasDisconnected().then(setPenvGone, () => undefined);
   }, []);
 
-  const start = useCallback(() => navigate('Countdown'), [navigate]);
+  const starting = useRef(false);
+  const start = useCallback(async () => {
+    if (starting.current) return; // a second press must not open a second helper tab
+    starting.current = true;
+    try {
+      const wantMic = (await getSettings()).capture.mic;
+      const mic = await micForStart(wantMic, {
+        state: () => navigator.permissions.query({ name: 'microphone' as PermissionName }).then((s) => s.state, () => null),
+        open: openPermissionTab,
+        wait: onPermissionResult,
+        closed: (tabId, cb) => {
+          const l = (id: number) => { if (id === tabId) cb(); };
+          browser.tabs.onRemoved.addListener(l);
+          return () => browser.tabs.onRemoved.removeListener(l);
+        },
+      });
+      if (mic === null) return; // helper tab closed unanswered: cancelled
+      if (mic !== wantMic) await updateSettings({ capture: { mic } });
+    } catch (error) {
+      console.error('Klipkord: could not ask for mic access', error);
+    } finally {
+      starting.current = false;
+    }
+    navigate('Countdown');
+  }, [navigate]);
 
   // Alt+Shift+R from any tab.
   useEffect(() => {
-    const take = () => void takeStartRequest().then((yes) => yes && start(), (error) => console.error('Klipkord: could not read the start request', error));
+    const take = () => void takeStartRequest().then((yes) => { if (yes) void start(); }, (error) => console.error('Klipkord: could not read the start request', error));
     take();
     return onStartRequest(take);
   }, [start]);

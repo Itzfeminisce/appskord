@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Real handles clone into IndexedDB; the fake one holds functions, so it is kept in memory here.
 vi.mock('@appskord/platform', async (original) => {
@@ -83,7 +83,9 @@ describe('Rekord folder writer', () => {
   const files = new Map<string, string>();
   const permission = { value: 'granted' as 'granted' | 'prompt' };
 
+  // The sample's newest meeting is 2026-11-03 10:00; "now" must precede it or it counts as past.
   beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 10, 3, 9, 0) });
     await closeDB();
     globalThis.indexedDB = new IDBFactory();
     await useFolderDB('rekord-folder-test');
@@ -92,6 +94,8 @@ describe('Rekord folder writer', () => {
     permission.value = 'granted';
     (globalThis as unknown as { showDirectoryPicker: () => Promise<DirHandle> }).showDirectoryPicker = async () => fakeDir(files, permission);
   });
+
+  afterEach(() => { vi.useRealTimers(); });
 
   it('writes nested paths', async () => {
     await writeFiles(fakeDir(files, permission), [{ path: 'Meetings/x.md', text: 'hi' }]);

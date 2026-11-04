@@ -8,6 +8,6 @@ const wantCamera = new URLSearchParams(location.search).get('camera') === '1';
 requestAccess(wantCamera)
   .then(async (result) => {
     await reportPermission(result);
-    if (result.mic) window.close();
+    window.close();
   })
   .catch((error) => console.error('Klipkord: could not ask for mic access', error));

@@ -244,10 +244,6 @@
   line-height: 1.45;
   color: #44464d;
 }
-.mp-notice-actions {
-  display: flex;
-  gap: 14px;
-}
 .mp-link {
   padding: 0;
   border: 0;
@@ -260,8 +256,14 @@
 .mp-link:hover {
   color: var(--accent-hover);
 }
-.mp-link.is-quiet {
-  color: #44464d;
+.mp-cloud {
+  display: block;
+  margin: 6px 14px 4px;
+  padding: 10px 2px 6px;
+  width: calc(100% - 28px);
+  text-align: left;
+  font-size: 13px;
+  border-top: 1px solid #efeff1;
 }
 .mp-nomatch {
   padding: 12px 14px 4px;

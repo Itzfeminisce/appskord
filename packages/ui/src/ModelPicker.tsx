@@ -59,9 +59,6 @@ const STATUS: Record<PickerStatus, string> = {
   failed: 'Ready',
 };
 
-const orList = (names: string[]) =>
-  names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
-
 function Laptop() {
   return (
     <svg
@@ -139,7 +136,6 @@ export function ModelPicker({
   const cloud = groups.filter((g) => g.status !== 'local');
   const noKeys = cloud.length > 0 && cloud.every((g) => g.status === 'needs-key');
   const shown = groups
-    .filter((g) => !(noKeys && !ql && g.status === 'needs-key'))
     .map((g) => {
       const hit = !ql || providerHit(g);
       const models =
@@ -378,27 +374,10 @@ export function ModelPicker({
                 )}
               </div>
             ))}
-            {noKeys && !ql && (
-              <div className="mp-notice">
-                <span>Add a key to pick models from {orList(cloud.map((g) => g.name))}.</span>
-                <span className="mp-notice-actions">
-                  {onConnectCloud && (
-                    <button type="button" className="mp-link" onClick={onConnectCloud}>
-                      Connect Penv Cloud
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="mp-link is-quiet"
-                    onClick={() => {
-                      close(true);
-                      onAddKey();
-                    }}
-                  >
-                    Paste a key instead
-                  </button>
-                </span>
-              </div>
+            {noKeys && !ql && onConnectCloud && (
+              <button type="button" className="mp-link mp-cloud" onClick={onConnectCloud}>
+                Connect Penv Cloud
+              </button>
             )}
             {noMatch && (
               <>

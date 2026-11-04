@@ -264,21 +264,23 @@ describe('ModelPicker states', () => {
     click(button());
     const text = panel()!.textContent!;
     expect(text).toContain('Ollama isn’t running. Start it, then open this list again.');
-    expect(text).toContain('Add a key to pick models from Groq, OpenAI, Anthropic or OpenRouter.');
-    expect(text).not.toContain('Needs a key');
+    expect(text).not.toContain('Add a key to pick models from');
+    expect(text).not.toContain('Paste a key instead');
+    expect(host.querySelectorAll('.mp-key').length).toBe(cloud.length);
     const links = [...host.querySelectorAll('.mp-link')];
-    click(links.find((b) => b.textContent === 'Connect Penv Cloud')!);
+    expect(links.length).toBe(1);
+    click(links[0]!);
     expect(onConnectCloud).toHaveBeenCalledOnce();
-    click(links.find((b) => b.textContent === 'Paste a key instead')!);
-    expect(props.onAddKey).toHaveBeenCalledWith();
+    click(host.querySelector('.mp-key')!);
+    expect(props.onAddKey).toHaveBeenCalledWith(cloud[0]!.id);
   });
 
-  it('Paste a key instead closes the list and calls onAddKey once', () => {
+  it('a key row closes the list and calls onAddKey once', () => {
     const local: PickerGroup = { ...GROUPS[0]!, models: [] };
     const cloud = GROUPS.slice(1).map((g) => ({ ...g, status: 'needs-key' as const, models: [] }));
     const props = mount({ groups: [local, ...cloud], value: { provider: 'local', model: 'builtin' } });
     click(button());
-    click([...host.querySelectorAll('.mp-link')].find((b) => b.textContent === 'Paste a key instead')!);
+    click(host.querySelector('.mp-key')!);
     expect(listbox()).toBeNull();
     expect(props.onAddKey).toHaveBeenCalledTimes(1);
   });

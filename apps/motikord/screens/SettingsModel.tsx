@@ -253,7 +253,7 @@ export function ModelSection({ s: settings, keys, builtInAi, save, onKeys, onPas
       <ModelPicker label="Model" foot={PICKER_FOOT} groups={pickerGroups(settings, { keys, lists, builtInAi })} value={value}
         typedProvider={typedProviderFor(settings, keys)} gone={gone ? { old: gone, app: 'Motikord' } : undefined}
         onOpen={open} onRetry={(p) => load(p as Provider, requestHost(HOSTS[p as Provider]))}
-        onAddKey={(p) => (p ? onKeys() : onPasteKey())} onConnectCloud={onPenv}
+        onAddKey={() => onPasteKey()} onConnectCloud={onPenv}
         onPick={pick} />
       {result}
       <p style={{ ...s, margin: 0 }}>Large, strong models write the best clips. Small ones are faster but simpler.</p>
