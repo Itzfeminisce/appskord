@@ -265,6 +265,29 @@ describe('micForStart', () => {
   it('turns the mic off when it is refused', async () => {
     expect(await micForStart(true, mk('prompt', { mic: false, camera: false }).deps)).toBe(false);
   });
+  it('returns to the original tab on an answer and on a closed helper tab', async () => {
+    const back = vi.fn(async () => undefined);
+    const answered = await micForStart(true, {
+      state: async () => 'prompt',
+      open: async () => ({ id: 7, back }),
+      wait: (f) => { setTimeout(() => f({ mic: true, camera: false }), 0); return () => undefined; },
+      closed: () => () => undefined,
+    });
+    expect(answered).toBe(true);
+    expect(back).toHaveBeenCalledOnce();
+    let onClosed: (() => void) | undefined;
+    const back2 = vi.fn(async () => undefined);
+    const result = micForStart(true, {
+      state: async () => 'prompt',
+      open: async () => ({ id: 8, back: back2 }),
+      wait: () => () => undefined,
+      closed: (_id, f) => { onClosed = f; return () => undefined; },
+    });
+    await vi.waitFor(() => expect(onClosed).toBeDefined());
+    onClosed!();
+    expect(await result).toBeNull();
+    expect(back2).toHaveBeenCalledOnce();
+  });
   it('resolves null and removes both listeners when the helper tab is closed unanswered', async () => {
     const offWait = vi.fn();
     const offClosed = vi.fn();
