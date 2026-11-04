@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { listModelsFor } from '@appskord/llm';
 import { ModelPicker, type PickerValue } from '@appskord/ui';
 import { Spinner } from '../components';
@@ -10,6 +10,9 @@ import { chat, PROVIDERS } from '@/lib/llm';
 import { builtinAvailable } from '@/lib/notes/engines';
 import { loadKeys, requestHosts, wasDisconnected } from '@/lib/penv';
 import { getSettings, onSettingsChanged, updateSettings } from '@/lib/settings';
+import { isModelCached, removeCachedModels } from '@/lib/transcribe/cache';
+import { downloadModel } from '@/lib/transcribe/download';
+import { megabytes } from '@/lib/transcribe/whisper';
 import {
   choiceFor, hostFor, penvRowStatus, PICKER_CLOUD, PICKER_FOOT, PICKER_LABEL, pickerGroups, pickerValue, REPO_URL, SHORTCUTS_URL, typedFailure,
   type ListState, type PickerJob,
@@ -131,6 +134,77 @@ function Section({ title, id, children, note }: { title: string; id?: string; ch
   );
 }
 
+type Local = { phase: 'checking' | 'none' | 'ready' } | { phase: 'downloading'; loaded: number; total: number };
+const ROW_BTN: CSSProperties = { height: 44, padding: '0 12px', borderRadius: 9, font: 'inherit', fontSize: 13, fontWeight: 500, flexShrink: 0, cursor: 'pointer' };
+const QUIET_BTN: CSSProperties = { ...ROW_BTN, border: '1px solid #E8E8EB', background: '#FFFFFF', color: '#111114' };
+
+/** "Model on this computer": download the Whisper model, cancel, or remove it. */
+function LocalModelRow() {
+  const [local, setLocal] = useState<Local>({ phase: 'checking' });
+  const whisper = useRef<{ stop: () => void } | null>(null);
+
+  useEffect(() => {
+    isModelCached().then((c) => setLocal({ phase: c ? 'ready' : 'none' }), () => setLocal({ phase: 'none' }));
+    return () => whisper.current?.stop();
+  }, []);
+
+  async function download() {
+    const job = { stop: () => undefined };
+    whisper.current = job;
+    setLocal({ phase: 'downloading', loaded: 0, total: 0 });
+    try {
+      await updateSettings({ localModelAsked: true });
+      await downloadModel(job, (loaded, total) => setLocal({ phase: 'downloading', loaded, total }));
+      setLocal({ phase: 'ready' });
+    } catch (error) {
+      // Cancel ends the worker, which lands here too.
+      if (whisper.current === job) console.error('Klipkord: could not download the speech model', error);
+      setLocal({ phase: 'none' });
+    } finally {
+      if (whisper.current === job) whisper.current = null;
+    }
+  }
+
+  function cancel() {
+    const job = whisper.current;
+    whisper.current = null;
+    job?.stop();
+    setLocal({ phase: 'none' });
+  }
+
+  async function remove() {
+    try {
+      await removeCachedModels();
+      setLocal({ phase: 'none' });
+    } catch (error) {
+      console.error('Klipkord: could not remove the speech model', error);
+    }
+  }
+
+  const downloading = local.phase === 'downloading';
+  const status = local.phase === 'ready' ? 'Downloaded · Whisper' : downloading ? `Downloading · ${megabytes(local.loaded)} of ${megabytes(local.total)} MB` : 'Not downloaded';
+  const pct = downloading && local.total > 0 ? Math.min(100, Math.round((local.loaded / local.total) * 100)) : 0;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12, border: '1px solid #E8E8EB', background: '#FAFAFB' }}>
+      <span style={{ width: 30, height: 30, borderRadius: 8, background: '#F1F1F3', color: '#44464D', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="11" rx="2" /><path d="M2 20h20" /></svg>
+      </span>
+      <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 14, fontWeight: 500 }}>Model on this computer</span>
+        <span style={{ fontSize: 12, color: '#5F6168' }}>{status}</span>
+        {downloading && (
+          <span role="progressbar" aria-label="Downloading the model" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} style={{ height: 6, borderRadius: 999, background: '#F1F1F3', overflow: 'hidden' }}>
+            <span style={{ display: 'block', width: `${pct}%`, height: '100%', background: '#C2410C' }} />
+          </span>
+        )}
+      </span>
+      {local.phase === 'none' && <button type="button" onClick={() => void download()} style={{ ...ROW_BTN, border: 'none', background: '#C2410C', color: '#FFFFFF' }}>Download</button>}
+      {downloading && <button type="button" onClick={cancel} style={QUIET_BTN}>Cancel</button>}
+      {local.phase === 'ready' && <button type="button" onClick={() => void remove()} style={QUIET_BTN}>Remove</button>}
+    </div>
+  );
+}
+
 export default function Settings() {
   const { navigate, replace } = useRouter();
   const keys = useKeyState();
@@ -202,6 +276,7 @@ export default function Settings() {
         <Section title="AI">
           <div style={{ ...CARD, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12, '--tint': '#FFF7ED' } as CSSProperties}>
             <AiPickers s={s} loadedKeys={keys.loaded} save={(partial) => void save(partial)} navigate={navigate} />
+            <LocalModelRow />
             <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45, color: '#5F6168' }}>On this computer, nothing is sent. A cloud model is faster and uses your key.</p>
             <div style={ROW}>
               <span>Language</span>
@@ -304,7 +379,7 @@ export default function Settings() {
 
       <div style={{ flexGrow: 1 }} />
       <p style={{ margin: '14px 24px 18px', fontSize: 12, color: '#6E7079' }}>
-        Klipkord 1.0 · <a href={REPO_URL} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', fontWeight: 500 }}>Open source on GitHub</a>
+        Klipkord 3.1 · <a href={REPO_URL} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', fontWeight: 500 }}>Open source on GitHub</a>
       </p>
     </main>
   );

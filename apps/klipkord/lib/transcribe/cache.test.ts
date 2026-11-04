@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LOCAL_CONFIG } from './groq';
-import { isModelCached, shouldDefer } from './cache';
+import { isModelCached, removeCachedModels, shouldDefer } from './cache';
 import { BASE_MODEL } from './whisper';
 
 const store = (urls: string[]) => ({ open: async () => ({ keys: async () => urls.map((url) => ({ url })) }) }) as unknown as CacheStorage;
@@ -19,5 +19,16 @@ describe('model cache', () => {
     expect(await shouldDefer({ ...LOCAL_CONFIG, localAsked: true }, empty)).toBe(false);
     expect(await shouldDefer(LOCAL_CONFIG, cached)).toBe(false);
     expect(await shouldDefer({ ...LOCAL_CONFIG, provider: 'groq', key: 'fake-key' }, empty)).toBe(false);
+  });
+});
+
+describe('removeCachedModels', () => {
+  it('deletes the Whisper files only', async () => {
+    const urls = ['https://h/onnx-community/whisper-base_timestamped/a.onnx', 'https://h/onnx-community/whisper-tiny/b.onnx', 'https://h/other/c.bin'];
+    const kept = new Set(urls);
+    const cache = { keys: async () => [...kept].map((url) => ({ url }) as Request), delete: async (r: Request) => kept.delete(r.url) };
+    expect(await removeCachedModels({ open: async () => cache as unknown as Cache })).toBe(true);
+    expect([...kept]).toEqual(['https://h/other/c.bin']);
+    expect(await removeCachedModels(undefined)).toBe(false);
   });
 });

@@ -35,6 +35,7 @@ export interface Settings {
   folderName?: string;                                 // handle itself kept in IndexedDB
   onboarded?: boolean;                                 // set once the first-run AI choice is made (T2)
   localModelAsked?: boolean;                           // T2: the person pressed Make transcript, so the Whisper download is allowed
+  setupHintHidden?: boolean;                           // the person hid the Home "Set up AI" hint
   bakeCamera: boolean;                                 // v3: bake the camera into the next recording; default false
 }
 

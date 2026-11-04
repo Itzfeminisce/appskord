@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { DEFAULT_SETTINGS, GROQ_BOTH, getSettings, mergeSettings, migrateAi, onSettingsChanged, updateSettings, usesCloud } from './settings';
+import { aiReady, DEFAULT_SETTINGS, getHintHidden, GROQ_BOTH, getSettings, setHintHidden, showSetupHint, mergeSettings, migrateAi, onSettingsChanged, updateSettings, usesCloud } from './settings';
 
 describe('settings', () => {
   beforeEach(() => fakeBrowser.reset());
@@ -103,5 +103,32 @@ describe('settings', () => {
     off();
     await updateSettings({ language: 'de' });
     expect(cb).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Set up AI hint', () => {
+  beforeEach(() => fakeBrowser.reset());
+  const fresh = DEFAULT_SETTINGS;
+
+  it('shows while no AI is ready and it was not hidden', () => {
+    expect(aiReady(fresh, [], false)).toBe(false);
+    expect(showSetupHint(aiReady(fresh, [], false), false)).toBe(true);
+  });
+
+  it('stays hidden once dismissed, and the dismissal is stored', async () => {
+    expect(await getHintHidden()).toBe(false);
+    await setHintHidden(true);
+    expect(await getHintHidden()).toBe(true);
+    expect(showSetupHint(false, true)).toBe(false);
+    await setHintHidden(false);
+    expect(await getHintHidden()).toBe(false);
+  });
+
+  it('is ready only when transcripts need no asking: a cloud key, or the local model cached', () => {
+    const groq = { ...fresh, transcripts: GROQ_BOTH.transcripts };
+    expect(aiReady(groq, ['GROQ_API_KEY'], false)).toBe(true);
+    expect(aiReady(groq, ['OPENAI_API_KEY'], false)).toBe(false);
+    expect(aiReady(fresh, [], true)).toBe(true);
+    expect(showSetupHint(true, false)).toBe(false);
   });
 });

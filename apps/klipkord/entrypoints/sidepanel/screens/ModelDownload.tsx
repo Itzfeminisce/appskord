@@ -3,6 +3,7 @@ import { useRouter } from '../router';
 import { detectMachine } from '@/lib/setup';
 import { BASE_MODEL, LIVE_MODEL, Whisper, megabytes, summarize, timeLeft, track, type DownloadSummary, type FileProgress } from '@/lib/transcribe/whisper';
 import { ICONS, Icon, MONO, StateCard } from './Home';
+import { setupOrigin } from './Setup';
 
 const download = <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />;
 
@@ -55,7 +56,7 @@ function useModelDownload() {
 }
 
 export default function ModelDownload() {
-  const { navigate, back } = useRouter();
+  const { replace, back } = useRouter();
   const { phase, summary, left, retry } = useModelDownload();
   const [builtinAi, setBuiltinAi] = useState<boolean | null>(null);
 
@@ -120,7 +121,7 @@ export default function ModelDownload() {
 
       <div style={{ flexGrow: 1 }} />
       <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <button type="button" onClick={() => navigate('Home')}
+        <button type="button" onClick={() => replace(setupOrigin())}
           style={{ height: 48, border: 'none', borderRadius: 12, background: '#111114', color: '#FFFFFF', font: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
           Start recording
         </button>

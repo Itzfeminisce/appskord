@@ -4,7 +4,8 @@ import { getRecording, updateRecording } from '@/lib/db';
 import { updateSettings } from '@/lib/settings';
 import { isModelCached } from '@/lib/transcribe/cache';
 import { retranscribedPatch } from '@/lib/transcribe/full';
-import { BASE_MODEL, Whisper, megabytes, summarize, track, type FileProgress } from '@/lib/transcribe/whisper';
+import { downloadModel } from '@/lib/transcribe/download';
+import { megabytes } from '@/lib/transcribe/whisper';
 import { startNotes } from '@/lib/notes/summarize';
 import { run, type Job } from '../components/Retranscribe';
 import type { Recording, Segment } from '@/lib/types';
@@ -46,21 +47,7 @@ export async function makeTranscript(
 const realDeps: MakeDeps = {
   asked: () => updateSettings({ localModelAsked: true }),
   cached: () => isModelCached(),
-  download: async (job, onBytes) => {
-    const files = new Map<string, FileProgress>();
-    const whisper = new Whisper(() => new Worker(new URL('../../offscreen/whisper.worker.ts', import.meta.url), { type: 'module' }));
-    job.stop = () => whisper.terminate();
-    whisper.onProgress = (p) => {
-      track(files, p);
-      const { loaded, total } = summarize(files.values(), 0);
-      onBytes(loaded, total);
-    };
-    try {
-      await whisper.load(BASE_MODEL);
-    } finally {
-      whisper.terminate();
-    }
-  },
+  download: downloadModel,
   write: run,
   save: (id, patch) => updateRecording(id, patch),
 };
