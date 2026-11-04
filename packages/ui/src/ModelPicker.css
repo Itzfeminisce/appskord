@@ -256,6 +256,15 @@
 .mp-link:hover {
   color: var(--accent-hover);
 }
+.mp-cloud {
+  display: block;
+  margin: 6px 14px 4px;
+  padding: 10px 2px 6px;
+  width: calc(100% - 28px);
+  text-align: left;
+  font-size: 13px;
+  border-top: 1px solid #efeff1;
+}
 .mp-nomatch {
   padding: 12px 14px 4px;
   font-size: 13px;

@@ -375,7 +375,7 @@ export function ModelPicker({
               </div>
             ))}
             {noKeys && !ql && onConnectCloud && (
-              <button type="button" className="mp-link" onClick={onConnectCloud}>
+              <button type="button" className="mp-link mp-cloud" onClick={onConnectCloud}>
                 Connect Penv Cloud
               </button>
             )}
