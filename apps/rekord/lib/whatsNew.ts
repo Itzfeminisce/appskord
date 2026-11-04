@@ -13,6 +13,13 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/** True when both versions share major and minor, so they differ at most in the patch number. */
+export function sameMinor(a: string, b: string): boolean {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
+  return (pa[0] ?? 0) === (pb[0] ?? 0) && (pa[1] ?? 0) === (pb[1] ?? 0);
+}
+
 /** True when `current` is newer than the version the user last saw (or they have seen none). */
 export function isNewerThanSeen(current: string, lastSeen: string | undefined): boolean {
   return !lastSeen || compareVersions(current, lastSeen) > 0;
@@ -27,7 +34,12 @@ export async function handleInstalled(reason: string, current: string): Promise<
   if (reason === 'install') {
     await updateSettings({ lastSeenVersion: current });
   } else if (reason === 'update' && isNewerThanSeen(current, settings.lastSeenVersion)) {
-    await browser.storage.local.set({ [PENDING_KEY]: true });
+    // A patch-only update is a fix, not news: record it as seen instead of re-showing the notes.
+    if (settings.lastSeenVersion && sameMinor(current, settings.lastSeenVersion)) {
+      await updateSettings({ lastSeenVersion: current });
+    } else {
+      await browser.storage.local.set({ [PENDING_KEY]: true });
+    }
   }
 }
 
