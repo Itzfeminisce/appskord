@@ -52,10 +52,23 @@ describe('what’s new, shown once', () => {
   });
 
   it('marks What’s new pending on the in-place update from 0.1.0 to this version', async () => {
-    expect(pkg.version).toBe('0.4.0');
+    expect(pkg.version).toBe('0.4.1');
     await updateSettings({ onboarded: true, lastSeenVersion: '0.1.0' });
     await handleInstalled('update', pkg.version);
     expect((await browser.storage.local.get('whatsNewPending')).whatsNewPending).toBe(true);
     expect(await shouldShowWhatsNew(pkg.version)).toBe(true);
+  });
+
+  it('does not show for a patch-only update, and records the version as seen', async () => {
+    await updateSettings({ onboarded: true, lastSeenVersion: '0.4.0' });
+    await handleInstalled('update', '0.4.1');
+    expect((await getSettings()).lastSeenVersion).toBe('0.4.1');
+    expect(await shouldShowWhatsNew('0.4.1')).toBe(false);
+  });
+
+  it('shows for an update from an earlier minor to 0.4.1', async () => {
+    await updateSettings({ onboarded: true, lastSeenVersion: '0.3.2' });
+    await handleInstalled('update', '0.4.1');
+    expect(await shouldShowWhatsNew('0.4.1')).toBe(true);
   });
 });
