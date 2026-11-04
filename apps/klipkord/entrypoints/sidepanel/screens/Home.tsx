@@ -223,7 +223,7 @@ export default function Home() {
       const wantMic = (await getSettings()).capture.mic;
       const mic = await micForStart(wantMic, {
         state: () => navigator.permissions.query({ name: 'microphone' as PermissionName }).then((s) => s.state, () => null),
-        open: openPermissionTab,
+        open: (camera) => openPermissionTab(camera, true),
         wait: onPermissionResult,
         closed: (tabId, cb) => {
           const l = (id: number) => { if (id === tabId) cb(); };
