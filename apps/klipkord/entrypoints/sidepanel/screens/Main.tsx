@@ -1,5 +1,6 @@
 import { BrandMark } from '../components/TopBar';
 import { useRouter } from '../router';
+import { updateSettings } from '@/lib/settings';
 import { PrimaryButton } from './Setup';
 
 const POINT_ICON = { width: 32, height: 32, borderRadius: 10, background: '#FFF1EA', color: '#9A3412', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } as const;
@@ -15,7 +16,7 @@ function Point({ icon, children }: { icon: React.ReactNode; children: string }) 
 }
 
 export default function Main() {
-  const { navigate } = useRouter();
+  const { navigate, replace } = useRouter();
 
   function openPrivacy() {
     // Settings scrolls to the privacy section when it opens with this hash.
@@ -61,7 +62,11 @@ export default function Main() {
 
       <div style={{ flexGrow: 1 }} />
       <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <PrimaryButton onClick={() => navigate('Permissions')}>Get started</PrimaryButton>
+        <PrimaryButton onClick={() => {
+          updateSettings({ onboarded: true })
+            .catch((error) => console.error('Klipkord: could not save first run', error))
+            .finally(() => replace('Home'));
+        }}>Get started</PrimaryButton>
         <span style={{ textAlign: 'center', fontSize: 12, color: '#6E7079' }}>
           Free and open source · <a href="#privacy" onClick={(e) => { e.preventDefault(); openPrivacy(); }} style={{ textDecoration: 'none', fontWeight: 500 }}>Where your data goes</a>
         </span>

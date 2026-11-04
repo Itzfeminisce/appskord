@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   aiSettings, builtinAiPresent, canStart, choiceFor, hostFor, isKeyName, jobsFor, noUsableKeys, classifyPaste, cloudSettings, detectMachine, isFirstRun,
-  missingKeys, OLLAMA_DOWN, penvRowStatus, pickerGroups, pickerValue, requestAccess, setupChoice, typedFailure,
+  micForStart, missingKeys, OLLAMA_DOWN, penvRowStatus, pickerGroups, pickerValue, requestAccess, setupChoice, typedFailure,
 } from './setup';
 import { DEFAULT_SETTINGS, GROQ_BOTH } from './settings';
 import { LLMError } from '@appskord/llm';
@@ -239,5 +239,55 @@ describe('pasted key names', () => {
   it('knows which key names are usable', () => {
     expect(isKeyName('OPENAI_API_KEY')).toBe(true);
     expect(isKeyName('NOTION_TOKEN')).toBe(false);
+  });
+});
+
+describe('micForStart', () => {
+  const mk = (state: PermissionState | null, answer?: { mic: boolean; camera: boolean }) => {
+    const open = vi.fn(async () => { cb?.(answer!); });
+    let cb: ((r: { mic: boolean; camera: boolean }) => void) | undefined;
+    const wait = vi.fn((f: typeof cb) => { cb = f; return () => undefined; });
+    return { open, deps: { state: async () => state, open, wait: wait as never, closed: () => () => undefined } };
+  };
+  it('skips the helper tab when the mic is off or already granted', async () => {
+    const a = mk('granted');
+    expect(await micForStart(true, a.deps)).toBe(true);
+    const b = mk('prompt');
+    expect(await micForStart(false, b.deps)).toBe(false);
+    expect(a.open).not.toHaveBeenCalled();
+    expect(b.open).not.toHaveBeenCalled();
+  });
+  it('keeps the mic when the helper tab reports granted', async () => {
+    const m = mk('prompt', { mic: true, camera: false });
+    expect(await micForStart(true, m.deps)).toBe(true);
+    expect(m.open).toHaveBeenCalledWith(false);
+  });
+  it('turns the mic off when it is refused', async () => {
+    expect(await micForStart(true, mk('prompt', { mic: false, camera: false }).deps)).toBe(false);
+  });
+  it('resolves null and removes both listeners when the helper tab is closed unanswered', async () => {
+    const offWait = vi.fn();
+    const offClosed = vi.fn();
+    let onClosed: (() => void) | undefined;
+    const result = micForStart(true, {
+      state: async () => 'prompt',
+      open: async () => ({ id: 7 }),
+      wait: () => offWait,
+      closed: (id, f) => { expect(id).toBe(7); onClosed = f; return offClosed; },
+    });
+    await vi.waitFor(() => expect(onClosed).toBeDefined());
+    onClosed!();
+    expect(await result).toBeNull();
+    expect(offWait).toHaveBeenCalledOnce();
+    expect(offClosed).toHaveBeenCalledOnce();
+  });
+});
+
+describe('first run', () => {
+  it('an onboarded user is not a first run', () => {
+    expect(isFirstRun({ ...DEFAULT_SETTINGS, onboarded: true }, 0)).toBe(false);
+  });
+  it('new installs start with the camera off', () => {
+    expect(DEFAULT_SETTINGS.capture.camera).toBe(false);
   });
 });

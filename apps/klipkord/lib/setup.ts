@@ -281,7 +281,7 @@ const PERMISSION_RESULT_KEY = 'permissionResult';
 export interface PermissionResult { mic: boolean; camera: boolean }
 
 /** Opens the extension tab that shows Chrome's prompt; the side panel can't. */
-export function openPermissionTab(camera: boolean): Promise<unknown> {
+export function openPermissionTab(camera: boolean) {
   const url = (browser.runtime.getURL as (p: string) => string)('/permission.html');
   return browser.tabs.create({ url: `${url}?camera=${camera ? 1 : 0}` });
 }
@@ -299,6 +299,40 @@ export function onPermissionResult(cb: (result: PermissionResult) => void): () =
   };
   browser.storage.onChanged.addListener(listener);
   return () => browser.storage.onChanged.removeListener(listener);
+}
+
+/** Whether the mic should be on for this recording: asks through the helper tab when Chrome has not granted it yet. `null` means the helper tab was closed unanswered, so do not start. */
+export async function micForStart(
+  wantMic: boolean,
+  deps: {
+    state: () => Promise<PermissionState | null>;
+    open: (camera: boolean) => Promise<{ id?: number } | void>;
+    wait: (cb: (result: PermissionResult) => void) => () => void;
+    closed: (tabId: number, cb: () => void) => () => void;
+  },
+): Promise<boolean | null> {
+  if (!wantMic || (await deps.state()) === 'granted') return wantMic;
+  return new Promise<boolean | null>((resolve, reject) => {
+    let settled = false;
+    let offClosed: (() => void) | undefined;
+    const finish = (run: () => void) => {
+      if (settled) return;
+      settled = true;
+      offWait();
+      offClosed?.();
+      run();
+    };
+    // Subscribe before opening so a fast answer is not missed.
+    const offWait = deps.wait((result) => finish(() => resolve(result.mic)));
+    deps.open(false).then(
+      (tab) => {
+        // A closed tab never reports, so it would leave Start stuck.
+        if (settled || tab?.id === undefined) return;
+        offClosed = deps.closed(tab.id, () => finish(() => resolve(null)));
+      },
+      (error) => finish(() => reject(error)),
+    );
+  });
 }
 
 /**
