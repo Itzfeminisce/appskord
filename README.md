@@ -7,12 +7,12 @@ version and store listing. Every app is free and open source.
 
 ## Apps
 
-| App       | What it does          | Folder           | Store                                                                                     |
-| --------- | --------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
-| Rekord    | Meeting notes         | `apps/rekord`    | [Chrome Web Store](https://chromewebstore.google.com/detail/flkicdahoghegnlgpkmdcemlooblblcd) |
-| Klipkord  | Screen recorder       | `apps/klipkord`  | [Chrome Web Store](https://chromewebstore.google.com/detail/iapgbifdchhmidblniddncnagghloepi) |
-| Motikord  | Short animated clips  | `apps/motikord`  | Not yet listed                                                                            |
-| Briefkord | Meeting-prep boards   | `apps/briefkord` | Not yet listed                                                                            |
+| App       | What it does         | Folder           | Store                                                                                         |
+| --------- | -------------------- | ---------------- | --------------------------------------------------------------------------------------------- |
+| Rekord    | Meeting notes        | `apps/rekord`    | [Chrome Web Store](https://chromewebstore.google.com/detail/flkicdahoghegnlgpkmdcemlooblblcd) |
+| Klipkord  | Screen recorder      | `apps/klipkord`  | [Chrome Web Store](https://chromewebstore.google.com/detail/iapgbifdchhmidblniddncnagghloepi) |
+| Motikord  | Short animated clips | `apps/motikord`  | Not yet listed                                                                                |
+| Briefkord | Meeting-prep boards  | `apps/briefkord` | Not yet listed                                                                                |
 
 Each app's README says what it does and how to load it for testing. Its store listing, Privacy tab answers, screenshots
 and promo tiles live in `apps/<app>/public/store/STORE.md`; the build leaves that folder out of the extension.
