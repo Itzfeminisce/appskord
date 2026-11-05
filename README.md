@@ -1,16 +1,21 @@
 # Appskord
 
-Appskord is a suite of Chrome extensions apps that run on your computer and keep your data there: Rekord takes meeting
-notes, Klipkord records the screen, and Motikord makes short animated clips. They share one toolchain (Vite+ with WXT)
-and a few small packages, and each app keeps its own id, version and store listing.
+Appskord is a suite of Chrome extensions that run on your computer and keep your data there: Rekord takes meeting
+notes, Klipkord records the screen, Motikord makes short animated clips, and Briefkord gathers everything for a meeting
+on one board. They share one toolchain (Vite+ with WXT) and a few small packages, and each app keeps its own id,
+version and store listing. Every app is free and open source.
 
 ## Apps
 
-| App      | What it does         | Folder          |
-| -------- | -------------------- | --------------- |
-| Rekord   | Meeting notes        | `apps/rekord`   |
-| Klipkord | Screen recorder      | `apps/klipkord` |
-| Motikord | Short animated clips | `apps/motikord` |
+| App       | What it does          | Folder           | Store                                                                                     |
+| --------- | --------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
+| Rekord    | Meeting notes         | `apps/rekord`    | [Chrome Web Store](https://chromewebstore.google.com/detail/flkicdahoghegnlgpkmdcemlooblblcd) |
+| Klipkord  | Screen recorder       | `apps/klipkord`  | [Chrome Web Store](https://chromewebstore.google.com/detail/iapgbifdchhmidblniddncnagghloepi) |
+| Motikord  | Short animated clips  | `apps/motikord`  | Not yet listed                                                                            |
+| Briefkord | Meeting-prep boards   | `apps/briefkord` | Not yet listed                                                                            |
+
+Each app's README says what it does and how to load it for testing. Its store listing, Privacy tab answers, screenshots
+and promo tiles live in `apps/<app>/public/store/STORE.md`; the build leaves that folder out of the extension.
 
 ## Build one app
 
@@ -18,8 +23,9 @@ You need Node 22 and pnpm 10. Install once, then run the app's own scripts.
 
 ```
 pnpm install
-pnpm exec vp run <app>#build     # build into apps/<app>/.output
-pnpm exec vp run <app>#zip       # the Web Store zip
+pnpm exec vp run <app>#build      # build into apps/<app>/.output
+pnpm exec vp run <app>#zip        # test zip, keeps the manifest key so the unpacked id stays fixed
+pnpm exec vp run <app>#zip:store  # Web Store zip, without the manifest key
 pnpm exec vp -C apps/<app> test run
 ```
 
@@ -27,8 +33,16 @@ Run tests per app. A bare `vp test` at the root does not read each app's Vitest 
 
 ## Shared code
 
-`packages/config` holds the shared tsconfig, `defineAppConfig()` for each app's `wxt.config.ts`, the manifest checks each
-app calls from its `wxt.config.test.ts`, and the test setup. It ships as TypeScript source with no build step.
+Every package ships as TypeScript source with no build step.
+
+- `packages/config`: the shared tsconfig, `defineAppConfig()` for each app's `wxt.config.ts`, the manifest checks each app calls from its `wxt.config.test.ts`, and the test setup.
+- `packages/llm`: the AI provider list, model lists, chat calls, error mapping and key detection behind the one provider and model picker every app uses.
+- `packages/penv`: Connect Penv Cloud, the paste-a-key fallback and the key store in `chrome.storage.session`.
+- `packages/platform`: the IndexedDB helper, typed runtime messages, optional host access inside a click, Google sign-in and the shared router setup.
+- `packages/ui`: design tokens and shared components. Every string is a prop; each app sets its own accent.
+- `packages/media`: video sources, frame cache and MP4/WebM writers for Klipkord and Motikord.
+- `packages/scenes`: Motikord's scene templates and renderer, shared so Klipkord can draw Motikord's cards.
+- `packages/brand`: the brand kit Klipkord and Motikord share on one computer.
 
 ## Releases
 
@@ -37,6 +51,7 @@ The Store workflow tests and builds that app, checks the zip has no manifest `ke
 and makes a GitHub release with the zip. Merges that do not change a version publish nothing, since every upload starts a new store review.
 It submits the zip to the Chrome Web Store only for apps listed in the repository variable `CWS_AUTO_PUBLISH`
 (for example `rekord klipkord`). Leave an app out while its last version is still in review; upload its zip by hand instead.
+An app's first upload is always by hand: add its private key as `key.pem` at the zip root so the store keeps the fixed id. Never commit the key.
 
 A tag pushed by hand, `<app>@<version>`, still runs the Release workflow and uploads when the store secrets exist.
 A tag ending in `-test` is a dry run: a prerelease, no store upload. The Release workflow can also be run by hand with an app name to get the zip as an artifact.
@@ -59,6 +74,10 @@ Each app states what it stores and sends in its own `docs/privacy.md`:
 - Rekord: `apps/rekord/docs/privacy.md`
 - Klipkord: `apps/klipkord/docs/privacy.md`
 - Motikord: `apps/motikord/docs/privacy.md`
+- Briefkord: `apps/briefkord/docs/privacy.md`
+
+No app has an account, analytics or a server of its own. AI features use the service each person picks, with their own
+key or one from Penv Cloud.
 
 ## Licence
 

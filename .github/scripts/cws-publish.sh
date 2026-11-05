@@ -11,6 +11,7 @@ case "$app" in
   rekord) item=flkicdahoghegnlgpkmdcemlooblblcd ;;
   klipkord) item=iapgbifdchhmidblniddncnagghloepi ;;
   motikord) item=pppjklpibpnndjfddhcedbdicfdalchl ;;
+  briefkord) item=ghbafbelhbkgelfckkdkaclkjmidepea ;;
   *) echo "::error::No store item id for '$app'. Add it to .github/scripts/cws-publish.sh."; exit 1 ;;
 esac
 
