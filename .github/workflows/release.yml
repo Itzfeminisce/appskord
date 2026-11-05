@@ -12,7 +12,7 @@ on:
         description: App folder under apps/. Dry run only, tests build zip and artifact
         required: true
         type: choice
-        options: [rekord, klipkord, motikord]
+        options: [rekord, klipkord, motikord, briefkord]
 
 permissions:
   contents: write

@@ -41,7 +41,7 @@ On a board (press `?` any time to see them):
 
 ## Privacy
 
-Nothing leaves your computer unless you send it. There is no account, no server, no analytics and no telemetry.
+Nothing leaves your computer unless you send it. There is no account, no server, no analytics and no telemetry. The full policy is [docs/privacy.md](docs/privacy.md).
 
 | Data | Where it stays | What can leave, and when |
 | --- | --- | --- |
@@ -62,8 +62,13 @@ pnpm dev        # build and reload the extension while you edit
 pnpm compile    # type-check
 pnpm test       # unit tests (vitest)
 pnpm build      # test build to .output/chrome-mv3, with the machine check page
-pnpm zip        # release zip in .output/, without the machine check pages
+pnpm zip        # test zip in .output/, without the machine check pages
+pnpm zip:store  # Web Store zip, without the manifest key
 ```
+
+## Chrome Web Store
+
+Listing text, Privacy tab answers, screenshots and promo tiles are in [public/store/STORE.md](public/store/STORE.md).
 
 ## Plans and specs
 
