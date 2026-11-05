@@ -1,15 +1,14 @@
 name: Store
 
-# On a merge to main, an app whose package.json version changed is tested, zipped for the store,
-# tagged `<app>@<version>` with a GitHub release, and submitted to the Chrome Web Store.
-# Only apps named in the repo variable CWS_AUTO_PUBLISH (for example `rekord klipkord`) go to the store.
+# On a merge to main, an app whose package.json version changed is tested and zipped (build job, no secrets,
+# read-only token). The publish job waits for approval in the chrome-web-store environment, runs no install,
+# then tags `<app>@<version>` with a GitHub release and submits apps named in CWS_AUTO_PUBLISH to the store.
 on:
   push:
     branches: [main]
     paths: ['apps/*/package.json']
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: store
@@ -18,12 +17,15 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       apps: ${{ steps.find.outputs.apps }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Find apps with a new version
         id: find
         env:
@@ -44,10 +46,12 @@ jobs:
           done
           echo "apps=$(printf '%s\n' "${apps[@]}" | node -e "console.log(JSON.stringify(require('fs').readFileSync(0,'utf8').split('\n').filter(Boolean)))")" >> "$GITHUB_OUTPUT"
 
-  release:
+  build:
     needs: changes
     if: needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -55,9 +59,11 @@ jobs:
     env:
       APP: ${{ matrix.app }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -67,7 +73,6 @@ jobs:
       - name: Zip
         run: pnpm -F "$APP" zip:store
       - name: Check zip
-        id: pack
         run: |
           version=$(node -p "require('./apps/$APP/package.json').version")
           built=$(node -p "require('./apps/$APP/.output/chrome-mv3/manifest.json').version")
@@ -76,12 +81,55 @@ jobs:
             exit 1
           fi
           zip=$(ls apps/"$APP"/.output/*-chrome.zip | head -n 1)
+          mkdir -p dist
+          cp "$zip" "dist/$APP-$version-chrome.zip"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: store-${{ matrix.app }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [changes, build]
+    runs-on: ubuntu-latest
+    environment: chrome-web-store
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+    env:
+      APP: ${{ matrix.app }}
+    steps:
+      # Only the publish script, from the merged commit. No install, no tests, nothing from the build job's runner.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: store-${{ matrix.app }}
+          path: dist
+      # The zip is checked here, not in the build job, so a tampered build runner cannot skip the check.
+      - name: Check zip
+        id: pack
+        run: |
+          zip=$(ls dist/"$APP"-*-chrome.zip)
+          [ "$(echo "$zip" | wc -l)" = 1 ] || { echo "::error::Expected one zip in the artifact."; exit 1; }
+          version=$(basename "$zip" | sed -E "s/^$APP-(.*)-chrome\.zip$/\1/")
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::Bad version '$version' in zip name."; exit 1 ;;
+          esac
           if unzip -Z1 "$zip" | grep -qiE '\.pem$'; then
             echo "::error::The store zip holds a key file. It must not."
             exit 1
           fi
-          if unzip -p "$zip" manifest.json | node -e "process.exit('key' in JSON.parse(require('fs').readFileSync(0,'utf8'))?0:1)"; then
-            echo "::error::The store zip's manifest has a key field. Build it with zip:store."
+          manifest_version=$(unzip -p "$zip" manifest.json | node -e "const m=JSON.parse(require('fs').readFileSync(0,'utf8'));if('key' in m){process.exit(2)}process.stdout.write(m.version)") || { echo "::error::The store zip's manifest has a key field. Build it with zip:store."; exit 1; }
+          if [ "$manifest_version" != "$version" ]; then
+            echo "::error::Zip manifest version '$manifest_version' does not match '$version'."
             exit 1
           fi
           {
@@ -93,7 +141,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.pack.outputs.tag }}
           ZIP: ${{ steps.pack.outputs.zip }}
-        run: gh release create "$TAG" "$ZIP" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+        run: gh release create "$TAG" "$ZIP" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
       - name: Chrome Web Store
         env:
           AUTO: ${{ vars.CWS_AUTO_PUBLISH }}
