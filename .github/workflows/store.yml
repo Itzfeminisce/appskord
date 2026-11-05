@@ -1,12 +1,14 @@
 name: Store
 
-# On a merge to main, an app whose package.json version changed is tested and zipped (build job, no secrets,
-# read-only token). The publish job waits for approval in the chrome-web-store environment, runs no install,
+# On a merge to main that touches an app's package.json, or a manual run, every app whose version has no
+# `<app>@<version>` tag yet is tested and zipped (build job, no secrets, read-only token). A run that failed is
+# retried by the next one. The publish job waits for approval in the chrome-web-store environment, runs no install,
 # then tags `<app>@<version>` with a GitHub release and submits apps named in CWS_AUTO_PUBLISH to the store.
 on:
   push:
     branches: [main]
     paths: ['apps/*/package.json']
+  workflow_dispatch:
 
 permissions: {}
 
@@ -24,24 +26,20 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - name: Find apps with a new version
+      # Keyed on the tag, not on a version change in this push, so an app whose earlier run failed is not skipped.
+      - name: Find apps with an unreleased version
         id: find
-        env:
-          BEFORE: ${{ github.event.before }}
         run: |
           apps=()
           for dir in apps/*/; do
             app=$(basename "$dir")
             now=$(node -p "require('./apps/$app/package.json').version")
-            was=$(git show "$BEFORE:apps/$app/package.json" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || true)
-            if [ "$now" = "$was" ]; then continue; fi
             if git ls-remote --exit-code --tags origin "refs/tags/$app@$now" >/dev/null; then
               echo "$app@$now is already released."
               continue
             fi
-            echo "$app: ${was:-new} -> $now"
+            echo "$app@$now has no release yet."
             apps+=("$app")
           done
           echo "apps=$(printf '%s\n' "${apps[@]}" | node -e "console.log(JSON.stringify(require('fs').readFileSync(0,'utf8').split('\n').filter(Boolean)))")" >> "$GITHUB_OUTPUT"
