@@ -53,7 +53,7 @@ It submits the zip to the Chrome Web Store only for apps listed in the repositor
 (for example `rekord klipkord`). Leave an app out while its last version is still in review; upload its zip by hand instead.
 An app's first upload is always by hand: add its private key as `key.pem` at the zip root so the store keeps the fixed id. Never commit the key.
 
-A tag pushed by hand, `<app>@<version>`, still runs the Release workflow and uploads when the store secrets exist.
+A tag pushed by hand, `<app>@<version>`, still runs the Release workflow and uploads to the store.
 A tag ending in `-test` is a dry run: a prerelease, no store upload. The Release workflow can also be run by hand with an app name to get the zip as an artifact.
 
 ### Store setup (once)
@@ -64,8 +64,9 @@ A tag ending in `-test` is a dry run: a prerelease, no store upload. The Release
 4. In the OAuth 2.0 Playground, tick "Use your own OAuth credentials" and enter the client ID and secret.
 5. Authorize the scope `https://www.googleapis.com/auth/chromewebstore`, then exchange the code for tokens.
 6. In the Chrome Web Store dashboard, copy your publisher ID from Publisher, Settings.
-7. In this repo's Settings, Secrets and variables, Actions, add secrets `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN` and `CWS_PUBLISHER_ID`.
-8. When ready, add the variable `CWS_AUTO_PUBLISH` with the apps to publish, separated by spaces.
+7. In Penv Cloud, put `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN` and `CWS_PUBLISHER_ID` in the `store` environment of the project named in `.github/penv/.env.schema`. Mark it write-only, and give it a machine identity with an OIDC trust for issuer `https://token.actions.githubusercontent.com` and subject `repo:Itzfeminisce/appskord:environment:chrome-web-store`. No store key is kept in GitHub.
+8. In this repo's Settings, Environments, make sure `chrome-web-store` has you as a required reviewer; every upload waits for your approval.
+9. When ready, add the variable `CWS_AUTO_PUBLISH` with the apps to publish, separated by spaces.
 
 ## Privacy
 

@@ -17,7 +17,7 @@ esac
 
 for name in CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN CWS_PUBLISHER_ID; do
   if [ -z "${!name:-}" ]; then
-    echo "::error::Secret $name is not set. See README, Releases."
+    echo "::error::$name is not set. Add it to the Penv Cloud environment named in .github/penv/.env.schema. See README, Releases."
     exit 1
   fi
 done

@@ -5,3 +5,4 @@ dist
 *.pem
 .env
 .env.*
+!.env.schema
