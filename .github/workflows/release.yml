@@ -102,6 +102,8 @@ jobs:
     environment: chrome-web-store
     permissions:
       contents: write
+      # Lets Penv Cloud check this job is the approved chrome-web-store one before it hands over the store keys.
+      id-token: write
     env:
       APP: ${{ needs.build.outputs.app }}
       DRY: ${{ needs.build.outputs.dry }}
@@ -111,7 +113,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            .github/penv
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ needs.build.outputs.app }}-zip
@@ -146,13 +150,8 @@ jobs:
         if: needs.build.outputs.dry == 'false'
         env:
           ZIP: ${{ steps.pack.outputs.zip }}
-          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
-          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
-          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
         run: |
-          if [ -z "$CWS_CLIENT_ID" ] || [ -z "$CWS_CLIENT_SECRET" ] || [ -z "$CWS_REFRESH_TOKEN" ] || [ -z "$CWS_PUBLISHER_ID" ]; then
-            echo "Store secrets are not all set. Upload the zip by hand."
-            exit 0
-          fi
-          .github/scripts/cws-publish.sh "$APP" "$ZIP"
+          .github/scripts/install-penv.sh
+          # The store keys come from Penv Cloud for this job only; penv masks them in the log.
+          cd .github/penv
+          penv run --env store -- ../scripts/cws-publish.sh "$APP" "$GITHUB_WORKSPACE/$ZIP"
