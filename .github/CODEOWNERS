@@ -1,0 +1,8 @@
+*                     @Itzfeminisce
+/.github/             @Itzfeminisce
+/package.json         @Itzfeminisce
+/pnpm-lock.yaml       @Itzfeminisce
+/pnpm-workspace.yaml  @Itzfeminisce
+/apps/*/package.json  @Itzfeminisce
+/apps/*/wxt.config.*  @Itzfeminisce
+CLAUDE.md             @Itzfeminisce
