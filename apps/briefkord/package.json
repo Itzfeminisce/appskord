@@ -1,0 +1,42 @@
+{
+  "name": "briefkord",
+  "description": "One board for every meeting",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "zip:store": "APPSKORD_STORE=1 wxt zip",
+    "compile": "tsc --noEmit",
+    "test": "vitest run",
+    "postinstall": "wxt prepare",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "@appskord/config": "workspace:*",
+    "@types/chrome": "^0.1.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@wxt-dev/module-react": "^1.2.2",
+    "fake-indexeddb": "^6.2.6",
+    "happy-dom": "21.0.1",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5",
+    "wxt": "^0.21.5"
+  },
+  "dependencies": {
+    "@appskord/llm": "workspace:*",
+    "@appskord/penv": "workspace:*",
+    "@appskord/platform": "workspace:*",
+    "@appskord/ui": "workspace:*",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "fflate": "^0.8.3",
+    "idb": "^8.0.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}

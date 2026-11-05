@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Briefkord machine check</title>
+    <style>
+      body { font: 14px/1.45 system-ui, sans-serif; margin: 24px; color: #111; background: #fff; }
+      table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+      th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; }
+      td.numbers { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+      .pass { color: #0a6b2d; font-weight: 600; } .fail { color: #b00020; font-weight: 600; } .running, .manual { color: #8a5a00; font-weight: 600; }
+      #stage { width: 100%; height: 560px; border: 1px solid #ccc; background: #f4f4f2; }
+      #view { width: 100%; height: 420px; border: 1px solid #ccc; }
+      .card { height: 100%; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; background: #fff; border: 1px solid #e3e3e0; box-shadow: 0 1px 2px rgba(0,0,0,.06); overflow: hidden; }
+      .card.yellow { background: #fff6d6; } .card.teal { background: #dff4f0; } .card.blue { background: #e3edfc; } .card.rose { background: #fde6ea; }
+      .card h3 { margin: 0; font-size: 13px; } .card p { margin: 0; font-size: 12px; color: #3a3a3c; } .card ul { margin: 0; padding-left: 18px; font-size: 12px; }
+      .card img { flex: 1; min-height: 0; width: 100%; object-fit: cover; border-radius: 6px; }
+      ol li { margin: 4px 0; }
+      #capture-out { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; background: #f6f6f6; padding: 8px; min-height: 2em; }
+    </style>
+  </head>
+  <body>
+    <h1>Briefkord machine check</h1>
+    <p>Press Run all, then follow the capture steps. Press Copy results and paste the text into the project thread.</p>
+    <button id="run" type="button">Run all</button>
+    <button id="copy" type="button">Copy results</button>
+    <table>
+      <thead><tr><th>Check</th><th>Status</th><th>Numbers</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <h2>Canvas</h2>
+    <p>200 cards (50 images), panned and zoomed for 5 s. Budget: p95 frame under 33 ms, open under 2 s.</p>
+    <div id="stage"></div>
+
+    <h2>View file</h2>
+    <p>The same board as one HTML file. Budget: under 50 MB. <a id="download" hidden>Download the view file</a></p>
+    <iframe id="view" title="View file"></iframe>
+
+    <h2>Capture</h2>
+    <ol>
+      <li>Open any web page with an image in another tab.</li>
+      <li>Right-click the image and choose <b>Save image to Briefkord (check)</b>. The bytes and type show below.</li>
+      <li>Right-click the page and choose <b>Save this page to Briefkord (check)</b>. Title, address, words and preview show below.</li>
+      <li>Press <b>Read the last tab</b> without right-clicking first: it should report that the grant is missing and what to do.</li>
+    </ol>
+    <button id="read-tab" type="button">Read the last tab</button>
+    <button id="image-tab" type="button">Copy the first image of the last tab</button>
+    <div id="capture-out" role="status"></div>
+  </body>
+  <script type="module" src="./main.tsx"></script>
+</html>
