@@ -258,10 +258,13 @@ async function runVideo(id: number, job: VideoJob): Promise<void> {
   }
 }
 
-/** Reads the picture back through a 2D canvas, whichever backend drew it. */
-function readback(canvas: OffscreenCanvas): { scratch: OffscreenCanvas; ctx: OffscreenCanvasRenderingContext2D } {
-  const scratch = new OffscreenCanvas(canvas.width, canvas.height);
-  const ctx = scratch.getContext('2d', { willReadFrequently: true })!;
+type Readback = { scratch: OffscreenCanvas; ctx: OffscreenCanvasRenderingContext2D };
+
+/** Reads the picture back through a 2D canvas, whichever backend drew it; pass `reuse` to draw into the same one. */
+function readback(canvas: OffscreenCanvas, reuse?: Readback): Readback {
+  const scratch = reuse?.scratch ?? new OffscreenCanvas(canvas.width, canvas.height);
+  const ctx = reuse?.ctx ?? scratch.getContext('2d', { willReadFrequently: true })!;
+  ctx.clearRect(0, 0, scratch.width, scratch.height);
   ctx.drawImage(canvas, 0, 0);
   return { scratch, ctx };
 }
@@ -275,10 +278,12 @@ async function runGif(id: number, job: GifJob): Promise<void> {
   const gif = GIFEncoder();
   try {
     await loadFont();
+    let back: Readback | undefined;
     for (const [i, f] of list.entries()) {
       check(id);
       await renderer.render(renderPlan(job.project, job.cut, f.out, job.events, job.captions), job.cut.shape);
-      const { ctx } = readback(canvas);
+      back = readback(canvas, back);
+      const { ctx } = back;
       const rgba = ctx.getImageData(0, 0, job.width, job.height).data;
       const palette = quantize(rgba, 256);
       gif.writeFrame(applyPalette(rgba, palette), job.width, job.height, { palette, delay: delay(i) });

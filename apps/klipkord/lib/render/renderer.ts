@@ -77,6 +77,11 @@ export function createRenderer(canvas: Canvas, frames: FrameProvider, options: R
     }
     if (!pic) return held.get(source) ?? null;
     const prev = held.get(source);
+    // The same frame decoded again: keep the held one so the backend skips the re-upload.
+    if (!disposed && prev && prev !== pic && isVideoFrame(prev) && isVideoFrame(pic) && pic.timestamp === prev.timestamp) {
+      pic.close();
+      return prev;
+    }
     if (prev && prev !== pic && isVideoFrame(prev)) prev.close();
     if (disposed) {
       if (isVideoFrame(pic)) pic.close();

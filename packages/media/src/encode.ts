@@ -48,6 +48,7 @@ export interface WriterAudio {
 
 export interface WriterOptions {
   container: Container;
+  /** Every frame added must already be this size: frames go to the encoder without a resize copy. */
   width: number;
   height: number;
   fps: number;
@@ -116,7 +117,6 @@ export async function createWriter(
     codec: codecs.video,
     bitrate: options.bitrate,
     hardwareAcceleration: options.hardware ? 'prefer-hardware' : 'no-preference',
-    transform: { width: options.width, height: options.height, fit: 'contain' },
   });
   output.addVideoTrack(video, { frameRate: options.fps });
   let audio: AudioSampleSource | null = null;
