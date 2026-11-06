@@ -31,6 +31,7 @@ interface OpenedVideo {
   source: OpenedSource;
   cache: FrameCache<VideoFrame, EncodedPacket>;
   software: boolean;
+  failed: boolean;
   make(software: boolean): FrameCache<VideoFrame, EncodedPacket>;
 }
 const videos = new Map<string, Promise<OpenedVideo | null>>();
@@ -50,12 +51,17 @@ function openVideo(s: RenderSource): Promise<OpenedVideo | null> {
       return null;
     }
     const track = source.videoTrack;
+    const onError = (error: DOMException) => {
+      video.failed = true;
+      console.error('Klipkord: could not decode video', error);
+    };
     const make = (software: boolean): FrameCache<VideoFrame, EncodedPacket> => new FrameCache<VideoFrame, EncodedPacket>({
       reader: packetReader(track),
       capacity: cacheCapacity((navigator as Navigator & { deviceMemory?: number }).deviceMemory),
-      createDecoder: (onFrame) => webCodecsDecoder(software ? softwareConfig(config) : config, onFrame, (error) => console.error('Klipkord: could not decode video', error)),
+      createDecoder: (onFrame) => webCodecsDecoder(software ? softwareConfig(config) : config, onFrame, onError),
     });
-    return { source, cache: make(false), software: false, make };
+    const video: OpenedVideo = { source, cache: make(false), software: false, failed: false, make };
+    return video;
   }, (error: unknown) => {
     console.error('Klipkord: could not open video', error);
     return null;
@@ -76,6 +82,14 @@ function addSources(sources: RenderSource[]): void {
   }
 }
 
+// A stalled or failed hardware decoder is closed for good; software decode has no shared pool, so rebuild there once.
+function toSoftware(opened: OpenedVideo): void {
+  opened.software = true;
+  opened.failed = false;
+  opened.cache.close();
+  opened.cache = opened.make(true);
+}
+
 const frames: FrameProvider = {
   async frame(source, t): Promise<Picture | null> {
     const image = images.get(source);
@@ -85,14 +99,12 @@ const frames: FrameProvider = {
     const at = Math.max(0, t) / 1000;
     let found: VideoFrame | null;
     try {
+      if (opened.failed && !opened.software) toSoftware(opened);
       found = await opened.cache.frameAt(at);
     } catch (error) {
-      if (!(error instanceof DecoderStalled) || opened.software) throw error;
-      // The preview's decoders share the hardware pool; software decode has none, so retry there.
-      console.error('Klipkord: video decoder stalled, switching to software decoding', error);
-      opened.software = true;
-      opened.cache.close();
-      opened.cache = opened.make(true);
+      const decoderError = error instanceof DecoderStalled || error instanceof DOMException || opened.failed;
+      if (!decoderError || opened.software) throw error;
+      toSoftware(opened);
       found = await opened.cache.frameAt(at);
     }
     // The cache owns its frames; the renderer closes what it is handed.
