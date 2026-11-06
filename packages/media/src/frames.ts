@@ -50,10 +50,33 @@ export function seekPlan(target: number, key: number, position: DecodePosition |
   return 'continue';
 }
 
-/** Frames to keep, from `navigator.deviceMemory` in GB (Chrome reports 0.25 to 8). */
+/**
+ * Frames to keep, from `navigator.deviceMemory` in GB (Chrome reports 0.25 to 8). Kept low because open frames hold
+ * the hardware decoder's small output pool, which every cache on the source shares; a full pool stalls the decoder.
+ */
 export function cacheCapacity(deviceMemory: number | undefined): number {
-  if (!deviceMemory || !Number.isFinite(deviceMemory)) return 8;
-  return Math.min(16, Math.max(4, Math.round(deviceMemory * 2)));
+  if (!deviceMemory || !Number.isFinite(deviceMemory)) return 4;
+  return Math.min(4, Math.max(2, Math.round(deviceMemory)));
+}
+
+/** How long the decoder may sit on a packet or a flush before it counts as stalled. */
+export const DECODE_STALL_MS = 2000;
+
+/** The decoder stopped emitting frames, usually because its hardware output pool is exhausted. */
+export class DecoderStalled extends Error {
+  constructor() {
+    super('Video decoder stalled');
+    this.name = 'DecoderStalled';
+  }
+}
+
+/** Rejects with DecoderStalled when `work` has not settled within DECODE_STALL_MS. */
+export function stallGuard<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stalled = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new DecoderStalled()), DECODE_STALL_MS);
+  });
+  return Promise.race([work, stalled]).finally(() => clearTimeout(timer));
 }
 
 interface Entry<F> {
@@ -109,6 +132,29 @@ export class FrameCache<F extends CacheFrame, P extends Packet> {
   }
 
   private async find(t: number): Promise<F | null> {
+    try {
+      return await this.seek(t);
+    } catch (error) {
+      this.drop();
+      throw error;
+    }
+  }
+
+  /** After a decoder error: free every frame so the next request starts clean on a reset decoder. */
+  private drop(): void {
+    for (const entry of this.entries.values()) entry.frame.close();
+    this.entries.clear();
+    this.fed = null;
+    this.lastOut = null;
+    if (this.closed) return;
+    try {
+      this.decoder.reset();
+    } catch {
+      // A decoder that failed is closed; its owner builds a new cache.
+    }
+  }
+
+  private async seek(t: number): Promise<F | null> {
     const at = Math.round(t * 1e6);
     const hit = this.lookup(at);
     if (hit || this.closed) return hit;
@@ -229,14 +275,22 @@ export function webCodecsDecoder(
       decoder.decode(packet.toEncodedVideoChunk());
       // Waiting for the decoder to take each packet lets its frames arrive before we feed more.
       if (decoder.decodeQueueSize > 0) {
-        await new Promise((resolve, reject) => {
-          fail = reject;
-          decoder.addEventListener('dequeue', resolve, { once: true });
-        });
-        fail = null;
+        let taken = () => {};
+        try {
+          await stallGuard(
+            new Promise<void>((resolve, reject) => {
+              fail = reject;
+              taken = resolve;
+              decoder.addEventListener('dequeue', taken, { once: true });
+            }),
+          );
+        } finally {
+          fail = null;
+          decoder.removeEventListener('dequeue', taken);
+        }
       }
     },
-    flush: () => decoder.flush(),
+    flush: () => stallGuard(decoder.flush()),
     reset() {
       decoder.reset();
       decoder.configure(config);
@@ -253,8 +307,20 @@ export interface SourceInfo {
   audio: AudioTrackInfo | null;
 }
 
+export interface FramesOpenOptions {
+  /** Frames to keep; defaults to cacheCapacity for the device. */
+  capacity?: number;
+  /** Decode in software, which never takes the hardware decoder's shared output pool. */
+  software?: boolean;
+}
+
+/** The config with software decoding preferred. */
+export function softwareConfig(config: VideoDecoderConfig): VideoDecoderConfig {
+  return { ...config, hardwareAcceleration: 'prefer-software' };
+}
+
 export type FramesRequest =
-  | { type: 'open'; id: number; blob: Blob }
+  | { type: 'open'; id: number; blob: Blob; options?: FramesOpenOptions }
   | { type: 'frame'; id: number; t: number }
   | { type: 'close' };
 
@@ -264,7 +330,7 @@ export type FramesResponse =
   | { type: 'error'; id: number; message: string };
 
 export interface FramesClient {
-  open(blob: Blob): Promise<SourceInfo>;
+  open(blob: Blob, options?: FramesOpenOptions): Promise<SourceInfo>;
   /** The frame at `t` seconds, or null when a newer request replaced this one. The caller closes it. */
   frameAt(t: number): Promise<VideoFrame | null>;
   close(): void;
@@ -296,7 +362,7 @@ export function framesClient(worker: Worker): FramesClient {
       worker.postMessage(request);
     });
   return {
-    open: (blob) => ask<SourceInfo>({ type: 'open', id: nextId++, blob }),
+    open: (blob, options) => ask<SourceInfo>({ type: 'open', id: nextId++, blob, options }),
     frameAt: (t) => ask<VideoFrame | null>({ type: 'frame', id: nextId++, t }),
     close() {
       worker.postMessage({ type: 'close' } satisfies FramesRequest);

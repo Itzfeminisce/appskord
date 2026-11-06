@@ -6,7 +6,8 @@ import type { FrameSource } from './filmstrip';
 export async function openFrames(blob: Blob): Promise<FrameSource> {
   const client = framesClient(new FramesWorker());
   try {
-    await client.open(blob);
+    // Sparse thumbnails need few frames, and software decode leaves the hardware pool to the preview.
+    await client.open(blob, { capacity: 2, software: true });
   } catch (error) {
     client.close();
     throw error;
