@@ -148,6 +148,7 @@ async function saveChunks(t: Take): Promise<boolean> {
     await guard(Promise.all(t.parts.map((p) => p.writer.flush())).then(() => videoStore.close(t.id)), {
       ms: FLUSH_MS, what: 'Saving the video',
     });
+    for (const p of t.parts) if (p.writer.failed) console.error(`Klipkord: ${p.writer.failed} ${p.file} chunk writes failed`);
     return true;
   } catch (error) {
     console.error('Klipkord: could not save the last video chunks', error);
@@ -350,7 +351,7 @@ async function begin(): Promise<RecorderReply> {
   const id = crypto.randomUUID();
   const quality = state.quality ?? '1080p';
   const micTrack = s.mic?.getAudioTracks()[0];
-  const onError = (error: unknown) => console.error('Klipkord: could not save a video chunk', error);
+  const onError = (error: unknown) => console.error('Klipkord: could not save a video chunk; later failures are counted', error);
   const plan = planTake({ bake: s.bake, camera: Boolean(s.camera?.getVideoTracks()[0]), mic: Boolean(micTrack), sound: Boolean(s.sound) });
 
   await videoStore.open(id);
