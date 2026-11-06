@@ -135,7 +135,6 @@ export function Preview(p: PreviewProps) {
         {!p.firstFrame && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{p.opening}</div>
         )}
-        {p.firstFrame && p.children}
       </div>
     </div>
   );
