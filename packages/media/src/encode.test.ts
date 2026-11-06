@@ -41,7 +41,8 @@ describe('createWriter', () => {
 
   it('hands frames to the encoder as they are, with no resize copy', async () => {
     const writer = await createWriter({ ...options, container: 'mp4' }, deps({ avc: true, opus: true }));
-    const config = (writer.video as unknown as { _encoder: { encodingConfig: { transform?: unknown } } })._encoder.encodingConfig;
+    const config = (writer.video as unknown as { _encoder: { encodingConfig: { transform?: unknown } } })._encoder
+      .encodingConfig;
     expect(config.transform).toBeUndefined();
   });
 
