@@ -58,17 +58,17 @@ export function badgeTitle(ms: number): string {
 }
 
 /**
- * WebM (VP9, then VP8) first: Chrome's H.264 recorder goes to the Windows hardware encoder, which smeared and froze
- * long screen takes. MP4 at High 4.0 (fits 1080p) is the fallback only.
+ * WebM VP8 first: Chrome's H.264 recorder goes to the Windows hardware encoder, which smeared and froze long screen
+ * takes. VP8 has no hardware encoder there and costs the CPU least; VP9 can also go to hardware. MP4 at High 4.0 last.
  */
 export const VIDEO_MIMES = [
-  'video/webm;codecs=vp9,opus',
   'video/webm;codecs=vp8,opus',
+  'video/webm;codecs=vp9,opus',
   'video/webm',
   'video/mp4;codecs=avc1.640028,mp4a.40.2',
   'video/mp4',
 ];
-export const SILENT_VIDEO_MIMES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4;codecs=avc1.640028', 'video/mp4'];
+export const SILENT_VIDEO_MIMES = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm', 'video/mp4;codecs=avc1.640028', 'video/mp4'];
 export const VOICE_MIMES = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'];
 
 export function chooseMime(isTypeSupported: (type: string) => boolean, hasAudio: boolean): string {

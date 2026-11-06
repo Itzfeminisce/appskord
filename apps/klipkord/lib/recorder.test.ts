@@ -29,12 +29,12 @@ describe('labels', () => {
 
 describe('mime choice', () => {
   const only = (...types: string[]) => (t: string) => types.includes(t);
-  it('prefers WebM VP9, then VP8, over H.264', () => {
+  it('prefers WebM VP8, then VP9, over H.264', () => {
     const all = (t: string) => t !== '';
-    expect(chooseMime(all, true)).toBe('video/webm;codecs=vp9,opus');
-    expect(chooseMime(all, false)).toBe('video/webm;codecs=vp9');
-    expect(chooseMime(only('video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/webm;codecs=vp8,opus'), true)).toBe('video/webm;codecs=vp8,opus');
-    expect(chooseMime(only('video/mp4;codecs=avc1.640028', 'video/webm;codecs=vp8'), false)).toBe('video/webm;codecs=vp8');
+    expect(chooseMime(all, true)).toBe('video/webm;codecs=vp8,opus');
+    expect(chooseMime(all, false)).toBe('video/webm;codecs=vp8');
+    expect(chooseMime(only('video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/webm;codecs=vp9,opus'), true)).toBe('video/webm;codecs=vp9,opus');
+    expect(chooseMime(only('video/mp4;codecs=avc1.640028', 'video/webm;codecs=vp9'), false)).toBe('video/webm;codecs=vp9');
   });
   it('falls back to H.264 at a level that fits 1080p', () => {
     expect(chooseMime(only('video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4'), true)).toBe('video/mp4;codecs=avc1.640028,mp4a.40.2');
