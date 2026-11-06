@@ -60,7 +60,8 @@ function openVideo(s: RenderSource): Promise<OpenedVideo | null> {
       capacity: cacheCapacity((navigator as Navigator & { deviceMemory?: number }).deviceMemory),
       createDecoder: (onFrame) => webCodecsDecoder(software ? softwareConfig(config) : config, onFrame, onError),
     });
-    const video: OpenedVideo = { source, cache: make(false), software: false, failed: false, make };
+    // Intel hardware decode gave green frames and shares a small buffer pool, so decode in software from the start.
+    const video: OpenedVideo = { source, cache: make(true), software: true, failed: false, make };
     return video;
   }, (error: unknown) => {
     console.error('Klipkord: could not open video', error);
