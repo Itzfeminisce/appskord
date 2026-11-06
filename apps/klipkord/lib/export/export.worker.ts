@@ -1,6 +1,9 @@
 // The export worker: walks output time at a fixed frame rate, draws each RenderPlan with lib/render, and encodes
 // with packages/media, writing as it goes. A worker keeps full speed while the tab is in the background.
-import { FrameCache, cacheCapacity, createWriter, openSource, packetReader, webCodecsDecoder, type OpenedSource, type Writer } from '@appskord/media';
+import {
+  DecoderStalled, FrameCache, cacheCapacity, createWriter, openSource, packetReader, softwareConfig, webCodecsDecoder,
+  type OpenedSource, type Writer,
+} from '@appskord/media';
 import geistUrl from '@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?url';
 import { GIFEncoder, applyPalette, quantize } from 'gifenc';
 import {
@@ -24,7 +27,14 @@ const describe = (error: unknown) => (error instanceof Error ? error.message : S
 class Cancelled extends Error {}
 
 // Sources stay open between jobs (the thumbnail strip renders many stills).
-const videos = new Map<string, Promise<{ source: OpenedSource; cache: FrameCache<VideoFrame, EncodedPacket> } | null>>();
+interface OpenedVideo {
+  source: OpenedSource;
+  cache: FrameCache<VideoFrame, EncodedPacket>;
+  software: boolean;
+  failed: boolean;
+  make(software: boolean): FrameCache<VideoFrame, EncodedPacket>;
+}
+const videos = new Map<string, Promise<OpenedVideo | null>>();
 const images = new Map<string, Promise<ImageBitmap | null>>();
 let fontReady: Promise<void> | null = null;
 // Card fonts load on the first export with cards and stay for the next; the hook is this job's.
@@ -33,7 +43,7 @@ let jobCards: DrawCard | undefined;
 let current: { id: number; cancelled: boolean } | null = null;
 let audioWaiter: ((chunk: MixChunk | null) => void) | null = null;
 
-function openVideo(s: RenderSource) {
+function openVideo(s: RenderSource): Promise<OpenedVideo | null> {
   return openSource(s.blob).then(async (source) => {
     const config = await source.videoTrack?.getDecoderConfig();
     if (!source.videoTrack || !config) {
@@ -41,12 +51,17 @@ function openVideo(s: RenderSource) {
       return null;
     }
     const track = source.videoTrack;
-    const make = (): FrameCache<VideoFrame, EncodedPacket> => new FrameCache<VideoFrame, EncodedPacket>({
+    const onError = (error: DOMException) => {
+      video.failed = true;
+      console.error('Klipkord: could not decode video', error);
+    };
+    const make = (software: boolean): FrameCache<VideoFrame, EncodedPacket> => new FrameCache<VideoFrame, EncodedPacket>({
       reader: packetReader(track),
       capacity: cacheCapacity((navigator as Navigator & { deviceMemory?: number }).deviceMemory),
-      createDecoder: (onFrame) => webCodecsDecoder(config, onFrame, (error) => console.error('Klipkord: could not decode video', error)),
+      createDecoder: (onFrame) => webCodecsDecoder(software ? softwareConfig(config) : config, onFrame, onError),
     });
-    return { source, cache: make() };
+    const video: OpenedVideo = { source, cache: make(false), software: false, failed: false, make };
+    return video;
   }, (error: unknown) => {
     console.error('Klipkord: could not open video', error);
     return null;
@@ -67,13 +82,31 @@ function addSources(sources: RenderSource[]): void {
   }
 }
 
+// A stalled or failed hardware decoder is closed for good; software decode has no shared pool, so rebuild there once.
+function toSoftware(opened: OpenedVideo): void {
+  opened.software = true;
+  opened.failed = false;
+  opened.cache.close();
+  opened.cache = opened.make(true);
+}
+
 const frames: FrameProvider = {
   async frame(source, t): Promise<Picture | null> {
     const image = images.get(source);
     if (image) return image;
     const opened = await videos.get(source);
     if (!opened) return null;
-    const found = await opened.cache.frameAt(Math.max(0, t) / 1000);
+    const at = Math.max(0, t) / 1000;
+    let found: VideoFrame | null;
+    try {
+      if (opened.failed && !opened.software) toSoftware(opened);
+      found = await opened.cache.frameAt(at);
+    } catch (error) {
+      const decoderError = error instanceof DecoderStalled || error instanceof DOMException || opened.failed;
+      if (!decoderError || opened.software) throw error;
+      toSoftware(opened);
+      found = await opened.cache.frameAt(at);
+    }
     // The cache owns its frames; the renderer closes what it is handed.
     return found ? found.clone() : null;
   },

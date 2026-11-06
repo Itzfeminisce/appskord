@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { FrameCache, cacheCapacity, seekPlan, type FrameDecoder, type Packet } from './frames';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  DECODE_STALL_MS,
+  DecoderStalled,
+  FrameCache,
+  cacheCapacity,
+  seekPlan,
+  stallGuard,
+  type FrameDecoder,
+  type Packet,
+} from './frames';
 
 const FPS = 30;
 const GOP = 10;
@@ -158,10 +167,64 @@ describe('FrameCache', () => {
 });
 
 describe('cacheCapacity', () => {
-  it('scales with device memory within bounds', () => {
-    expect(cacheCapacity(undefined)).toBe(8);
-    expect(cacheCapacity(0.5)).toBe(4);
-    expect(cacheCapacity(4)).toBe(8);
-    expect(cacheCapacity(8)).toBe(16);
+  it('keeps few frames open, fewer on low-memory devices', () => {
+    expect(cacheCapacity(undefined)).toBe(4);
+    expect(cacheCapacity(0.5)).toBe(2);
+    expect(cacheCapacity(2)).toBe(2);
+    expect(cacheCapacity(4)).toBe(4);
+    expect(cacheCapacity(8)).toBe(4);
+  });
+});
+
+/** A hardware-like decoder with a pool of `pool` output buffers: it stops emitting while that many frames are open. */
+function stallingSetup(pool: number) {
+  const made: FakeFrame[] = [];
+  let resets = 0;
+  const cache = new FrameCache<FakeFrame, Packet>({
+    reader,
+    capacity: 8,
+    createDecoder(onFrame): FrameDecoder<Packet> {
+      return {
+        async decode(p) {
+          if (made.filter((f) => !f.closed).length >= pool) return stallGuard(new Promise<void>(() => {}));
+          const frame = new FakeFrame(Math.round(p.timestamp * 1e6), Math.round(p.duration * 1e6));
+          made.push(frame);
+          onFrame(frame);
+        },
+        flush: async () => {},
+        reset() {
+          resets++;
+        },
+        close() {},
+      };
+    },
+  });
+  return { cache, made, resets: () => resets };
+}
+
+describe('decoder stall', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects a wait that outlasts the stall timeout', async () => {
+    vi.useFakeTimers();
+    const guarded = stallGuard(new Promise<void>(() => {}));
+    const caught = guarded.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(DECODE_STALL_MS);
+    expect(await caught).toBeInstanceOf(DecoderStalled);
+  });
+
+  it('recovers: rejects with the stall, closes its frames, and the next request works', async () => {
+    vi.useFakeTimers();
+    const { cache, made, resets } = stallingSetup(5);
+    const stalled = cache.frameAt(9 / FPS + 0.001).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(DECODE_STALL_MS);
+    expect(await stalled).toBeInstanceOf(DecoderStalled);
+    expect(made.length).toBe(5);
+    expect(made.every((f) => f.closed)).toBe(true);
+    expect(cache.size).toBe(0);
+    expect(resets()).toBeGreaterThan(0);
+    expect(frameIndex(await cache.frameAt(2 / FPS + 0.001))).toBe(2);
   });
 });
