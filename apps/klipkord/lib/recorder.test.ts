@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  badgeTitle, chooseMime, chooseVoiceMime, clockElapsed, clockPause, clockResume, clockStart, containerOf, createChunkWriter, partOffset, planTake,
+  SILENT_VIDEO_MIMES, VIDEO_MIMES, badgeTitle, chooseMime, chooseVoiceMime, clockElapsed, clockPause, clockResume, clockStart, containerOf, createChunkWriter, partOffset, planTake,
   shortClock, takeSources, type StartedPart,
 } from './recorder';
 
@@ -29,14 +29,17 @@ describe('labels', () => {
 
 describe('mime choice', () => {
   const only = (...types: string[]) => (t: string) => types.includes(t);
-  it('prefers MP4 H.264 + AAC', () => {
-    expect(chooseMime(only('video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/webm;codecs=vp9,opus'), true)).toBe('video/mp4;codecs=avc1.42E01E,mp4a.40.2');
+  it('prefers WebM VP8, then VP9, over H.264', () => {
+    const all = (t: string) => t !== '';
+    expect(chooseMime(all, true)).toBe('video/webm;codecs=vp8,opus');
+    expect(chooseMime(all, false)).toBe('video/webm;codecs=vp8');
+    expect(chooseMime(only('video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/webm;codecs=vp9,opus'), true)).toBe('video/webm;codecs=vp9,opus');
+    expect(chooseMime(only('video/mp4;codecs=avc1.640028', 'video/webm;codecs=vp9'), false)).toBe('video/webm;codecs=vp9');
   });
-  it('falls back to WebM VP9 + Opus', () => {
-    expect(chooseMime(only('video/webm;codecs=vp9,opus', 'video/webm'), true)).toBe('video/webm;codecs=vp9,opus');
-  });
-  it('asks for no audio codec when there is no sound', () => {
-    expect(chooseMime(only('video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1.42E01E,mp4a.40.2'), false)).toBe('video/mp4;codecs=avc1.42E01E');
+  it('falls back to H.264 at a level that fits 1080p', () => {
+    expect(chooseMime(only('video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4'), true)).toBe('video/mp4;codecs=avc1.640028,mp4a.40.2');
+    expect(chooseMime(only('video/mp4;codecs=avc1.640028', 'video/mp4'), false)).toBe('video/mp4;codecs=avc1.640028');
+    expect([...VIDEO_MIMES, ...SILENT_VIDEO_MIMES].some((m) => m.includes('avc1.42E01E'))).toBe(false);
   });
   it('leaves the choice to Chrome when nothing listed is supported', () => {
     expect(chooseMime(() => false, true)).toBe('');
@@ -76,6 +79,17 @@ describe('chunk writer', () => {
     await writer.flush();
     expect(written).toEqual(['one', 'two']);
     expect(errors).toHaveLength(1);
+  });
+
+  it('reports only the first failed write and counts the rest', async () => {
+    const errors: unknown[] = [];
+    const writer = createChunkWriter(async (chunk) => {
+      if ((await chunk.text()).startsWith('bad')) throw new Error('disk');
+    }, (e) => errors.push(e));
+    ['bad1', 'ok', 'bad2', 'bad3'].forEach((s) => writer.write(new Blob([s])));
+    await writer.flush();
+    expect(errors).toHaveLength(1);
+    expect(writer.failed).toBe(3);
   });
 });
 

@@ -71,12 +71,19 @@ export function createVideoStore({ root, estimate, now = Date.now }: VideoStoreD
     }
     if (!segment) {
       const n = counts.get(key) ?? 0;
-      counts.set(key, n + 1);
       const file = await (await dir(id, true)).getFileHandle(`${track}.${n}`, { create: true });
       segment = { writable: await file.createWritable(), opened: now() };
+      counts.set(key, n + 1);
       open.set(key, segment);
     }
-    await segment.writable.write(chunk);
+    try {
+      await segment.writable.write(chunk);
+    } catch (error) {
+      // A broken writable fails every later write too, so the next chunk starts a new segment.
+      open.delete(key);
+      await segment.writable.abort().catch(() => undefined);
+      throw error;
+    }
   }
 
   async function copyDir(from: FileSystemDirectoryHandle, to: FileSystemDirectoryHandle): Promise<void> {
@@ -99,25 +106,24 @@ export function createVideoStore({ root, estimate, now = Date.now }: VideoStoreD
     }
   }
 
+  // Every segment on disk in number order: a gap left by a failed write never hides the segments after it.
   async function files(id: string, track: Track): Promise<File[]> {
     const folder = await dir(id, false);
-    const get = async (name: string) => {
-      try {
-        return await (await folder.getFileHandle(name)).getFile();
-      } catch (error) {
-        if (isNotFound(error)) return null;
-        throw error;
-      }
-    };
+    const entries = (folder as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries();
+    const parts: { n: number; handle: FileSystemFileHandle }[] = [];
     // A file named after the track alone is the single-file layout of earlier builds.
-    const out: File[] = [];
-    const legacy = await get(track);
-    if (legacy) out.push(legacy);
-    for (let n = 0; ; n++) {
-      const part = await get(`${track}.${n}`);
-      if (!part) return out;
-      out.push(part);
+    let legacy: FileSystemFileHandle | null = null;
+    const prefix = `${track}.`;
+    for await (const [name, handle] of entries) {
+      if (handle.kind !== 'file') continue;
+      if (name === track) legacy = handle as FileSystemFileHandle;
+      else if (name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length))) {
+        parts.push({ n: Number(name.slice(prefix.length)), handle: handle as FileSystemFileHandle });
+      }
     }
+    parts.sort((a, b) => a.n - b.n);
+    const handles = legacy ? [legacy, ...parts.map((p) => p.handle)] : parts.map((p) => p.handle);
+    return Promise.all(handles.map((h) => h.getFile()));
   }
 
   const tracks = (id: string) => TRACKS.map((track) => `${id}/${track}`);

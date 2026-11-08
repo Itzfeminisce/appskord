@@ -10,8 +10,14 @@ export interface Playback {
   seek(out: number): void;
 }
 
+/** Which frame `out` ms falls in at `fps`: playback re-renders only when this changes. */
+export const frameIndex = (out: number, fps: number): number => Math.floor((out * fps) / 1000);
+
+/** No per-project frame rate exists; exports run at 30 fps. */
+const PREVIEW_FPS = 30;
+
 /** The playhead in output time: advances with the clock while playing and stops at the end of the cut. */
-export function usePlayback(length: number, enabled: boolean): Playback {
+export function usePlayback(length: number, enabled: boolean, fps = PREVIEW_FPS): Playback {
   const [out, setOut] = useState(0);
   const [playing, setPlaying] = useState(false);
   const outRef = useRef(0);
@@ -35,11 +41,13 @@ export function usePlayback(length: number, enabled: boolean): Playback {
         setPlaying(false);
         return;
       }
-      seek(next);
+      const shown = frameIndex(outRef.current, fps);
+      outRef.current = next;
+      if (frameIndex(next, fps) !== shown) setOut(next);
       frame = requestAnimationFrame(tick);
     });
     return () => cancelAnimationFrame(frame);
-  }, [playing, seek]);
+  }, [playing, seek, fps]);
 
   // An edit can shorten the cut under the playhead.
   useEffect(() => { if (outRef.current > length) seek(length); }, [length, seek]);
@@ -49,7 +57,10 @@ export function usePlayback(length: number, enabled: boolean): Playback {
     if (outRef.current >= lengthRef.current) seek(0);
     setPlaying(true);
   }, [enabled, seek]);
-  const pause = useCallback(() => setPlaying(false), []);
+  const pause = useCallback(() => {
+    setPlaying(false);
+    setOut(outRef.current);
+  }, []);
 
   return { out, playing, play, pause, toggle: () => (playing ? pause() : play()), seek };
 }

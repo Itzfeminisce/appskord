@@ -40,7 +40,8 @@ async function open(id: number, blob: Blob, openOptions: FramesOpenOptions = {})
   cache?.close();
   source?.dispose();
   cache = null;
-  options = openOptions;
+  // Intel hardware decode gave green frames and shares a small buffer pool, so decode in software unless told not to.
+  options = { ...openOptions, software: openOptions.software ?? true };
   try {
     source = await openSource(blob);
     decoderConfig = (await source.videoTrack?.getDecoderConfig()) ?? null;

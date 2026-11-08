@@ -57,16 +57,18 @@ export function badgeTitle(ms: number): string {
   return `Klipkord is recording, ${m} ${m === 1 ? 'minute' : 'minutes'} ${s} ${s === 1 ? 'second' : 'seconds'}`;
 }
 
-/** MP4 (H.264 + AAC) first, WebM (VP9 + Opus) second, as T0 measured. */
+/**
+ * WebM VP8 first: Chrome's H.264 recorder goes to the Windows hardware encoder, which smeared and froze long screen
+ * takes. VP8 has no hardware encoder there and costs the CPU least; VP9 can also go to hardware. MP4 at High 4.0 last.
+ */
 export const VIDEO_MIMES = [
-  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+  'video/webm;codecs=vp8,opus',
+  'video/webm;codecs=vp9,opus',
+  'video/webm',
   'video/mp4;codecs=avc1.640028,mp4a.40.2',
   'video/mp4',
-  'video/webm;codecs=vp9,opus',
-  'video/webm;codecs=vp8,opus',
-  'video/webm',
 ];
-export const SILENT_VIDEO_MIMES = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+export const SILENT_VIDEO_MIMES = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm', 'video/mp4;codecs=avc1.640028', 'video/mp4'];
 export const VOICE_MIMES = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'];
 
 export function chooseMime(isTypeSupported: (type: string) => boolean, hasAudio: boolean): string {
@@ -84,19 +86,23 @@ export const VIDEO_BITRATE: Record<Quality, number> = { '720p': 2_500_000, '1080
 
 /**
  * Appends chunks in arrival order, one write at a time, and counts bytes.
- * A failed write is reported and the next chunk still goes after it.
+ * The first failed write is reported, later ones only counted; the next chunk still goes after it.
  */
 export function createChunkWriter(append: (chunk: Blob) => Promise<void>, onError: (error: unknown) => void = () => undefined) {
   let chain: Promise<void> = Promise.resolve();
   let bytes = 0;
+  let failed = 0;
   return {
     write(chunk: Blob): void {
       if (!chunk.size) return;
       bytes += chunk.size;
-      chain = chain.then(() => append(chunk)).catch(onError);
+      chain = chain.then(() => append(chunk)).catch((error: unknown) => {
+        if (!failed++) onError(error);
+      });
     },
     flush: (): Promise<void> => chain,
     get bytes() { return bytes; },
+    get failed() { return failed; },
   };
 }
 

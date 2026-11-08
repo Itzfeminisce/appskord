@@ -165,6 +165,21 @@ describe('createRenderer', () => {
     expect(second.closed).toBe(true);
   });
 
+  it('keeps the held frame when the new one has the same timestamp, closing the new one', async () => {
+    const first = fakeFrame(1920, 1080, 40_000);
+    const again = fakeFrame(1920, 1080, 40_000);
+    const queue: Picture[] = [first, again];
+    const f = fake2d();
+    const r = createRenderer(canvas(f), { frame: async () => queue.shift() ?? null }, { backend: 'canvas2d' });
+    await r.render(plan(), '16:9');
+    await r.render(plan(), '16:9');
+    expect(again.closed).toBe(true);
+    expect(first.closed).toBe(false);
+    expect(f.calls.filter((c) => c[0] === 'drawImage').map((c) => c[1])).toEqual([first, first]);
+    r.dispose();
+    expect(first.closed).toBe(true);
+  });
+
   it('asks the camera mask hook only when "Blur behind you" is on', async () => {
     const cameraMask = vi.fn(() => null);
     const provider: FrameProvider = { frame: async () => fakeFrame() };

@@ -39,6 +39,13 @@ describe('createWriter', () => {
     expect(writer.audio).not.toBeNull();
   });
 
+  it('hands frames to the encoder as they are, with no resize copy', async () => {
+    const writer = await createWriter({ ...options, container: 'mp4' }, deps({ avc: true, opus: true }));
+    const config = (writer.video as unknown as { _encoder: { encodingConfig: { transform?: unknown } } })._encoder
+      .encodingConfig;
+    expect(config.transform).toBeUndefined();
+  });
+
   it('has no audio track for a silent export', async () => {
     const writer = await createWriter({ ...options, container: 'webm', audio: false }, deps({ vp8: true }));
     expect(writer.codecs).toEqual({ video: 'vp8', audio: null });

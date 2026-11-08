@@ -89,8 +89,10 @@ export interface StripProps {
   words?: readonly Word[];
 }
 
+const NO_WORDS: readonly Word[] = [];
+
 /** One canvas per track for the filmstrip or the voice bars, drawn only over the blocks in view. */
-function Strip({ kind, blocks, clipSpans, view, width, film, offset = 0, words = [] }: StripProps) {
+function Strip({ kind, blocks, clipSpans, view, width, film, offset = 0, words = NO_WORDS }: StripProps) {
   const ref = useRef<HTMLCanvasElement>(null);
   const draw = useRef<() => void>(() => {});
   draw.current = () => {
@@ -140,7 +142,8 @@ function Strip({ kind, blocks, clipSpans, view, width, film, offset = 0, words =
       g.restore();
     }
   };
-  useEffect(() => { draw.current(); });
+  // New thumbnails redraw through film.onChange below, so playback ticks leave the canvas alone.
+  useEffect(() => { draw.current(); }, [kind, blocks, clipSpans, view, width, film, offset, words]);
   useEffect(() => {
     if (!film) return;
     let frame = 0;

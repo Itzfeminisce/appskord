@@ -34,7 +34,8 @@ export function fake2d(): Fake2d {
 }
 
 /** A stand-in VideoFrame: has a display size and records close(). */
-export function fakeFrame(w = 1920, h = 1080): Picture & { closed: boolean } {
-  const frame = { displayWidth: w, displayHeight: h, closed: false, close() { frame.closed = true; } };
+let stamp = 0;
+export function fakeFrame(w = 1920, h = 1080, timestamp = (stamp += 1)): Picture & { closed: boolean } {
+  const frame = { displayWidth: w, displayHeight: h, timestamp, closed: false, close() { frame.closed = true; } };
   return frame as unknown as Picture & { closed: boolean };
 }

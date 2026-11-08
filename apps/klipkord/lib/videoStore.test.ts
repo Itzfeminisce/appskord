@@ -105,6 +105,48 @@ describe('videoStore', () => {
     expect(await (await store.read('old', 'voice')).text()).toBe('legacy');
   });
 
+  it('reads every segment on disk in number order, past a gap', async () => {
+    const { store, root } = setup();
+    const folder = await (await root.getDirectoryHandle('recordings', { create: true })).getDirectoryHandle('gap', { create: true });
+    for (const [name, text] of [['screen.10', 'c'], ['screen.0', 'a'], ['screen.2', 'b'], ['screen.x', 'no'], ['screenshot.1', 'no']]) {
+      (await folder.getFileHandle(name!, { create: true })).data = new Blob([text!]);
+    }
+    expect(await (await store.read('gap', 'screen')).text()).toBe('abc');
+    expect(await store.size('gap')).toBe(3);
+  });
+
+  it('does not use up a segment number when opening the file fails, and starts a new one after a failed write', async () => {
+    const { store, root } = setup();
+    await store.open('r5');
+    const folder = await (await root.getDirectoryHandle('recordings')).getDirectoryHandle('r5');
+    const getFileHandle = folder.getFileHandle.bind(folder);
+    let failOpen = true;
+    folder.getFileHandle = async (name, o) => {
+      if (failOpen) { failOpen = false; throw new Error('disk'); }
+      return getFileHandle(name, o);
+    };
+    await expect(store.append('r5', 'screen', new Blob(['x']))).rejects.toThrow('disk');
+    await store.append('r5', 'screen', new Blob(['a']));
+    expect(folder.items.has('screen.0')).toBe(true);
+    await store.close('r5');
+    // The next write breaks its writable; the chunk after it lands in a new segment.
+    const original = FakeFile.prototype.createWritable;
+    let broken = true;
+    FakeFile.prototype.createWritable = async function (this: FakeFile, o) {
+      const w = await original.call(this, o);
+      if (broken) { broken = false; return { ...w, write: async () => { throw new Error('write'); } }; }
+      return w;
+    };
+    try {
+      await expect(store.append('r5', 'screen', new Blob(['lost']))).rejects.toThrow('write');
+      await store.append('r5', 'screen', new Blob(['b']));
+      await store.close('r5');
+    } finally {
+      FakeFile.prototype.createWritable = original;
+    }
+    expect(await (await store.read('r5', 'screen')).text()).toBe('ab');
+  });
+
   it('reads an empty Blob and size 0 for a missing recording', async () => {
     const { store } = setup();
     expect((await store.read('none', 'video')).size).toBe(0);
