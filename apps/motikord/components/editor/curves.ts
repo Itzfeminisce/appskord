@@ -1,6 +1,6 @@
-import { ease } from '@appskord/motion/curves';
-import type { Curve, LayerV3, SceneV3 } from '@appskord/motion/types';
-import { localEnd, OUT_MS, readMotion } from './edits';
+import { ease, FEEL } from '@appskord/motion/curves';
+import type { Curve, Feel, LayerV3, SceneV3 } from '@appskord/motion/types';
+import { feelOf, localEnd, OUT_MS, readMotion } from './edits';
 
 // The easing curve as drawn: in the Motion tab's curve editor and on the timeline's layer rows.
 
@@ -55,6 +55,78 @@ export function dragHandle(curve: Extract<Curve, { kind: 'bezier' }>, which: 0 |
   p[which * 2] = x;
   p[which * 2 + 1] = v;
   return { kind: 'bezier', p };
+}
+
+type Bezier = Extract<Curve, { kind: 'bezier' }>;
+
+/** What each feel's curve does (CurveLabelsV3); Bouncy is a spring and reads "Spring · {bounce}% bounce". */
+export const FEEL_LINES: Readonly<Record<Exclude<Feel, 'bouncy'>, string>> = {
+  smooth: 'Quick start, soft landing',
+  snappy: 'Snaps in, then settles',
+  steady: 'Slow start, soft landing',
+  floaty: 'Slow start, long glide',
+};
+export const CUSTOM_CURVE = 'Custom curve';
+export const springLine = (bounce: number) => `Spring · ${bounce}% bounce`;
+/** How close each handle must be to a feel's to snap to it. */
+export const SNAP = 0.02;
+const BEZIER_FEELS = Object.keys(FEEL_LINES) as Exclude<Feel, 'bouncy'>[];
+
+/** The feel whose curve the handles are within SNAP of, if any. */
+export function nearFeel(c: Bezier): Exclude<Feel, 'bouncy'> | undefined {
+  return BEZIER_FEELS.find((f) => {
+    const p = (FEEL[f].curve as Bezier).p;
+    return p.every((v, k) => Math.abs(v - c.p[k]!) <= SNAP + 1e-9);
+  });
+}
+
+/** The feel a curve reads as: the spring feel exactly, a bezier within SNAP of a feel's handles. */
+export function feelNear(c: Curve): Feel | undefined {
+  return c.kind === 'spring' ? feelOf(c) : nearFeel(c);
+}
+
+/** Handles near a feel's curve take that curve exactly; any other shape stays as it is. */
+export function snapToFeel(c: Bezier): Bezier {
+  const f = nearFeel(c);
+  return f ? (FEEL[f].curve as Bezier) : c;
+}
+
+/** The curve editor's label: the feel's line, the spring's bounce, or "Custom curve". */
+export function curveLabel(c: Curve): string {
+  if (c.kind === 'spring') return springLine(c.bounce);
+  const f = nearFeel(c);
+  return f ? FEEL_LINES[f] : CUSTOM_CURVE;
+}
+
+/** What a screen reader hears for the curve editor. */
+export function curveAria(c: Curve): string {
+  if (c.kind === 'spring') return `Spring editor: ${c.bounce}% bounce. Drag the dot to change the bounce.`;
+  const l = curveLabel(c);
+  return `Curve editor: ${l[0]!.toLowerCase()}${l.slice(1)}. Drag the two handles.`;
+}
+
+const peaks = new Map<number, number[]>();
+/** A spring's highest point (its overshoot) as a fraction of the way through: [x, value]. */
+export function springPeak(c: Extract<Curve, { kind: 'spring' }>): [number, number] {
+  const f = ease(c);
+  let best: [number, number] = [1, 1];
+  for (let k = 1; k <= SPRING_STEPS; k++) {
+    const v = f(k / SPRING_STEPS);
+    if (v > best[1] + 1e-9) best = [k / SPRING_STEPS, v];
+  }
+  return best;
+}
+
+/** The bounce (0–100) whose overshoot reaches nearest to `value`: dragging the spring's dot. */
+export function bounceFor(c: Extract<Curve, { kind: 'spring' }>, value: number): number {
+  let table = peaks.get(c.ms);
+  if (!table) {
+    table = Array.from({ length: 101 }, (_, b) => springPeak({ ...c, bounce: b })[1]);
+    peaks.set(c.ms, table);
+  }
+  let best = 0;
+  table.forEach((v, b) => { if (Math.abs(v - value) < Math.abs(table![best]! - value)) best = b; });
+  return best;
 }
 
 export interface MotionSegment { from: number; to: number; curve: Curve; dir: 'in' | 'out' }

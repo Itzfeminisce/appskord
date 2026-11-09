@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FEEL } from '@appskord/motion/curves';
 import type { Curve } from '@appskord/motion/types';
-import { curveArea, curvePath, dragHandle, EDITOR_BOX, handles, motionSegments, toBox } from './curves';
+import { bounceFor, curveAria, curveArea, curveLabel, curvePath, dragHandle, EDITOR_BOX, handles, motionSegments, feelNear, nearFeel, snapToFeel, springPeak, toBox } from './curves';
 import { readMotion, writeMotion } from './edits';
 import { sampleClip } from './fixture';
 
@@ -52,5 +52,46 @@ describe('motionSegments', () => {
     const segs = motionSegments(s, faded);
     expect(segs.map((x) => x.dir)).toEqual(['in', 'out']);
     expect(segs[1]!.to).toBeGreaterThan(segs[1]!.from);
+  });
+});
+
+describe('curve labels (CurveLabelsV3)', () => {
+  it('names each feel curve by its shape, and a spring by its bounce', () => {
+    expect(curveLabel(FEEL.smooth.curve)).toBe('Quick start, soft landing');
+    expect(curveLabel(FEEL.snappy.curve)).toBe('Snaps in, then settles');
+    expect(curveLabel(FEEL.steady.curve)).toBe('Slow start, soft landing');
+    expect(curveLabel(FEEL.floaty.curve)).toBe('Slow start, long glide');
+    expect(curveLabel(FEEL.bouncy.curve)).toBe('Spring · 50% bounce');
+    expect(curveLabel({ kind: 'bezier', p: [0.7, 0.1, 0.3, 0.95] })).toBe('Custom curve');
+  });
+
+  it('snaps handles within 0.02 of a feel to that feel, and leaves other shapes alone', () => {
+    expect(snapToFeel({ kind: 'bezier', p: [0.24, 0.98, 0.35, 1] })).toBe(FEEL.smooth.curve);
+    expect(nearFeel({ kind: 'bezier', p: [0.2, 0.02, 0.02, 0.98] })).toBe('snappy');
+    const off = { kind: 'bezier', p: [0.25, 1, 0.36, 1] } as const;
+    expect(snapToFeel({ ...off, p: [...off.p] })).toEqual(off);
+    expect(curveLabel(off as never)).toBe('Custom curve');
+  });
+
+  it('says the label to screen readers', () => {
+    expect(curveAria(FEEL.steady.curve)).toBe('Curve editor: slow start, soft landing. Drag the two handles.');
+    expect(curveAria({ kind: 'bezier', p: [0.7, 0.1, 0.3, 0.95] })).toBe('Curve editor: custom curve. Drag the two handles.');
+    expect(curveAria({ kind: 'spring', bounce: 50, ms: 700 })).toBe('Spring editor: 50% bounce. Drag the dot to change the bounce.');
+  });
+
+  it('drags the spring dot to the bounce whose overshoot reaches it', () => {
+    const spring = { kind: 'spring', bounce: 50, ms: 700 } as const;
+    const [, peak] = springPeak(spring);
+    expect(peak).toBeGreaterThan(1);
+    expect(bounceFor(spring, peak)).toBe(50);
+    expect(bounceFor(spring, 0.5)).toBe(0);
+    expect(springPeak({ ...spring, bounce: 80 })[1]).toBeGreaterThan(peak);
+  });
+
+  it('reads a feel the same way everywhere: near for beziers, exact for the spring', () => {
+    const near = { kind: 'bezier', p: [...(FEEL.steady.curve as { p: number[] }).p.map((v, k) => (k === 0 ? v + 0.01 : v))] } as Curve;
+    expect(feelNear(near)).toBe('steady');
+    expect(feelNear(FEEL.bouncy.curve)).toBe('bouncy');
+    expect(feelNear({ kind: 'bezier', p: [0.7, 0.1, 0.3, 0.95] })).toBeUndefined();
   });
 });

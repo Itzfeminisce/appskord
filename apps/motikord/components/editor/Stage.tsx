@@ -24,7 +24,7 @@ export const LOWER_3D = 'Your computer previews 3D at lower quality. Export is a
 
 /** One WebGL renderer per canvas; undefined where WebGL is missing (tests, a blocked GPU). */
 type Gl = ReturnType<typeof createCanvasRenderer>;
-function useGl(canvas: HTMLCanvasElement | null): Gl | undefined {
+export function useGl(canvas: HTMLCanvasElement | null): Gl | undefined {
   const [gl, setGl] = useState<Gl>();
   useEffect(() => {
     if (!canvas) return;
@@ -46,7 +46,8 @@ function useGl(canvas: HTMLCanvasElement | null): Gl | undefined {
 
 const toolButton = (dark: boolean) => ({ height: 34, padding: '0 12px', border: dark ? 0 : '1px solid #E0E0E4', borderRadius: 9, background: dark ? '#111114' : C.surface, color: dark ? '#FFFFFF' : C.ink, font: `${dark ? 600 : 500} 12px/1 ${C.font}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' as const, flexShrink: 0 });
 
-export function Stage({ preview, prompt }: { preview?: { effect: string }; prompt?: ReactNode }) {
+/** `toast` takes the play row's place while it shows (EditPromptV3). */
+export function Stage({ preview, prompt, toast }: { preview?: { effect: string }; prompt?: ReactNode; toast?: ReactNode }) {
   const ed = useEditorV3();
   const { state, scene, layer, look, t, setT, playing, setPlaying, spread } = ed;
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
@@ -170,6 +171,7 @@ export function Stage({ preview, prompt }: { preview?: { effect: string }; promp
   };
   const has3d = scene.layers.some((l: LayerV3) => l.tracks.extrude?.some((k) => k.v > 0));
   const at = (starts[state.scene] ?? 0) + t;
+  const changedLayer = ed.changed?.scene === state.scene ? scene.layers.find((l) => l.id === ed.changed!.layerId) : undefined;
 
   return (
     <main style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '12px 20px 10px', background: C.stage, minWidth: 0, gap: 10, position: 'relative' }}>
@@ -207,6 +209,11 @@ export function Stage({ preview, prompt }: { preview?: { effect: string }; promp
       )}
       <div style={{ position: 'relative', flex: 1, minHeight: 0, aspectRatio: `${size.width} / ${size.height}`, maxWidth: '100%', borderRadius: 4, overflow: 'hidden', background: look.palette[0] ?? '#0B0B10', boxShadow: '0 14px 36px rgba(16,16,20,0.22), 0 1px 3px rgba(16,16,20,0.1)' }}>
         <canvas ref={setCanvas} role="img" aria-label={`Scene ${state.scene + 1} of ${state.clip.recipe.name}`} style={{ width: '100%', height: '100%', display: 'block' }} />
+        {changedLayer && (
+          <span style={{ position: 'absolute', left: 8, top: 8, height: 18, padding: '0 6px', borderRadius: 4, background: '#BE185D', color: '#FFFFFF', fontFamily: C.mono, fontSize: 10, display: 'flex', alignItems: 'center' }}>
+            {`${ed.name(changedLayer)} · changed`}
+          </span>
+        )}
         {preview && layer && (
           <span style={{ position: 'absolute', left: 8, bottom: 8, fontSize: 11, padding: '3px 6px', borderRadius: 6, background: 'rgba(255,255,255,0.9)', color: C.ink }}>
             {`${effectEntry(preview.effect as never).name} · preview · not added yet`}
@@ -214,7 +221,8 @@ export function Stage({ preview, prompt }: { preview?: { effect: string }; promp
         )}
       </div>
       {preview && <div style={{ fontSize: 11, color: C.muted }}>{EFFECTS_NOTE}</div>}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {toast}
+      <div style={{ display: toast ? 'none' : 'flex', alignItems: 'center', gap: 10 }}>
         <button type="button" aria-label={playing ? 'Pause' : 'Play'} onClick={() => {
           setSceneOnly(false);
           if (!playing && at >= total) {

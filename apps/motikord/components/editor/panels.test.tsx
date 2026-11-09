@@ -92,7 +92,7 @@ describe('Motion tab', () => {
 });
 
 describe('EditorMotion top bar: sizes', () => {
-  it('switches the size between 9:16, 1:1 and 16:9, and has no All sizes button', async () => {
+  it('switches the size between 9:16, 1:1 and 16:9, and All sizes opens FormatsV3', async () => {
     const v = await open();
     const sizes = v.all('[role="radiogroup"][aria-label="Size"] [role="radio"]');
     expect(sizes.map((e) => e.textContent)).toEqual(['9:16', '1:1', '16:9']);
@@ -101,7 +101,10 @@ describe('EditorMotion top bar: sizes', () => {
     expect(v.all('[role="radiogroup"][aria-label="Size"] [aria-checked="true"]')[0]!.textContent).toBe('1:1');
     expect(v.host.querySelector('canvas')!.parentElement!.style.aspectRatio).toBe('1080 / 1080');
     expect(await v.newest()).toBe('Size 1:1');
-    expect(v.button('All sizes')).toBeUndefined();
+    await v.click(v.button('All sizes'));
+    expect(v.button('All sizes')!.getAttribute('aria-current')).toBe('page');
+    expect(v.host.querySelector('h1')!.textContent).toBe(`${clip.recipe.name} · All sizes`);
+    expect(v.all('[role="radiogroup"][aria-label="Size"] [aria-checked="true"]')).toHaveLength(0);
   });
 });
 
@@ -117,7 +120,7 @@ describe('Tell Motikord what to change', () => {
 describe('Motion tab: curve', () => {
   it('drags a handle of the custom curve into one Curve change, and the timeline draws the motion curves', async () => {
     const v = await open();
-    const svg = v.host.querySelector<SVGSVGElement>('svg[aria-label="Curve editor: slow start, soft landing. Drag the two handles."]')!;
+    const svg = v.host.querySelector<SVGSVGElement>('svg[aria-label="Curve editor: snaps in, then settles. Drag the two handles."]')!;
     expect(svg).toBeTruthy();
     svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 266, height: 64, right: 266, bottom: 64, x: 0, y: 0, toJSON: () => ({}) });
     const before = svg.querySelector('[data-curve]')!.getAttribute('d');
@@ -155,7 +158,7 @@ describe('Motion tab: curve', () => {
     const v = await open();
     await v.click(v.all('[role="radio"]').find((e) => e.textContent === 'Spring'));
     expect(v.host.querySelector('[data-handle]')).toBeNull();
-    expect(v.host.querySelector('svg[aria-labelledby] [data-curve]')!.getAttribute('d')).toMatch(/ L/);
+    expect(v.host.querySelector('svg[aria-label="Spring editor: 20% bounce. Drag the dot to change the bounce."] [data-curve]')!.getAttribute('d')).toMatch(/ L/);
   });
 });
 

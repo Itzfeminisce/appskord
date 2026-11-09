@@ -19,11 +19,16 @@ export const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: C.in
 export const hint: CSSProperties = { fontSize: 12, color: C.muted, lineHeight: 1.4 };
 export const sectionStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 0' };
 
-export function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+/** The "Changed" tag a panel section gets after a prompt edit (EditPromptV3). */
+export const ChangedTag = () => (
+  <span style={{ height: 18, padding: '0 6px', borderRadius: 4, background: '#FDF2F8', color: '#9D174D', fontFamily: C.mono, fontSize: 10, fontWeight: 400, display: 'inline-flex', alignItems: 'center' }}>Changed</span>
+);
+
+export function Section({ title, aside, changed, children }: { title: string; aside?: ReactNode; changed?: boolean; children: ReactNode }) {
   return (
     <section style={sectionStyle}>
       <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <span style={label}>{title}</span>
+        <span style={{ ...label, display: 'flex', alignItems: 'center', gap: 6 }}>{title}{changed && <ChangedTag />}</span>
         {aside && <span style={{ fontFamily: C.mono, fontSize: 10, color: '#6E7079' }}>{aside}</span>}
       </span>
       {children}
