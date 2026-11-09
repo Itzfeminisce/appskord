@@ -6,14 +6,16 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./frames.worker": "./src/frames.worker.ts"
+    "./frames.worker": "./src/frames.worker.ts",
+    "./blobSink": "./src/blobSink.ts",
+    "./mux": "./src/mux.ts"
   },
   "scripts": {
     "test": "vitest run",
     "compile": "tsc --noEmit"
   },
   "dependencies": {
-    "mediabunny": "^1.65.0"
+    "mediabunny": "1.65.2"
   },
   "devDependencies": {
     "@appskord/config": "workspace:*",

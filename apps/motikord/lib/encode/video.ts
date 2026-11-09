@@ -1,14 +1,9 @@
 import { CODECS } from '../check/plan';
+import type { Muxed } from '@appskord/media/mux';
 import type { FileKind } from '../types';
 
 export interface MuxAudio { codec: 'aac' | 'opus'; sampleRate: number; channels: number }
-/** A container being filled; `finish` returns the whole file. */
-export interface Muxed {
-  mime: string;
-  addVideo(chunk: EncodedVideoChunk, meta?: EncodedVideoChunkMetadata): void;
-  addAudio(chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata): void;
-  finish(): ArrayBuffer;
-}
+export type { Muxed };
 
 /** Thrown when Chrome cannot encode this kind on this computer (maps to export-failed). */
 export class Unsupported extends Error {

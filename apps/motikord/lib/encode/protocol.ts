@@ -14,5 +14,5 @@ export type FromWorker =
   | { type: 'encoder'; hardware: boolean }
   | { type: 'need'; id: number; wants: FrameWant[] }
   | { type: 'progress'; frame: number; frames: number; tMs: number; preview?: ImageBitmap }
-  | { type: 'done'; buffer: ArrayBuffer; mime: string }
+  | { type: 'done'; blob: Blob; mime: string }
   | { type: 'error'; reason: 'unsupported' | 'cancelled' | 'failed'; name: string; message: string };

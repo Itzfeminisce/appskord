@@ -66,7 +66,7 @@ async function render(recipe: Recipe, item: RenderItem, audio: Extract<ToWorker,
       await runFrames({ ...base, encode: () => out.add(ctx.getImageData(0, 0, item.width, item.height).data) });
       const bytes = out.finish();
       const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-      post({ type: 'done', buffer, mime: 'image/gif' }, [buffer]);
+      post({ type: 'done', blob: new Blob([buffer], { type: 'image/gif' }), mime: 'image/gif' });
       return;
     }
     const kind = item.kind as Exclude<RenderItem['kind'], 'gif'>;
@@ -78,7 +78,7 @@ async function render(recipe: Recipe, item: RenderItem, audio: Extract<ToWorker,
     const mux: Muxed = kind === 'mp4'
       ? mp4Muxer(item.width, item.height, item.fps, sound ?? undefined)
       : webmMuxer(item.width, item.height, item.fps, item.seeThrough, sound ?? undefined);
-    // Sound first: it is small, so the muxers hold it while the video chunks arrive in order.
+    // Sound first: it is small, so mediabunny holds it while the video chunks arrive in order.
     if (audio && sound) await encodeAudio(audio, sound, mux);
     const track = videoTrack(picked.config, mux);
     try {
@@ -89,8 +89,7 @@ async function render(recipe: Recipe, item: RenderItem, audio: Extract<ToWorker,
       track.close();
       throw error;
     }
-    const buffer = mux.finish();
-    post({ type: 'done', buffer, mime: mux.mime }, [buffer]);
+    post({ type: 'done', blob: await mux.finish(), mime: mux.mime });
   } finally {
     cache.dispose();
   }

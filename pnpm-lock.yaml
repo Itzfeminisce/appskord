@@ -124,11 +124,8 @@ importers:
         specifier: ^8.0.4
         version: 8.0.4
       mediabunny:
-        specifier: ^1.65.0
-        version: 1.65.0
-      mp4-muxer:
-        specifier: ^5.2.2
-        version: 5.2.2
+        specifier: 1.65.2
+        version: 1.65.2
       mp4box:
         specifier: ^2.5.0
         version: 2.5.0
@@ -141,9 +138,6 @@ importers:
       react-dom:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
-      webm-muxer:
-        specifier: ^5.1.4
-        version: 5.1.4
     devDependencies:
       '@appskord/config':
         specifier: workspace:*
@@ -184,6 +178,9 @@ importers:
       '@appskord/llm':
         specifier: workspace:*
         version: link:../../packages/llm
+      '@appskord/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@appskord/motion':
         specifier: workspace:*
         version: link:../../packages/motion
@@ -211,18 +208,15 @@ importers:
       idb:
         specifier: ^8.0.4
         version: 8.0.4
-      mp4-muxer:
-        specifier: ^5.2.2
-        version: 5.2.2
+      mediabunny:
+        specifier: 1.65.2
+        version: 1.65.2
       react:
         specifier: ^19.3.1
         version: 19.3.1
       react-dom:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
-      webm-muxer:
-        specifier: ^5.1.4
-        version: 5.1.4
     devDependencies:
       '@appskord/config':
         specifier: workspace:*
@@ -399,8 +393,8 @@ importers:
   packages/media:
     dependencies:
       mediabunny:
-        specifier: ^1.65.0
-        version: 1.65.0
+        specifier: 1.65.2
+        version: 1.65.2
     devDependencies:
       '@appskord/config':
         specifier: workspace:*
@@ -1313,9 +1307,6 @@ packages:
   '@types/whatwg-mimetype@3.0.2':
     resolution: {integrity: sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA==}
 
-  '@types/wicg-file-system-access@2020.9.8':
-    resolution: {integrity: sha512-ggMz8nOygG7d/stpH40WVaNvBwuyYLnrg5Mbyf6bmsj/8+gb6Ei4ZZ9/4PNpcPNTT8th9Q8sM8wYmWGjMWLX/A==}
-
   '@types/ws@8.18.2':
     resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
@@ -2040,9 +2031,6 @@ packages:
     resolution: {integrity: sha512-OkeDaAZ/bQCxeFAozM55PKcKU0yJMPGifLwV4Qgjitu+5MoAfSQN4lsLJeXZ1b8w0x+/Emda6MZgXS1jvsapng==}
     engines: {node: '>=10'}
 
-  mediabunny@1.65.0:
-    resolution: {integrity: sha512-TNnDNOmD5Fme4rwMGWuNv485a9iQwd9lgw88PI9zQ0FMnzEUoo6EJpG7ZhdJ2iwZFWo8AzNkP1KPq5IAHaktKw==}
-
   mediabunny@1.65.2:
     resolution: {integrity: sha512-goZpibvo/5hkc/56WVNm93Ini+o7K4y8aXA20c/BN1B+m3L5aHQa8MTvO+S1APg/YI8kMILtrX6QCqUtxLW7bA==}
 
@@ -2059,10 +2047,6 @@ packages:
 
   mlly@1.8.2:
     resolution: {integrity: sha512-d+ObxMQFmbt10sretNDytwt85VrbkhhUA/JBGm1MPaWJ65Cl4wOgLaB1NYvJSZ0Ef03MMEU/0xpPMXUIQ29UfA==}
-
-  mp4-muxer@5.2.2:
-    resolution: {integrity: sha512-dhozjTywI0h2qFzeShagt8YYw811fh1XlwiDCE2f6Aeqf6xG2CyuShoSa5E0AZDO8pPF0JOZ3wOmWBNWIGdSpQ==}
-    deprecated: This library is superseded by Mediabunny. Please migrate to it.
 
   mp4box@2.5.0:
     resolution: {integrity: sha512-AK5FQsN5aD2m91HuCGPlRDomDhGxK0o4F8ZVyAbAfcMWBW2QlhZvE0S7v9lBq0Ib4eONq7mT1SBVdrnnIrn4pw==}
@@ -2555,10 +2539,6 @@ packages:
 
   webgl-sdf-generator@1.1.1:
     resolution: {integrity: sha512-9Z0JcMTFxeE+b2x1LJTdnaT8rT8aEp7MVxkNwoycNmJWwPdzoXzMh0BjJSh/AEFP+KPYZUli814h8bJZFIZ2jA==}
-
-  webm-muxer@5.1.4:
-    resolution: {integrity: sha512-ditzgFVFbfqPaugkIr4mGhAdob5K9HY6Rzlh7TRsA368yA1sp/m5O7nQCcMLdgFDeNGtFPg8B+MeXLtpzKWX6Q==}
-    deprecated: This library is superseded by Mediabunny. Please migrate to it.
 
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
@@ -3134,8 +3114,6 @@ snapshots:
   '@types/webxr@0.5.24': {}
 
   '@types/whatwg-mimetype@3.0.2': {}
-
-  '@types/wicg-file-system-access@2020.9.8': {}
 
   '@types/ws@8.18.2':
     dependencies:
@@ -3754,11 +3732,6 @@ snapshots:
     dependencies:
       escape-string-regexp: 4.0.0
 
-  mediabunny@1.65.0:
-    dependencies:
-      '@types/dom-mediacapture-transform': 0.1.12
-      '@types/dom-webcodecs': 0.1.13
-
   mediabunny@1.65.2:
     dependencies:
       '@types/dom-mediacapture-transform': 0.1.12
@@ -3778,11 +3751,6 @@ snapshots:
       pathe: 2.0.3
       pkg-types: 1.3.1
       ufo: 1.6.4
-
-  mp4-muxer@5.2.2:
-    dependencies:
-      '@types/dom-webcodecs': 0.1.19
-      '@types/wicg-file-system-access': 2020.9.8
 
   mp4box@2.5.0: {}
 
@@ -4325,11 +4293,6 @@ snapshots:
       - msw
 
   webgl-sdf-generator@1.1.1: {}
-
-  webm-muxer@5.1.4:
-    dependencies:
-      '@types/dom-webcodecs': 0.1.19
-      '@types/wicg-file-system-access': 2020.9.8
 
   webpack-virtual-modules@0.6.2: {}
 
