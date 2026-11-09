@@ -64,6 +64,20 @@ describe('effects library', () => {
     expect(EFFECT_SCOPES.map((c) => c.label)).toEqual(['This layer', 'This scene', 'Whole clip']);
     const glow = EFFECTS.find((e) => e.id === 'glow')!;
     expect(glow.line).toBe('A soft halo in your look’s light.');
+    expect(EFFECTS.map((e) => [e.name, e.line, e.amount])).toEqual([
+      ['Glass', 'Frosted glass over what’s behind.', 0.5],
+      ['Glow', 'A soft halo in your look’s light.', 0.6],
+      ['Bloom', 'Bright parts spill soft light.', 0.4],
+      ['Depth of field', 'Sharp in focus, soft behind.', 0.5],
+      ['Dither', 'A fine dot pattern, like print.', 0.35],
+      ['Distort', 'A slow wave runs through it.', 0.3],
+      ['Chromatic', 'Colour edges split, like a lens.', 0.25],
+      ['3D flip', 'Turns in on its edge, in depth.', 0.7],
+      ['Light sweep', 'A sheen of light slides across.', 0.6],
+      ['Grain', 'Fine film grain that moves.', 0.2],
+      ['Halftone', 'Shading turns into printed dots.', 0.45],
+      ['Blur in', 'Comes into focus from a blur.', 0.7],
+    ]);
     expect(glow.amount).toBe(0.6);
     expect(EFFECTS_NOTE).toBe(
       'Effects run on this computer. Preview may be lighter on a slow computer; export never is.',

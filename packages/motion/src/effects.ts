@@ -155,8 +155,8 @@ export interface EffectEntry {
   id: EffectId;
   name: string;
   group: EffectGroup;
-  /** The line under the name; only Glow's is in the frame. */
-  line?: string;
+  /** The line under the name, from the frame. */
+  line: string;
   /** Default amount 0..1. */
   amount: number;
   colour: boolean;
@@ -177,6 +177,7 @@ const entry = (
   id,
   name,
   group,
+  line: '',
   amount: 0.5,
   colour: false,
   kind: 'shader',
@@ -187,23 +188,37 @@ const entry = (
 
 /** The library in the frame's order. */
 export const EFFECTS: readonly EffectEntry[] = [
-  entry('glass', 'Glass', 'Light', { convolution: true, heavy: true }),
+  entry('glass', 'Glass', 'Light', {
+    line: 'Frosted glass over what’s behind.',
+    amount: 0.5,
+    convolution: true,
+    heavy: true,
+  }),
   entry('glow', 'Glow', 'Light', {
     line: 'A soft halo in your look’s light.',
     amount: 0.6,
     colour: true,
     convolution: true,
   }),
-  entry('bloom', 'Bloom', 'Light'),
-  entry('depth-of-field', 'Depth of field', 'Reveal', { convolution: true, heavy: true }),
-  entry('dither', 'Dither', 'Texture'),
-  entry('distort', 'Distort', 'Distort', { convolution: true }),
-  entry('chromatic', 'Chromatic', 'Distort', { convolution: true }),
-  entry('3d-flip', '3D flip', 'Distort', { kind: 'motion' }),
-  entry('light-sweep', 'Light sweep', 'Light', { colour: true }),
-  entry('grain', 'Grain', 'Texture'),
-  entry('halftone', 'Halftone', 'Texture'),
-  entry('blur-in', 'Blur in', 'Reveal', { kind: 'motion' }),
+  entry('bloom', 'Bloom', 'Light', { line: 'Bright parts spill soft light.', amount: 0.4 }),
+  entry('depth-of-field', 'Depth of field', 'Reveal', {
+    line: 'Sharp in focus, soft behind.',
+    amount: 0.5,
+    convolution: true,
+    heavy: true,
+  }),
+  entry('dither', 'Dither', 'Texture', { line: 'A fine dot pattern, like print.', amount: 0.35 }),
+  entry('distort', 'Distort', 'Distort', { line: 'A slow wave runs through it.', amount: 0.3, convolution: true }),
+  entry('chromatic', 'Chromatic', 'Distort', {
+    line: 'Colour edges split, like a lens.',
+    amount: 0.25,
+    convolution: true,
+  }),
+  entry('3d-flip', '3D flip', 'Distort', { line: 'Turns in on its edge, in depth.', amount: 0.7, kind: 'motion' }),
+  entry('light-sweep', 'Light sweep', 'Light', { line: 'A sheen of light slides across.', amount: 0.6, colour: true }),
+  entry('grain', 'Grain', 'Texture', { line: 'Fine film grain that moves.', amount: 0.2 }),
+  entry('halftone', 'Halftone', 'Texture', { line: 'Shading turns into printed dots.', amount: 0.45 }),
+  entry('blur-in', 'Blur in', 'Reveal', { line: 'Comes into focus from a blur.', amount: 0.7, kind: 'motion' }),
 ];
 export const EFFECT_FILTERS = ['All', 'Light', 'Texture', 'Distort', 'Reveal'] as const;
 export const EFFECT_COLOURS: readonly { id: EffectColour; label: string }[] = [
