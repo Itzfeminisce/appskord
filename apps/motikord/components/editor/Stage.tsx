@@ -6,7 +6,7 @@ import type { LayerV3 } from '@appskord/motion/types';
 import type { Aspect } from '../../lib/types';
 import { useEditorV3 } from './context';
 import { motionLine, similarLayers, readMotion, writeMotion } from './edits';
-import { clipMs, clockTenths, editScenes, layerContent, sceneStarts } from './model';
+import { clipMs, clockTenths, editScenes, layerContent, posterMs, sceneStarts } from './model';
 import { C, quietButton } from './ui';
 
 // The stage: the scene drawn by packages/motion at reduced quality, the selected layer's line and the transport.
@@ -66,7 +66,9 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
   // What each layer draws comes from the v2 layers (text, fill, size); a string key rebuilds only when it changes.
   const contentKey = JSON.stringify(scene.layers.map((l) => [l.id, layerContent(state.clip, state.scene, l) ?? null]));
   const contents = useMemo(() => new Map(JSON.parse(contentKey) as [string, LayerContent | null][]), [contentKey]);
-  const shownT = useRef(t);
+  // Paused at a scene's start nothing has come in yet, so the stage shows the scene's key frame instead of an empty frame.
+  const drawT = !playing && t === 0 ? posterMs(scene) : t;
+  const shownT = useRef(drawT);
 
   useEffect(() => {
     if (!gl) return;
@@ -85,7 +87,7 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
         content: (l) => contents.get(l.id) ?? undefined,
       });
       next.attach(gl);
-      next.render(t);
+      next.render(shownT.current);
       // Text typesets asynchronously; draw again once it has, at whatever t is showing by then.
       const drawn = next;
       void drawn.ready().then(() => {
@@ -104,13 +106,13 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
   }, [gl, scene, contents, v3.finish, v3.effects, v3.fps, look, spread, previewUses, size]);
 
   useEffect(() => {
-    shownT.current = t;
+    shownT.current = drawT;
     try {
-      view.current?.render(t);
+      view.current?.render(drawT);
     } catch (error) {
       console.error('Motikord: could not draw the scene', error);
     }
-  }, [t]);
+  }, [drawT]);
 
   // Playback: the clip runs through its scenes; "Play scene N" stops at the scene's end.
   const [sceneOnly, setSceneOnly] = useState(false);

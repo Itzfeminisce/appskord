@@ -4,7 +4,7 @@ import { validateClip } from '@appskord/motion/recipe';
 import { addEffect } from './EffectsDialog';
 import { cameraSummary, keyTimes, moveKey, parseMs, parseRange, readMotion, writeMotion } from './edits';
 import { sampleClip } from './fixture';
-import { editLayer, editScene, goBackTo, initV3, layerName, redoV3, sceneTitle, undoV3, type V3State } from './model';
+import { editLayer, editScene, goBackTo, initV3, layerName, posterMs, redoV3, sceneTitle, undoV3, type V3State } from './model';
 import { setMotion } from './MotionTab';
 import { setTransition } from './TransitionDialog';
 
@@ -147,5 +147,15 @@ describe('names', () => {
     const st = st0();
     expect(layerName(st.clip, 0, headline(st))).toBeTruthy();
     expect(sceneTitle(st.clip, 0)).not.toBe('');
+  });
+});
+
+describe('the paused stage at a scene start', () => {
+  it('shows the template key frame, or the moment the last layer has come in', () => {
+    const scene = sampleClip().v3.scenes[0]!;
+    expect(posterMs(scene)).toBe(900);
+    const untemplated = { ...scene, templateId: 'none' };
+    expect(posterMs(untemplated)).toBeGreaterThan(0);
+    expect(posterMs({ ...untemplated, ms: 100 })).toBe(99);
   });
 });

@@ -23,7 +23,7 @@ import { morphRing } from './morph';
 import { StrokeMesh, type Point } from './paths';
 import { deformPoints, poseBones, type Bone, type BoneId, type BonePose } from './rigs';
 import { bounds, ShapeMesh, triangulate } from './shapes';
-import { CountText, KineticType, type Measure } from './type';
+import { CountText, KineticType, safeArea, type Measure } from './type';
 import type { Finish, LayerV3, LookGuide, SceneV3 } from './types';
 
 export type { LayerContent } from './draw';
@@ -305,6 +305,7 @@ export class V3Renderer {
           fontUrl: this.options.fontUrl,
           color: spec.color,
           fill: spec.fill ? { frameWidth: 1080, inset: 80 } : undefined,
+          area: safeArea(1080, (1080 * this.options.height) / this.options.width),
         });
         group.add(k);
         this.kinetic.set(layer.id, k);
@@ -350,12 +351,7 @@ export class V3Renderer {
   /** A text layer's box for its mask, from where its units now sit (typeset widths once synced). */
   private textBox(id: string): Box | undefined {
     const k = this.kinetic.get(id);
-    if (!k) return this.textBoxes.get(id);
-    const lineHeight = k.options.fontSize * 1.1;
-    const lines = 1 + Math.max(0, ...k.boxes.map((b) => b.line));
-    const x0 = Math.min(0, ...k.boxes.map((b) => b.x));
-    const x1 = Math.max(0, ...k.boxes.map((b) => b.x + b.width));
-    return { x: x0, y: 0, width: x1 - x0, height: lines * lineHeight };
+    return k ? k.bounds() : this.textBoxes.get(id);
   }
 
   /** Poses the graph, content, camera and finish for `t` ms into the scene. Pure of GPU work. */

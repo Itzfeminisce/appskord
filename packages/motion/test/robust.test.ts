@@ -57,6 +57,35 @@ describe('dispose', () => {
     k.dispose();
   });
 
+  it('KineticType wraps to the safe area, centres the block and shrinks a too-wide word to fit', () => {
+    made.length = 0;
+    const area = { width: 300, height: 1000 };
+    const k = new KineticType('ab cd ef', 'word', {
+      measure: (s) => s.length * 100,
+      fontSize: 40,
+      fontUrl: '/f.ttf',
+      area,
+    });
+    expect(k.boxes.map((b) => [b.text, b.line])).toEqual([
+      ['ab', 0],
+      ['cd', 1],
+      ['ef', 2],
+    ]);
+    expect(k.scale.x).toBe(1);
+    expect(k.bounds()).toEqual({ x: -100, y: -66, width: 200, height: 132 });
+    expect(k.children[0]!.position.y).toBeCloseTo(66 * UNIT, 6);
+    const wide = new KineticType('abcdefgh', 'word', {
+      measure: (s) => s.length * 100,
+      fontSize: 40,
+      fontUrl: '/f.ttf',
+      area,
+    });
+    expect(wide.scale.x).toBeCloseTo(300 / 800, 6);
+    expect(wide.bounds().width).toBeCloseTo(300, 6);
+    k.dispose();
+    wide.dispose();
+  });
+
   it('AxisText disposes geometry and material', () => {
     const a = new AxisText(font, 'x', 40);
     const g = vi.spyOn(a.geometry, 'dispose');

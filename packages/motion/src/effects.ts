@@ -93,13 +93,16 @@ float hash(vec3 p) {
 }
 
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
-  vec3 c = inputColor.rgb * gain + lift * (1.0 - inputColor.rgb);
+  vec3 c = inputColor.rgb * gain;
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
   c = mix(vec3(l), c, saturation);
   vec2 d = uv - center;
   c *= 1.0 - dot(d, d) * vignette;
-  c += (hash(vec3(floor(uv * resolution), frame)) - 0.5) * grain;
-  outputColor = vec4(c, inputColor.a);
+  // The chain is linear light; lift and grain are steps on screen, so add them after gamma, or blacks turn to speckle.
+  vec3 s = pow(max(c, 0.0), vec3(1.0 / 2.2));
+  s += lift * (1.0 - s);
+  s += (hash(vec3(floor(uv * resolution), frame)) - 0.5) * grain;
+  outputColor = vec4(pow(max(s, 0.0), vec3(2.2)), inputColor.a);
 }
 `;
 
@@ -418,7 +421,9 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 uniform float amount; uniform float clock;
 ${HASH}
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
-  outputColor = vec4(inputColor.rgb + (hash(vec3(floor(uv * resolution), clock)) - 0.5) * amount, inputColor.a);
+  // Added after gamma, as the finish's grain is: in linear light it lands as heavy speckle in the darks.
+  vec3 s = pow(max(inputColor.rgb, 0.0), vec3(1.0 / 2.2)) + (hash(vec3(floor(uv * resolution), clock)) - 0.5) * amount;
+  outputColor = vec4(pow(max(s, 0.0), vec3(2.2)), inputColor.a);
 }`,
 };
 

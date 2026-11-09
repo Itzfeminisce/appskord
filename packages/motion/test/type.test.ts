@@ -6,8 +6,11 @@ import {
   axisCoords,
   axisSteps,
   fillScale,
+  fitScale,
   fontAxes,
   layoutUnits,
+  safeArea,
+  wrapLines,
   measureWith,
   unitPose,
   unitProgress,
@@ -56,6 +59,43 @@ describe('kinetic type splitting', () => {
     expect(unitPose('word', 1, 30)).toEqual({ opacity: 1, dy: 0, clip: false });
     expect(unitPose('line', 0, 30)).toEqual({ opacity: 1, dy: 30, clip: true });
     expect(unitPose('line', 1, 30).dy).toBe(0);
+  });
+
+  it('places each word after the previous word and a space, wrapping inside the safe area', () => {
+    const area = safeArea(1080, 1920);
+    expect(area).toEqual({ width: 1080 * 0.86, height: 1920 * 0.74 });
+    // 40 px a character: 23 characters fit the 928.8 px line.
+    const wide = (s: string): number => s.length * 40;
+    const text = 'Great coffee, before your first meeting.';
+    expect(wrapLines(text, wide, area.width)).toEqual(['Great coffee, before', 'your first meeting.']);
+    const boxes = layoutUnits(text, 'word', wide, 80, area.width);
+    expect(boxes.map((b) => [b.text, b.line, b.x, b.y])).toEqual(
+      [
+        ['Great', 0, -400],
+        ['coffee,', 0, -160],
+        ['before', 0, 160],
+        ['your', 1, -380],
+        ['first', 1, -180],
+        ['meeting.', 1, 60],
+      ].map(([t, line, x]) => [t, line, x, (line as number) * 80]),
+    );
+    for (const line of [0, 1]) {
+      const row = boxes.filter((b) => b.line === line);
+      row.slice(1).forEach((b, i) => expect(b.x).toBe(row[i]!.x + row[i]!.width + wide(' ')));
+      expect(-row[0]!.x).toBe(row.at(-1)!.x + row.at(-1)!.width);
+      expect(row.at(-1)!.x + row.at(-1)!.width - row[0]!.x).toBeLessThanOrEqual(area.width);
+    }
+    expect(layoutUnits(text, 'line', wide, 80, area.width).map((b) => b.text)).toEqual(
+      wrapLines(text, wide, area.width),
+    );
+  });
+
+  it('keeps a word wider than the line on its own line, and shrinks the block to fit the area', () => {
+    expect(wrapLines('a Extraordinarily b', mono, 100)).toEqual(['a', 'Extraordinarily', 'b']);
+    expect(wrapLines('one\n\n two  three ', mono, Infinity)).toEqual(['one', 'two three']);
+    expect(fitScale(1858, 160, { width: 929, height: 1421 })).toBe(0.5);
+    expect(fitScale(100, 2842, { width: 929, height: 1421 })).toBe(0.5);
+    expect(fitScale(0, 0, { width: 929, height: 1421 })).toBe(Infinity);
   });
 
   it('scales to fill the frame width between insets', () => {

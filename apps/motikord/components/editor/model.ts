@@ -1,5 +1,6 @@
 // The v3 editor's state: the clip, what is selected, and every edit written through validateScene into Changes.
 import { getSceneTemplate } from '@appskord/scenes/templates/scenes';
+import { layerMs, layerStarts } from '@appskord/motion/choreo';
 import { validateClip, validateScene } from '@appskord/motion/recipe';
 import type { LayerContent } from '@appskord/motion/draw';
 import type { EffectUse } from '@appskord/motion/effects';
@@ -219,6 +220,17 @@ export function sceneTitle(clip: RestyledClip, i: number): string {
 }
 
 export const templateName = (s: SceneV3): string => getTemplateV3(s.templateId)?.name ?? '';
+
+/**
+ * The frame a paused preview shows at a scene's start, where every layer is still waiting to come in: the
+ * template's key frame (as Look lock shows it), else the moment the last layer has finished coming in.
+ */
+export function posterMs(s: SceneV3): number {
+  const key = getTemplateV3(s.templateId)?.keyFrameS;
+  const starts = layerStarts(s.layers);
+  const settled = Math.max(0, ...s.layers.map((l, i) => (starts[i] ?? 0) + layerMs(l)));
+  return Math.max(0, Math.min(s.ms - 1, key !== undefined ? Math.round(key * 1000) : settled));
+}
 
 /** ms each scene starts on the clip's timeline. */
 export function sceneStarts(v3: ClipV3): number[] {
