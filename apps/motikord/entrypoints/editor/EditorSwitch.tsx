@@ -73,6 +73,12 @@ export default function EditorSwitch() {
   return (
     <Suspense fallback={null}>
       <EditorV3 key={open.clip.id} clip={open.clip} look={open.look} provider={open.provider} by={open.by} go={go} save={putClip}
+        voice={{
+          provider: open.provider === 'OpenAI' ? 'openai' : 'groq',
+          onConnectPenv: () => goInSidePanel(win.current, 'PenvConnect'),
+          onAddKey: () => goInSidePanel(win.current, 'PasteKey'),
+          onSettings: () => goInSidePanel(win.current, 'SettingsV3'),
+        }}
         onOpenV2={(clip) => void putClip(openV2Version(clip)).then(() => location.reload())} />
     </Suspense>
   );

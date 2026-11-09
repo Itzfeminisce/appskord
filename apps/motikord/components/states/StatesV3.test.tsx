@@ -28,6 +28,7 @@ const FRAME: [StateId, string, string, string, string | undefined][] = [
   ['animate-layer-failed', 'Editor, Layer · Animate this layer', 'Groq didn’t answer', 'Your layer is unchanged. Try again to send the same words.', 'Try again'],
   ['animate-layer-unclear', 'Editor, Layer · Animate this layer', 'Motikord couldn’t turn those words into motion', 'Your layer is unchanged. Say what moves and how, like “words slide up one by one”.', 'Try other words'],
   ['captions-failed', 'Editor, Captions', 'Your narration couldn’t be written down', 'Your clip is fine and plays without captions. Try again to add them.', 'Try again'],
+  ['captions-no-key', 'Editor, Captions', 'Auto captions need a Groq or OpenAI key', 'Only your narration goes to it, to be written down. Your clip works fine without captions.', 'Connect Penv Cloud'],
   ['captions-no-voice', 'Editor, Captions', 'No speech found in the narration', 'Your clip is unchanged. Captions appear once the narration has someone speaking.', 'Choose narration'],
   ['voiceover-failed', 'Editor, Voiceover', 'Your voiceover wasn’t made', 'Your script is kept as written. Try again to make the voice.', 'Try again'],
   ['voiceover-no-key', 'Editor, Voiceover', 'AI voiceover needs an OpenAI key', 'Only your script goes to OpenAI. Your clip works fine without a voice.', 'Add an OpenAI key'],
@@ -48,7 +49,7 @@ const FRAME: [StateId, string, string, string, string | undefined][] = [
 describe('StatesV3 ids', () => {
   it('wires every id the frame shows, and no other', () => {
     expect([...STATE_IDS].sort()).toEqual(FRAME.map((f) => f[0]).sort());
-    expect(STATE_IDS).toHaveLength(21);
+    expect(STATE_IDS).toHaveLength(22);
   });
 
   it.each(FRAME)('%s: where, title, line and action are the frame’s', async (id, where, title, line, action) => {
@@ -64,6 +65,15 @@ describe('StatesV3 ids', () => {
     expect(button!.textContent).toBe(action);
     await act(async () => { button!.click(); });
     expect(onAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('captions-no-key has a second button, Paste a key instead', async () => {
+    const second = vi.fn();
+    const host = await show(<StateCard id="captions-no-key" onAction2={second} />);
+    const buttons = [...host.querySelectorAll('button')];
+    expect(buttons.map((b) => b.textContent)).toEqual(['Connect Penv Cloud', 'Paste a key instead']);
+    await act(async () => { buttons[1]!.click(); });
+    expect(second).toHaveBeenCalledTimes(1);
   });
 
   it('keyframes-waiting shows its count, the clip and the scene', async () => {
@@ -94,7 +104,7 @@ describe('StatesV3 ids', () => {
   it('the StatesV3 screen lists every id with where it shows', async () => {
     const { host } = await mount(sidepanel, 'StatesV3');
     for (const id of STATE_IDS) expect(host.textContent, id).toContain(`${id} · ${WHERE[id]}`);
-    expect(host.querySelectorAll('[data-state]')).toHaveLength(21);
+    expect(host.querySelectorAll('[data-state]')).toHaveLength(22);
     expect(host.textContent).toContain('Every v3 error, wait and notice, as the user sees it.');
   });
 });

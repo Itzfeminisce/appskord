@@ -65,6 +65,21 @@ describe('CaptionsVoice', () => {
     expect(w.host.querySelector('[data-state=captions-no-voice]')?.textContent).toContain('No speech found in the narration');
   });
 
+  it('shows captions-no-key, not captions-failed, when there is no speech-to-text key', async () => {
+    const fetch = vi.fn();
+    const connect = vi.fn();
+    const add = vi.fn();
+    const v = await open({ narration, fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => undefined, onConnectPenv: connect, onAddKey: add });
+    await v.click(v.sw('Auto captions'));
+    expect(v.host.querySelector('[data-state=captions-no-key]')?.textContent).toContain('Auto captions need a Groq or OpenAI key');
+    expect(v.host.querySelector('[data-state=captions-failed]')).toBeNull();
+    await v.click(v.button('Connect Penv Cloud'));
+    await v.click(v.button('Paste a key instead'));
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('shows voiceover-no-key without a request when there is no OpenAI key', async () => {
     const fetch = vi.fn();
     const v = await open({ fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => undefined });

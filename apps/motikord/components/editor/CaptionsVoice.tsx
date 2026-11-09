@@ -3,6 +3,7 @@ import { getKey, type KeyName } from '../../lib/settings';
 import type { SpeechProvider } from '../../lib/voice/path';
 import { transcribeCues } from '../../lib/voice/captions';
 import { makeVoiceover, VOICES, type VoiceId } from '../../lib/voice/speech';
+import { STATES } from '../states/copy';
 import { clock } from './model';
 import { useEditorV3 } from './context';
 import { CAPTION_POSITION, CAPTION_STYLES, hasCaptions, scriptOf, writeCaptions, type CaptionStyle } from './CaptionsVoiceEdits';
@@ -11,7 +12,7 @@ import { C, Chip, hint, primaryButton, quietButton, Segmented, Switch } from './
 // The "Voice and captions" panel. Both features are off until switched on. Only the narration audio goes to
 // speech-to-text; only the script goes to the voice provider. Keys come from the session store, never props.
 
-export type CaptionsCard = 'captions-failed' | 'captions-no-voice';
+export type CaptionsCard = 'captions-failed' | 'captions-no-key' | 'captions-no-voice';
 export type VoiceCard = 'voiceover-failed' | 'voiceover-no-key';
 
 export interface CaptionsVoiceProps {
@@ -27,7 +28,10 @@ export interface CaptionsVoiceProps {
   /** Hands the made voice to the clip's audio; returns its length in ms. */
   onVoiceover?: (audio: Blob, voice: VoiceId) => Promise<number> | number;
   onChooseNarration?: () => void;
+  /** Paste a key (both no-key cards). */
   onAddKey?: () => void;
+  /** Connect Penv Cloud (captions-no-key). */
+  onConnectPenv?: () => void;
   onSettings?: () => void;
   /** Defaults to closing the editor overlay. */
   onClose?: () => void;
@@ -62,7 +66,7 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
     setCapCard(undefined);
     if (!p.narration) { setCapCard('captions-no-voice'); return; }
     const key = await keyOf(provider);
-    if (!key) { setCapCard('captions-failed'); return; }
+    if (!key) { setCapCard('captions-no-key'); return; }
     const ctrl = begin(capAbort);
     setCapBusy(true);
     try {
@@ -136,6 +140,9 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
         {capCard === 'captions-failed' && (
           <Notice state="captions-failed" title="Your narration couldn’t be written down" line="Your clip is fine and plays without captions. Try again to add them." action="Try again" onAction={() => void writeDown()} />
         )}
+        {capCard === 'captions-no-key' && (
+          <Notice state="captions-no-key" title={STATES['captions-no-key'].title} line={STATES['captions-no-key'].line} action={STATES['captions-no-key'].action} action2={STATES['captions-no-key'].action2} onAction={p.onConnectPenv} onAction2={p.onAddKey} />
+        )}
         {capCard === 'captions-no-voice' && (
           <Notice state="captions-no-voice" title="No speech found in the narration" line="Your clip is unchanged. Captions appear once the narration has someone speaking." action="Choose narration" onAction={p.onChooseNarration} />
         )}
@@ -188,12 +195,15 @@ function Row({ title, line, on, onChange }: { title: string; line: string; on: b
   );
 }
 
-function Notice({ state, title, line, action, onAction }: { state: CaptionsCard | VoiceCard; title: string; line: string; action: string; onAction?: () => void }) {
+function Notice({ state, title, line, action, action2, onAction, onAction2 }: { state: CaptionsCard | VoiceCard; title: string; line: string; action?: string; action2?: string; onAction?: () => void; onAction2?: () => void }) {
   return (
     <div role="alert" data-state={state} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 10, background: C.stage }}>
       <span style={{ fontSize: 13, fontWeight: 600 }}>{title}</span>
       <span style={hint}>{line}</span>
-      <button type="button" onClick={onAction} style={{ ...quietButton, alignSelf: 'flex-start' }}>{action}</button>
+      <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {action && <button type="button" onClick={onAction} style={quietButton}>{action}</button>}
+        {action2 && <button type="button" onClick={onAction2} style={quietButton}>{action2}</button>}
+      </span>
     </div>
   );
 }

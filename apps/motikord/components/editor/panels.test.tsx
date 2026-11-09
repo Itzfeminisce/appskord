@@ -58,6 +58,23 @@ describe('shared chrome', () => {
   });
 });
 
+describe('Voice button', () => {
+  it('sits between Brand and Check, opens CaptionsVoice, and the bar follows the frame', async () => {
+    const v = await open();
+    const names = v.all('header button').map((b) => b.textContent ?? '').filter((t) => /^(Brand|Voice|Check)/.test(t));
+    expect(names.map((n) => n.replace(/\d+$/, ''))).toEqual(['Brand', 'Voice', 'Check']);
+    const header = v.host.querySelector('header')!;
+    expect(header.style.gap).toBe('6px');
+    expect(v.button('Voice')!.style.padding).toBe('0px 10px');
+    expect(v.host.querySelector<HTMLInputElement>('input[aria-label="Clip name"]')!.style.width).toBe('152px');
+    expect(v.button('Voice')!.title).toBe('Voice and captions');
+    await v.click(v.button('Voice'));
+    expect(v.host.textContent).toContain('Off by default. Change it in Settings.');
+    await v.click(v.button('Voice'));
+    expect(v.host.textContent).not.toContain('Off by default. Change it in Settings.');
+  });
+});
+
 describe('Motion tab', () => {
   it('writes comes in, feel and hold to the recipe and lists each in Changes', async () => {
     const v = await open();

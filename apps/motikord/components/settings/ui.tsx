@@ -5,10 +5,10 @@ import type { CSSProperties, ReactNode } from 'react';
 export const rowStyle: CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', borderBottom: '1px solid var(--line-soft)', color: 'var(--ink)', textDecoration: 'none' };
 export const last: CSSProperties = { borderBottom: 0 };
 
-export function Section({ title, children, first }: { title: string; children: ReactNode; first?: boolean }) {
+export function Section({ title, children, first, id }: { title: string; children: ReactNode; first?: boolean; id?: string }) {
   return (
     <>
-      <h2 style={{ margin: first ? '14px 24px 8px' : '22px 24px 8px', fontSize: 13, fontWeight: 600 }}>{title}</h2>
+      <h2 id={id} style={{ margin: first ? '14px 24px 8px' : '22px 24px 8px', fontSize: 13, fontWeight: 600 }}>{title}</h2>
       <div style={{ margin: '0 16px', borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>{children}</div>
     </>
   );

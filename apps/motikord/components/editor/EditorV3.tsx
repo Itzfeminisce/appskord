@@ -140,7 +140,7 @@ function Shell(p: EditorV3Props) {
 const TEXT_INPUTS = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'number']);
 
 const barButton = (on = false) => ({
-  height: 34, padding: '0 12px', border: 0, borderRadius: 9, background: on ? C.tint : 'transparent', color: on ? C.accent : C.ink,
+  height: 34, padding: '0 10px', border: 0, borderRadius: 9, background: on ? C.tint : 'transparent', color: on ? C.accent : C.ink,
   font: `500 13px/1 ${C.font}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' as const,
 });
 
@@ -149,9 +149,9 @@ function TopBar({ status, go, checkCount }: { status: SaveStatus; go?: (to: Chro
   const { state, overlay, pack } = ed;
   const toggle = (o: 'add' | 'effects') => ed.setOverlay(overlay === o ? undefined : o);
   return (
-    <header style={{ height: 52, flexShrink: 0, background: C.surface, borderBottom: '1px solid #E8E8EB', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', boxSizing: 'border-box' }}>
+    <header style={{ height: 52, flexShrink: 0, background: C.surface, borderBottom: '1px solid #E8E8EB', display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', boxSizing: 'border-box' }}>
       <button type="button" aria-label="Your clips" onClick={() => go?.('library')} style={{ width: 36, height: 36, flexShrink: 0, border: 0, borderRadius: 9, background: '#111114', cursor: 'pointer' }} />
-      <input aria-label="Clip name" value={state.clip.recipe.name} readOnly style={{ width: 176, height: 34, flexShrink: 0, border: '1px solid transparent', borderRadius: 8, padding: '0 8px', font: `600 15px/1 ${C.font}`, color: C.ink, background: 'transparent' }} />
+      <input aria-label="Clip name" value={state.clip.recipe.name} readOnly style={{ width: 152, height: 34, flexShrink: 0, border: '1px solid transparent', borderRadius: 8, padding: '0 8px', font: `600 15px/1 ${C.font}`, color: C.ink, background: 'transparent' }} />
       {status === 'saved' && <span style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap' }}>Saved on this computer</span>}
       <span style={{ width: 1, height: 24, background: '#E8E8EB', flexShrink: 0 }} />
       <button type="button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!state.clip.history.length} onClick={ed.undo} style={{ ...barButton(), padding: '0 9px' }}>↶</button>
@@ -163,6 +163,7 @@ function TopBar({ status, go, checkCount }: { status: SaveStatus; go?: (to: Chro
         Look <span style={{ fontSize: 11, color: C.muted }}>{ed.look.name || pack.name}</span>
       </button>
       <button type="button" onClick={() => go?.('brand')} style={barButton()}>Brand</button>
+      <button type="button" title="Voice and captions" aria-pressed={overlay === 'voice'} onClick={() => ed.setOverlay(overlay === 'voice' ? undefined : 'voice')} style={barButton(overlay === 'voice')}>Voice</button>
       <button type="button" onClick={() => go?.('check')} style={barButton()}>
         Check
         {!!checkCount && <span style={{ minWidth: 16, height: 16, borderRadius: 8, background: C.accent, color: '#FFFFFF', fontSize: 10, display: 'grid', placeItems: 'center' }}>{checkCount}</span>}

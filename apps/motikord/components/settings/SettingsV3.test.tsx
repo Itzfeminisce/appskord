@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { sidepanel } from '../../entrypoints/sidepanel/router';
@@ -30,6 +31,39 @@ describe('SettingsV3', () => {
       'Auto captions', 'Your narration goes to Groq to be written down.', 'AI voiceover', 'Only the script goes to OpenAI.',
       'Where your data goes', 'Open source on GitHub',
     ]) expect(host.textContent, text).toContain(text);
+  });
+
+  it('draws every section itself, in the frame’s order', async () => {
+    const { host } = await mount(sidepanel, 'SettingsV3');
+    const heads = [...host.querySelectorAll('h2')].map((h) => h.textContent);
+    expect(heads).toEqual(['AI that writes your clips', 'Keys', 'Look and quality', 'Voice and captions', 'Voice prompts', 'Clips']);
+    for (const text of ['Penv Cloud', 'Paste a key instead', 'Add a key and its models appear in the list above.', 'Speak your prompt', 'On · English (US) · ',
+      'Brand kit', 'Save folder', 'Change', 'Default export', 'MP4 · 1080p · 9:16 · 60 fps', 'Media sources']) expect(host.textContent, text).toContain(text);
+  });
+
+  it('Keys and Clips rows open the v1 screens', async () => {
+    const view = await mount(sidepanel, 'SettingsV3');
+    const go = async (name: string | RegExp, screen: string) => {
+      await press(view.host, name);
+      expect(view.router.route.screen).toBe(screen);
+      act(() => view.router.back());
+      await settle();
+    };
+    await go(/^pvPenv Cloud/, 'PenvConnected');
+    await go('Paste a key instead', 'PasteKey');
+    await go(/^Brand kit/, 'BrandKit');
+    await go(/^Media sources/, 'MediaSources');
+  });
+
+  it('saves the voice prompts switch and the default export', async () => {
+    const { host } = await mount(sidepanel, 'SettingsV3');
+    await flip(sw(host, 'Speak your prompt'));
+    expect((await getSettings()).voiceOn).toBe(false);
+    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Default export"]')!;
+    select.value = 'webm|720p';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    expect((await getSettings()).defaultExport).toEqual({ kind: 'webm', quality: '720p' });
   });
 
   it('a v3-only pack writes auto to v2, and a v2 style is mirrored', async () => {

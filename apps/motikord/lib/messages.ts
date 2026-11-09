@@ -17,7 +17,7 @@ export interface MessageMap {
   // Editor tab → side panel: show PasteKey (the Pexels field), e.g. from "Add a Pexels key".
   'panel/show-paste-key': { req: {}; res: void };
   // Editor tab → side panel, after opening it inside the click: provider-down "Open Settings", key-needed "Paste a key", clip-not-found "Go to your clips", a media source's "Add key".
-  'sidepanel/go': { req: { screen: 'Settings' | 'Library' | 'PasteKey' | 'MediaSources' | 'ImageKey' }; res: { shown: boolean } };
+  'sidepanel/go': { req: { screen: 'Settings' | 'SettingsV3' | 'Library' | 'PasteKey' | 'PenvConnect' | 'MediaSources' | 'ImageKey' }; res: { shown: boolean } };
   // Export (T11) → service worker: toolbar badge progress, 0 to 100; null clears it.
   'export/progress': { req: { percent: number | null }; res: void };
   // Page picker → side panel: the picks so far (each click), "Done" or Esc (`done`), or "Cancel".

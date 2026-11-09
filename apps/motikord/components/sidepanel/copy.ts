@@ -7,6 +7,7 @@ export const HOME = {
   newLine: 'Depth, camera moves and kinetic type.',
   seeWhatsNew: 'See what’s new',
   prompt: 'What should the clip show?',
+  grab: 'Grab from this page',
   yourMedia: 'Your media',
   attached: 'Attached',
   clipType: 'Clip type',
