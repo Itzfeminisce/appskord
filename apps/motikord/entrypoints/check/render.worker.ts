@@ -1,6 +1,6 @@
 import { GIFEncoder, applyPalette, quantize } from 'gifenc';
-import { ArrayBufferTarget as Mp4Target, Muxer as Mp4Muxer } from 'mp4-muxer';
-import { ArrayBufferTarget as WebmTarget, Muxer as WebmMuxer } from 'webm-muxer';
+import { Mp4OutputFormat, WebMOutputFormat } from 'mediabunny';
+import { createMuxed } from '@appskord/media/mux';
 import { CODECS, exportPlan, type ExportKind } from '@/lib/check/plan';
 import { drawFrame, makeImages } from './draw';
 
@@ -34,15 +34,12 @@ async function video(kind: Exclude<ExportKind, 'gif'>) {
   });
   if (!picked) return post({ type: 'done', seconds: 0, bytes: 0, encoder: 'none', supported: false });
 
-  const mp4 = kind === 'mp4'
-    ? new Mp4Muxer({ target: new Mp4Target(), fastStart: 'in-memory', video: { codec: 'avc', width: plan.width, height: plan.height } })
-    : null;
-  const webm = kind !== 'mp4'
-    ? new WebmMuxer({ target: new WebmTarget(), video: { codec: 'V_VP9', width: plan.width, height: plan.height, alpha: seeThrough } })
-    : null;
+  const mux = kind === 'mp4'
+    ? createMuxed({ format: new Mp4OutputFormat({ fastStart: false }), mime: 'video/mp4', video: 'avc', width: plan.width, height: plan.height, fps: plan.fps })
+    : createMuxed({ format: new WebMOutputFormat(), mime: 'video/webm', video: 'vp9', width: plan.width, height: plan.height, fps: plan.fps, alpha: seeThrough });
   let failure: unknown = null;
   const encoder = new VideoEncoder({
-    output: (chunk, meta) => { try { if (mp4) mp4.addVideoChunk(chunk, meta); else webm!.addVideoChunk(chunk, meta); } catch (e) { failure ??= e; } },
+    output: (chunk, meta) => { try { mux.addVideo(chunk, meta); } catch (e) { failure ??= e; } },
     error: (e) => { failure ??= e; },
   });
   encoder.configure(picked.config);
@@ -62,8 +59,8 @@ async function video(kind: Exclude<ExportKind, 'gif'>) {
   await encoder.flush();
   encoder.close();
   if (failure) throw failure;
-  const buffer = mp4 ? (mp4.finalize(), mp4.target.buffer) : (webm!.finalize(), webm!.target.buffer);
-  post({ type: 'done', seconds: (performance.now() - start) / 1000, bytes: buffer.byteLength, encoder: picked.encoder, supported: true });
+  const file = await mux.finish();
+  post({ type: 'done', seconds: (performance.now() - start) / 1000, bytes: file.size, encoder: picked.encoder, supported: true });
 }
 
 function gif() {

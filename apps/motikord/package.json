@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@appskord/llm": "workspace:*",
+    "@appskord/media": "workspace:*",
     "@appskord/motion": "workspace:*",
     "@appskord/penv": "workspace:*",
     "@appskord/platform": "workspace:*",
@@ -41,9 +42,8 @@
     "@fontsource-variable/geist-mono": "^5.3.0",
     "gifenc": "^1.0.3",
     "idb": "^8.0.4",
-    "mp4-muxer": "^5.2.2",
+    "mediabunny": "^1.65.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "webm-muxer": "^5.1.4"
+    "react-dom": "^19.3.1"
   }
 }

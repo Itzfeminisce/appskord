@@ -42,11 +42,9 @@
     "gifenc": "^1.0.3",
     "idb": "^8.0.4",
     "mediabunny": "^1.65.0",
-    "mp4-muxer": "^5.2.2",
     "mp4box": "^2.5.0",
     "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "webm-muxer": "^5.1.4"
+    "react-dom": "^19.3.1"
   }
 }

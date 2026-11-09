@@ -92,7 +92,7 @@ export function pageDeps(root: FileSystemDirectoryHandle): RunDeps {
               if (ended) list.forEach((b) => b.close());
               else tell({ type: 'frames', id: m.id, bitmaps }, list);
             }).catch(reject);
-          } else if (m.type === 'done') resolve(new Blob([m.buffer], { type: m.mime }));
+          } else if (m.type === 'done') resolve(m.blob);
           else reject(Object.assign(new Error(m.message), { name: m.reason === 'cancelled' ? 'Cancelled' : m.name, reason: m.reason }));
         };
         worker.onerror = (e) => reject(new Error(e.message || 'The render worker stopped'));

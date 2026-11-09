@@ -1,5 +1,5 @@
-import { ArrayBufferTarget as Mp4Target, Muxer as Mp4Muxer } from 'mp4-muxer';
-import { ArrayBufferTarget as WebmTarget, Muxer as WebmMuxer } from 'webm-muxer';
+import { Mp4OutputFormat, WebMOutputFormat, type AudioCodec, type VideoCodec } from 'mediabunny';
+import { createMuxed, type Muxed } from '@appskord/media/mux';
 import { editedLength } from '../editList';
 import type { Recording } from '../types';
 import { readPlayable } from '../export/playable';
@@ -16,6 +16,9 @@ const MAX_QUEUE = 6;
 
 export interface EncodeDeps { read: (rec: Recording) => Promise<Blob> }
 const defaultDeps: EncodeDeps = { read: (rec) => readPlayable(rec) };
+
+const MUX_VIDEO: Record<string, VideoCodec> = { avc: 'avc', vp9: 'vp9', V_VP9: 'vp9', V_VP8: 'vp8' };
+const MUX_AUDIO: Record<string, AudioCodec> = { aac: 'aac', opus: 'opus', A_OPUS: 'opus' };
 
 const aborted = () => new DOMException('The export was stopped', 'AbortError');
 
@@ -49,7 +52,7 @@ export async function encodeKept(
   let failure: unknown = null;
   const fail = (error: unknown) => { failure ??= error; };
 
-  let muxer = null as Mp4Muxer<Mp4Target> | WebmMuxer<WebmTarget> | null;
+  let muxer = null as Muxed | null;
   let vdec = null as VideoDecoder | null;
   let venc = null as VideoEncoder | null;
   let adec = null as AudioDecoder | null;
@@ -112,22 +115,20 @@ export async function encodeKept(
       if (!aout) throw new Error("This browser can't encode audio for the copy");
     }
 
-    const audio = a && aout ? { codec: aout.mux, numberOfChannels: a.channels, sampleRate: a.sampleRate } : undefined;
-    muxer = container === 'mp4'
-      ? new Mp4Muxer({
-        target: new Mp4Target(), fastStart: 'in-memory', firstTimestampBehavior: 'cross-track-offset',
-        video: { codec: vout.mux as 'avc' | 'vp9', width: v.width, height: v.height },
-        audio: audio as { codec: 'aac' | 'opus'; numberOfChannels: number; sampleRate: number } | undefined,
-      })
-      : new WebmMuxer({ target: new WebmTarget(), firstTimestampBehavior: 'permissive', video: { codec: vout.mux, width: v.width, height: v.height }, audio });
+    muxer = createMuxed({
+      format: container === 'mp4' ? new Mp4OutputFormat({ fastStart: false }) : new WebMOutputFormat(),
+      mime: container === 'mp4' ? 'video/mp4' : 'video/webm',
+      video: MUX_VIDEO[vout.mux]!, width: v.width, height: v.height, fps: 30,
+      audio: a && aout ? { codec: MUX_AUDIO[aout.mux]!, sampleRate: a.sampleRate, channels: a.channels } : undefined,
+    });
     const mux = muxer;
 
-    venc = new VideoEncoder({ output: (chunk, meta) => { try { mux.addVideoChunk(chunk, meta); } catch (error) { fail(error); } }, error: fail });
+    venc = new VideoEncoder({ output: (chunk, meta) => { try { mux.addVideo(chunk, meta); } catch (error) { fail(error); } }, error: fail });
     venc.configure(vout.config);
     vdec = new VideoDecoder({ output: onFrame, error: fail });
     vdec.configure(vin);
     if (ain && aout) {
-      aenc = new AudioEncoder({ output: (chunk, meta) => { try { mux.addAudioChunk(chunk, meta); } catch (error) { fail(error); } }, error: fail });
+      aenc = new AudioEncoder({ output: (chunk, meta) => { try { mux.addAudio(chunk, meta); } catch (error) { fail(error); } }, error: fail });
       aenc.configure(aout.config);
       adec = new AudioDecoder({ output: onAudio, error: fail });
       adec.configure(ain);
@@ -194,10 +195,9 @@ export async function encodeKept(
       fail(error);
     }
     check();
-    const done = muxer as Mp4Muxer<Mp4Target> | WebmMuxer<WebmTarget>;
-    done.finalize();
+    const file = await (muxer as Muxed).finish();
     onProgress(1);
-    return new Blob([done.target.buffer], { type: container === 'mp4' ? 'video/mp4' : 'video/webm' });
+    return file;
   } finally {
     signal?.removeEventListener('abort', onAbort);
     close();
