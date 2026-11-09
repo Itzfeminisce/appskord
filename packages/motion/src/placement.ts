@@ -1,4 +1,4 @@
-// Where layers without a layout box rest, and how far the camera may move before text leaves the safe area.
+// Where layers without a layout box rest, and the part of the safe area text keeps clear of the camera's travel.
 // Pure: rectangles in recipe px around the frame's centre, y down.
 import type { CameraPose } from './camera';
 import { depthPose } from './depth';
@@ -59,46 +59,54 @@ export function freeSpot(
   return { x: best.x, y: best.y, scale: best.scale };
 }
 
-/** A camera pose moved `k` (0..1) of the way from rest: pan, zoom and orbit shrink; focus is kept. */
-export function limitPose(pose: CameraPose, k: number): CameraPose {
-  return { ...pose, x: pose.x * k, y: pose.y * k, zoom: 1 + (pose.zoom - 1) * k, yaw: pose.yaw * k };
+/** The box round every rect in `rects`; undefined when there are none. */
+export function union(rects: readonly Rect[]): Rect | undefined {
+  if (!rects.length) return undefined;
+  const x0 = Math.min(...rects.map((r) => r.x));
+  const y0 = Math.min(...rects.map((r) => r.y));
+  const x1 = Math.max(...rects.map((r) => r.x + r.width));
+  const y1 = Math.max(...rects.map((r) => r.y + r.height));
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
-/** How far `rect` at its depth pokes outside `safe` under `pose`, recipe px; 0 when inside. */
-function overflow(rect: Rect, depth: Depth, pose: CameraPose, safe: Rect): number {
-  const d = depthPose(depth, pose);
-  const x0 = rect.x * d.scale + d.x;
-  const y0 = rect.y * d.scale + d.y;
-  const x1 = (rect.x + rect.width) * d.scale + d.x;
-  const y1 = (rect.y + rect.height) * d.scale + d.y;
-  return Math.max(0, safe.x - x0, x1 - (safe.x + safe.width), safe.y - y0, y1 - (safe.y + safe.height));
-}
+/** The smallest share of the safe area's width and height text keeps however far the camera travels. */
+export const MIN_INSET_SHARE = 0.5;
 
 /**
- * The share (0..1) of the scene's camera move that keeps every text block inside `safe` at each pose in `poses`
- * (the move's ends): a block already outside at rest only may not be pushed further out.
+ * The part of `safe` that text at `depth` rests in so the camera's whole move (its poses at each end) keeps it
+ * inside `safe`: shrunk by how far the move carries that depth, never below MIN_INSET_SHARE of each side.
  */
-export function cameraLimit(
-  blocks: readonly { rect: Rect; depth: Depth }[],
-  poses: readonly CameraPose[],
-  safe: Rect,
-): number {
-  if (!blocks.length || !Number.isFinite(safe.width)) return 1;
-  const worst = (k: number) =>
-    Math.max(
-      0,
-      ...blocks.flatMap((b) => {
-        const rest = overflow(b.rect, b.depth, limitPose(poses[0]!, 0), safe);
-        return poses.map((p) => overflow(b.rect, b.depth, limitPose(p, k), safe) - rest);
-      }),
-    );
-  if (worst(1) <= 0.5) return 1;
-  let lo = 0;
-  let hi = 1;
-  for (let i = 0; i < 14; i++) {
-    const mid = (lo + hi) / 2;
-    if (worst(mid) <= 0.5) lo = mid;
-    else hi = mid;
+export function travelSafe(safe: Rect, poses: readonly CameraPose[], depth: Depth): Rect {
+  if (!Number.isFinite(safe.width) || !Number.isFinite(safe.height)) return safe;
+  let [x0, y0, x1, y1] = [safe.x, safe.y, safe.x + safe.width, safe.y + safe.height];
+  for (const pose of poses) {
+    const d = depthPose(depth, pose);
+    // A point p shows at p * scale + offset: keep both edges inside safe.
+    x0 = Math.max(x0, (safe.x - d.x) / d.scale);
+    x1 = Math.min(x1, (safe.x + safe.width - d.x) / d.scale);
+    y0 = Math.max(y0, (safe.y - d.y) / d.scale);
+    y1 = Math.min(y1, (safe.y + safe.height - d.y) / d.scale);
   }
-  return lo;
+  const side = (lo: number, hi: number, slo: number, span: number): [number, number] => {
+    const min = span * MIN_INSET_SHARE;
+    if (hi - lo >= min) return [lo, hi];
+    const mid = Math.min(Math.max((lo + hi) / 2, slo + min / 2), slo + span - min / 2);
+    return [mid - min / 2, mid + min / 2];
+  };
+  const [ax, bx] = side(x0, x1, safe.x, safe.width);
+  const [ay, by] = side(y0, y1, safe.y, safe.height);
+  return { x: ax, y: ay, width: bx - ax, height: by - ay };
+}
+
+/** `slot` carried from `safe` into `inner` by the same stretch, so a layout shrunk into `inner` keeps its shape. */
+export function mapSlot(slot: Rect, safe: Rect, inner: Rect): Rect {
+  if (!Number.isFinite(safe.width) || !Number.isFinite(safe.height) || safe.width <= 0 || safe.height <= 0) return slot;
+  const kx = inner.width / safe.width;
+  const ky = inner.height / safe.height;
+  return {
+    x: inner.x + (slot.x - safe.x) * kx,
+    y: inner.y + (slot.y - safe.y) * ky,
+    width: slot.width * kx,
+    height: slot.height * ky,
+  };
 }

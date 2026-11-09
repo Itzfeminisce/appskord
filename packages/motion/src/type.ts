@@ -382,7 +382,8 @@ export function synced(text: Text): Promise<void> {
     const target = t as unknown as THREE.EventDispatcher<{ synccomplete: object }>;
     const once = (): void => {
       target.removeEventListener('synccomplete', once);
-      done();
+      // A sync asked for while one ran (a count's next number) is queued behind it: wait for that one too.
+      void synced(text).then(done);
     };
     target.addEventListener('synccomplete', once);
   });
@@ -415,6 +416,8 @@ export class KineticType extends THREE.Group {
       area?: { width: number; height: number };
       /** Lines line up on the block's left or right edge; centred when absent. */
       align?: 'left' | 'right';
+      /** A further uniform shrink after wrapping and fitting, so the block keeps its lines in a smaller area. */
+      shrink?: number;
     },
   ) {
     super();
@@ -480,15 +483,19 @@ export class KineticType extends THREE.Group {
   /** Scales to fill when asked, then down until the block fits its area. Without either the scale is left alone. */
   private fit(widest: number): void {
     const { fill, area } = this.options;
+    const shrink = this.options.shrink ?? 1;
     this.widest = widest;
-    if (!fill && !area) return;
+    if (!fill && !area) {
+      if (shrink !== 1 && positive(shrink)) this.scale.setScalar(shrink);
+      return;
+    }
     const height = this.lineCount * this.lineHeight;
     const s = Math.min(
       fill ? fillScale(widest, fill.frameWidth, fill.inset) : 1,
       area ? fitScale(widest, height, area) : Infinity,
     );
     // A degenerate frame or fill never hides the words.
-    if (positive(s)) this.scale.setScalar(s);
+    if (positive(s * shrink)) this.scale.setScalar(s * shrink);
   }
 
   /** The block's box in recipe px around the layer's origin, scaled as drawn. */
@@ -530,6 +537,22 @@ export class KineticType extends THREE.Group {
     });
     this.fit(widest);
     this.placed = true;
+  }
+
+  /**
+   * Shows `shown` in place of `raw` in each unit that holds it (a counting number), keeping the block laid out for
+   * the full text so nothing reflows while it counts.
+   */
+  retext(raw: string, shown: string): void {
+    this.texts.forEach((t, i) => {
+      const base = this.boxes[i]!.text;
+      if (!base.includes(raw)) return;
+      const next = base.replace(raw, shown);
+      if ((t as TextProps).text !== next) {
+        (t as TextProps).text = next;
+        t.sync();
+      }
+    });
   }
 
   /** Resolves once every unit has typeset and been placed from its real glyph widths. */

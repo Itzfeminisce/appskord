@@ -12,7 +12,8 @@ vi.mock('../src/text', () => ({
 }));
 
 import { cameraAt, type CameraPose } from '../src/camera';
-import { CLEAR, cameraLimit, freeSpot, limitPose } from '../src/placement';
+import { depthPose } from '../src/depth';
+import { CLEAR, freeSpot, mapSlot, MIN_INSET_SHARE, travelSafe, union } from '../src/placement';
 import { V3Renderer } from '../src/renderer';
 import { UNIT } from '../src/scene';
 import { safeRect, type Rect } from '../src/type';
@@ -42,29 +43,58 @@ describe('freeSpot', () => {
   });
 });
 
-describe('cameraLimit', () => {
+describe('travelSafe', () => {
   const pan = (amount: number): CameraPose[] => [0, 1].map((progress) => cameraAt({ move: 'pan', amount, progress }));
-  it('keeps the whole move when text has room, and cuts it back when text sits at the edge', () => {
-    const middle = { rect: { x: -100, y: -50, width: 200, height: 100 }, depth: 'front' as const };
-    expect(cameraLimit([middle], pan(0.5), safe)).toBe(1);
-    const edge = { rect: { x: safe.x + 20, y: -50, width: 300, height: 100 }, depth: 'front' as const };
-    const k = cameraLimit([edge], pan(0.5), safe);
-    expect(k).toBeGreaterThan(0);
-    expect(k).toBeLessThan(1);
+  const shows = (x: number, p: CameraPose) => x * depthPose('front', p).scale + depthPose('front', p).x;
+
+  it('keeps the whole pan and insets text so neither end carries it out', () => {
+    const inner = travelSafe(safe, pan(0.5), 'front');
+    expect(inner.width).toBeLessThan(safe.width);
+    expect(inner.width).toBeCloseTo(safe.width - 0.5 * 540, 6);
     for (const p of pan(0.5)) {
-      const x = -limitPose(p, k).x;
-      expect(edge.rect.x + x).toBeGreaterThanOrEqual(safe.x - 0.6);
+      expect(Math.abs(p.x)).toBeCloseTo(135, 6);
+      expect(shows(inner.x, p)).toBeGreaterThanOrEqual(safe.x - 1e-6);
+      expect(shows(inner.x + inner.width, p)).toBeLessThanOrEqual(safe.x + safe.width + 1e-6);
     }
+    expect(inner.height).toBe(safe.height);
   });
 
-  it('holds a push-in so a wide block never grows past the safe area', () => {
-    const wide = { rect: { x: safe.x + 10, y: -50, width: safe.width - 20, height: 100 }, depth: 'front' as const };
+  it('shrinks for a push-in so the grown text stays inside, and less for a deeper layer', () => {
     const push = [0, 1].map((progress) => cameraAt({ move: 'push-in', amount: 0.4, progress }));
-    const k = cameraLimit([wide], push, safe);
-    const zoom = limitPose(push[1]!, k).zoom;
-    expect(wide.rect.x * zoom).toBeGreaterThanOrEqual(safe.x - 0.6);
-    // Behind the text a layer moves less, so a back block barely limits the move.
-    expect(cameraLimit([{ ...wide, depth: 'back' }], push, safe)).toBeGreaterThan(k);
+    const front = travelSafe(safe, push, 'front');
+    expect(front.x * 1.4).toBeCloseTo(safe.x, 6);
+    expect(travelSafe(safe, push, 'back').width).toBeGreaterThan(front.width);
+  });
+
+  it('is the safe area itself for a hold, and keeps at least half of it for a huge move', () => {
+    expect(travelSafe(safe, [cameraAt({ move: 'hold', amount: 0, progress: 0 })], 'front')).toEqual(safe);
+    expect(travelSafe(safe, pan(4), 'front').width).toBeCloseTo(safe.width * MIN_INSET_SHARE, 6);
+  });
+});
+
+describe('mapSlot', () => {
+  it('carries a layout box into the inset area by the same stretch', () => {
+    const from: Rect = { x: 0, y: 0, width: 100, height: 100 };
+    const into: Rect = { x: 10, y: 20, width: 50, height: 80 };
+    expect(mapSlot({ x: 50, y: 0, width: 50, height: 100 }, from, into)).toEqual({
+      x: 35,
+      y: 20,
+      width: 25,
+      height: 80,
+    });
+    expect(mapSlot(from, from, from)).toEqual(from);
+  });
+});
+
+describe('union', () => {
+  it('bounds every rect, and is undefined for none', () => {
+    expect(union([])).toBeUndefined();
+    expect(
+      union([
+        { x: 0, y: 0, width: 10, height: 10 },
+        { x: 20, y: -5, width: 5, height: 5 },
+      ]),
+    ).toEqual({ x: 0, y: -5, width: 25, height: 15 });
   });
 });
 
@@ -127,18 +157,80 @@ describe('V3Renderer placement', () => {
     expect(make({ valign: 'top' }).y).toBeCloseTo((box.y - 0.5) * 1920 + 33);
   });
 
-  it('cuts a pan back so text at the safe edge stays inside through the scene', () => {
+  it('keeps the whole pan and rests text inset by its travel, inside the safe area through the scene', () => {
     const box = { x: 0.07, y: 0.4, w: 0.4, h: 0.1 };
-    const r = new V3Renderer(base([text('t')], { move: 'pan', amount: 1 }), {
+    const r = new V3Renderer(base([text('t')], { move: 'pan', amount: 0.5 }), {
       ...options,
       measure: () => (w: string) => w.length * 30,
       content: () => ({ text: 'Fresh bread', fontSize: 60, box, align: 'left' }),
     });
-    for (const t of [0, 1500, 2950]) {
+    const fronts: number[] = [];
+    for (const t of [0, 1500, 3000]) {
       r.pose(t);
       const front = r.graph.depths.front.position.x / UNIT;
-      expect(at(r, 't').x - 165 + front).toBeGreaterThanOrEqual(safe.x - 1);
+      fronts.push(front);
+      const half = (r.graph.layers.get('t')!.children[0] as unknown as { bounds(): Rect }).bounds().width / 2;
+      expect(at(r, 't').x - half + front).toBeGreaterThanOrEqual(safe.x - 1);
+      expect(at(r, 't').x + half + front).toBeLessThanOrEqual(safe.x + safe.width + 1);
     }
+    // The pan is not cut back: the front layer travels the full 270 px.
+    expect(fronts[0]! - fronts[2]!).toBeCloseTo(270, 0);
+    r.dispose();
+  });
+
+  it("counts a text layer's own number up in place, and leaves text without a number alone", () => {
+    const shown = (words: string, t: number) => {
+      const layer: LayerV3 = {
+        ...text('n'),
+        count: { from: 0 },
+        tracks: {
+          draw: [
+            { t: 0, v: 0 },
+            { t: 1000, v: 1 },
+          ],
+        },
+      };
+      const r = new V3Renderer(base([layer]), { ...options, content: () => ({ text: words, fontSize: 60 }) });
+      r.pose(t);
+      const k = r.graph.layers.get('n')!.children[0]!;
+      const out = (k.children[0] as unknown as { text: string }).text;
+      r.dispose();
+      return out;
+    };
+    expect(shown('1,200', 0)).toBe('0');
+    const mid = Number(shown('1,200', 500).replace(/,/g, ''));
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(1200);
+    expect(shown('1,200', 1000)).toBe('1,200');
+    expect(shown('$4.5k', 0)).toBe('$0.0k');
+    expect(shown('$4.5k', 1000)).toBe('$4.5k');
+    expect(shown('98%', 0)).toBe('0%');
+    expect(shown('Since dawn', 500)).toBe('Since dawn');
+  });
+
+  it('sits a backing panel behind the text it backs, sized to the block plus padding', () => {
+    const box = { x: 0.1, y: 0.3, w: 0.8, h: 0.1 };
+    const kicker: LayerV3 = { ...text('k'), slotId: 'kicker' };
+    const glass: LayerV3 = { id: 'glass', kind: 'shape', depth: 'back', tracks: {} };
+    const r = new V3Renderer(base([kicker, glass]), {
+      ...options,
+      measure: () => (w: string) => w.length * 30,
+      content: (l) => (l.id === 'k' ? { text: 'Fresh', fontSize: 60, box } : { backs: ['kicker'] }),
+    });
+    r.pose(1500);
+    expect(at(r, 'glass').x).toBeCloseTo(at(r, 'k').x);
+    expect(at(r, 'glass').y).toBeCloseTo(at(r, 'k').y);
+    const mesh = r.graph.layers.get('glass')!.children[0] as THREE.Mesh;
+    mesh.geometry.computeBoundingBox();
+    const size = new THREE.Vector3();
+    mesh.geometry.boundingBox!.getSize(size);
+    const pad = 1080 * 0.04;
+    expect(size.x / UNIT).toBeCloseTo(150 + 2 * pad, 0);
+    expect(size.y / UNIT).toBeCloseTo(66 + 2 * pad, 0);
+    const order = (id: string) => (r.graph.layers.get(id)!.children[0] as THREE.Object3D).renderOrder;
+    expect(order('glass')).toBeLessThan(order('k'));
+    // It moves with the text under the camera, so parallax never slides it out from behind.
+    expect(r.graph.layers.get('glass')!.parent).toBe(r.graph.depths.front);
     r.dispose();
   });
 });

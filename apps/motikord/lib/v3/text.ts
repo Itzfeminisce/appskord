@@ -3,6 +3,7 @@ import type { LayerV3 } from '@appskord/motion/types';
 import { boxFor } from '@appskord/scenes/render/reflow';
 import { sizeOn } from '@appskord/scenes/render/textFit';
 import { aspectOf } from '@appskord/scenes/templates/blocks';
+import { getTemplateV3 } from '../templates/v3/templates';
 import type { Aspect, Scene } from '../types';
 
 /** The words a v3 text layer shows: its v2 layer's text, or its slot's words in the v2 scene. */
@@ -50,8 +51,23 @@ export function sceneLayerContent(
       ...(valign ? { valign } : {}),
     };
   }
-  if (v2?.type !== 'shape' || !box) return undefined;
+  if (!v2) return addedContent(scene, layer);
+  if (v2.type !== 'shape' || !box) return undefined;
   return { size: { w: box.w * frame.width, h: box.h * frame.height }, color: v2.fill, shape: v2.shape, radius: v2.radius === undefined ? undefined : v2.radius * k, box };
+}
+
+/** Recipe px of decor outlines: large and soft, as the template frames draw them. */
+const DECOR_SIZE = { blob: { w: 620, h: 540 }, arch: { w: 440, h: 580 } } as const;
+
+/** A layer the scene's template adds: what its plan says it is for, a backing panel or decor. */
+function addedContent(scene: Scene | undefined, layer: LayerV3): LayerContent | undefined {
+  const t = scene?.template && getTemplateV3(scene.template);
+  // buildScene renames a template layer whose id a v2 layer already has.
+  const plan = t ? t.plan.find((p) => !p.slot && (p.id === layer.id || `v3-${p.id}` === layer.id)) : undefined;
+  if (plan?.backs) return { backs: plan.backs };
+  if (plan?.decor === 'line') return { decor: true };
+  if (plan?.decor) return { decor: true, shape: plan.decor, size: DECOR_SIZE[plan.decor] };
+  return undefined;
 }
 
 /** The content of every layer of `scene` that has some, by layer id. */

@@ -160,6 +160,10 @@ export function buildScene(t: TemplateV3, pack: PackV3, input: SceneInput): Scen
   const taken = new Set(layers.map((l) => l.id));
   for (const plan of t.plan) {
     if (plan.slot) continue;
+    if (plan.onto) {
+      countOnto(plan, layers, pack);
+      continue;
+    }
     const id = taken.has(plan.id) ? `v3-${plan.id}` : plan.id;
     taken.add(id);
     byPlan.set(plan.id, id);
@@ -192,6 +196,21 @@ export function buildScene(t: TemplateV3, pack: PackV3, input: SceneInput): Scen
   if (t.depthBlur) scene.depthBlur = t.depthBlur;
   if (t.depthShadows) scene.depthShadows = true;
   return scene;
+}
+
+/**
+ * Runs a template's count on its slot's text layer: the layer's own number counts up from `from`, on a draw track
+ * timed from the plan's beat. Without that layer there is nothing to count, so nothing is added.
+ */
+function countOnto(plan: LayerPlan, layers: LayerV3[], pack: PackV3): void {
+  const target = layers.find((l) => l.slotId === plan.onto && l.kind === 'text');
+  if (!target || !plan.count) return;
+  const curve = plan.curve ?? pack.curve;
+  const shift = Math.round(plan.at * 1000) - (target.start ?? 0);
+  const draw = moveTracks(plan.move, plan.ms ?? curveMs(curve, pack), curve).draw;
+  if (!draw) return;
+  target.tracks.draw = draw.map((k) => ({ ...k, t: Math.max(0, k.t + shift) }));
+  target.count = { from: plan.count.from };
 }
 
 /** Links scenes into a clip: a carry stays only when the next scene has a layer with the same carry id. */

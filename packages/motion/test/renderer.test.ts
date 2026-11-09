@@ -12,13 +12,16 @@ vi.mock('../src/text', () => ({
   },
 }));
 
+import { cameraAt } from '../src/camera';
 import { chartLayers, CHART_DEFAULTS } from '../src/charts';
 import { bakeParticles, PARTICLE_DEFAULTS } from '../src/particles';
 import { StrokeMesh } from '../src/paths';
 import { autoRig, rigLayers, RIG_DEFAULTS } from '../src/rigs';
 import { ShapeMesh } from '../src/shapes';
+import { mapSlot, travelSafe } from '../src/placement';
 import { V3Renderer } from '../src/renderer';
 import { UNIT } from '../src/scene';
+import { safeRect } from '../src/type';
 import { clip, scene } from './fixture';
 
 const look = {
@@ -95,9 +98,13 @@ describe('V3Renderer', () => {
     r.pose(5000);
     still.pose(5000);
     const y = (v: V3Renderer, id: string) => -v.graph.layers.get(id)!.position.y / UNIT;
-    // Without a box a layer sits where its tracks put it; with one, that far from the box's centre.
-    expect(y(r, ids[0]!) - y(still, ids[0]!)).toBeCloseTo(-960 + 0.18 * 1920, 3);
-    const bottom = 960 - 0.16 * 1920;
+    // Without a box a layer sits where its tracks put it; with one, at the box's centre, inset by the push-in's travel.
+    const push = [0, 1].map((progress) => cameraAt({ move: 'push-in', amount: 0.4, progress }));
+    const safe = safeRect(1080, 1920);
+    const inner = travelSafe(safe, push, 'front');
+    const slot = mapSlot({ x: 0, y: -960 + 0.16 * 1920, width: 0, height: 0.04 * 1920 }, safe, inner);
+    expect(y(r, ids[0]!) - y(still, ids[0]!)).toBeCloseTo(Math.max(slot.y + slot.height / 2, inner.y + 33), 3);
+    const bottom = inner.y + inner.height;
     expect(y(r, ids[1]!) - y(still, ids[1]!)).toBeLessThanOrEqual(bottom);
     expect(y(r, ids[1]!) - y(still, ids[1]!)).toBeGreaterThan(bottom - 100);
     r.dispose();

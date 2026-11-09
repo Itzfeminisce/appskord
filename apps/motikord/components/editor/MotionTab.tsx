@@ -58,7 +58,7 @@ function MotionFor({ scene, layer }: { scene: SceneV3; layer: LayerV3 }) {
       <PanelHead icon="Tt" name={name} line={words ? `“${words.replace(/\s+/g, ' ')}”` : `Scene ${ed.state.scene + 1}`} />
       <Section title="Comes in" changed={tagged("Comes in")} aside={text ? 'Kinetic type' : undefined}>
         <Chips options={text ? COMES_IN : COMES_IN.filter(([id]) => id !== 'word' && id !== 'letter' && id !== 'fill')} value={spec.comesIn}
-          disabled={!!layer.count} onChange={(v) => set({ comesIn: v }, COMES_IN.find(([id]) => id === v)![1])} />
+          disabled={!!layer.count && layer.kind !== 'text'} onChange={(v) => set({ comesIn: v }, COMES_IN.find(([id]) => id === v)![1])} />
       </Section>
       <Section title="Feel" changed={tagged("Feel")}>
         <Segmented name="Feel" options={FEEL_ORDER.map((f) => [f, FEEL_NAMES[f]] as const)} value={feel}

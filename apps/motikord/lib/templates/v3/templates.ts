@@ -46,8 +46,14 @@ export interface LayerPlan {
   extrude?: [number, number];
   /** Fraunces SOFT axis from, to (0..100). */
   soft?: [number, number];
-  /** A counting number: the layer's draw track is its progress. */
-  count?: { from: number; to: number; decimals?: number };
+  /** A counting number: the layer's draw track is its progress. With `onto`, it counts to the number in that slot's text. */
+  count?: { from: number; to?: number; decimals?: number };
+  /** A backing panel: it sits behind these slots' text, sized to their block plus padding. */
+  backs?: string[];
+  /** Decor only: drawn at low contrast in this outline, and may sit behind text. */
+  decor?: 'blob' | 'arch' | 'line';
+  /** A text slot this layer's count runs on: that layer's own number counts up in place; nothing else is drawn. */
+  onto?: string;
 }
 export interface Beat {
   /** Seconds, or null for "Out". */
@@ -100,7 +106,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
     ],
     plan: [
       { id: 'background', slot: true, kind: 'media', depth: 'back', at: 0, move: 'fade' },
-      { id: 'glass', kind: 'shape', depth: 'back', at: 0, move: 'focus-in', z: -4, carry: 'glass' },
+      { id: 'glass', kind: 'shape', depth: 'back', at: 0, move: 'focus-in', z: -4, carry: 'glass', backs: ['kicker', 'headline'] },
       { id: 'kicker', slot: true, kind: 'text', depth: 'front', at: 0.2, move: 'rise', curve: spring(20) },
       { id: 'headline', slot: true, kind: 'text', depth: 'front', at: 0.35, move: 'rise', unit: 'word' },
     ],
@@ -131,7 +137,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
     plan: [
       { id: 'statement', slot: true, kind: 'text', depth: 'front', at: 0, move: 'wipe', unit: 'line' },
       { id: 'highlight', slot: true, kind: 'text', depth: 'front', at: 0.3, move: 'fill', unit: 'word', fill: true },
-      { id: 'block', kind: 'shape', depth: 'middle', at: 0.5, move: 'wipe', z: -1 },
+      { id: 'block', kind: 'shape', depth: 'middle', at: 0.5, move: 'wipe', z: -1, backs: ['highlight'] },
     ],
     camera: { move: 'hold', amount: 0 },
     transition: 'cut',
@@ -150,13 +156,13 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
     ],
     beats: [
       { at: 0, line: 'Whip pan in with motion blur, Snappy' },
-      { at: 0.1, line: 'Counts up 0 to 2,400 from the data, 0.9 s' },
+      { at: 0.1, line: 'The number counts up from 0 in place, 0.9 s' },
       { at: 0.6, line: 'Yellow bar line-draws to the value' },
       { at: null, line: 'Yellow block wipes up on a whip pan' },
     ],
     plan: [
       { id: 'number', slot: true, kind: 'text', depth: 'front', at: 0, move: 'whip', curve: SNAPPY },
-      { id: 'count', kind: 'chart', depth: 'front', at: 0.1, move: 'count', ms: 900, count: { from: 0, to: 2400, decimals: 0 } },
+      { id: 'count', kind: 'chart', depth: 'front', at: 0.1, move: 'count', ms: 900, count: { from: 0 }, onto: 'number' },
       { id: 'bar', kind: 'shape', depth: 'middle', at: 0.6, move: 'draw' },
       { id: 'label', slot: true, kind: 'text', depth: 'front', at: 0.7, move: 'rise' },
       { id: 'source', slot: true, kind: 'text', depth: 'front', at: 0.9, move: 'fade' },
@@ -221,7 +227,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
       { at: null, line: 'Blob morphs into the next scene’s shape' },
     ],
     plan: [
-      { id: 'blob', kind: 'shape', depth: 'back', at: 0, move: 'morph', carry: 'blob' },
+      { id: 'blob', kind: 'shape', depth: 'back', at: 0, move: 'morph', carry: 'blob', decor: 'blob' },
       { id: 'drift', kind: 'particles', depth: 'back', at: 0, move: 'fade', particles: DRIFT },
       { id: 'quote', slot: true, kind: 'text', depth: 'front', at: 0.3, move: 'rise', unit: 'line', curve: FLOATY, soft: [0, 100] },
       { id: 'name', slot: true, kind: 'text', depth: 'front', at: 1.4, move: 'fade' },
@@ -289,7 +295,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
     ],
     plan: [
       { id: 'media', slot: true, kind: 'media', depth: 'back', at: 0, move: 'fade' },
-      { id: 'arch', kind: 'shape', depth: 'back', at: 0, move: 'wipe', z: -2, carry: 'arch' },
+      { id: 'arch', kind: 'shape', depth: 'back', at: 0, move: 'wipe', z: -2, carry: 'arch', decor: 'arch' },
       { id: 'pills', kind: 'model', depth: 'middle', at: 0, move: 'drop', curve: spring(35) },
       { id: 'headline', slot: true, kind: 'text', depth: 'front', at: 0.2, move: 'extrude', unit: 'word', extrude: [10, 10] },
       { id: 'line', slot: true, kind: 'text', depth: 'front', at: 0.5, move: 'rise' },
@@ -372,8 +378,8 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
     plan: [
       { id: 'title', slot: true, kind: 'text', depth: 'front', at: 0, move: 'rise', curve: spring(45) },
       { id: 'steps', slot: true, kind: 'text', depth: 'front', at: 0.3, move: 'drop', unit: 'line' },
-      { id: 'path', kind: 'path', depth: 'middle', at: 0.5, move: 'draw', ms: 800 },
-      { id: 'blob', kind: 'shape', depth: 'back', at: 0.5, move: 'morph', carry: 'blob' },
+      { id: 'path', kind: 'path', depth: 'middle', at: 0.5, move: 'draw', ms: 800, decor: 'line' },
+      { id: 'blob', kind: 'shape', depth: 'back', at: 0.5, move: 'morph', carry: 'blob', decor: 'blob' },
     ],
     camera: { move: 'hold', amount: 0 },
     transition: 'match-cut',
@@ -422,7 +428,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
       { at: null, line: 'Particles drift, Pull out 3%, then Hold' },
     ],
     plan: [
-      { id: 'button', kind: 'shape', depth: 'middle', at: 0, move: 'morph', carry: 'blob' },
+      { id: 'button', kind: 'shape', depth: 'middle', at: 0, move: 'morph', carry: 'blob', backs: ['cta'] },
       { id: 'cta', slot: true, kind: 'text', depth: 'front', at: 0.3, move: 'rise', unit: 'word', curve: FLOATY },
       { id: 'handle', slot: true, kind: 'text', depth: 'front', at: 0.6, move: 'fade' },
       { id: 'underline', kind: 'path', depth: 'front', at: 0.7, move: 'draw', ms: 600 },

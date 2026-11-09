@@ -138,6 +138,8 @@ export function writeMotion(scene: SceneV3, l: LayerV3, spec: MotionSpec, carryI
   const tracks: Tracks = { ...l.tracks };
   for (const p of MANAGED) delete tracks[p];
   Object.assign(tracks, moveTracks(MOVE[spec.comesIn], ms, spec.curve));
+  // A text layer's own count keeps its progress when its entrance changes.
+  if (l.kind === 'text' && l.count && l.tracks.draw) tracks.draw = l.tracks.draw;
   if (spec.weight) tracks.weight = range(spec.weight[0], spec.weight[1], ms, spec.curve);
   else delete tracks.weight;
   if (spec.width && spec.comesIn !== 'fill') tracks.width = range(spec.width[0], spec.width[1], ms, spec.curve);

@@ -1,11 +1,23 @@
 /// <reference path="./modules.d.ts" />
 import * as THREE from 'three';
 import { EffectComposer, RenderPass } from 'postprocessing';
-import { CAMERA_DISTANCE } from './camera';
+import { CAMERA_DISTANCE, type CameraPose } from './camera';
 import { applyCamera, scenePose } from './depth';
 import { bounds as outlineBounds } from './shapes';
 import type { EffectUse } from './effects';
-import { bonePoses, chartPart, drawSpec, formatCount, growOutline, type DrawSpec, type LayerContent } from './draw';
+import {
+  bonePoses,
+  chartPart,
+  countedNumber,
+  drawSpec,
+  formatCount,
+  growOutline,
+  textNumber,
+  type Count,
+  type DrawSpec,
+  type LayerContent,
+  type TextNumber,
+} from './draw';
 import { DEFAULT_FINISH, FinishChain } from './finish';
 import { disposeLight, GUIDE_LIGHT, keyLight } from './light';
 import { ParticlesView } from './particles';
@@ -22,11 +34,11 @@ import {
 import { applyMask, type Box } from './masks';
 import { morphRing } from './morph';
 import { StrokeMesh, type Point } from './paths';
-import { cameraLimit, freeSpot, limitPose } from './placement';
+import { freeSpot, mapSlot, travelSafe, union } from './placement';
 import { deformPoints, poseBones, type Bone, type BoneId, type BonePose } from './rigs';
-import { bounds, ShapeMesh, triangulate } from './shapes';
+import { bounds, roundedRect, ShapeMesh, triangulate } from './shapes';
 import { boxRect, CountText, KineticType, placeInside, safeRect, slotArea, type Measure, type Rect } from './type';
-import type { Finish, LayerV3, LookGuide, SceneV3 } from './types';
+import type { Depth, Finish, LayerV3, LookGuide, SceneV3 } from './types';
 
 export type { LayerContent } from './draw';
 
@@ -169,8 +181,9 @@ class ShapeView implements View {
       this.edge.setPoints(closed(edge), 1);
     }
     this.draw = draw;
-    this.mesh.material.opacity = props.opacity;
-    if (this.edge) this.edge.material.opacity = props.opacity;
+    const opacity = props.opacity * (spec.alpha ?? 1);
+    this.mesh.material.opacity = opacity;
+    if (this.edge) this.edge.material.opacity = opacity;
   }
 
   dispose(): void {
@@ -213,7 +226,7 @@ class PathView implements View {
         s.setPoints(this.rig ? this.rig.deform(line) : line, props.draw);
       });
     }
-    for (const s of this.strokes) s.material.opacity = props.opacity;
+    for (const s of this.strokes) s.material.opacity = props.opacity * (this.spec.alpha ?? 1);
   }
 
   dispose(): void {
@@ -257,6 +270,9 @@ function restAt(rest: Rest, size: { width: number; height: number }): { x: numbe
   return { x, y };
 }
 
+/** Padding round the text a backing panel sits behind, as a share of the frame's short side. */
+const BACKING_PAD = 0.04;
+
 export class V3Renderer {
   readonly graph: MotionGraph;
   readonly three = new THREE.Scene();
@@ -264,7 +280,9 @@ export class V3Renderer {
   readonly chain: FinishChain;
   private readonly previous: THREE.PerspectiveCamera;
   private readonly kinetic = new Map<string, KineticType>();
-  private readonly counts = new Map<string, { view: CountText; count: NonNullable<LayerV3['count']> }>();
+  private readonly counts = new Map<string, { view: CountText; count: Count }>();
+  /** Text layers whose own number counts up in place, from `from`. */
+  private readonly counted = new Map<string, { n: TextNumber; from: number }>();
   private readonly particles = new Map<string, ParticlesView>();
   private readonly views = new Map<string, View>();
   /** Text boxes for masks, recipe px. */
@@ -274,8 +292,12 @@ export class V3Renderer {
    * layout box (`slot`), lined up by `align` and `valign` once its size is known.
    */
   private readonly rests = new Map<string, Rest>();
-  /** Text and counts where they rest, recipe px, as last placed: the camera keeps them inside the safe area. */
-  private readonly blocks = new Map<string, { rect: Rect; depth: LayerV3['depth'] }>();
+  /** Text where it rests, recipe px, as last placed: backing panels sit behind these. */
+  private readonly blocks = new Map<string, Rect>();
+  /** Backing panels, by layer id: the text layers each sits behind, and the size its outline was cut at. */
+  private readonly backing = new Map<string, { ids: string[]; width: number; height: number }>();
+  /** The camera's pose at each end of the scene's move: text rests inside the safe area shrunk by it. */
+  private readonly ends: CameraPose[];
   /** Recipe px the text layout boxes take, which the layers a template adds are placed around. */
   private readonly taken: Rect[] = [];
   private readonly masked: LayerV3[];
@@ -310,6 +332,9 @@ export class V3Renderer {
       accent: look?.palette[2] ?? '#8B9CFF',
       panel: look?.palette[3] ?? '#1A1B2E',
     };
+    const feel = look?.feel ?? 'smooth';
+    const start = frameAt(scene, 0, feel);
+    this.ends = [0, 1].map((progress) => scenePose(scene, { ...start, camera: { ...start.camera, progress } }, feel));
     const contents = new Map(scene.layers.map((l) => [l.id, options.content?.(l)]));
     for (const l of scene.layers) {
       const box = contents.get(l.id)?.box;
@@ -342,9 +367,14 @@ export class V3Renderer {
       case 'text': {
         const measure = (this.options.measure ?? roughMeasure)(spec.fontSize);
         const safe = this.safe;
-        const slot = content?.box && boxRect(content.box, this.page);
+        const inner = this.textSafe(layer.depth);
+        const full = content?.box && boxRect(content.box, this.page);
+        // The layout shrinks into the area the camera's travel leaves: boxes move in, and text keeps its lines but
+        // draws smaller, so boxes keep clear of each other.
+        const slot = full && mapSlot(full, safe, inner);
+        const shrink = Number.isFinite(safe.width) ? Math.min(inner.width / safe.width, inner.height / safe.height) : 1;
         // Text in a layout box wraps and shrinks to it; without one, to the safe area at the frame's centre.
-        const area = slot ? slotArea(slot, safe, spec.fontSize * 1.1) : { width: safe.width, height: safe.height };
+        const area = full ? slotArea(full, safe, spec.fontSize * 1.1) : { width: safe.width, height: safe.height };
         if (slot)
           this.rests.set(layer.id, {
             x: slot.x + slot.width / 2,
@@ -361,9 +391,12 @@ export class V3Renderer {
           fill: spec.fill ? (slot ? { frameWidth: area.width, inset: 0 } : { frameWidth: 1080, inset: 80 }) : undefined,
           area,
           align: slot ? content?.align : undefined,
+          shrink,
         });
         group.add(k);
         this.kinetic.set(layer.id, k);
+        const n = layer.count && textNumber(spec.text);
+        if (n) this.counted.set(layer.id, { n, from: layer.count!.from });
         return;
       }
       case 'count': {
@@ -411,6 +444,7 @@ export class V3Renderer {
    * boxes least, shrunk to clear them when it can. Text, chart parts and boxed layers keep their spec.
    */
   private placeAdded(layer: LayerV3, spec: DrawSpec, content: LayerContent | undefined): DrawSpec {
+    if (content?.backs && spec.kind === 'shape') return this.placeBacking(layer, spec, content.backs);
     if (content?.box || chartPart(layer.id) || !this.taken.length) return spec;
     const size =
       spec.kind === 'count'
@@ -422,8 +456,9 @@ export class V3Renderer {
             : undefined;
     if (!size) return spec;
     // A rigged outline keeps its size: its bones were cut for it.
+    // A rigged outline keeps its size too: its bones were cut for it.
     const rigged = (spec.kind === 'shape' || spec.kind === 'path') && !!spec.bones?.length;
-    const spot = freeSpot(size, this.taken, this.safe, rigged ? [1] : undefined);
+    const spot = freeSpot(size, this.taken, this.safe, rigged || content?.decor ? [1] : undefined);
     // A count draws above its origin (anchored at its baseline), so its origin sits half a line below the spot.
     const drop = spec.kind === 'count' ? (spec.fontSize * spot.scale) / 2 : 0;
     this.rests.set(layer.id, { x: spot.x, y: spot.y + drop });
@@ -438,6 +473,28 @@ export class V3Renderer {
     if (spec.kind === 'shape') return { ...spec, outline: spec.outline.map(at), morphTo: spec.morphTo?.map(at) };
     if (spec.kind === 'path') return { ...spec, lines: spec.lines.map((l) => l.map(at)) };
     return spec;
+  }
+
+  /**
+   * A backing panel: a rounded rect the size of the text block of the slots it backs plus BACKING_PAD, resting
+   * behind it (re-centred on the block each frame). With none of those layers it is drawn as specified.
+   */
+  private placeBacking(layer: LayerV3, spec: Extract<DrawSpec, { kind: 'shape' }>, slots: readonly string[]): DrawSpec {
+    const ids = this.scene.layers
+      .filter((l) => l.slotId && slots.includes(l.slotId) && this.kinetic.has(l.id))
+      .map((l) => l.id);
+    const rect = union(ids.flatMap((id) => this.restBlock(id, this.rests.get(id) ?? { x: 0, y: 0 })?.rect ?? []));
+    if (!rect) return spec;
+    const pad = this.backingPad;
+    const w = rect.width + 2 * pad;
+    const h = rect.height + 2 * pad;
+    this.backing.set(layer.id, { ids, width: w, height: h });
+    // It moves with the text it backs, so parallax never slides it out from behind; it still draws behind.
+    const front = this.scene.layers.find((l) => l.id === ids[0])!.depth;
+    const group = this.graph.layers.get(layer.id);
+    if (group) this.graph.depths[front].add(group);
+    const outline = roundedRect(w, h, Math.min(w, h) * 0.12);
+    return { ...spec, outline, morphTo: spec.morphTo && roundedRect(w, h, Math.min(w, h) / 2), bones: undefined };
   }
 
   /** Back to front: each depth after the one behind it, and within a depth the words over the shapes. */
@@ -459,8 +516,17 @@ export class V3Renderer {
     return { width: 1080, height: width > 0 && height > 0 ? (1080 * height) / width : 1080 };
   }
 
+  private get backingPad(): number {
+    return Math.min(this.page.width, this.page.height) * BACKING_PAD;
+  }
+
   private get safe(): Rect {
     return safeRect(this.page.width, this.page.height);
+  }
+
+  /** Where text at `depth` rests: the safe area less the camera's travel, so the move never carries it out. */
+  private textSafe(depth: Depth): Rect {
+    return travelSafe(this.safe, this.ends, depth);
   }
 
   /**
@@ -468,21 +534,37 @@ export class V3Renderer {
    * area at the size it is drawn.
    */
   private placeRests(): void {
-    const safe = this.safe;
     this.blocks.clear();
     for (const [id, rest] of this.rests) {
       const group = this.graph.layers.get(id);
       if (!group) continue;
-      const kinetic = this.kinetic.get(id)?.bounds();
-      const b = kinetic ?? (this.counts.has(id) ? this.textBoxes.get(id) : undefined);
-      const s = group.scale.x;
-      const size = b && { width: b.width * s, height: b.height * s };
-      const p = kinetic && size ? placeInside(restAt(rest, size), size, safe) : rest;
+      const block = this.restBlock(id, rest, group.scale.x);
+      const p = block?.at ?? rest;
       group.position.x += p.x * UNIT;
       group.position.y -= p.y * UNIT;
-      const depth = this.scene.layers.find((l) => l.id === id)?.depth ?? 'front';
-      if (b && size) this.blocks.set(id, { rect: { x: p.x + b.x * s, y: p.y + b.y * s, ...size }, depth });
+      if (block) this.blocks.set(id, block.rect);
     }
+    const pad = this.backingPad;
+    for (const [id, backs] of this.backing) {
+      const group = this.graph.layers.get(id);
+      const rect = union(backs.ids.flatMap((b) => this.blocks.get(b) ?? []));
+      if (!group || !rect) continue;
+      group.position.x += (rect.x + rect.width / 2) * UNIT;
+      group.position.y -= (rect.y + rect.height / 2) * UNIT;
+      // Typeset widths replace the measured ones once fonts load: the panel follows the block's real size.
+      group.scale.x *= (rect.width + 2 * pad) / backs.width;
+      group.scale.y *= (rect.height + 2 * pad) / backs.height;
+    }
+  }
+
+  /** Where a text layer rests at scale `s`: lined up in its box and kept inside its depth's text safe area. */
+  private restBlock(id: string, rest: Rest, s = 1): { at: { x: number; y: number }; rect: Rect } | undefined {
+    const b = this.kinetic.get(id)?.bounds();
+    if (!b) return undefined;
+    const size = { width: b.width * s, height: b.height * s };
+    const depth = this.scene.layers.find((l) => l.id === id)?.depth ?? 'front';
+    const at = placeInside(restAt(rest, size), size, this.textSafe(depth));
+    return { at, rect: { x: at.x + b.x * s, y: at.y + b.y * s, ...size } };
   }
 
   /** A text layer's box for its mask, from where its units now sit (typeset widths once synced). */
@@ -497,16 +579,14 @@ export class V3Renderer {
     const frame = frameAt(this.scene, t, feel);
     applyFrame(this.graph, frame);
     this.placeRests();
-    // The move is cut back just enough that no text at rest is carried past the safe area by either end of it.
-    const ends = [0, 1].map((progress) =>
-      scenePose(this.scene, { ...frame, camera: { ...frame.camera, progress } }, feel),
-    );
-    const k = cameraLimit([...this.blocks.values()], ends, this.safe);
-    applyCamera(this.graph, limitPose(scenePose(this.scene, frame, feel), k), 1, !!this.options.spread);
+    applyCamera(this.graph, scenePose(this.scene, frame, feel), 1, !!this.options.spread);
     this.props.clear();
     for (const l of frame.layers) this.props.set(l.id, l.props);
     for (const l of frame.layers) {
-      this.kinetic.get(l.id)?.update(l.local, l.props.opacity);
+      const k = this.kinetic.get(l.id);
+      const own = this.counted.get(l.id);
+      if (k && own) k.retext(own.n.raw, countedNumber(own.n, own.from, l.props.draw));
+      k?.update(l.local, l.props.opacity);
       const c = this.counts.get(l.id);
       c?.view.update(formatCount(c.count, l.props.draw), l.props.opacity);
       this.particles.get(l.id)?.update(Math.max(0, l.local));

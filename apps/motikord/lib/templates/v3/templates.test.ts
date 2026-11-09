@@ -75,7 +75,11 @@ describe('v3 templates', () => {
 
   it('uses the real count, extrude and soft fields', () => {
     const layers = TEMPLATES_V3.flatMap((t) => buildScene(t, PACKS_V3.find((p) => p.id === t.packId)!, { id: t.id }).layers);
-    expect(layers.find((l) => l.id === 'count')!.count).toEqual({ from: 0, to: 2400, decimals: 0 });
+    // The stat's count runs on its number's own text layer: no layer of its own, no sample value.
+    expect(layers.some((l) => l.id === 'count')).toBe(false);
+    const number = layers.find((l) => l.slotId === 'number')!;
+    expect(number.count).toEqual({ from: 0 });
+    expect(number.tracks.draw!.map((k) => [k.t, k.v])).toEqual([[100, 0], [1000, 1]]);
     expect(layers.some((l) => l.tracks.extrude?.at(-1)?.v === 18 && l.tracks.extrude[0]!.v === 0)).toBe(true);
     expect(layers.find((l) => l.id === 'quote')!.tracks.soft!.map((k) => k.v)).toEqual([0, 100]);
   });

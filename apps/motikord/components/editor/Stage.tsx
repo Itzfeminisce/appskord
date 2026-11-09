@@ -108,7 +108,12 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
   useEffect(() => {
     shownT.current = drawT;
     try {
-      view.current?.render(drawT);
+      const v = view.current;
+      v?.render(drawT);
+      // A count re-typesets its number as t moves: draw again once it has, if t is still showing.
+      void v?.ready().then(() => {
+        if (view.current === v && shownT.current === drawT) v.render(drawT);
+      });
     } catch (error) {
       console.error('Motikord: could not draw the scene', error);
     }
