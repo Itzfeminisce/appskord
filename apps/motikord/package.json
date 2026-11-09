@@ -42,7 +42,7 @@
     "@fontsource-variable/geist-mono": "^5.3.0",
     "gifenc": "^1.0.3",
     "idb": "^8.0.4",
-    "mediabunny": "^1.65.0",
+    "mediabunny": "1.65.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   }

@@ -124,8 +124,8 @@ importers:
         specifier: ^8.0.4
         version: 8.0.4
       mediabunny:
-        specifier: ^1.65.0
-        version: 1.65.0
+        specifier: 1.65.2
+        version: 1.65.2
       mp4box:
         specifier: ^2.5.0
         version: 2.5.0
@@ -209,7 +209,7 @@ importers:
         specifier: ^8.0.4
         version: 8.0.4
       mediabunny:
-        specifier: ^1.65.0
+        specifier: 1.65.2
         version: 1.65.2
       react:
         specifier: ^19.3.1
@@ -393,8 +393,8 @@ importers:
   packages/media:
     dependencies:
       mediabunny:
-        specifier: ^1.65.0
-        version: 1.65.0
+        specifier: 1.65.2
+        version: 1.65.2
     devDependencies:
       '@appskord/config':
         specifier: workspace:*
@@ -2030,9 +2030,6 @@ packages:
   matcher@3.0.0:
     resolution: {integrity: sha512-OkeDaAZ/bQCxeFAozM55PKcKU0yJMPGifLwV4Qgjitu+5MoAfSQN4lsLJeXZ1b8w0x+/Emda6MZgXS1jvsapng==}
     engines: {node: '>=10'}
-
-  mediabunny@1.65.0:
-    resolution: {integrity: sha512-TNnDNOmD5Fme4rwMGWuNv485a9iQwd9lgw88PI9zQ0FMnzEUoo6EJpG7ZhdJ2iwZFWo8AzNkP1KPq5IAHaktKw==}
 
   mediabunny@1.65.2:
     resolution: {integrity: sha512-goZpibvo/5hkc/56WVNm93Ini+o7K4y8aXA20c/BN1B+m3L5aHQa8MTvO+S1APg/YI8kMILtrX6QCqUtxLW7bA==}
@@ -3734,11 +3731,6 @@ snapshots:
   matcher@3.0.0:
     dependencies:
       escape-string-regexp: 4.0.0
-
-  mediabunny@1.65.0:
-    dependencies:
-      '@types/dom-mediacapture-transform': 0.1.12
-      '@types/dom-webcodecs': 0.1.13
 
   mediabunny@1.65.2:
     dependencies:

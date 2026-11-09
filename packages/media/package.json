@@ -15,7 +15,7 @@
     "compile": "tsc --noEmit"
   },
   "dependencies": {
-    "mediabunny": "^1.65.0"
+    "mediabunny": "1.65.2"
   },
   "devDependencies": {
     "@appskord/config": "workspace:*",

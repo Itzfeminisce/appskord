@@ -20,6 +20,9 @@ const defaultDeps: EncodeDeps = { read: (rec) => readPlayable(rec) };
 const MUX_VIDEO: Record<string, VideoCodec> = { avc: 'avc', vp9: 'vp9', V_VP9: 'vp9', V_VP8: 'vp8' };
 const MUX_AUDIO: Record<string, AudioCodec> = { aac: 'aac', opus: 'opus', A_OPUS: 'opus' };
 
+// The one Blob is assembled anyway, so the index goes at the start, as the old muxer wrote it.
+export const mp4Format = () => new Mp4OutputFormat({ fastStart: 'in-memory' });
+
 const aborted = () => new DOMException('The export was stopped', 'AbortError');
 
 async function firstSupported<C extends VideoEncoderConfig | AudioEncoderConfig>(
@@ -116,7 +119,7 @@ export async function encodeKept(
     }
 
     muxer = createMuxed({
-      format: container === 'mp4' ? new Mp4OutputFormat({ fastStart: false }) : new WebMOutputFormat(),
+      format: container === 'mp4' ? mp4Format() : new WebMOutputFormat(),
       mime: container === 'mp4' ? 'video/mp4' : 'video/webm',
       video: MUX_VIDEO[vout.mux]!, width: v.width, height: v.height, fps: 30,
       audio: a && aout ? { codec: MUX_AUDIO[aout.mux]!, sampleRate: a.sampleRate, channels: a.channels } : undefined,
