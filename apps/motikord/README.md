@@ -12,6 +12,14 @@ Think of a free, local, prompt-first Canva or Jitter that lives in Chrome.
 - Export MP4, WebM or GIF in several sizes. Clips with CC BY media always export with `credits.txt`.
 - Keep clips in a library on your computer.
 
+## What's new in 3.0
+
+- Clips are drawn with depth, light and motion that follows the words, in packs and 12 clip templates.
+- Key frames you approve before motion, "Animate this layer", and a Data tab for pasted tables.
+- Voice and captions: Auto captions from your narration, and an AI voiceover from a script.
+- Export MP4 at 60 or 30 fps, and a Check button with a 3-pass quality check.
+- A quality sheet of v2's 20 prompts beside 4 references: `pnpm quality-sheet` writes `test/quality/sheet-v3.html`.
+
 ## What's new in 2.0
 
 - A critic that looks at preview frames and fixes what it finds, and a quality bar of 20 recorded prompts that must all pass the checker.
@@ -59,6 +67,14 @@ Three more things to know:
 - Preview frames: when the critic checks a clip, small preview frames of it go to the AI you chose, only if that model can see images.
 - AI images: only the image description goes to the image service, never your media.
 - Beat sync stays on this computer.
+
+New in 3.0:
+
+- Key frames and Animate this layer: your prompt and the layer's text go to the AI you chose, never your media.
+- Quality check: up to 8 small preview frames per pass go to the AI you chose, only if that model can see images.
+- Auto captions: your narration audio goes to Groq or OpenAI to be written down, only while Auto captions is on. It is off by default.
+- Make voiceover: the script text goes to OpenAI's voice service, only when you press Make voiceover.
+- 3D, effects, particles, icons and fonts are bundled with the extension. Nothing is downloaded. Everything else stays on this computer.
 
 The full policy, with every permission and host, is in [docs/privacy.md](docs/privacy.md).
 

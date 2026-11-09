@@ -1,76 +1,94 @@
-// Renders the 20 recorded quality prompts (test/quality/prompts.json) into test/quality/sheet.html:
-// the real pipeline runs offline (vitest), frames at 10/35/60/90% are drawn in Playwright Chromium.
-// Usage: pnpm quality-sheet
-import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+// v3 quality sheet: v2's 20 prompts (test/quality/prompts.json) re-run in v3, beside X's 4 references, with score inputs.
+// Usage: pnpm quality-sheet [out.html]. The AI step reads GROQ_API_KEY at run time and never prints it.
+// With no key the 20-prompt column says "not run (no key)" and the 12 v3 clip templates stand in as the clips.
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const dataFile = join(await mkdtemp(join(tmpdir(), 'motikord-sheet-')), 'rows.json');
-const run = spawnSync('pnpm', ['exec', 'vitest', 'run', 'test/quality/sheet.test.ts'], { cwd: root, env: { ...process.env, QUALITY_SHEET: dataFile }, stdio: 'inherit' });
-if (run.status !== 0) process.exit(run.status ?? 1);
-const rows = JSON.parse(await readFile(dataFile, 'utf8'));
+const out = process.argv[2] ?? fileURLToPath(new URL('../test/quality/sheet-v3.html', import.meta.url));
+const key = process.env.GROQ_API_KEY || '';
 
-// vite comes with wxt (not a direct dependency).
 const req = createRequire(import.meta.url);
-const { build } = await import(req.resolve('vite', { paths: [req.resolve('wxt')] }));
-const entry = join(dirname(dataFile), 'entry.ts');
-await writeFile(entry, `import { renderFrames } from ${JSON.stringify(join(root, 'lib/render/frames.ts'))}; import { clipDuration } from ${JSON.stringify(join(root, 'lib/render/drawFrame.ts'))}; (window as any).M = { renderFrames, clipDuration };`);
-const bundle = await build({
-  root, configFile: false, logLevel: 'error',
-  build: { write: false, lib: { entry, name: 'M', formats: ['iife'], fileName: 'sheet' } },
+const { createServer } = await import(req.resolve('vite', { paths: [req.resolve('wxt')] }));
+const server = await createServer({ root, configFile: false, logLevel: 'error', server: { middlewareMode: true }, appType: 'custom', optimizeDeps: { noDiscovery: true, include: [] } });
+const load = (p) => server.ssrLoadModule(p);
+
+const prompts = JSON.parse(await readFile(new URL('../test/quality/prompts.json', import.meta.url), 'utf8'));
+const { CLIP_TEMPLATES_V3, clipTemplateV3 } = await load('/lib/templates/v3/clips.ts');
+
+const templates = CLIP_TEMPLATES_V3.map((t) => {
+  const clip = clipTemplateV3(t);
+  return { name: t.name, type: t.type, pack: t.packId, scenes: clip.scenes.length, seconds: Math.round(t.lengthMs / 100) / 10 };
 });
-const code = (Array.isArray(bundle) ? bundle[0] : bundle).output[0].code;
 
-const { chromium } = req('playwright');
-const browser = await chromium.launch();
-const page = await browser.newPage();
-await page.setContent('<html><body></body></html>');
-await page.addScriptTag({ content: code });
-const AT = [0.1, 0.35, 0.6, 0.9];
-for (const r of rows) {
-  r.frames = await page.evaluate(async ({ recipe, aspect, at }) => {
-    const total = window.M.clipDuration(recipe);
-    return window.M.renderFrames(recipe, at.map((p) => Math.min(total - 1, Math.round(total * p))), { aspect });
-  }, { recipe: r.recipe, aspect: r.aspect, at: AT });
+let rows = prompts.map((p) => ({ id: p.id, prompt: p.prompt, type: p.type, state: 'not run (no key)' }));
+if (key) {
+  const { writeClip } = await load('/lib/ai/writeRecipe.ts');
+  const { check } = await load('/lib/checker.ts');
+  rows = [];
+  for (const p of prompts) {
+    try {
+      const model = p.model ?? 'openai/gpt-oss-120b';
+      const res = await writeClip(
+        { prompt: p.prompt, type: p.type, aspect: p.aspect, assets: [], id: p.id, style: p.style, pace: p.pace, critic: false, settings: { ai: 'cloud', provider: 'groq', models: { groq: model } } },
+        { ai: 'cloud', provider: 'groq', model, key },
+        { frames: async (_r, times) => times.map(() => '') },
+      );
+      const issues = check(res.recipe).map((i) => i.kind);
+      rows.push({ id: p.id, prompt: p.prompt, type: p.type, state: issues.length ? `checker: ${[...new Set(issues)].join(', ')}` : 'made, checker clean' });
+    } catch (error) {
+      rows.push({ id: p.id, prompt: p.prompt, type: p.type, state: 'could not make' });
+      console.error(`Motikord: could not make ${p.id}`, error instanceof Error ? error.message.replaceAll(key, '***') : '');
+    }
+  }
 }
-await browser.close();
+await server.close();
 
+const REFS = [
+  ['Ben Marriott', 'The Best Motion Design & Animation of 2026', 'https://www.youtube.com/watch?v=ylXeuDp_8XM'],
+  ['Jack Jaeschke', 'Figma Config 2026, rebuilt in Cavalry', 'https://www.youtube.com/watch?v=xsf6mebkmME'],
+  ['Figma', 'Introducing Figma Motion', 'https://www.youtube.com/watch?v=l3HuAYXyOTo'],
+  ['Dardo', 'A product ad made in code with Remotion', 'https://dardo.studio/en/blog/remotion-video/'],
+];
+const RUBRIC = ['Type system', 'Timing that follows meaning', 'Depth and light', 'One idea per clip', 'Finish'];
 const version = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
-const date = new Date().toISOString().slice(0, 10);
-const RULES = [['Overlap', 'overlap'], ['Crowding', 'crowding'], ['Empty', 'empty'], ['Align', 'align'], ['Words', 'words'], ['Repeat', 'template-repeat']];
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const pass = rows.filter((r) => r.issues.length === 0).length;
-const cap = (s) => s[0].toUpperCase() + s.slice(1).replace(/-/g, ' ');
-
-const body = rows.map((r, i) => `<tr>
-<td class="n">${i + 1}</td>
-<td class="p">${esc(r.prompt)}</td>
-<td class="m">${esc(`${cap(r.type)} · ${r.aspect} · ${cap(r.style)}`)}</td>
-<td class="f">${r.frames.map((f, k) => `<img src="${f}" alt="${AT[k] * 100}%" title="${AT[k] * 100}%">`).join('')}</td>
-${RULES.map(([, k]) => (r.issues.includes(k) ? '<td class="x" title="fails">&#10007;</td>' : '<td class="t" title="passes">&#10003;</td>')).join('')}
-<td class="w"></td></tr>`).join('\n');
+const score = (name) => `<td class="s"><input type="number" min="0" max="5" aria-label="${esc(name)}" placeholder="0-5"></td>`;
+const post = '<td class="s"><select aria-label="Would you post this?"><option></option><option>Yes</option><option>No</option></select></td>';
+const head = `<th>#</th><th>Clip</th><th>Details</th>${RUBRIC.map((r) => `<th>${esc(r)}</th>`).join('')}<th>Would post?</th>`;
 
 const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Motikord quality bar</title><style>
-:root{--bg:#fff;--fg:#1a1a1f;--muted:#6b6b76;--line:#e4e4ea;--ok:#188a4a;--bad:#c62f2f;--chip:#f1f1f5}
-@media(prefers-color-scheme:dark){:root{--bg:#141418;--fg:#ececf1;--muted:#9a9aa6;--line:#2c2c34;--ok:#4cc382;--bad:#ef6b6b;--chip:#23232b}}
+<title>Motikord v3 quality bar</title><style>
+:root{--bg:#fff;--fg:#1a1a1f;--muted:#6b6b76;--line:#e4e4ea;--chip:#f1f1f5}
+@media(prefers-color-scheme:dark){:root{--bg:#141418;--fg:#ececf1;--muted:#9a9aa6;--line:#2c2c34;--chip:#23232b}}
 body{margin:0;padding:24px 16px;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,sans-serif}
-h1{font-size:20px;margin:0 0 12px}.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}.chip{background:var(--chip);border-radius:999px;padding:4px 12px;font-weight:600}
-.line{color:var(--muted);margin:0 0 16px}.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:900px}
-th,td{border-bottom:1px solid var(--line);padding:8px 6px;vertical-align:middle;text-align:left}th{font-size:12px;color:var(--muted)}
-td.n{color:var(--muted)}td.p{min-width:200px;max-width:260px}td.m{color:var(--muted);white-space:nowrap}td.f{white-space:nowrap}td.f img{height:110px;margin-right:4px;border-radius:4px;border:1px solid var(--line)}
-td.t,td.x{text-align:center;font-weight:700}td.t{color:var(--ok)}td.x{color:var(--bad)}td.w{min-width:90px;border-left:1px dashed var(--line)}
+h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:28px 0 8px}a{color:inherit}.line{color:var(--muted);margin:0 0 12px}
+.chip{display:inline-block;background:var(--chip);border-radius:999px;padding:4px 12px;font-weight:600;margin-right:8px}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:860px}th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:middle}
+th{font-size:12px;color:var(--muted)}td.s{width:70px}input,select{width:60px;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:2px 4px}
+.refs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.ref{border:1px solid var(--line);border-radius:8px;padding:12px}
+.ref b{display:block}.ref span{color:var(--muted)}.no{color:var(--muted);font-style:italic}
 </style></head><body>
-<h1>Quality bar · run ${esc(date)} · build ${esc(version)}</h1>
-<div class="chips"><span class="chip">Checker: ${pass} of 20 pass</span><span class="chip">X: — of 20 would post</span></div>
-<p class="line">Pass: all 20 pass the checker and at least 16 would post</p>
-<div class="wrap"><table><thead><tr><th>#</th><th>Prompt</th><th>Clip type · size · style</th><th>10% · 35% · 60% · 90%</th>${RULES.map(([n]) => `<th>${n}</th>`).join('')}<th>Would post?</th></tr></thead><tbody>
-${body}
-</tbody></table></div></body></html>`;
-const out = fileURLToPath(new URL('../test/quality/sheet.html', import.meta.url));
+<h1>Quality bar v3 · build ${esc(version)} · ${esc(new Date().toISOString().slice(0, 10))}</h1>
+<p><span class="chip" id="total">Would post: 0 of 20</span><span class="chip">Pass at 16 of 20</span><span class="chip">${key ? 'AI run: on' : 'AI run: not run (no key)'}</span></p>
+<p class="line">Judged side by side with X's 4 references. Their frames are never drawn, copied or shipped; open each link and play it next to the clip.</p>
+<div class="refs">${REFS.map(([a, t, u]) => `<div class="ref"><b>${esc(a)}</b><span>${esc(t)}</span><br><a href="${esc(u)}" target="_blank" rel="noopener">Open reference</a></div>`).join('')}</div>
+<h2>The 20 prompts, re-run in v3</h2>
+<div class="wrap"><table><thead><tr>${head}</tr></thead><tbody>
+${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.prompt)}</td><td class="${key ? '' : 'no'}">${esc(r.state)}</td>${RUBRIC.map(score).join('')}${post}</tr>`).join('\n')}
+</tbody></table></div>
+<h2>The 12 v3 clip templates</h2>
+<div class="wrap"><table><thead><tr>${head}</tr></thead><tbody>
+${templates.map((t, i) => `<tr><td>${i + 1}</td><td>${esc(t.name)}</td><td>${esc(`${t.type} · ${t.pack} · ${t.scenes} scenes · ${t.seconds} s`)}</td>${RUBRIC.map(score).join('')}${post}</tr>`).join('\n')}
+</tbody></table></div>
+<script>
+const sel=[...document.querySelectorAll('.wrap')[0].querySelectorAll('select')];
+const t=document.getElementById('total');const u=()=>{t.textContent='Would post: '+sel.filter(s=>s.value==='Yes').length+' of 20'};
+sel.forEach(s=>s.addEventListener('change',u));
+</script></body></html>`;
+await mkdir(dirname(out), { recursive: true });
 await writeFile(out, html);
-console.log(`Checker: ${pass} of ${rows.length} pass. Sheet: ${out}`);
+console.log(`Quality sheet: ${out} (${rows.length} prompts ${key ? 'run' : 'not run, no key'}, ${templates.length} templates)`);
+process.exit(0);
