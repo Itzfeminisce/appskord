@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isPackId, type PackId } from '../../lib/look/packs';
 
 // The v3 switches, kept under their own storage key so v2 settings are never touched.
@@ -43,23 +43,34 @@ export async function getV3(): Promise<SettingsV3Data> {
   return mergeV3((await browser.storage.local.get(KEY))[KEY]);
 }
 
-export async function updateV3(patch: Partial<SettingsV3Data>): Promise<SettingsV3Data> {
-  const next = mergeV3({ ...(await getV3()), ...patch });
-  await browser.storage.local.set({ [KEY]: next });
-  return next;
+// Writes run one after another so two quick updates never read the same old value.
+let queue: Promise<unknown> = Promise.resolve();
+
+export function updateV3(patch: Partial<SettingsV3Data>): Promise<SettingsV3Data> {
+  const run = async () => {
+    const next = mergeV3({ ...(await getV3()), ...patch });
+    await browser.storage.local.set({ [KEY]: next });
+    return next;
+  };
+  const result = queue.then(run, run);
+  queue = result.catch(() => undefined);
+  return result;
 }
 
 /** The saved v3 settings, live: the defaults first, then what is stored; `set` saves and shows at once. */
 export function useV3(): [SettingsV3Data, (patch: Partial<SettingsV3Data>) => void, boolean] {
   const [s, setS] = useState<SettingsV3Data>(DEFAULTS_V3);
   const [loaded, setLoaded] = useState(false);
+  const touched = useRef(false);
   useEffect(() => {
-    getV3().then((v) => { setS(v); setLoaded(true); }).catch((error: unknown) => console.error('Motikord: could not read v3 settings', error));
-    const on = (changes: Record<string, { newValue?: unknown }>, area: string) => { if (area === 'local' && KEY in changes) setS(mergeV3(changes[KEY]!.newValue)); };
+    let live = true;
+    getV3().then((v) => { if (!live) return; if (!touched.current) setS(v); setLoaded(true); }).catch((error: unknown) => console.error('Motikord: could not read v3 settings', error));
+    const on = (changes: Record<string, { newValue?: unknown }>, area: string) => { if (live && area === 'local' && KEY in changes) setS(mergeV3(changes[KEY]!.newValue)); };
     browser.storage.onChanged.addListener(on);
-    return () => browser.storage.onChanged.removeListener(on);
+    return () => { live = false; browser.storage.onChanged.removeListener(on); };
   }, []);
   const set = (patch: Partial<SettingsV3Data>) => {
+    touched.current = true;
     setS((cur) => ({ ...cur, ...patch }));
     updateV3(patch).catch((error: unknown) => console.error('Motikord: could not save v3 settings', error));
   };

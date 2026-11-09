@@ -59,6 +59,7 @@ export const PRIVACY = {
     { title: '“Animate this layer” settings', line: 'Only the layer’s settings, never media.' },
     { title: 'Small frames for the quality check', line: 'Up to 8 per check pass, only if your model can see images.' },
   ],
+  aiImages: { title: 'Image description', line: 'The slot’s few words, like “warm sourdough loaf”. Never your media.' },
   captions: { group: 'Captions', to: 'Groq or OpenAI', title: 'Your narration', line: 'Only when Auto captions is on.' },
   voiceover: { group: 'Voiceover', to: 'OpenAI', title: 'Only the script', line: 'Only when AI voiceover is on.' },
   keys: 'Keys',

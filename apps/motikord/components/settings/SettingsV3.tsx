@@ -41,8 +41,10 @@ export default function SettingsV3({ openCheck }: { openCheck?: () => void } = {
 
   if (!s) return null;
   const set = (patch: SettingsPatch) => { updateSettings(patch).catch((error: unknown) => console.error('Motikord: could not save settings', error)); };
-  // The four v2 styles also go to v2's own setting, which Home reads.
-  const pickStyle = (style: (typeof STYLES)[number]) => { setV3({ style }); if (V2_STYLES.includes(style)) set({ look: { style: style as LookStyle } }); };
+  // v2's own setting, which Home reads, follows: the four v2 styles as they are, a v3-only pack as 'auto'.
+  const pickStyle = (style: (typeof STYLES)[number]) => { setV3({ style }); set({ look: { style: (V2_STYLES.includes(style) ? style : 'auto') as LookStyle } }); };
+  // Until a v3 style is chosen, the select starts from v2's.
+  const shownStyle = v3.style === 'auto' && V2_STYLES.includes(s.look.style) ? s.look.style : v3.style;
   const status = criticLine(s);
   const provider = PROVIDERS[s.provider].label;
   const captionsTo = s.provider === 'openai' ? 'OpenAI' : 'Groq';
@@ -58,7 +60,7 @@ export default function SettingsV3({ openCheck }: { openCheck?: () => void } = {
       <Section title={SETTINGS.lookAndQuality} first>
         <label style={rowStyle}>
           <Text title={SETTINGS.defaultStyle} />
-          <select aria-label={SETTINGS.defaultStyle} value={v3.style} onChange={(e) => pickStyle(e.target.value as (typeof STYLES)[number])} style={selectStyle}>
+          <select aria-label={SETTINGS.defaultStyle} value={shownStyle} onChange={(e) => pickStyle(e.target.value as (typeof STYLES)[number])} style={selectStyle}>
             {STYLES.map((id) => <option key={id} value={id}>{id[0]!.toUpperCase() + id.slice(1)}</option>)}
           </select>
         </label>

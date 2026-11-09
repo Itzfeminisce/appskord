@@ -61,9 +61,10 @@ export default function PrivacyV3() {
 
       <Group title={PRIVACY.goes} tag={<span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{s ? PROVIDERS[s.provider].label : PRIVACY.groq}</span>}>
         {PRIVACY.ai.map((r, i) => (
-          <Row key={r.title} title={r.title} line={r.line} last={i === PRIVACY.ai.length - 1}
+          <Row key={r.title} title={r.title} line={r.line} last={false}
             {...(i === PRIVACY.ai.length - 1 ? { on: critic, state: state(critic) } : {})} />
         ))}
+        <Row title={PRIVACY.aiImages.title} line={PRIVACY.aiImages.line} on={s?.aiImages ?? false} state={state(s?.aiImages ?? false)} last />
       </Group>
 
       <Group title={PRIVACY.captions.group} tag={<span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{PRIVACY.captions.to}</span>}>

@@ -17,6 +17,7 @@ describe('PrivacyV3', () => {
       '3D, effects, particles, animations and fonts', 'Bundled. Nothing is downloaded.',
       'Goes to your AI', 'Groq', 'Prompt and storyboard', 'So the AI can plan and write your clip.', 'Look guide text', 'Palette, type pair, motion feel, light and texture as words.',
       '“Animate this layer” settings', 'Only the layer’s settings, never media.', 'Small frames for the quality check', 'Up to 8 per check pass, only if your model can see images.',
+      'Image description', 'The slot’s few words, like “warm sourdough loaf”. Never your media.',
       'Captions', 'Groq or OpenAI', 'Your narration', 'Only when Auto captions is on.', 'Voiceover', 'OpenAI', 'Only the script', 'Only when AI voiceover is on.',
       'Keys', 'Keys come from Penv Cloud or a key you paste. Motikord never shows or logs them.',
     ]) expect(host.textContent, text).toContain(text);

@@ -23,6 +23,11 @@ describe('v3 settings store', () => {
     expect(await getV3()).toEqual({ style: 'auto', finishing: false, fps: 30, previewQuality: 'full', keyFramesFirst: false, captions: true, voiceover: true });
   });
 
+  it('keeps both of two rapid updates', async () => {
+    await Promise.all([updateV3({ fps: 30 }), updateV3({ captions: true }), updateV3({ finishing: false })]);
+    expect(await getV3()).toMatchObject({ fps: 30, captions: true, finishing: false });
+  });
+
   it('remembers the machine check and says when it ran', async () => {
     expect(await getMachineResult()).toBeUndefined();
     await saveMachineResult({ at: 1000, fps60: true });

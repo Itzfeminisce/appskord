@@ -12,7 +12,7 @@ import type { Recipe } from '../../types';
 import { strictTokens } from '../../pipeline/v3/tokens';
 import { isFlat, note, runChecks, stiffLines } from './checks';
 import { applyFix } from './fixes';
-import { passMessages, QUALITY, qualityCheck } from './quality';
+import { passCardState, passMessages, QUALITY, qualityCheck } from './quality';
 
 function made(recipe: Recipe = testRecipe()) {
   const r = addMotion({ recipe, board: approveAll(drawKeyFrames(recipe, LOOK, PACK)), look: LOOK, pack: PACK });
@@ -292,5 +292,12 @@ describe('quality check: hard caps, validated fixes, timeout', () => {
       spy.mockRestore();
       vi.useRealTimers();
     }
+  });
+});
+
+describe('passCardState', () => {
+  it('gives a card id for the two card states and none for key-needed', () => {
+    expect([passCardState('critic-ai-failed'), passCardState('critic-not-available'), passCardState('key-needed'), passCardState(undefined)])
+      .toEqual(['critic-ai-failed', 'critic-not-available', undefined, undefined]);
   });
 });

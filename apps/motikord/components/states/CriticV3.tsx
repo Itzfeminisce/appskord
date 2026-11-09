@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { QUALITY, type PassResult, type QualityNote, type QualityResult } from '../../lib/critic/v3';
+import { passCardState, QUALITY, type PassResult, type QualityNote, type QualityResult } from '../../lib/critic/v3';
 import { KeyNeeded } from '../../screens/editor/StatesPrompt';
 import { StateCard } from './StatesV3';
 
@@ -42,6 +42,7 @@ function NoteRow({ n, onFix, onShow }: { n: QualityNote; onFix?: (n: QualityNote
 }
 
 function Pass({ i, p, p3 }: { i: number; p: PassResult; p3: CriticV3Props }) {
+  const card = passCardState(p.state);
   return (
     <section aria-label={p.name} style={{ borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', overflow: 'hidden' }}>
       <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
@@ -50,8 +51,8 @@ function Pass({ i, p, p3 }: { i: number; p: PassResult; p3: CriticV3Props }) {
         {p.ran && <span style={{ fontSize: 12, color: 'var(--success-ink)', fontWeight: 600 }}>{QUALITY.ran}</span>}
         {p.ran && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{QUALITY.passToLookAt(p.notes.length)}</span>}
       </header>
-      {p.state === 'critic-not-available' && <div style={{ padding: '0 14px 12px' }}><StateCard id="critic-not-available" onAction={p3.onChangeModel} /></div>}
-      {p.state === 'critic-ai-failed' && <div style={{ padding: '0 14px 12px' }}><StateCard id="critic-ai-failed" provider={p3.provider} onAction={p3.onRetry} /></div>}
+      {card === 'critic-not-available' && <div style={{ padding: '0 14px 12px' }}><StateCard id="critic-not-available" onAction={p3.onChangeModel} /></div>}
+      {card === 'critic-ai-failed' && <div style={{ padding: '0 14px 12px' }}><StateCard id="critic-ai-failed" provider={p3.provider} onAction={p3.onRetry} /></div>}
       {p.state === 'key-needed' && <div style={{ padding: '0 14px 12px' }}><KeyNeeded onPasteKey={p3.onPasteKey} /></div>}
       {p.notes.length > 0 && <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>{p.notes.map((n) => <NoteRow key={`${n.sceneIndex}-${n.kind}`} n={n} onFix={p3.onFix} onShow={p3.onShow} />)}</ul>}
     </section>

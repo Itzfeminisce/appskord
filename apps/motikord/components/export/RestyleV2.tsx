@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PACKS_V3, type PackId } from '../../lib/look/packs';
 import { RESTYLE } from '../../lib/restyle/restyle';
 import { Switch } from '../settings/ui';
@@ -35,6 +35,8 @@ export default function RestyleV2(p: RestyleV2Props) {
   const chosen = PACKS_V3.find((x) => x.id === pack)!;
   const own = PACKS_V3.find((x) => x.id === p.packId)!;
 
+  const live = useRef(true);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const go = async () => {
     setBusy(true);
     setFailed(false);
@@ -42,9 +44,9 @@ export default function RestyleV2(p: RestyleV2Props) {
       await p.onRestyle?.({ packId: pack, keyFramesFirst: v3.keyFramesFirst });
     } catch (error) {
       console.error('Motikord: could not restyle the clip', error);
-      setFailed(true);
+      if (live.current) setFailed(true);
     } finally {
-      setBusy(false);
+      if (live.current) setBusy(false);
     }
   };
 

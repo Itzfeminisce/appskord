@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { sidepanel } from '../../entrypoints/sidepanel/router';
-import { updateSettings } from '../../lib/settings';
+import { getSettings, updateSettings } from '../../lib/settings';
 import { mount, settle } from '../../test/mountRouter';
 import { press } from '../sidepanel/mountPanel';
 import { getV3, saveMachineResult, updateV3 } from './store';
@@ -30,6 +30,23 @@ describe('SettingsV3', () => {
       'Auto captions', 'Your narration goes to Groq to be written down.', 'AI voiceover', 'Only the script goes to OpenAI.',
       'Where your data goes', 'Open source on GitHub',
     ]) expect(host.textContent, text).toContain(text);
+  });
+
+  it('a v3-only pack writes auto to v2, and a v2 style is mirrored', async () => {
+    const { host } = await mount(sidepanel, 'SettingsV3');
+    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Default style"]')!;
+    const pick = async (v: string) => { select.value = v; select.dispatchEvent(new Event('change', { bubbles: true })); await settle(); };
+    await pick('bold');
+    expect((await getSettings()).look.style).toBe('bold');
+    await pick('gloss');
+    expect((await getSettings()).look.style).toBe('auto');
+    expect((await getV3()).style).toBe('gloss');
+  });
+
+  it('starts the style select from v2 when v3 has none', async () => {
+    await updateSettings({ look: { style: 'corporate' } });
+    const { host } = await mount(sidepanel, 'SettingsV3');
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Default style"]')!.value).toBe('corporate');
   });
 
   it('starts with finishing on, 60 fps, auto preview, key frames first on, captions and voiceover off', async () => {
