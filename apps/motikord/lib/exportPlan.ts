@@ -36,9 +36,10 @@ export function frameSize(aspect: Aspect, kind: FileKind, quality: Quality): { w
   return { w: even(long.w), h: even(long.h) };
 }
 
-/** True when the clip has sound to mix: music, or a video layer that is not muted. */
+/** True when the clip has sound to mix: music, its voice, or a video layer that is not muted. */
 export function hasAudio(r: Recipe): boolean {
   if (r.music && r.assets[r.music.assetId]) return true;
+  if (r.voice && r.assets[r.voice.assetId]) return true;
   return r.scenes.some((s) => s.layers.some((l) => l.type === 'video' && !l.muted));
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { getKey, type KeyName } from '../../lib/settings';
+import { autoCaptionsOf } from '../../lib/templates/v3/clips';
 import type { SpeechProvider } from '../../lib/voice/path';
 import { transcribeCues } from '../../lib/voice/captions';
 import { makeVoiceover, VOICES, type VoiceId } from '../../lib/voice/speech';
@@ -9,7 +10,7 @@ import { useEditorV3 } from './context';
 import { CAPTION_POSITION, CAPTION_STYLES, hasCaptions, scriptOf, writeCaptions, type CaptionStyle } from './CaptionsVoiceEdits';
 import { C, Chip, hint, primaryButton, quietButton, Segmented, Switch } from './ui';
 
-// The "Voice and captions" panel. Both features are off until switched on. Only the narration audio goes to
+// The "Voice and captions" panel. Both features are off until switched on (the "Say it out loud" template turns Auto captions on when narration is added). Only the narration audio goes to
 // speech-to-text; only the script goes to the voice provider. Keys come from the session store, never props.
 
 export type CaptionsCard = 'captions-failed' | 'captions-no-key' | 'captions-no-voice';
@@ -47,7 +48,9 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
   const written = hasCaptions(ed.state);
   // Undo and redo change the clip under the switch; it follows.
   useEffect(() => { setCaptions(written); }, [written]);
-  const [style, setStyle] = useState<CaptionStyle>('pop');
+  // "Say it out loud" clips carry their caption style and turn captions on when narration first arrives.
+  const auto = autoCaptionsOf(ed.state.clip);
+  const [style, setStyle] = useState<CaptionStyle>(() => auto ?? 'pop');
   const [capCard, setCapCard] = useState<CaptionsCard>();
   const [capBusy, setCapBusy] = useState(false);
   const [voiceOn, setVoiceOn] = useState(false);
@@ -100,6 +103,21 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
       if (!ctrl.signal.aborted) setCapBusy(false);
     }
   };
+
+  const hadVoice = useRef(!!ed.state.clip.recipe.voice);
+  const autoDone = useRef(false);
+  useEffect(() => {
+    if (!auto || !p.narration || hadVoice.current || autoDone.current || captions) return;
+    autoDone.current = true;
+    void keyOf(provider).then((key) => {
+      if (!key) { setCapCard('captions-no-key'); return; }
+      setCaptions(true);
+      setStyle(auto);
+      void writeDown(auto);
+    }).catch(() => setCapCard('captions-no-key'));
+    // Fires once, when narration first appears; writeDown reads the props of this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.narration]);
 
   const toggleCaptions = (on: boolean) => {
     setCaptions(on);

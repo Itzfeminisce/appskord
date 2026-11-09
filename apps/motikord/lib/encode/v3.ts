@@ -63,6 +63,7 @@ export function renderV3(clip: ClipV3, look: LookGuide | undefined, item: Render
     const base = {
       frames: item.frames, fps: item.fps, cancelled: () => cancelled,
       draw: () => undefined,
+      // ClipDrawer waits for each frame's text (renderReady) and throws TextNotReady rather than drawing blank words.
       prepare: async (_i: number, t: number) => { await drawer.draw(t); stopIfCancelled(); },
       progress: (f: number, n: number, t: number) => hooks.progress(f, n, t),
     };

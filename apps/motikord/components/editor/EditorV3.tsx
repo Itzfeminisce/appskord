@@ -7,6 +7,7 @@ import type { Author } from '../../lib/types';
 import { AnimateDialog, AnimatedToast, type Animate } from './AnimateDialog';
 import { AssetPicker, type BundledAsset } from './AssetPicker';
 import { CaptionsVoice, type CaptionsVoiceProps } from './CaptionsVoice';
+import { useClipVoice, type VoiceMedia } from './clipVoice';
 import { ChangesTab } from './ChangesTab';
 import { chartData, DataTab } from './DataScenes';
 import { EditorV3Provider, useEditorV3 } from './context';
@@ -44,6 +45,8 @@ export interface EditorV3Props {
   checkCount?: number;
   /** The Voice and captions panel (opens with the `voice` overlay). */
   voice?: CaptionsVoiceProps;
+  /** Where the clip's voice audio is kept and picked (tests pass a fake). */
+  voiceMedia?: VoiceMedia;
 }
 
 export function EditorV3(p: EditorV3Props) {
@@ -57,6 +60,7 @@ export function EditorV3(p: EditorV3Props) {
 function Shell(p: EditorV3Props) {
   const ed = useEditorV3();
   const { state, overlay } = ed;
+  const clipVoice = useClipVoice(p.voiceMedia);
   const [status, setStatus] = useState<SaveStatus>('saved');
   const [preview, setPreview] = useState<EffectId>();
   const saver = useRef<ReturnType<typeof createAutosave> | undefined>(undefined);
@@ -118,7 +122,7 @@ function Shell(p: EditorV3Props) {
             <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--error-ink, #B91C1C)' }}>{state.errors[0]}</p>
           )}
           <div role="tabpanel" style={{ minHeight: 0 }}>
-            {overlay === 'voice' && <CaptionsVoice {...p.voice} />}
+            {overlay === 'voice' && <CaptionsVoice {...clipVoice} {...p.voice} />}
             {overlay !== 'voice' && tab === 'scene' && <SceneTab />}
             {overlay !== 'voice' && tab === 'layer' && <LayerTab bakers={p.bakers} />}
             {overlay !== 'voice' && tab === 'motion' && <MotionTab />}

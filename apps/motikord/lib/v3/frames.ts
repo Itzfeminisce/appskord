@@ -38,6 +38,17 @@ export class TextNotReady extends Error {
   constructor(readonly sceneIndex: number) { super(`Scene ${sceneIndex + 1}'s text did not typeset in time`); this.name = 'TextNotReady'; }
 }
 
+/** True when `work` settles within `ms`; false on timeout. Rejections pass through. */
+async function within(work: Promise<void>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<false>((r) => { timer = setTimeout(() => r(false), ms); });
+  try {
+    return await Promise.race([work.then(() => true as const), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The scene playing at `tMs` on the clip's timeline and the time inside it; the very end stays on the last scene. */
 export function sceneAt(clip: ClipV3, tMs: number): { index: number; local: number } {
   let start = 0;
@@ -60,9 +71,10 @@ function viewFor(scene: SceneV3, i: number, texts: LayerTexts, s: DrawSetup): V3
 export class ClipDrawer {
   private view: V3Renderer | undefined;
   private index = -1;
+  private disposed = false;
   private readonly gl: Gl;
 
-  constructor(readonly clip: ClipV3, private readonly texts: LayerTexts, private readonly setup: DrawSetup, readonly canvas: HTMLCanvasElement | OffscreenCanvas) {
+  constructor(readonly clip: ClipV3, private readonly texts: LayerTexts, private readonly setup: DrawSetup, readonly canvas: HTMLCanvasElement | OffscreenCanvas, private readonly timeoutMs = 10_000) {
     this.gl = createCanvasRenderer(canvas);
   }
 
@@ -76,12 +88,18 @@ export class ClipDrawer {
       this.index = index;
       view.attach(this.gl);
       // Blank words are never drawn: a scene whose text won't typeset fails the export, still or check frame.
-      if (!(await textReady(view.three as unknown as Node3))) throw new TextNotReady(index);
+      if (!(await textReady(view.three as unknown as Node3, this.timeoutMs))) throw new TextNotReady(index);
     }
-    this.view!.render(local);
+    // Counts and kinetic type retypeset as they change, so every frame waits for its own words before drawing.
+    if (this.disposed || !this.view) throw new TextNotReady(index);
+    const ready = await within(this.view.renderReady(local), this.timeoutMs);
+    // A timeout can resolve after dispose; the renderer is gone, so nothing is drawn.
+    if (this.disposed) throw new TextNotReady(index);
+    if (!ready) throw new TextNotReady(index);
   }
 
   dispose(): void {
+    this.disposed = true;
     this.view?.dispose();
     this.view = undefined;
     // Hand the GPU context back now rather than when the canvas is collected.

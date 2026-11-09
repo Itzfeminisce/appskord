@@ -31,11 +31,24 @@ export function duplicateClip(clip: Clip, id: string, now: number): Clip {
   return copy;
 }
 
-/** OPFS paths of the clip's assets that no other clip and not the brand kit uses, so they are safe to delete with it. */
+/** Every OPFS path a clip's assets ever had: those it holds now and the ones its undo history added or removed (replaced voices). */
+export function clipPaths(clip: Clip): string[] {
+  const out = new Set(Object.values(clip.recipe.assets).map((a: Asset) => a.opfsPath));
+  for (const ch of clip.history ?? []) {
+    for (const op of [...(ch.patch ?? []), ...(ch.inverse ?? [])]) {
+      if (op.op === 'remove' || op.op === 'move' || !/^\/recipe\/assets\/[^/]+$/.test(op.path)) continue;
+      const path = (op.value as { opfsPath?: unknown } | null)?.opfsPath;
+      if (typeof path === 'string' && path.startsWith('media/')) out.add(path);
+    }
+  }
+  return [...out];
+}
+
+/** OPFS paths of the clip's assets, including voice files its history replaced, that no other clip and not the brand kit uses, so they are safe to delete with it. */
 export function exclusivePaths(clip: Clip, others: Clip[], keep: string[] = []): string[] {
   const used = new Set(keep);
-  for (const p of others.filter((c) => c.id !== clip.id).flatMap((c) => Object.values(c.recipe.assets).map((a: Asset) => a.opfsPath))) used.add(p);
-  return [...new Set(Object.values(clip.recipe.assets).map((a) => a.opfsPath))].filter((p) => !used.has(p));
+  for (const p of others.filter((c) => c.id !== clip.id).flatMap(clipPaths)) used.add(p);
+  return clipPaths(clip).filter((p) => !used.has(p));
 }
 
 /** Every distinct OPFS path the clips use; a file shared by two clips is counted once. */

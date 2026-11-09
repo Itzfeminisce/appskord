@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 // No WebGL in unit tests: the renderer is a fake that records what it was asked to draw.
-const calls: { made: string[]; rendered: [string, number][]; disposed: string[]; texts: string[]; gl: number; stuck?: boolean } = { made: [], rendered: [], disposed: [], texts: [], gl: 0 };
+const calls: { made: string[]; rendered: [string, number][]; disposed: string[]; texts: string[]; gl: number; stuck?: boolean; hang?: boolean } = { made: [], rendered: [], disposed: [], texts: [], gl: 0 };
 vi.mock('@appskord/motion/renderer', () => ({
   createCanvasRenderer: () => ({ forceContextLoss: () => { calls.gl++; }, dispose: () => undefined }),
   V3Renderer: class {
@@ -12,6 +12,7 @@ vi.mock('@appskord/motion/renderer', () => ({
     }
     attach() {}
     render(t: number) { calls.rendered.push([this.scene.id, t]); }
+    async renderReady(t: number) { if (calls.hang) await new Promise(() => undefined); this.render(t); }
     dispose() { calls.disposed.push(this.scene.id); }
   },
 }));
@@ -28,6 +29,19 @@ describe('v3 frames', () => {
     expect(sceneAt(v3, first + 10)).toEqual({ index: 1, local: 10 });
     const total = v3.scenes.reduce((n, s) => n + s.ms, 0);
     expect(sceneAt(v3, total)).toEqual({ index: v3.scenes.length - 1, local: v3.scenes.at(-1)!.ms });
+  });
+
+  it('does not draw after dispose when a frame times out late', async () => {
+    const clip = sampleClip().v3;
+    const d = new ClipDrawer(clip, () => '', { width: 10, height: 10, quality: 'full', fps: 30 } as never, {} as HTMLCanvasElement, 5);
+    await d.draw(0);
+    calls.hang = true;
+    const drawing = d.draw(1);
+    d.dispose();
+    await expect(drawing).rejects.toBeInstanceOf(TextNotReady);
+    await expect(d.draw(2)).rejects.toBeInstanceOf(TextNotReady);
+    calls.hang = false;
+    calls.made.length = calls.rendered.length = calls.disposed.length = calls.texts.length = calls.gl = 0;
   });
 
   it('waits for troika to finish typesetting, and gives up after the limit', async () => {
@@ -70,6 +84,25 @@ describe('v3 frames', () => {
       d.dispose();
     } finally {
       calls.stuck = false;
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for each frame’s text (a count changing mid-scene) and fails the frame when it never typesets', async () => {
+    vi.useFakeTimers();
+    try {
+      const clip = sampleClip();
+      const d = new ClipDrawer(clip.v3, () => 'Hi', { width: 64, height: 64, quality: 'full', fps: 30 }, {} as HTMLCanvasElement, 500);
+      await d.draw(0);
+      const before = calls.rendered.length;
+      calls.hang = true;
+      const check = expect(d.draw(40)).rejects.toBeInstanceOf(TextNotReady);
+      await vi.advanceTimersByTimeAsync(600);
+      await check;
+      expect(calls.rendered.length).toBe(before);
+      d.dispose();
+    } finally {
+      calls.hang = false;
       vi.useRealTimers();
     }
   });
