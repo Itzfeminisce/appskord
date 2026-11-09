@@ -3,9 +3,10 @@
 import { IMAGE_TOKENS } from '@appskord/llm';
 import type { ClipV3 } from '@appskord/motion/types';
 import { criticSkip, type CriticModel } from '../../ai/critic';
-import { toAiError, type AiStateId } from '../../ai/errors';
+import { toAiError } from '../../ai/errors';
 import { CALL_BUDGET, parseJsonReply, type AiOptions } from '../../ai/writeRecipe';
 import { chat, type ChatMessage } from '../../llm';
+import { PROVIDERS } from '../../providers';
 import { stateCopy, type StateCopy } from '../../pipeline/v3/states';
 import { strictTokens, withTimeout } from '../../pipeline/v3/tokens';
 import { note, PASS_KINDS, PASSES, runChecks, type CheckInput, type NoteKind, type PassId, type QualityNote } from './checks';
@@ -58,8 +59,9 @@ export interface PassResult {
   id: PassId;
   name: string;
   ran: boolean;
-  /** Why the AI part didn't run: critic-not-available, or a provider failure's state. */
-  state?: 'critic-not-available' | AiStateId;
+  /** Why the AI part didn't run: critic-not-available, or critic-ai-failed (the call failed or timed out). */
+  state?: 'critic-not-available' | 'critic-ai-failed';
+  copy?: StateCopy;
   notes: QualityNote[];
   frames: number;
   /** The call's estimated size: prompt plus the reply allowance. */
@@ -118,6 +120,8 @@ function readNotes(raw: unknown, pass: PassId, scenes: number): QualityNote[] {
   return out;
 }
 
+const providerName = (o: QualityOptions) => (o.ai === 'local' ? 'Built-in AI' : PROVIDERS[o.provider ?? 'groq'].label);
+
 async function runPass(pass: PassId, x: CheckInput, o: QualityOptions): Promise<PassResult> {
   const name = PASSES.find((p) => p.id === pass)!.name;
   const checks = runChecks(pass, x);
@@ -140,14 +144,15 @@ async function runPass(pass: PassId, x: CheckInput, o: QualityOptions): Promise<
     const notes = [...checks, ...ai.filter((a) => !checks.some((c) => c.sceneIndex === a.sceneIndex && c.kind === a.kind))];
     return result({ ran: true, notes, frames: images.length, tokens });
   } catch (e) {
-    // The 30 s limit, not the caller's cancel: the provider is busy.
-    if (signal.aborted && !o.signal?.aborted) return result({ state: 'provider-busy', frames: images.length, tokens });
+    const failed = () => result({ state: 'critic-ai-failed', copy: stateCopy('critic-ai-failed', { provider: providerName(o) }), frames: images.length, tokens });
+    // The 30 s limit, not the caller's cancel.
+    if (signal.aborted && !o.signal?.aborted) return failed();
     const err = toAiError(e, 'make');
     if (err.code === 'cancelled') throw err;
     // A garbled reply means no AI notes; the free checks still stand.
     if (err.code === 'bad-reply') return result({ ran: true, frames: images.length, tokens });
     console.error('Motikord: could not run quality check', err);
-    return result({ state: err.state, frames: images.length, tokens });
+    return failed();
   }
 }
 

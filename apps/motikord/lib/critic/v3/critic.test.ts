@@ -70,8 +70,10 @@ describe('quality check: free checks', () => {
     recipe.scenes[4]!.slots = { cta: 'Try Fieldnote free and find every note you ever took', handle: 'fieldnote.app' };
     expect(runChecks('story', { ...x, recipe }).map((n) => [n.problem, n.action])).toEqual([
       ['Scene 4 repeats scene 1’s point', 'Merge scenes'],
-      [expect.stringMatching(/^Scene 5 .* is over \d+ words$/), 'Show me'],
+      [expect.stringMatching(/^Scene 5 .* is \d+ words over its limit$/), 'Shorten it'],
     ]);
+    const over = runChecks('story', { ...x, recipe }).find((n) => n.kind === 'words')!;
+    expect(over.detail).toMatch(/^It has \d+ words\. This slot fits \d+\.$/);
   });
 });
 
@@ -110,8 +112,8 @@ describe('quality check: three passes', () => {
     const r = await qualityCheck(x, { ...g.opts, critic: vision() });
     expect(r.fixed.map((f) => [f.sceneIndex, f.line])).toEqual([
       [0, expect.stringMatching(/^Scene 1 \S+ now overlaps by 40 ms$/)],
-      [2, 'Scene 3 looks flat'],
-      [3, 'Scene 4 glow looks plastic'],
+      [2, 'Scene 3 now has depth behind the headline'],
+      [3, 'Scene 4 glow is now softer'],
     ]);
     expect(r.fixed[0]!.before.clip).toBe(x.clip);
     expect(r.toLookAt.map((n) => n.problem)).toEqual(['Scene 1 could be any brand']);
@@ -152,7 +154,7 @@ describe('quality check: three passes', () => {
     const r = await qualityCheck({ ...x, recipe }, { ...fakeGroq({}).opts, critic: vision() });
     const after = r.recipe.scenes[0]!.layers.find((l) => l.id === t.id)!;
     expect(after.type === 'text' && LOOK.palette.includes(after.colour)).toBe(true);
-    expect(r.fixed.map((f) => f.line)).toEqual(['Scene 1 uses a colour outside your look guide']);
+    expect(r.fixed.map((f) => f.line)).toEqual(['Scene 1 colour now matches your look guide']);
     expect(x.recipe.scenes[0]).toEqual(testRecipe().scenes[0]);
   });
 
@@ -176,7 +178,15 @@ describe('quality check: three passes', () => {
     const x = flawed();
     const g = fakeGroq({ motion: () => new Response('{"error":{"message":"slow down"}}', { status: 429 }) });
     const r = await qualityCheck(x, { ...g.opts, critic: vision() });
-    expect(r.passes[2]).toMatchObject({ ran: false, state: 'provider-busy' });
+    expect(r.passes[2]).toMatchObject({
+      ran: false,
+      state: 'critic-ai-failed',
+      copy: {
+        title: 'The AI pass didn’t run',
+        line: 'Groq didn’t answer. Your free checks still ran, so their notes are below. Try again to run the AI pass.',
+        action: 'Try again',
+      },
+    });
     expect(r.passes[2]!.notes.length).toBe(3);
     spy.mockRestore();
   });
@@ -266,7 +276,7 @@ describe('quality check: hard caps, validated fixes, timeout', () => {
       for (let i = 0; i < 3; i++) await vi.advanceTimersByTimeAsync(30_000);
       const r = await p;
       expect(timeout).toHaveBeenCalledWith(30_000);
-      expect(r.passes.map((q) => q.state)).toEqual(['provider-busy', 'provider-busy', 'provider-busy']);
+      expect(r.passes.map((q) => q.state)).toEqual(['critic-ai-failed', 'critic-ai-failed', 'critic-ai-failed']);
     } finally {
       timeout.mockRestore();
       spy.mockRestore();

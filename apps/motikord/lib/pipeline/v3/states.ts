@@ -7,6 +7,7 @@ export type PipelineStateId =
   | 'animate-layer-failed'
   | 'animate-layer-unclear'
   | 'critic-not-available'
+  | 'critic-ai-failed'
   | 'critic-fix-limit';
 
 export interface StateCopy {
@@ -56,6 +57,13 @@ export function stateCopy(id: PipelineStateId, v: { scene?: number; provider?: s
         title: 'Your model can’t see images',
         line: 'The Story pass still ran. Pick a model that sees images to check the look and motion too.',
         action: 'Change model',
+      };
+    case 'critic-ai-failed':
+      return {
+        id,
+        title: 'The AI pass didn’t run',
+        line: `${v.provider ?? 'Groq'} didn’t answer. Your free checks still ran, so their notes are below. Try again to run the AI pass.`,
+        action: 'Try again',
       };
     case 'critic-fix-limit':
       return {

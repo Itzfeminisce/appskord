@@ -99,7 +99,7 @@ function rawFix(n: QualityNote, x: FixInput): { recipe: Recipe; clip: ClipV3; li
         for (const l of s.layers) l.depth = l.kind === 'media' || l.kind === 'shape' ? 'back' : 'front';
         return s;
       });
-      return { recipe: x.recipe, clip, line: n.problem };
+      return { recipe: x.recipe, clip, line: `${sn} now has depth behind the headline` };
     }
     case 'camera': {
       const amount = median(x.clip.scenes.filter((_, j) => j !== i).map((s) => s.camera.amount));
@@ -109,14 +109,14 @@ function rawFix(n: QualityNote, x: FixInput): { recipe: Recipe; clip: ClipV3; li
         else if (!s.camera.focus) s.camera = { move: 'hold', amount: 0 };
         return s;
       });
-      return { recipe: x.recipe, clip, line: n.problem };
+      return { recipe: x.recipe, clip, line: `${sn} camera now moves as calmly as the rest` };
     }
     case 'plastic': {
       const clip = withScene(x.clip, i, (s) => {
         for (const e of s.effects ?? []) if ((e.effect === 'glow' || e.effect === 'bloom') && e.amount > PLASTIC_AMOUNT) e.amount = SOFT_GLOW;
         return s;
       });
-      return { recipe: x.recipe, clip, line: n.problem };
+      return { recipe: x.recipe, clip, line: `${sn} glow is now softer` };
     }
     case 'colour': {
       const ok = allowedColours(x.look, x.brandColours);
@@ -128,7 +128,7 @@ function rawFix(n: QualityNote, x: FixInput): { recipe: Recipe; clip: ClipV3; li
         if (l.type === 'text') l.colour = nearest(l.colour, x.look.palette);
         if (l.type === 'shape') l.fill = nearest(l.fill, x.look.palette);
       }
-      return { recipe, clip: x.clip, line: n.problem };
+      return { recipe, clip: x.clip, line: `${sn} colour now matches your look guide` };
     }
     default:
       return undefined;

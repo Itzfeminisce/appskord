@@ -27,6 +27,8 @@ export interface QualityNote {
   /** The scene an earlier one repeats. */
   other?: number;
   problem: string;
+  /** The second line under the problem, when the frame has one. */
+  detail?: string;
   action: string;
   /** "Flat", "Plastic", "Generic", "Stiff timing". */
   tag?: string;
@@ -34,7 +36,7 @@ export interface QualityNote {
 }
 
 /** A note for scene `i` (from 0); `other` is the earlier scene a repeat matches. */
-export function note(kind: NoteKind, i: number, by: QualityNote['by'], extra: { layerId?: string; other?: number; limit?: number; slot?: string } = {}): QualityNote {
+export function note(kind: NoteKind, i: number, by: QualityNote['by'], extra: { layerId?: string; other?: number; limit?: number; slot?: string; words?: number } = {}): QualityNote {
   const n = i + 1;
   const pass = (Object.keys(PASS_KINDS) as PassId[]).find((p) => PASS_KINDS[p].includes(kind))!;
   const base = { pass, kind, sceneIndex: i, by, ...(extra.layerId ? { layerId: extra.layerId } : {}) };
@@ -42,7 +44,9 @@ export function note(kind: NoteKind, i: number, by: QualityNote['by'], extra: { 
     case 'repeat':
       return { ...base, other: extra.other, problem: `Scene ${n} repeats scene ${(extra.other ?? 0) + 1}’s point`, action: 'Merge scenes' };
     case 'words':
-      return { ...base, problem: `Scene ${n} ${extra.slot ?? 'text'} is over ${extra.limit ?? 0} words`, action: 'Show me' };
+      const have = extra.words ?? 0;
+      const limit = extra.limit ?? 0;
+      return { ...base, problem: `Scene ${n} ${extra.slot ?? 'text'} is ${have - limit} words over its limit`, detail: `It has ${have} words. This slot fits ${limit}.`, action: 'Shorten it' };
     case 'colour':
       return { ...base, problem: `Scene ${n} uses a colour outside your look guide`, action: 'Use guide colour' };
     case 'camera':
@@ -86,14 +90,14 @@ function repeats(recipe: Recipe): QualityNote[] {
   return out;
 }
 
-const overLimit = (def: SlotDef, v: SlotValue | undefined) =>
-  def.words !== undefined && slotText(v).some((s) => wordList(s).length > def.words!);
+const slotWords = (v: SlotValue | undefined) => Math.max(0, ...slotText(v).map((s) => wordList(s).length));
+const overLimit = (def: SlotDef, v: SlotValue | undefined) => def.words !== undefined && slotWords(v) > def.words;
 
 function words(recipe: Recipe): QualityNote[] {
   return recipe.scenes.flatMap((s, i) => {
     const t = s.template ? getSceneTemplate(s.template) : undefined;
     const bad = t?.slots.find((d) => d.kind !== 'media' && d.kind !== 'logo' && overLimit(d, s.slots?.[d.id]));
-    return bad ? [note('words', i, 'check', { layerId: bad.id, slot: bad.name.toLowerCase(), limit: bad.words })] : [];
+    return bad ? [note('words', i, 'check', { layerId: bad.id, slot: bad.name.toLowerCase(), limit: bad.words, words: slotWords(s.slots?.[bad.id]) })] : [];
   });
 }
 
