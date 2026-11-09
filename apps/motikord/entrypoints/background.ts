@@ -1,3 +1,4 @@
+import { recordInstall } from '../components/sidepanel/whatsNew';
 import { setBadge } from '../lib/badge';
 import { findEditorTab } from '../lib/editorTab';
 import { onMessage } from '../lib/messages';
@@ -27,7 +28,11 @@ export default defineBackground(() => {
   // No export survives a browser restart, so a badge left from one is stale.
   const clearBadge = () => setBadge(null, chrome.action, title()).catch((error: unknown) => console.error('Motikord: could not clear the toolbar badge', error));
   browser.runtime.onStartup.addListener(() => void clearBadge());
-  browser.runtime.onInstalled.addListener(() => void clearBadge());
+  browser.runtime.onInstalled.addListener((details) => {
+    void clearBadge();
+    // What's new shows once in the side panel after a minor or major update.
+    recordInstall(details, browser.runtime.getManifest().version).catch((error: unknown) => console.error('Motikord: could not record the update', error));
+  });
   onMessage({
     'editor/open': (msg) => openEditor(msg.clipId),
     'export/progress': (msg) => setBadge(msg.percent, chrome.action, title()),

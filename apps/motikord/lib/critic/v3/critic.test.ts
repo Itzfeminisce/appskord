@@ -216,6 +216,17 @@ describe('quality check: three passes', () => {
   });
 });
 
+describe('quality check: frames that cannot be drawn', () => {
+  it('reports the look passes failed instead of judging blank frames; the story pass still runs', async () => {
+    const g = fakeGroq({ story: '{"notes":[]}' });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const r = await qualityCheck(made(), { ...g.opts, critic: vision(), render: async () => { throw new Error('text did not typeset'); } });
+    expect(g.sent.map((s) => s.kind)).toEqual(['story']);
+    expect(r.passes.map((p) => [p.ran, p.state])).toEqual([[true, undefined], [false, 'critic-ai-failed'], [false, 'critic-ai-failed']]);
+    spy.mockRestore();
+  });
+});
+
 describe('quality check: hard caps, validated fixes, timeout', () => {
   const many = (n: number) => {
     const x = made();

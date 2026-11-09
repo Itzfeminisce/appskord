@@ -7,6 +7,7 @@ import type { ClipV3, LayerV3, SceneV3 } from '@appskord/motion/types';
 import { record, redo, undo, type History } from '../../lib/editor/history';
 import { stepsBack } from '../../lib/editor/changes';
 import { applyPatch } from '../../lib/patch';
+import { sceneLayerText } from '../../lib/v3/text';
 import type { RestyledClip } from '../../lib/restyle/restyle';
 import { getTemplateV3 } from '../../lib/templates/v3/templates';
 import type { Author, Change, Layer, PatchOp } from '../../lib/types';
@@ -197,14 +198,7 @@ export function layerName(clip: RestyledClip, i: number, layer: LayerV3): string
 }
 
 /** The words a text layer shows: its v2 text, or its slot's words. */
-export function layerText(clip: RestyledClip, i: number, layer: LayerV3): string | undefined {
-  const v2 = v2Layer(clip, i, layer.id);
-  if (v2?.type === 'text') return v2.text;
-  const value = layer.slotId ? clip.recipe.scenes[i]?.slots?.[layer.slotId] : undefined;
-  if (typeof value === 'string') return value;
-  if (Array.isArray(value)) return value.map((x) => (typeof x === 'string' ? x : x.label)).join('\n');
-  return undefined;
-}
+export const layerText = (clip: RestyledClip, i: number, layer: LayerV3): string | undefined => sceneLayerText(clip.recipe.scenes[i], layer);
 
 /** What the renderer draws for a layer beyond its tracks: its words, or its v2 shape's size, fill and corners. */
 export function layerContent(clip: RestyledClip, i: number, layer: LayerV3): LayerContent | undefined {

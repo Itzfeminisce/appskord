@@ -4,7 +4,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { sidepanel } from '../../entrypoints/sidepanel/router';
 import { mount } from '../../test/mountRouter';
 import { press } from './mountPanel';
-import { compareVersions, markWhatsNewSeen, sameMinor, shouldShowWhatsNew } from './whatsNew';
+import { compareVersions, markWhatsNewSeen, recordInstall, sameMinor, shouldShowWhatsNew } from './whatsNew';
 
 describe('WhatsNewV3', () => {
   beforeEach(() => {
@@ -44,5 +44,18 @@ describe('WhatsNewV3', () => {
     expect(compareVersions('3.0.0', '2.0.1')).toBe(1);
     expect(sameMinor('3.0.0', '3.0.4')).toBe(true);
     expect(sameMinor('3.0.0', '2.0.4')).toBe(false);
+  });
+
+  it('runtime.onInstalled: an update to v3 shows What’s new once; an install or a patch update does not', async () => {
+    await recordInstall({ reason: 'install' }, '2.0.1');
+    expect(await shouldShowWhatsNew('2.0.1', true)).toBe(false);
+    await recordInstall({ reason: 'update', previousVersion: '2.0.1' }, '2.0.2');
+    expect(await shouldShowWhatsNew('2.0.2', true)).toBe(false);
+    await recordInstall({ reason: 'update', previousVersion: '2.0.2' }, '3.0.0');
+    expect(await shouldShowWhatsNew('3.0.0', true)).toBe(true);
+    await markWhatsNewSeen('3.0.0');
+    expect(await shouldShowWhatsNew('3.0.0', true)).toBe(false);
+    await recordInstall({ reason: 'chrome_update' }, '3.0.0');
+    expect(await shouldShowWhatsNew('3.0.0', true)).toBe(false);
   });
 });

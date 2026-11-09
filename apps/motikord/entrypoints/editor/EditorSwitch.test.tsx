@@ -18,6 +18,9 @@ const unmounts: (() => void)[] = [];
 beforeEach(() => { vi.spyOn(console, 'error').mockImplementation(() => undefined); });
 afterEach(() => { for (const u of unmounts.splice(0)) u(); vi.restoreAllMocks(); });
 
+const seen: { screen?: string } = {};
+function Probe() { seen.screen = editor.useRouter().route.screen; return null; }
+
 async function openEditor(clipId: string) {
   const host = document.createElement('div');
   document.body.append(host);
@@ -26,6 +29,7 @@ async function openEditor(clipId: string) {
     root.render(
       <editor.RouterProvider initial={{ screen: 'Editor', params: { clipId } }} history={createMemoryHistory({ initialEntries: ['/'] })}>
         <editor.Outlet />
+        <Probe />
       </editor.RouterProvider>,
     );
   });
@@ -49,5 +53,16 @@ describe('Editor route', () => {
     clips.set('v2-clip', { ...v2, id: 'v2-clip' });
     const host = await openEditor('v2-clip');
     expect(host.textContent).toBe('v2 editor');
+  });
+
+  it('sends a v3 clip’s Export to ExportV3 and Check to the v3 quality check', async () => {
+    const v3 = sampleClip();
+    clips.set(v3.id, v3);
+    for (const [label, screen] of [['Export', 'ExportV3'], ['Check', 'CriticV3']] as const) {
+      const host = await openEditor(v3.id);
+      const button = [...host.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith(label))!;
+      await act(async () => { button.click(); });
+      expect(seen.screen).toBe(screen);
+    }
   });
 });

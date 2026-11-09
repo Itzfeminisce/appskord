@@ -60,6 +60,10 @@ export interface RunDeps {
   removeJob?(id: string): Promise<void>;
   markExported?(clipId: string, files: { file: string; bytes: number; at: number }[]): Promise<void>;
   objectUrl?(blob: Blob): string;
+  /** The files to make; the v2 plan when absent (the v3 export plans its own frame rate). */
+  plan?(recipe: Recipe, choice: JobChoice): RenderItem[];
+  /** Text files written beside the videos, such as captions.srt. */
+  extras?: { name: string; text: string }[];
 }
 
 let session: Session | undefined;
@@ -99,7 +103,7 @@ export async function runExport(recipe: Recipe, clipId: string, choice: JobChoic
     await updateClip(id, (c) => ({ exportedAt: deps.now(), exports: [...(c.exports ?? []), ...files] }));
   });
   const job = newJob(clipId, choice, deps.now(), jobId);
-  const items = planExport(recipe, choice);
+  const items = deps.plan ? deps.plan(recipe, choice) : planExport(recipe, choice);
   const total = items.reduce((n, it) => n + it.frames, 0);
   const drawn = exportRecipe(recipe);
   session = { job, recipe, items: items.map((item) => ({ item, status: 'waiting', percent: 0 })), index: 0, frame: 0, frames: items[0]?.frames ?? 0, tMs: 0, percent: 0, secondsLeft: 0, phase: 'running', saved: [] };
@@ -167,6 +171,11 @@ export async function runExport(recipe: Recipe, clipId: string, choice: JobChoic
       blobForPlayer ??= blob;
       before += item.frames;
       set({ saved: [...session!.saved, saved], items: session!.items.map((s, k) => (k === i ? { ...s, status: 'done', percent: 100, bytes: saved.size } : s)) });
+    }
+    for (const extra of deps.extras ?? []) {
+      if (stop) throw new CancelledRun();
+      const saved = await writeFile(dir, extra.name, extra.text);
+      set({ saved: [...session!.saved, saved] });
     }
     if (choice.credits) {
       if (stop) throw new CancelledRun();

@@ -37,6 +37,8 @@ export const EXPORT_COPY = {
   cancel: 'Cancel',
   estimate: (about: string, n: number) => `${about} for ${n} ${n === 1 ? 'size' : 'sizes'} on this computer`,
   exporting: (i: number, n: number) => `Exporting ${i} of ${n}`,
+  failed: 'The export stopped before it began. Your clip is safe. Try again.',
+  notYet: (kind: ExportKindV3) => `${kind === 'lottie' ? 'Lottie' : 'Transparent WebM'} export from v3 motion is not ready yet. Choose MP4, WebM or GIF.`,
   detail: (aspect: Aspect, frame: number, frames: number, finishing: boolean) => ` · ${aspect} · frame ${frame} of ${frames}${finishing ? ' · Finishing on' : ''}`,
 } as const;
 
@@ -65,6 +67,8 @@ export interface ExportV3Props {
   /** 60 fps would take too long here: shows "Exporting at 30 fps" with "Export at 60 anyway". */
   fallback30?: boolean;
   onExport60Anyway?: () => void;
+  /** Why the last Export did not start. */
+  notice?: string;
 }
 
 export default function ExportV3(p: ExportV3Props) {
@@ -156,6 +160,8 @@ export default function ExportV3(p: ExportV3Props) {
           <button type="button" disabled={running || !aspects.length || !p.onExport} onClick={() => p.onExport?.({ kind, aspects, fps, finishing, captions: captionsShown ? captions : 'off' })}
             style={{ height: 44, padding: '0 20px', border: 0, borderRadius: 10, background: 'var(--accent)', color: '#fff', font: '600 14px var(--font)', cursor: 'pointer', flexShrink: 0, opacity: running || !aspects.length || !p.onExport ? 0.5 : 1 }}>{exportButton(aspects.length)}</button>
         </div>
+
+        {p.notice && <p role="alert" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink)' }}>{p.notice}</p>}
 
         {prog && (
           <div role="status" aria-label="Export progress" style={{ borderRadius: 12, border: '1px solid var(--line)', background: '#FAFAFB', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>

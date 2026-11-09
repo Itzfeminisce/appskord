@@ -16,6 +16,8 @@ export interface Muxed {
   addVideo(chunk: EncodedVideoChunk, meta?: EncodedVideoChunkMetadata): void;
   addAudio(chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata): void;
   finish(): Promise<Blob>;
+  /** Abandons the file: no more chunks are taken and nothing is written. */
+  cancel(): Promise<void>;
 }
 
 export interface MuxSetup {
@@ -63,6 +65,11 @@ export function createMuxed(s: MuxSetup): Muxed {
       if (failure) throw failure;
       await output.finalize();
       return sink.blob(s.mime);
+    },
+    async cancel() {
+      failure ??= new Error('Muxing cancelled');
+      await started;
+      if (output.state === 'started') await output.cancel();
     },
   };
 }

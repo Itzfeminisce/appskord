@@ -55,4 +55,19 @@ describe('createMuxed', () => {
     expect([...new Uint8Array(await blob.slice(0, 4).arrayBuffer())]).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
     expect(blob.type).toBe('video/webm');
   });
+
+  it('cancel abandons the file: finish then fails and nothing more is taken', async () => {
+    const mux = createMuxed({
+      format: new WebMOutputFormat(),
+      mime: 'video/webm',
+      video: 'vp9',
+      width: 64,
+      height: 64,
+      fps: 30,
+    });
+    mux.addVideo(chunk(0, true), meta('vp09.00.10.08'));
+    await mux.cancel();
+    expect(() => mux.addVideo(chunk(1, false))).toThrow(/cancelled/);
+    await expect(mux.finish()).rejects.toThrow(/cancelled/);
+  });
 });
