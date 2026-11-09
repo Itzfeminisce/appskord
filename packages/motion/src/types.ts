@@ -1,4 +1,8 @@
 // The v3 recipe (Motikord v3 CONTRACT.md). Others import these; never redefine them.
+import type { EffectUse } from './effects';
+import type { ParticleBake, ParticleSettings } from './particles';
+
+export type { EffectUse };
 
 export type Curve =
   | { kind: 'bezier'; p: [number, number, number, number] }
@@ -20,14 +24,30 @@ export interface LayerV3 {
   slotId?: string;
   tracks: Partial<
     Record<
-      'x' | 'y' | 'z' | 'scale' | 'rotate' | 'opacity' | 'blur' | 'weight' | 'width' | 'draw' | 'morph' | 'mask',
+      | 'x'
+      | 'y'
+      | 'z'
+      | 'scale'
+      | 'rotate'
+      | 'opacity'
+      | 'blur'
+      | 'weight'
+      | 'width'
+      | 'draw'
+      | 'morph'
+      | 'mask'
+      | 'rotateY'
+      | 'extrude'
+      | 'soft',
       Track<number>
     >
   >;
   type?: { unit: 'letter' | 'word' | 'line'; fill?: boolean }; // kinetic type
   carry?: string; // continuity id shared with a layer in the next scene
   seed?: number; // particles and physics
+  count?: { from: number; to: number; decimals?: number }; // a counting number; its `draw` track is the progress
   start?: number; // T1 addition: ms from the scene's start; absent means hierarchy-timed after the layer before it
+  particles?: ParticleSettings & { bake?: ParticleBake }; // seeded, run once and saved (T3)
 }
 export interface CameraV3 {
   move: CameraMove;
@@ -60,6 +80,9 @@ export interface SceneV3 {
   camera: CameraV3;
   transition: { kind: string; carry?: string[] };
   keyFrameApproved?: boolean;
+  effects?: EffectUse[];
+  depthBlur?: 'nothing' | 'soft';
+  depthShadows?: boolean;
 }
 export interface ClipV3 {
   version: 3;
@@ -69,6 +92,7 @@ export interface ClipV3 {
   fps: 30 | 60;
   finish: Finish;
   restyledFrom?: string /* v2 clip id kept in Changes */;
+  effects?: EffectUse[];
 }
 
 export type Prop = keyof LayerV3['tracks'];
@@ -102,6 +126,9 @@ export const PROPS: readonly Prop[] = [
   'draw',
   'morph',
   'mask',
+  'rotateY',
+  'extrude', // 3D text depth
+  'soft', // Fraunces SOFT axis, 0..100
 ];
 export const LIGHTS: readonly LookGuide['light'][] = ['left', 'right', 'top', 'none'];
 export const PARALLAX: Readonly<Record<Depth, number>> = { front: 1, middle: 0.6, back: 0.3 };

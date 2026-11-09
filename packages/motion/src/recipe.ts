@@ -8,9 +8,54 @@ const isObj = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 const list = (xs: readonly string[]) => xs.join(', ');
 
-const LAYER_KEYS = ['id', 'kind', 'depth', 'z', 'slotId', 'tracks', 'type', 'carry', 'seed', 'start'];
-const SCENE_KEYS = ['version', 'id', 'templateId', 'ms', 'layers', 'camera', 'transition', 'keyFrameApproved'];
-const CLIP_KEYS = ['version', 'scenes', 'lookGuideId', 'packId', 'fps', 'finish', 'restyledFrom'];
+const LAYER_KEYS = [
+  'id',
+  'kind',
+  'depth',
+  'z',
+  'slotId',
+  'tracks',
+  'type',
+  'carry',
+  'seed',
+  'start',
+  'count',
+  'particles',
+];
+const SCENE_KEYS = [
+  'version',
+  'id',
+  'templateId',
+  'ms',
+  'layers',
+  'camera',
+  'transition',
+  'keyFrameApproved',
+  'effects',
+  'depthBlur',
+  'depthShadows',
+];
+const CLIP_KEYS = ['version', 'scenes', 'lookGuideId', 'packId', 'fps', 'finish', 'restyledFrom', 'effects'];
+// Copies of the ids in particles.ts and effects.ts, which load three.js; recipe.test.ts keeps them equal.
+export const PARTICLE_PRESET_IDS = ['confetti', 'sparks', 'dust', 'bubbles', 'snow', 'text-burst'] as const;
+export const EFFECT_IDS = [
+  'glass',
+  'glow',
+  'bloom',
+  'depth-of-field',
+  'dither',
+  'distort',
+  'chromatic',
+  '3d-flip',
+  'light-sweep',
+  'grain',
+  'halftone',
+  'blur-in',
+] as const;
+const EFFECT_COLOURS = ['glow', 'light', 'ink'];
+const EFFECT_SCOPES = ['layer', 'scene', 'clip'];
+const PARTICLE_KEYS = ['preset', 'amount', 'size', 'speed', 'gravity', 'bounce', 'bake'];
+const EFFECT_KEYS = ['effect', 'amount', 'colour', 'scope', 'sceneId', 'layerId'];
 const FINISH_KEYS = ['on', 'blur', 'light', 'grain', 'grade'];
 
 class Errors {
@@ -33,6 +78,10 @@ class Errors {
     if (!isNum(v) || v < min || v > max)
       this.add(`${at}${k}`, `must be a number from ${min} to ${max}`, `Set it to a number in that range`);
   }
+  bool(o: Obj, k: string, at: string, optional = false): void {
+    if (optional && o[k] === undefined) return;
+    if (typeof o[k] !== 'boolean') this.add(`${at}${k}`, 'is not true or false', 'Set it to true or false');
+  }
   oneOf(o: Obj, k: string, at: string, allowed: readonly string[], what: string): void {
     if (!allowed.includes(o[k] as string))
       this.add(`${at}${k}`, `${JSON.stringify(o[k])} is not a ${what}`, `Use one of ${list(allowed)}`);
@@ -54,6 +103,44 @@ function checkCurve(e: Errors, c: unknown, at: string): void {
   } else e.oneOf(c, 'kind', `${at}.`, ['bezier', 'spring'], 'curve kind');
 }
 
+function checkParticles(e: Errors, p: unknown, at: string): void {
+  if (!isObj(p)) return e.add(at, 'is not particle settings', 'Use { preset, amount, size, speed, gravity, bounce }');
+  const q = `${at}.`;
+  e.unknownKeys(p, PARTICLE_KEYS, q);
+  e.oneOf(p, 'preset', q, PARTICLE_PRESET_IDS, 'particle preset');
+  e.num(p, 'amount', q, 0, 5000);
+  e.num(p, 'size', q, 0, 200);
+  e.num(p, 'speed', q, 0, 10);
+  e.bool(p, 'gravity', q);
+  e.bool(p, 'bounce', q);
+  const b = p.bake;
+  if (b === undefined) return;
+  if (!isObj(b) || typeof b.key !== 'string' || !isNum(b.fps) || typeof b.data !== 'string')
+    return e.add(`${q}bake`, 'is not a particle bake', 'Remove it so the particles bake again');
+  if (!Array.isArray(b.counts) || !b.counts.every((c) => isNum(c) && c >= 0))
+    e.add(`${q}bake.counts`, 'is not a list of counts', 'Remove the bake so the particles bake again');
+}
+
+/** Checks effect uses; `layers` are the scene's layer ids, absent at clip level. */
+function checkEffects(e: Errors, list: unknown, at: string, layers?: readonly unknown[]): void {
+  if (!Array.isArray(list)) return e.add(at, 'is not a list', 'Set it to a list of effects, or remove it');
+  list.forEach((u: unknown, i) => {
+    const p = `${at}[${i}].`;
+    if (!isObj(u)) return e.add(`${at}[${i}]`, 'is not an effect', 'Use { effect, amount, scope }');
+    e.unknownKeys(u, EFFECT_KEYS, p);
+    e.oneOf(u, 'effect', p, EFFECT_IDS, 'known effect');
+    e.num(u, 'amount', p, 0, 1);
+    if (u.colour !== undefined) e.oneOf(u, 'colour', p, EFFECT_COLOURS, 'known effect colour');
+    e.oneOf(u, 'scope', p, EFFECT_SCOPES, 'known effect scope');
+    e.str(u, 'sceneId', p, true);
+    e.str(u, 'layerId', p, true);
+    if (u.scope === 'layer' && u.layerId === undefined)
+      e.add(`${p}layerId`, 'is missing for a layer effect', 'Set it to the layer the effect is on');
+    if (layers && typeof u.layerId === 'string' && !layers.includes(u.layerId))
+      e.add(`${p}layerId`, `"${u.layerId}" is not a layer id in this scene`, 'Use a layer id from layers');
+  });
+}
+
 function checkLayer(e: Errors, l: unknown, at: string): void {
   if (!isObj(l)) return e.add(at, 'is not a layer', 'Use an object with id, kind, depth and tracks');
   const p = `${at}.`;
@@ -66,6 +153,16 @@ function checkLayer(e: Errors, l: unknown, at: string): void {
   e.str(l, 'carry', p, true);
   e.num(l, 'seed', p, 0, 2 ** 32 - 1, true);
   e.num(l, 'start', p, 0, 600000, true);
+  if (l.count !== undefined) {
+    if (!isObj(l.count)) e.add(`${p}count`, 'is not count settings', 'Use { from, to, decimals? }');
+    else {
+      e.unknownKeys(l.count, ['from', 'to', 'decimals'], `${p}count.`);
+      e.num(l.count, 'from', `${p}count.`, -1e12, 1e12);
+      e.num(l.count, 'to', `${p}count.`, -1e12, 1e12);
+      e.num(l.count, 'decimals', `${p}count.`, 0, 6, true);
+    }
+  }
+  if (l.particles !== undefined) checkParticles(e, l.particles, `${p}particles`);
   if (l.type !== undefined) {
     if (!isObj(l.type)) e.add(`${p}type`, 'is not kinetic type settings', 'Use { unit: "letter" | "word" | "line" }');
     else e.oneOf(l.type, 'unit', `${p}type.`, UNITS, 'type unit');
@@ -142,8 +239,10 @@ function checkScene(e: Errors, s: unknown, at: string): void {
         });
     }
   }
-  if (s.keyFrameApproved !== undefined && typeof s.keyFrameApproved !== 'boolean')
-    e.add(`${p}keyFrameApproved`, 'is not true or false', 'Set it to true or false');
+  e.bool(s, 'keyFrameApproved', p, true);
+  e.bool(s, 'depthShadows', p, true);
+  if (s.depthBlur !== undefined) e.oneOf(s, 'depthBlur', p, ['nothing', 'soft'], 'depth blur');
+  if (s.effects !== undefined) checkEffects(e, s.effects, `${p}effects`, ids);
 }
 
 function done<T>(e: Errors, value: unknown): Checked<T> {
@@ -176,6 +275,7 @@ export function validateClip(clip: unknown): Checked<ClipV3> {
     if (typeof f.on !== 'boolean') e.add('finish.on', 'is not true or false', 'Set it to true or false');
     for (const k of ['blur', 'light', 'grain', 'grade']) e.num(f, k, 'finish.', 0, 1);
   }
+  if (clip.effects !== undefined) checkEffects(e, clip.effects, 'effects');
   if (!Array.isArray(clip.scenes) || clip.scenes.length === 0)
     e.add('scenes', 'has no scenes', 'Add at least one SceneV3');
   const scenes = Array.isArray(clip.scenes) ? clip.scenes : [];
