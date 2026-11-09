@@ -44,6 +44,7 @@ a:hover { color: var(--accent-hover); }
 /* An icon beside the label sits on the label's centre line, not its baseline. */
 .btn-with-icon .btn-label { display: inline-flex; align-items: center; gap: 8px; }
 .btn:focus-visible, .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch-input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn:active:not(:disabled):not(.is-busy) { transform: scale(0.97); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn.is-busy { cursor: progress; }

@@ -136,13 +136,13 @@ export default function ExportV3(p: ExportV3Props) {
           </div>
 
           <div style={{ borderTop: '1px solid #F1F1F3', paddingTop: 8 }}>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', minHeight: 40, boxSizing: 'border-box', padding: '2px 0' }}>
+            <label style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', minHeight: 40, boxSizing: 'border-box', padding: '2px 0' }}>
               <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flexGrow: 1, minWidth: 0 }}>
                 <span style={{ fontSize: 12, fontWeight: 600 }}>{EXPORT_COPY.finishing}</span>
                 <span style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.35 }}>{FINISHING_LINE}</span>
               </span>
-              <input type="checkbox" role="switch" aria-label={EXPORT_COPY.finishing} checked={finishing} onChange={(e) => pick(setFinishing)(e.target.checked)} style={{ position: 'absolute', opacity: 0, width: 1, height: 1, margin: 0 }} />
-              <span aria-hidden="true" style={{ position: 'relative', width: 36, height: 20, flexShrink: 0, marginTop: 1, borderRadius: 999, background: finishing ? 'var(--accent)' : '#DCDCE0' }}>
+              <input type="checkbox" role="switch" aria-label={EXPORT_COPY.finishing} checked={finishing} onChange={(e) => pick(setFinishing)(e.target.checked)} className="switch-input" style={{ position: 'absolute', opacity: 0, width: 1, height: 1, margin: 0 }} />
+              <span aria-hidden="true" className="switch-track" style={{ position: 'relative', width: 36, height: 20, flexShrink: 0, marginTop: 1, borderRadius: 999, background: finishing ? 'var(--accent)' : '#DCDCE0' }}>
                 <span style={{ position: 'absolute', top: 2, left: finishing ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#FFFFFF', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
               </span>
             </label>
