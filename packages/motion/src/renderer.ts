@@ -23,7 +23,7 @@ import { morphRing } from './morph';
 import { StrokeMesh, type Point } from './paths';
 import { deformPoints, poseBones, type Bone, type BoneId, type BonePose } from './rigs';
 import { bounds, ShapeMesh, triangulate } from './shapes';
-import { CountText, KineticType, safeArea, type Measure } from './type';
+import { boxRect, CountText, KineticType, placeInside, safeRect, slotArea, type Measure, type Rect } from './type';
 import type { Finish, LayerV3, LookGuide, SceneV3 } from './types';
 
 export type { LayerContent } from './draw';
@@ -245,6 +245,8 @@ export class V3Renderer {
   private readonly views = new Map<string, View>();
   /** Text boxes for masks, recipe px. */
   private readonly textBoxes = new Map<string, Box>();
+  /** Where layers with a layout box rest, recipe px from the frame's centre; their x and y tracks move them from there. */
+  private readonly rests = new Map<string, { x: number; y: number }>();
   private readonly masked: LayerV3[];
   private readonly props = new Map<string, Props>();
   private readonly light: THREE.DirectionalLight | null;
@@ -299,13 +301,18 @@ export class V3Renderer {
     switch (spec.kind) {
       case 'text': {
         const measure = (this.options.measure ?? roughMeasure)(spec.fontSize);
+        const safe = this.safe;
+        const slot = content?.box && boxRect(content.box, this.page);
+        // Text in a layout box wraps and shrinks to it; without one, to the safe area at the frame's centre.
+        const area = slot ? slotArea(slot, safe, spec.fontSize * 1.1) : { width: safe.width, height: safe.height };
+        if (slot) this.rests.set(layer.id, { x: slot.x + slot.width / 2, y: slot.y + slot.height / 2 });
         const k = new KineticType(spec.text, spec.unit, {
           measure,
           fontSize: spec.fontSize,
           fontUrl: this.options.fontUrl,
           color: spec.color,
-          fill: spec.fill ? { frameWidth: 1080, inset: 80 } : undefined,
-          area: safeArea(1080, (1080 * this.options.height) / this.options.width),
+          fill: spec.fill ? (slot ? { frameWidth: area.width, inset: 0 } : { frameWidth: 1080, inset: 80 }) : undefined,
+          area,
         });
         group.add(k);
         this.kinetic.set(layer.id, k);
@@ -335,9 +342,12 @@ export class V3Renderer {
         this.particles.set(layer.id, view);
         return;
       }
-      case 'shape':
+      case 'shape': {
         this.views.set(layer.id, new ShapeView(layer.id, group, spec));
+        const slot = content?.box && boxRect(content.box, this.page);
+        if (slot) this.rests.set(layer.id, { x: slot.x + slot.width / 2, y: slot.y + slot.height / 2 });
         return;
+      }
       case 'path':
         this.views.set(layer.id, new PathView(layer.id, group, spec));
         return;
@@ -347,6 +357,31 @@ export class V3Renderer {
   }
 
   private readonly propsOf: PropsOf = (id) => this.props.get(id);
+
+  /** The frame's size in recipe px: 1080 wide; square when the size is unknown. */
+  private get page(): { width: number; height: number } {
+    const { width, height } = this.options;
+    return { width: 1080, height: width > 0 && height > 0 ? (1080 * height) / width : 1080 };
+  }
+
+  private get safe(): Rect {
+    return safeRect(this.page.width, this.page.height);
+  }
+
+  /** Moves each layer with a layout box to it; text is kept inside the safe area at the size it is drawn. */
+  private placeRests(): void {
+    const safe = this.safe;
+    for (const [id, at] of this.rests) {
+      const group = this.graph.layers.get(id);
+      if (!group) continue;
+      const k = this.kinetic.get(id);
+      const b = k?.bounds();
+      const s = group.scale.x;
+      const p = b ? placeInside(at, { width: b.width * s, height: b.height * s }, safe) : at;
+      group.position.x += p.x * UNIT;
+      group.position.y -= p.y * UNIT;
+    }
+  }
 
   /** A text layer's box for its mask, from where its units now sit (typeset widths once synced). */
   private textBox(id: string): Box | undefined {
@@ -359,6 +394,7 @@ export class V3Renderer {
     const feel = this.options.look?.feel ?? 'smooth';
     const frame = frameAt(this.scene, t, feel);
     applyFrame(this.graph, frame);
+    this.placeRests();
     applyCamera(this.graph, scenePose(this.scene, frame, feel), 1, !!this.options.spread);
     this.props.clear();
     for (const l of frame.layers) this.props.set(l.id, l.props);

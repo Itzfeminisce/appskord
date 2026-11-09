@@ -51,7 +51,7 @@ export default function MakingMotion() {
       {frame && (
         <div style={{ margin: '16px 24px 0', display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ width: 96, flexShrink: 0 }}>
-            <Still frame={frame} ground={state.look.palette[0] ?? '#0B0B10'} ink={state.look.palette[1] ?? '#F5F5F7'} font={state.look.type.display} look={state.look} v2={state.recipe?.scenes[frame.index]} label={`Scene ${frame.index + 1} preview, moving: ${frame.words}`} width={96} height={170} />
+            <Still frame={frame} ground={state.look.palette[0] ?? '#0B0B10'} ink={state.look.palette[1] ?? '#F5F5F7'} font={state.look.type.display} look={state.look} v2={state.recipe?.scenes[frame.index]} source={state.recipe?.aspect} label={`Scene ${frame.index + 1} preview, moving: ${frame.words}`} width={96} height={170} />
           </div>
           <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>{`Scene ${frame.index + 1} · ${frame.name}`}</span>

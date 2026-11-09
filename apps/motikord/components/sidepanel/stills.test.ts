@@ -2,11 +2,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { serveRenderPort } from '../../lib/v3/renderChannel';
 
-const sent: { type: string; texts?: Record<string, string> }[] = [];
+const sent: { type: string; contents?: Record<string, unknown> }[] = [];
 const handoffs: { targetOrigin: string; ports: number }[] = [];
 
 import { sampleClip } from '../editor/fixture';
-import { clipFrames, clipTexts, renderStill, sceneTexts, setRenderers } from './stills';
+import { sceneContents } from '../../lib/v3/text';
+import { clipContents, clipFrames, renderStill, setRenderers } from './stills';
 
 afterEach(() => { sent.splice(0); setRenderers({}); });
 // The hidden render frame never loads in happy-dom: stand in for its load event, and for the render page serving the port it is handed.
@@ -25,19 +26,19 @@ const loadFrame = () => setTimeout(() => {
 }, 0);
 
 describe('side panel stills', () => {
-  it('reads each text layer’s words from the v2 scene', () => {
+  it('reads each text layer’s words and layout box from the v2 scene', () => {
     const clip = sampleClip();
-    const texts = sceneTexts(clip.v3.scenes[0]!, clip.recipe.scenes[0]);
-    expect(Object.values(texts).some((t) => t.length > 0)).toBe(true);
-    expect(Object.keys(clipTexts(clip.v3, clip.recipe)).every((k) => /^\d+:/.test(k))).toBe(true);
+    const contents = sceneContents(clip.v3.scenes[0]!, clip.recipe.scenes[0], '9:16');
+    expect(Object.values(contents).some((c) => !!c.text && !!c.box)).toBe(true);
+    expect(Object.keys(clipContents(clip.v3, clip.recipe, '9:16')).every((k) => /^\d+:/.test(k))).toBe(true);
   });
 
   it('asks the render page for a still in a hidden frame, never drawing in the panel', async () => {
     const clip = sampleClip();
     loadFrame();
-    const url = await renderStill(clip.v3.scenes[0]!, 900, { width: 96, height: 170 }, { texts: { a: 'Hi' } });
+    const url = await renderStill(clip.v3.scenes[0]!, 900, { width: 96, height: 170 }, { contents: { a: { text: 'Hi' } } });
     expect(url).toMatch(/^data:image\/jpeg/);
-    expect(sent[0]).toMatchObject({ type: 'still', texts: { a: 'Hi' } });
+    expect(sent[0]).toMatchObject({ type: 'still', contents: { a: { text: 'Hi' } } });
     // Only this panel's frame gets the port, posted to the extension's own origin.
     expect(handoffs).toEqual([{ targetOrigin: new URL(browser.runtime.getURL('/render.html')).origin, ports: 1 }]);
     expect(document.querySelector('iframe')?.getAttribute('src')).toMatch(/render\.html$/);

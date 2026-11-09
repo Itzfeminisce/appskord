@@ -67,7 +67,7 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
   const contentKey = JSON.stringify(scene.layers.map((l) => [l.id, layerContent(state.clip, state.scene, l) ?? null]));
   const contents = useMemo(() => new Map(JSON.parse(contentKey) as [string, LayerContent | null][]), [contentKey]);
   // Paused at a scene's start nothing has come in yet, so the stage shows the scene's key frame instead of an empty frame.
-  const drawT = !playing && t === 0 ? posterMs(scene) : t;
+  const drawT = !playing && t === 0 ? posterMs(scene, (l) => contents.get(l.id)?.text) : t;
   const shownT = useRef(drawT);
 
   useEffect(() => {

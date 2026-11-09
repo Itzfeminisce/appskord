@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitUnits } from '../src/choreo';
+import { splitUnits, staggeredMs, typeMs } from '../src/choreo';
 import { ease, FEEL } from '../src/curves';
 import { frameAt } from '../src/scene';
 import {
@@ -12,6 +12,11 @@ import {
   safeArea,
   wrapLines,
   measureWith,
+  unitCount,
+  boxRect,
+  placeInside,
+  safeRect,
+  slotArea,
   unitPose,
   unitProgress,
   type AxisFont,
@@ -90,12 +95,62 @@ describe('kinetic type splitting', () => {
     );
   });
 
-  it('keeps a word wider than the line on its own line, and shrinks the block to fit the area', () => {
-    expect(wrapLines('a Extraordinarily b', mono, 100)).toEqual(['a', 'Extraordinarily', 'b']);
+  it('breaks a word wider than the line between graphemes, and shrinks the block to fit the area', () => {
+    expect(wrapLines('a Extraordinarily b', mono, 100)).toEqual(['a', 'Extraordin', 'arily b']);
     expect(wrapLines('one\n\n two  three ', mono, Infinity)).toEqual(['one', 'two three']);
+    // CJK has no spaces: it still wraps, and an accent or emoji is never split from its letter.
+    expect(wrapLines('今日は良い天気ですね', mono, 40)).toEqual(['今日は良', 'い天気で', 'すね']);
+    expect(
+      wrapLines('e\u0301e\u0301e\u0301 👍🏽👍🏽', (s) => [...new Intl.Segmenter().segment(s)].length * 10, 20),
+    ).toEqual(['e\u0301e\u0301', 'e\u0301', '👍🏽👍🏽']);
     expect(fitScale(1858, 160, { width: 929, height: 1421 })).toBe(0.5);
     expect(fitScale(100, 2842, { width: 929, height: 1421 })).toBe(0.5);
     expect(fitScale(0, 0, { width: 929, height: 1421 })).toBe(Infinity);
+  });
+
+  it('never makes NaN from a frame with no size', () => {
+    for (const [w, h] of [
+      [0, 0],
+      [1080, 0],
+      [0, 1920],
+      [NaN, 1],
+    ]) {
+      const area = safeArea(w!, h!);
+      const s = fitScale(400, 80, area);
+      expect(Number.isNaN(s)).toBe(false);
+      expect(wrapLines('Fresh sourdough today', mono, area.width)).toEqual(['Fresh sourdough today']);
+    }
+    expect(fitScale(400, 80, { width: 0, height: 0 })).toBe(Infinity);
+  });
+
+  it('staggers wrapped lines and broken words as the units choreo counts', () => {
+    const text = 'Great coffee, before your first meeting.\nEvery day';
+    const wide = (s: string): number => s.length * 40;
+    for (const unit of ['letter', 'word', 'line'] as const) {
+      const boxes = layoutUnits(text, unit, wide, 80, 400);
+      expect(unitCount(boxes)).toBe(splitUnits(text, unit).length);
+      expect(new Set(boxes.map((b) => b.line)).size).toBeGreaterThan(2);
+    }
+    const lines = layoutUnits(text, 'line', wide, 80, 400);
+    expect(lines.map((b) => [b.text, b.order])).toEqual([
+      ['Great', 0],
+      ['coffee,', 0],
+      ['before', 0],
+      ['your first', 0],
+      ['meeting.', 0],
+      ['Every day', 1],
+    ]);
+    // Pieces of one broken word enter as one word.
+    expect(layoutUnits('a Extraordinarily b', 'word', mono, 40, 100).map((b) => [b.text, b.order])).toEqual([
+      ['a', 0],
+      ['Extraordin', 1],
+      ['arily', 1],
+      ['b', 2],
+    ]);
+    // So the entrance takes as long as choreo says, however the lines wrap.
+    expect(typeMs(text, 'line', 600)).toBe(staggeredMs(600, 2, 120));
+    const progress = unitProgress(unitCount(lines), 'line', typeMs(text, 'line', 600), 600);
+    expect(lines.every((b) => progress[b.order] === 1)).toBe(true);
   });
 
   it('scales to fill the frame width between insets', () => {
@@ -121,6 +176,45 @@ const fakeFont = (axes: [string, number, number, number][]): AxisFont & { calls:
     },
   };
 };
+
+describe('layer placement', () => {
+  const frame = { width: 1080, height: 1920 };
+  const safe = safeRect(1080, 1920);
+
+  it('reads a v2 layout box (fractions, top-left) as a rect around the frame centre', () => {
+    expect(safe).toEqual({ x: -540 + 75.6, y: -960 + 192, width: 1080 * 0.86, height: 1920 * 0.74 });
+    const kicker = boxRect({ x: 0.07, y: 0.16, w: 0.86, h: 0.04 }, frame);
+    const headline = boxRect({ x: 0.07, y: 0.22, w: 0.86, h: 0.44 }, frame);
+    const centre = (r: typeof kicker) => r.y + r.height / 2;
+    expect(kicker.x + kicker.width / 2).toBeCloseTo(0, 6);
+    expect(centre(kicker)).toBeCloseTo(-960 + 0.18 * 1920, 6);
+    expect(centre(headline)).toBeCloseTo(-960 + 0.44 * 1920, 6);
+    // Separate layers rest apart: the kicker's box ends above the headline's.
+    expect(kicker.y + kicker.height).toBeLessThanOrEqual(headline.y + 1e-9);
+  });
+
+  it('wraps text to its box and keeps at least one line of height', () => {
+    const steps = boxRect({ x: 0.3828, y: 0.3, w: 0.5472, h: 0.13 }, frame);
+    expect(slotArea(steps, safe, 60)).toEqual({ width: steps.width, height: steps.height });
+    expect(slotArea({ ...steps, height: 10 }, safe, 60).height).toBe(60);
+    expect(slotArea({ x: -600, y: 0, width: 1200, height: 4000 }, safe, 60)).toEqual({
+      width: safe.width,
+      height: safe.height,
+    });
+  });
+
+  it('moves an off-centre block just inside the safe area, and centres one too big for it', () => {
+    expect(placeInside({ x: 0, y: 100 }, { width: 200, height: 100 }, safe)).toEqual({ x: 0, y: 100 });
+    const near = placeInside({ x: 500, y: -940 }, { width: 200, height: 100 }, safe);
+    expect(near.x + 100).toBeCloseTo(safe.x + safe.width, 6);
+    expect(near.y - 50).toBeCloseTo(safe.y, 6);
+    const low = placeInside({ x: -500, y: 940 }, { width: 200, height: 100 }, safe);
+    expect(low.x - 100).toBeCloseTo(safe.x, 6);
+    expect(low.y + 50).toBeCloseTo(safe.y + safe.height, 6);
+    expect(placeInside({ x: 300, y: 0 }, { width: 2000, height: 10 }, safe).x).toBeCloseTo(safe.x + safe.width / 2, 6);
+    expect(placeInside({ x: 5, y: 6 }, { width: 10, height: 10 }, safeRect(0, 0))).toEqual({ x: 5, y: 6 });
+  });
+});
 
 describe('variable axes', () => {
   const archivo = fakeFont([

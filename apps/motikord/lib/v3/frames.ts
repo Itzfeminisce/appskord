@@ -4,11 +4,10 @@ import { fontUrl } from '@appskord/motion/assets';
 import type { EffectUse } from '@appskord/motion/effects';
 import { DEFAULT_FINISH } from '@appskord/motion/finish';
 import { createCanvasRenderer, V3Renderer } from '@appskord/motion/renderer';
-import type { ClipV3, Finish, LayerV3, LookGuide, SceneV3 } from '@appskord/motion/types';
+import type { LayerContent } from '@appskord/motion/draw';
+import type { ClipV3, Finish, LookGuide, SceneV3 } from '@appskord/motion/types';
 import type { ClipFrames } from '../critic/v3';
-
-/** The words of a text layer in scene `i`. */
-export type LayerTexts = (i: number, layer: LayerV3) => string | undefined;
+import { aspectOfSize, type LayerContents } from './text';
 
 export interface DrawSetup {
   width: number;
@@ -60,10 +59,11 @@ export function sceneAt(clip: ClipV3, tMs: number): { index: number; local: numb
   return { index: 0, local: 0 };
 }
 
-function viewFor(scene: SceneV3, i: number, texts: LayerTexts, s: DrawSetup): V3Renderer {
+function viewFor(scene: SceneV3, i: number, contents: LayerContents, s: DrawSetup): V3Renderer {
+  const aspect = aspectOfSize(s);
   return new V3Renderer(scene, {
     width: s.width, height: s.height, quality: s.quality, fps: s.fps, fontUrl, look: s.look, finish: s.finish, effects: s.effects,
-    content: (l) => (l.kind === 'text' ? { text: texts(i, l) ?? '' } : undefined),
+    content: (l) => contents(i, l, aspect),
   });
 }
 
@@ -74,7 +74,7 @@ export class ClipDrawer {
   private disposed = false;
   private readonly gl: Gl;
 
-  constructor(readonly clip: ClipV3, private readonly texts: LayerTexts, private readonly setup: DrawSetup, readonly canvas: HTMLCanvasElement | OffscreenCanvas, private readonly timeoutMs = 10_000) {
+  constructor(readonly clip: ClipV3, private readonly contents: LayerContents, private readonly setup: DrawSetup, readonly canvas: HTMLCanvasElement | OffscreenCanvas, private readonly timeoutMs = 10_000) {
     this.gl = createCanvasRenderer(canvas);
   }
 
@@ -83,7 +83,7 @@ export class ClipDrawer {
     if (index !== this.index) {
       this.view?.dispose();
       this.view = undefined;
-      const view = viewFor(this.clip.scenes[index]!, index, this.texts, this.setup);
+      const view = viewFor(this.clip.scenes[index]!, index, this.contents, this.setup);
       this.view = view;
       this.index = index;
       view.attach(this.gl);
@@ -120,10 +120,10 @@ function jpeg(source: CanvasImageSource, w: number, h: number, quality = 0.8): s
 const FRAME_LONG = 512;
 
 /** The quality check's frames: the clip drawn at reduced quality, each a small JPEG. */
-export function clipFramesFor(texts: LayerTexts, look: LookGuide | undefined, size = { width: 1080, height: 1920 }): ClipFrames {
+export function clipFramesFor(contents: LayerContents, look: LookGuide | undefined, size = { width: 1080, height: 1920 }): ClipFrames {
   return async (clip, times) => {
     const canvas = canvasOf(size.width, size.height);
-    const drawer = new ClipDrawer(clip, texts, { ...size, quality: 'reduced', fps: clip.fps, look, finish: clip.finish, effects: clip.effects }, canvas);
+    const drawer = new ClipDrawer(clip, contents, { ...size, quality: 'reduced', fps: clip.fps, look, finish: clip.finish, effects: clip.effects }, canvas);
     const k = FRAME_LONG / Math.max(size.width, size.height);
     try {
       const out: string[] = [];
@@ -139,10 +139,10 @@ export function clipFramesFor(texts: LayerTexts, look: LookGuide | undefined, si
 }
 
 /** One key-frame still of `scene` at `atMs`, as a JPEG data URL of `size` (drawn at twice that for sharp screens). */
-export async function stillUrl(scene: SceneV3, atMs: number, size: { width: number; height: number }, look: LookGuide | undefined, texts: Record<string, string>): Promise<string> {
+export async function stillUrl(scene: SceneV3, atMs: number, size: { width: number; height: number }, look: LookGuide | undefined, contents: Record<string, LayerContent>): Promise<string> {
   const clip: ClipV3 = { version: 3, scenes: [scene], lookGuideId: look?.id ?? '', packId: '', fps: 30, finish: DEFAULT_FINISH };
   const canvas = canvasOf(1080, Math.round((1080 * size.height) / size.width));
-  const drawer = new ClipDrawer(clip, (_i, l) => texts[l.id], { width: canvas.width, height: canvas.height, quality: 'full', fps: 30, look, finish: DEFAULT_FINISH }, canvas);
+  const drawer = new ClipDrawer(clip, (_i, l) => contents[l.id], { width: canvas.width, height: canvas.height, quality: 'full', fps: 30, look, finish: DEFAULT_FINISH }, canvas);
   try {
     await drawer.draw(atMs);
     return jpeg(canvas, size.width * 2, size.height * 2);

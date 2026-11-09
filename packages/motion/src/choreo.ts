@@ -24,6 +24,11 @@ export function staggeredMs(unitMs: number, count: number, stepMs: number): numb
   return count > 0 ? unitMs + (count - 1) * stepMs : 0;
 }
 
+/** How long kinetic type takes to come in: one staggered entrance per splitUnits unit, however its lines wrap. */
+export function typeMs(text: string, unit: Unit, unitMs: number): number {
+  return staggeredMs(unitMs, splitUnits(text, unit).length, STAGGER_MS[unit]);
+}
+
 /** Starts for hierarchy levels of the given lengths: each starts OVERLAP_MS before the one above it ends. */
 export function hierarchyStarts(levelMs: readonly number[], overlapMs: number = OVERLAP_MS): number[] {
   const starts: number[] = [];

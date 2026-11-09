@@ -18,6 +18,7 @@ import { StrokeMesh } from '../src/paths';
 import { autoRig, rigLayers, RIG_DEFAULTS } from '../src/rigs';
 import { ShapeMesh } from '../src/shapes';
 import { V3Renderer } from '../src/renderer';
+import { UNIT } from '../src/scene';
 import { clip, scene } from './fixture';
 
 const look = {
@@ -55,6 +56,52 @@ describe('V3Renderer', () => {
     expect(r.graph.layers.get('headline')!.children).toHaveLength(1);
     expect(() => r.render(0)).toThrow(/attach/);
     r.dispose();
+  });
+
+  it('rests each text layer at the centre of its layout box, inside the safe area', () => {
+    const s = scene();
+    const ids = s.layers.filter((l) => l.kind === 'text').map((l) => l.id);
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    const kicker = { x: 0.07, y: 0.16, w: 0.86, h: 0.04 };
+    const r = new V3Renderer(s, {
+      width: 1080,
+      height: 1920,
+      quality: 'reduced',
+      fps: 30,
+      fontUrl: '/fonts/geist.woff2',
+      finish: clip().finish,
+      look,
+      // The second layer's box runs off the bottom: it is pulled back inside the safe area.
+      content: (l) => {
+        const i = ids.indexOf(l.id);
+        if (i < 0) return undefined;
+        return {
+          text: 'Fresh sourdough',
+          fontSize: 60,
+          box: i === 0 ? kicker : { x: 0.07, y: 0.95, w: 0.86, h: 0.2 },
+        };
+      },
+    });
+    const still = new V3Renderer(s, {
+      width: 1080,
+      height: 1920,
+      quality: 'reduced',
+      fps: 30,
+      fontUrl: '/fonts/geist.woff2',
+      finish: clip().finish,
+      look,
+      content: (l) => (ids.includes(l.id) ? { text: 'Fresh sourdough', fontSize: 60 } : undefined),
+    });
+    r.pose(5000);
+    still.pose(5000);
+    const y = (v: V3Renderer, id: string) => -v.graph.layers.get(id)!.position.y / UNIT;
+    // Without a box a layer sits where its tracks put it; with one, that far from the box's centre.
+    expect(y(r, ids[0]!) - y(still, ids[0]!)).toBeCloseTo(-960 + 0.18 * 1920, 3);
+    const bottom = 960 - 0.16 * 1920;
+    expect(y(r, ids[1]!) - y(still, ids[1]!)).toBeLessThanOrEqual(bottom);
+    expect(y(r, ids[1]!) - y(still, ids[1]!)).toBeGreaterThan(bottom - 100);
+    r.dispose();
+    still.dispose();
   });
 
   it('shows saved particles and spreads depth for Show depth', async () => {

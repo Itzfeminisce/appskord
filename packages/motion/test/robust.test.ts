@@ -19,7 +19,7 @@ import { applyMask, maskReveal } from '../src/masks';
 import { morpher } from '../src/morph';
 import { parsePath } from '../src/paths';
 import { UNIT } from '../src/scene';
-import { AxisText, KineticType, unitProgress, type AxisFont } from '../src/type';
+import { AxisText, KineticType, safeArea, unitProgress, type AxisFont } from '../src/type';
 
 const box = { x: 0, y: 0, width: 100, height: 50 };
 const font: AxisFont = {
@@ -57,7 +57,7 @@ describe('dispose', () => {
     k.dispose();
   });
 
-  it('KineticType wraps to the safe area, centres the block and shrinks a too-wide word to fit', () => {
+  it('KineticType wraps to the safe area, centres the block, breaks a too-wide word and shrinks a tall block', () => {
     made.length = 0;
     const area = { width: 300, height: 1000 };
     const k = new KineticType('ab cd ef', 'word', {
@@ -78,12 +78,29 @@ describe('dispose', () => {
       measure: (s) => s.length * 100,
       fontSize: 40,
       fontUrl: '/f.ttf',
-      area,
+      area: { width: 300, height: 100 },
     });
-    expect(wide.scale.x).toBeCloseTo(300 / 800, 6);
-    expect(wide.bounds().width).toBeCloseTo(300, 6);
+    expect(wide.boxes.map((b) => [b.text, b.line, b.order])).toEqual([
+      ['abc', 0, 0],
+      ['def', 1, 0],
+      ['gh', 2, 0],
+    ]);
+    expect(wide.scale.x).toBeCloseTo(100 / 132, 6);
+    // No fill and no area: the scale is left alone; a frame with no size never hides the words.
+    const free = new KineticType('ab', 'word', { measure: (s) => s.length * 100, fontSize: 40, fontUrl: '/f.ttf' });
+    expect(free.scale.x).toBe(1);
+    const empty = new KineticType('ab', 'word', {
+      measure: (s) => s.length * 100,
+      fontSize: 40,
+      fontUrl: '/f.ttf',
+      area: safeArea(0, 0),
+    });
+    expect(empty.scale.x).toBe(1);
+    expect(Number.isFinite(empty.bounds().width)).toBe(true);
     k.dispose();
     wide.dispose();
+    free.dispose();
+    empty.dispose();
   });
 
   it('AxisText disposes geometry and material', () => {

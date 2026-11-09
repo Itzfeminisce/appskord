@@ -23,6 +23,8 @@ export interface LayerContent {
   morphTo?: string;
   stroke?: string;
   strokeWidth?: number;
+  /** The layer's layout box as fractions of the frame, x and y its top-left: the layer rests at its centre. */
+  box?: { x: number; y: number; w: number; h: number };
 }
 
 export interface Inks {

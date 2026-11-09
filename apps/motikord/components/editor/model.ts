@@ -1,6 +1,7 @@
 // The v3 editor's state: the clip, what is selected, and every edit written through validateScene into Changes.
 import { getSceneTemplate } from '@appskord/scenes/templates/scenes';
-import { layerMs, layerStarts } from '@appskord/motion/choreo';
+import { layerMs, layerStarts, typeMs } from '@appskord/motion/choreo';
+import { FEEL } from '@appskord/motion/curves';
 import { validateClip, validateScene } from '@appskord/motion/recipe';
 import type { LayerContent } from '@appskord/motion/draw';
 import type { EffectUse } from '@appskord/motion/effects';
@@ -8,7 +9,7 @@ import type { ClipV3, LayerV3, SceneV3 } from '@appskord/motion/types';
 import { record, redo, undo, type History } from '../../lib/editor/history';
 import { stepsBack } from '../../lib/editor/changes';
 import { applyPatch } from '../../lib/patch';
-import { sceneLayerText } from '../../lib/v3/text';
+import { sceneLayerContent, sceneLayerText } from '../../lib/v3/text';
 import type { RestyledClip } from '../../lib/restyle/restyle';
 import { getTemplateV3 } from '../../lib/templates/v3/templates';
 import type { Author, Change, Layer, PatchOp } from '../../lib/types';
@@ -201,13 +202,9 @@ export function layerName(clip: RestyledClip, i: number, layer: LayerV3): string
 /** The words a text layer shows: its v2 text, or its slot's words. */
 export const layerText = (clip: RestyledClip, i: number, layer: LayerV3): string | undefined => sceneLayerText(clip.recipe.scenes[i], layer);
 
-/** What the renderer draws for a layer beyond its tracks: its words, or its v2 shape's size, fill and corners. */
-export function layerContent(clip: RestyledClip, i: number, layer: LayerV3): LayerContent | undefined {
-  if (layer.kind === 'text') return { text: layerText(clip, i, layer) ?? '' };
-  const v2 = v2Layer(clip, i, layer.id);
-  if (v2?.type !== 'shape') return undefined;
-  return { size: { w: v2.box.w, h: v2.box.h }, color: v2.fill, shape: v2.shape, radius: v2.radius };
-}
+/** What the stage draws for a layer beyond its tracks, in its 9:16 frame (see sceneLayerContent). */
+export const layerContent = (clip: RestyledClip, i: number, layer: LayerV3): LayerContent | undefined =>
+  sceneLayerContent(clip.recipe.scenes[i], layer, '9:16', clip.recipe.aspect);
 
 /** "Notes that find you": the scene's first words. */
 export function sceneTitle(clip: RestyledClip, i: number): string {
@@ -225,10 +222,15 @@ export const templateName = (s: SceneV3): string => getTemplateV3(s.templateId)?
  * The frame a paused preview shows at a scene's start, where every layer is still waiting to come in: the
  * template's key frame (as Look lock shows it), else the moment the last layer has finished coming in.
  */
-export function posterMs(s: SceneV3): number {
+export function posterMs(s: SceneV3, textOf?: (layer: LayerV3) => string | undefined): number {
   const key = getTemplateV3(s.templateId)?.keyFrameS;
   const starts = layerStarts(s.layers);
-  const settled = Math.max(0, ...s.layers.map((l, i) => (starts[i] ?? 0) + layerMs(l)));
+  // Kinetic type comes in unit by unit (KineticType's default unit length), which can outlast its tracks.
+  const inMs = (l: LayerV3): number => {
+    const text = l.kind === 'text' ? textOf?.(l) : undefined;
+    return Math.max(layerMs(l), text ? typeMs(text, l.type?.unit ?? 'line', FEEL.smooth.ms) : 0);
+  };
+  const settled = Math.max(0, ...s.layers.map((l, i) => (starts[i] ?? 0) + inMs(l)));
   return Math.max(0, Math.min(s.ms - 1, key !== undefined ? Math.round(key * 1000) : settled));
 }
 

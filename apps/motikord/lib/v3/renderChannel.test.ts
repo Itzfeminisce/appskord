@@ -27,10 +27,10 @@ describe('render channel', () => {
     });
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const scene = sampleClip().v3.scenes[0]!;
-    expect(await ask({ type: 'still', scene, atMs: 0, size: { width: 9000, height: 10 }, texts: {} })).toMatch(/^data:image/);
+    expect(await ask({ type: 'still', scene, atMs: 0, size: { width: 9000, height: 10 }, contents: {} })).toMatch(/^data:image/);
     expect(seen).toEqual([{ width: 2160, height: 64 }]);
-    await expect(ask({ type: 'still', scene, atMs: 0, size: { width: -1, height: 10 }, texts: {} })).rejects.toThrow(/positive/);
-    await expect(ask({ type: 'frames', clip: sampleClip().v3, times: [0], texts: {} })).rejects.toThrow(/typeset/);
+    await expect(ask({ type: 'still', scene, atMs: 0, size: { width: -1, height: 10 }, contents: {} })).rejects.toThrow(/positive/);
+    await expect(ask({ type: 'frames', clip: sampleClip().v3, times: [0], contents: {} })).rejects.toThrow(/typeset/);
     expect(seen).toHaveLength(1);
   });
 

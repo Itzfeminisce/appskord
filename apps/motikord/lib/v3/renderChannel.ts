@@ -1,5 +1,6 @@
 // The side panel and its own hidden render frame talk over one MessagePort the panel hands the frame,
 // so only the panel that made the frame can ask it to draw, and no other frame draws for it.
+import type { LayerContent } from '@appskord/motion/draw';
 import type { ClipV3, LookGuide, SceneV3 } from '@appskord/motion/types';
 
 /** The first message the panel posts to its frame; the port rides with it. */
@@ -7,8 +8,8 @@ export const RENDER_PORT = 'motikord/render-port';
 
 export type Size = { width: number; height: number };
 export type RenderRequest =
-  | { type: 'still'; scene: SceneV3; atMs: number; size: Size; look?: LookGuide; texts: Record<string, string> }
-  | { type: 'frames'; clip: ClipV3; times: number[]; look?: LookGuide; texts: Record<string, string> };
+  | { type: 'still'; scene: SceneV3; atMs: number; size: Size; look?: LookGuide; contents: Record<string, LayerContent> }
+  | { type: 'frames'; clip: ClipV3; times: number[]; look?: LookGuide; contents: Record<string, LayerContent> };
 type Answer<R extends RenderRequest> = R extends { type: 'still' } ? string : string[];
 type Reply = { id: number; ok: true; value: unknown } | { id: number; ok: false; error: string };
 

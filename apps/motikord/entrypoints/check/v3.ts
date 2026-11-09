@@ -2,7 +2,7 @@ import { exportTestScene, loadBuildingBlocks, previewTestScene } from '@appskord
 import { blocksVerdict, exportVerdict, failedRow, V3_ROWS, memoryVerdict, previewVerdict, V3_BUDGET, v3Row, type V3Id, type V3Row } from '@appskord/motion/check';
 import { fontUrl } from '@appskord/motion/assets';
 import { createCanvasRenderer, V3Renderer } from '@appskord/motion/renderer';
-import { layerText } from '../../components/editor/model';
+import { layerContent } from '../../components/editor/model';
 import { devSampleV2 } from '../../lib/editor/v2';
 import { packFinish, packLook, getPackV3 } from '../../lib/look/packs';
 import { restyle } from '../../lib/restyle/restyle';
@@ -60,7 +60,7 @@ async function editorPreview(canvas: HTMLCanvasElement, seconds: number): Promis
   const gl = createCanvasRenderer(canvas);
   const view = new V3Renderer(scene, {
     width: 1080, height: 1920, quality: 'reduced', fps: 30, fontUrl, finish: packFinish(pack), look: packLook(pack),
-    content: (l) => (l.kind === 'text' ? { text: layerText(clip, 0, l) ?? '' } : undefined),
+    content: (l) => layerContent(clip, 0, l),
   });
   const intervals: number[] = [];
   try {
