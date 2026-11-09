@@ -6,6 +6,7 @@ import type { RestyledClip } from '../../lib/restyle/restyle';
 import type { Author } from '../../lib/types';
 import { AnimateDialog, AnimatedToast, type Animate } from './AnimateDialog';
 import { AssetPicker, type BundledAsset } from './AssetPicker';
+import { CaptionsVoice, type CaptionsVoiceProps } from './CaptionsVoice';
 import { ChangesTab } from './ChangesTab';
 import { chartData, DataTab } from './DataScenes';
 import { EditorV3Provider, useEditorV3 } from './context';
@@ -41,6 +42,8 @@ export interface EditorV3Props {
   catalog?: readonly BundledAsset[];
   /** Quality-check notes waiting, for the Check badge. */
   checkCount?: number;
+  /** The Voice and captions panel (opens with the `voice` overlay). */
+  voice?: CaptionsVoiceProps;
 }
 
 export function EditorV3(p: EditorV3Props) {
@@ -105,7 +108,7 @@ function Shell(p: EditorV3Props) {
         <aside style={{ width: 320, flexShrink: 0, background: C.surface, borderLeft: '1px solid #E8E8EB', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 6, boxSizing: 'border-box', overflow: 'auto' }}>
           <div role="tablist" aria-label="Edit" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: C.stage, flexShrink: 0 }}>
             {tabs.map(([id, name]) => (
-              <button key={id} type="button" role="tab" aria-selected={id === tab} onClick={() => ed.setTab(id)}
+              <button key={id} type="button" role="tab" aria-selected={id === tab} onClick={() => { ed.setOverlay(undefined); ed.setTab(id); }}
                 style={{ flex: 1, height: 28, border: 0, borderRadius: 6, background: id === tab ? C.surface : 'transparent', boxShadow: id === tab ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', font: `${id === tab ? 600 : 400} 12px/1 ${C.font}`, color: id === tab ? C.ink : C.muted, cursor: 'pointer' }}>
                 {name}
               </button>
@@ -115,11 +118,12 @@ function Shell(p: EditorV3Props) {
             <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--error-ink, #B91C1C)' }}>{state.errors[0]}</p>
           )}
           <div role="tabpanel" style={{ minHeight: 0 }}>
-            {tab === 'scene' && <SceneTab />}
-            {tab === 'layer' && <LayerTab bakers={p.bakers} />}
-            {tab === 'motion' && <MotionTab />}
-            {tab === 'data' && <DataTab />}
-            {tab === 'changes' && <ChangesTab onOpenV2={p.onOpenV2 ? () => p.onOpenV2!(state.clip) : undefined} />}
+            {overlay === 'voice' && <CaptionsVoice {...p.voice} />}
+            {overlay !== 'voice' && tab === 'scene' && <SceneTab />}
+            {overlay !== 'voice' && tab === 'layer' && <LayerTab bakers={p.bakers} />}
+            {overlay !== 'voice' && tab === 'motion' && <MotionTab />}
+            {overlay !== 'voice' && tab === 'data' && <DataTab />}
+            {overlay !== 'voice' && tab === 'changes' && <ChangesTab onOpenV2={p.onOpenV2 ? () => p.onOpenV2!(state.clip) : undefined} />}
           </div>
         </aside>
       </div>
