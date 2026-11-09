@@ -1,10 +1,11 @@
 import { createContext, useContext, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { LayerV3, LookGuide, SceneV3 } from '@appskord/motion/types';
+import type { Feel, LayerV3, LookGuide, SceneV3 } from '@appskord/motion/types';
 import { getPackV3, packLook, type PackV3 } from '../../lib/look/packs';
 import type { RestyledClip } from '../../lib/restyle/restyle';
 import { initV3, layerName, layerText, redoV3, undoV3, type Tab, type V3State } from './model';
+import type { PromptChanged } from './prompt';
 
-export type Overlay = 'effects' | 'add' | 'animate' | 'voice' | { transition: number } | { animated: { title: string; line: string } } | undefined;
+export type Overlay = 'effects' | 'add' | 'animate' | 'voice' | 'sizes' | { transition: number } | { animated: { title: string; line: string } } | undefined;
 
 export interface EditorV3Api {
   state: V3State;
@@ -32,6 +33,16 @@ export interface EditorV3Api {
   text: (layer: LayerV3, scene?: number) => string | undefined;
   /** "Groq": who Animate this layer sends the layer's settings to. */
   provider: string;
+  /** What the last "Tell Motikord what to change" edit changed; its tags show while the clip is still that edit's. */
+  changed: PromptChanged | undefined;
+  setChanged: (c: PromptChanged | undefined) => void;
+  /** Prompt changes not yet seen in the Changes tab. */
+  changesNew: number;
+  /** All sizes' "This size only": box edits land on the selected size alone. */
+  sizeOnly: boolean;
+  setSizeOnly: (on: boolean) => void;
+  /** The feel each layer last had, for the curve editor's "Reset to {feel}". */
+  feels: Map<string, Feel>;
 }
 
 const Ctx = createContext<EditorV3Api | null>(null);
@@ -54,6 +65,16 @@ export function EditorV3Provider({ clip, look, provider = 'Groq', initial, child
   const [playing, setPlaying] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>();
   const [spread, setSpread] = useState(false);
+  const [changed, setChangedState] = useState<PromptChanged>();
+  const [changesNew, setChangesNew] = useState(0);
+  const [sizeOnly, setSizeOnly] = useState(false);
+  const feels = useRef(new Map<string, Feel>()).current;
+  const setChanged = useCallback((c: PromptChanged | undefined) => {
+    setChangedState(c);
+    if (c) setChangesNew((n) => n + 1);
+  }, []);
+  // Opening the Changes tab clears its dot.
+  if (state.tab === 'changes' && changesNew) setChangesNew(0);
   const api = useMemo<EditorV3Api>(() => {
     const scene = state.clip.v3.scenes[state.scene]!;
     const pack = getPackV3(state.clip.v3.packId);
@@ -82,7 +103,13 @@ export function EditorV3Provider({ clip, look, provider = 'Groq', initial, child
       name: (l, i = state.scene) => layerName(state.clip, i, l),
       text: (l, i = state.scene) => layerText(state.clip, i, l),
       provider,
+      changed: changed && changed.clip === state.clip ? changed : undefined,
+      setChanged,
+      changesNew,
+      sizeOnly,
+      setSizeOnly,
+      feels,
     };
-  }, [state, look, t, playing, overlay, spread, provider]);
+  }, [state, look, t, playing, overlay, spread, provider, changed, setChanged, changesNew, sizeOnly, feels]);
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

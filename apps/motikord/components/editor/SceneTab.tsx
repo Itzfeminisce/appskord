@@ -27,7 +27,7 @@ export function SceneTab() {
           {`Scene ${i + 1}`} <span style={{ fontWeight: 400, color: C.muted }}>{`· ${templateName(scene)}`}</span>
         </span>
       </div>
-      <Section title="Camera and depth" aside="2.5D">
+      <Section title="Camera and depth" aside="2.5D" changed={ed.changed?.scene === ed.state.scene && ed.changed.sections.includes('Camera and depth')}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {CAMERA_ORDER.map((m) => (
             <Chip key={m} on={cam.move === m} onClick={() => edit((s) => { s.camera.move = m; }, cameraSummary(m, cam.amount))}>

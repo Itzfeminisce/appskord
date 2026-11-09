@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { EffectId } from '@appskord/motion/effects';
 import type { LookGuide } from '@appskord/motion/types';
 import { createAutosave, type SaveStatus } from '../../lib/editor/autosave';
@@ -14,10 +14,11 @@ import { ChangesTab } from './ChangesTab';
 import { chartData, DataTab } from './DataScenes';
 import { EditorV3Provider, useEditorV3 } from './context';
 import { EffectsDialog } from './EffectsDialog';
+import { FormatsV3 } from './FormatsV3';
 import { LayerTab, type Bakers } from './LayerTab';
 import { clipMs, clock, sceneStarts, sceneTitle, TABS, templateName, type Tab, type V3State } from './model';
 import { MotionTab } from './MotionTab';
-import { applyPromptV3, setSizeV3 } from './prompt';
+import { doneLine, promptStep, setSizeV3, type PromptChanged } from './prompt';
 import { SceneTab } from './SceneTab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
@@ -27,7 +28,7 @@ import { C } from './ui';
 // The v3 editor tab at 1366 × 768: shared chrome (Add, Effects, Look, Brand, Check, Export), scenes, stage,
 // the 320 px right panel (Scene, Layer, Motion, Changes) and the timeline. Every edit goes through the recipe check.
 
-export type ChromeGo = 'library' | 'look' | 'brand' | 'check' | 'export' | 'sizes';
+export type ChromeGo = 'library' | 'look' | 'brand' | 'check' | 'export';
 
 export interface EditorV3Props {
   clip: RestyledClip;
@@ -66,6 +67,8 @@ function Shell(p: EditorV3Props) {
   const clipVoice = useClipVoice(p.voiceMedia);
   const [status, setStatus] = useState<SaveStatus>('saved');
   const [preview, setPreview] = useState<EffectId>();
+  const [toast, setToast] = useState<PromptChanged>();
+  const closeToast = useCallback(() => setToast(undefined), []);
   const saver = useRef<ReturnType<typeof createAutosave> | undefined>(undefined);
   useEffect(() => {
     if (!p.save) return;
@@ -108,18 +111,24 @@ function Shell(p: EditorV3Props) {
   return (
     <div style={{ position: 'relative', width: '100%', minWidth: 1024, height: '100vh', minHeight: 640, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: '#F6F6F7', color: C.ink, fontFamily: C.font, overflow: 'hidden' }}>
       <TopBar status={status} go={p.go} checkCount={p.checkCount} />
+      {overlay === 'sizes' ? <FormatsV3 go={p.go} /> : (
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <ScenesList />
         {overlay === 'add' && <AssetPicker catalog={p.catalog} />}
-        <Stage preview={preview && overlay === 'effects' ? { effect: preview } : undefined} prompt={<Prompt />} />
+        <Stage preview={preview && overlay === 'effects' ? { effect: preview } : undefined} prompt={<Prompt onDone={setToast} />}
+          toast={toast && ed.changed === toast ? <PromptToast changed={toast} onClose={closeToast} /> : undefined} />
         <aside style={{ width: 320, flexShrink: 0, background: C.surface, borderLeft: '1px solid #E8E8EB', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 6, boxSizing: 'border-box', overflow: 'auto' }}>
           <div role="tablist" aria-label="Edit" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: C.stage, flexShrink: 0 }}>
-            {tabs.map(([id, name]) => (
-              <button key={id} type="button" role="tab" aria-selected={id === tab} onClick={() => { ed.setOverlay(undefined); ed.setTab(id); }}
-                style={{ flex: 1, height: 28, border: 0, borderRadius: 6, background: id === tab ? C.surface : 'transparent', boxShadow: id === tab ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', font: `${id === tab ? 600 : 400} 12px/1 ${C.font}`, color: id === tab ? C.ink : C.muted, cursor: 'pointer' }}>
-                {name}
-              </button>
-            ))}
+            {tabs.map(([id, name]) => {
+              const dot = id === 'changes' && ed.changesNew > 0;
+              return (
+                <button key={id} type="button" role="tab" aria-selected={id === tab} aria-label={dot ? `${name}, ${ed.changesNew} new` : undefined} onClick={() => { ed.setOverlay(undefined); ed.setTab(id); }}
+                  style={{ flex: 1, height: 28, border: 0, borderRadius: 6, background: id === tab ? C.surface : 'transparent', boxShadow: id === tab ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', font: `${id === tab ? 600 : 400} 12px/1 ${C.font}`, color: id === tab ? C.ink : C.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                  {name}
+                  {dot && <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: '#BE185D' }} />}
+                </button>
+              );
+            })}
           </div>
           {state.errors && (
             <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--error-ink, #B91C1C)' }}>{state.errors[0]}</p>
@@ -134,7 +143,8 @@ function Shell(p: EditorV3Props) {
           </div>
         </aside>
       </div>
-      <Timeline />
+      )}
+      {overlay !== 'sizes' && <Timeline />}
       {overlay === 'effects' && <EffectsDialog onPreview={setPreview} />}
       {overlay === 'animate' && <AnimateDialog animate={p.animate} by={p.by} />}
       {typeof overlay === 'object' && 'transition' in overlay && <TransitionDialog from={overlay.transition} />}
@@ -170,13 +180,15 @@ function TopBar({ status, go, checkCount }: { status: SaveStatus; go?: (to: Chro
       <span style={{ flex: 1 }} />
       <div role="radiogroup" aria-label="Size" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: '#F1F1F3', flexShrink: 0 }}>
         {ASPECTS.map((a) => {
-          const on = state.clip.recipe.aspect === a;
+          // All sizes shows every size, so the switch shows none picked there.
+          const on = overlay !== 'sizes' && state.clip.recipe.aspect === a;
           return (
             <button key={a} type="button" role="radio" aria-checked={on} onClick={() => ed.update((st) => setSizeV3(st, a))}
               style={{ height: 30, padding: '0 9px', border: 0, borderRadius: 6, background: on ? C.surface : 'transparent', boxShadow: on ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', font: `${on ? 500 : 400} 12px/1 ${C.mono}`, color: on ? C.ink : '#5F6168', cursor: 'pointer' }}>{a}</button>
           );
         })}
       </div>
+      <button type="button" aria-current={overlay === 'sizes' ? 'page' : undefined} onClick={() => ed.setOverlay('sizes')} style={barButton(overlay === 'sizes')}>All sizes</button>
       <button type="button" aria-pressed={overlay === 'add'} onClick={() => toggle('add')} style={barButton(overlay === 'add')}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>Add</button>
       <button type="button" aria-pressed={overlay === 'effects'} onClick={() => toggle('effects')} style={barButton(overlay === 'effects')}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke}><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /><circle cx="12" cy="12" r="3" /></svg>Effects</button>
       <button type="button" title="Look guide" onClick={() => go?.('look')} style={{ ...barButton(), padding: '0 10px 0 8px', gap: 7 }}>
@@ -194,15 +206,57 @@ function TopBar({ status, go, checkCount }: { status: SaveStatus; go?: (to: Chro
   );
 }
 
-function Prompt() {
+function Prompt({ onDone }: { onDone: (c: PromptChanged) => void }) {
   const ed = useEditorV3();
   return (
     <PromptField recipe={ed.state.clip.recipe} speak={false} maxWidth={560}
       apply={(out) => {
         let base: V3State | undefined;
-        const next = ed.update((st) => (base = st, applyPromptV3(st, out)));
-        return next !== base;
+        let made: PromptChanged | undefined;
+        const next = ed.update((st) => {
+          base = st;
+          const step = promptStep(st, out, ed.sizeOnly);
+          made = step.changed;
+          return step.state;
+        });
+        if (next === base) return false;
+        if (made) {
+          ed.setT(0);
+          ed.setChanged(made);
+          onDone(made);
+        }
+        return true;
       }} />
+  );
+}
+
+/** How long the "Done." toast stays when nothing else happens. */
+export const TOAST_MS = 8000;
+
+/** EditPromptV3's toast, in place of the play row: until 8 s pass or the next action. */
+function PromptToast({ changed, onClose }: { changed: PromptChanged; onClose: () => void }) {
+  const ed = useEditorV3();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const id = setTimeout(onClose, TOAST_MS);
+    const away = (e: Event) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
+    window.addEventListener('pointerdown', away, true);
+    window.addEventListener('keydown', away, true);
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener('pointerdown', away, true);
+      window.removeEventListener('keydown', away, true);
+    };
+  }, [onClose]);
+  return (
+    <div ref={ref} role="status" style={{ width: 560, maxWidth: '100%', height: 44, boxSizing: 'border-box', borderRadius: 12, background: '#111114', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: 10, padding: '0 6px 0 12px', boxShadow: '0 10px 28px rgba(16,16,20,0.28)', flexShrink: 0 }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" {...stroke} stroke="#F9A8D4" strokeWidth="2.4"><path d="M20 6L9 17l-5-5" /></svg>
+      <span style={{ flexGrow: 1, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doneLine(changed.summary)}</span>
+      <button type="button" onClick={() => { if (ed.state.clip === changed.clip) ed.undo(); onClose(); }}
+        style={{ height: 32, padding: '0 12px', border: 0, borderRadius: 8, background: 'rgba(255,255,255,0.12)', color: '#FFFFFF', font: `600 12px/1 ${C.font}`, cursor: 'pointer' }}>Undo</button>
+      <button type="button" onClick={() => { ed.setOverlay(undefined); ed.setTab('changes'); onClose(); }}
+        style={{ height: 32, padding: '0 10px', border: 0, borderRadius: 8, background: 'transparent', color: '#F9A8D4', font: `500 12px/1 ${C.font}`, cursor: 'pointer', whiteSpace: 'nowrap' }}>See in Changes</button>
+    </div>
   );
 }
 
