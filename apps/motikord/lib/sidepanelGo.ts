@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { send } from './messages';
+import type { Provider } from './types';
 
 // "Open Settings" and "Go to your clips" from the editor tab: an open side panel hears the message; one that is just opening reads the key on start.
 const KEY = 'sidepanelGo';
@@ -44,4 +45,27 @@ export function useWindowId() {
 export function goInSidePanel(windowId: number | undefined, screen: SidepanelGoal): void {
   if (windowId === undefined) return;
   openSidePanelOn(windowId, screen);
+}
+
+const FOR_KEY = 'pasteKeyFor';
+const FOR_PROVIDERS: readonly string[] = ['groq', 'openai'];
+
+/** Opens PasteKey for one provider's key (voiceover: OpenAI; captions: the speech provider) without changing the clip-writing provider. */
+export function addKeyInSidePanel(windowId: number | undefined, provider: Provider): void {
+  if (windowId === undefined) return;
+  browser.storage.session.set({ [FOR_KEY]: provider }).catch((error: unknown) => console.error('Motikord: could not remember which key to ask for', error));
+  openSidePanelOn(windowId, 'PasteKey');
+}
+
+/** The provider the editor wants a key for, once; undefined when PasteKey was opened the ordinary way. */
+export async function takePasteKeyFor(): Promise<Provider | undefined> {
+  try {
+    const v = (await browser.storage.session.get(FOR_KEY))[FOR_KEY];
+    if (v === undefined) return undefined;
+    await browser.storage.session.remove(FOR_KEY);
+    return typeof v === 'string' && FOR_PROVIDERS.includes(v) ? (v as Provider) : undefined;
+  } catch (error) {
+    console.error('Motikord: could not read which key to ask for', error);
+    return undefined;
+  }
 }

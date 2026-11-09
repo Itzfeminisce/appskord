@@ -28,8 +28,8 @@ export interface CaptionsVoiceProps {
   /** Hands the made voice to the clip's audio; returns its length in ms. */
   onVoiceover?: (audio: Blob, voice: VoiceId) => Promise<number> | number;
   onChooseNarration?: () => void;
-  /** Paste a key (both no-key cards). */
-  onAddKey?: () => void;
+  /** Paste a key for this provider (both no-key cards): the speech provider for captions, OpenAI for the voice. */
+  onAddKey?: (provider: SpeechProvider) => void;
   /** Connect Penv Cloud (captions-no-key). */
   onConnectPenv?: () => void;
   onSettings?: () => void;
@@ -44,6 +44,9 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
   const keyOf = p.keyOf ?? getKey;
   const provider = p.provider ?? 'groq';
   const [captions, setCaptions] = useState(() => hasCaptions(ed.state));
+  const written = hasCaptions(ed.state);
+  // Undo and redo change the clip under the switch; it follows.
+  useEffect(() => { setCaptions(written); }, [written]);
   const [style, setStyle] = useState<CaptionStyle>('pop');
   const [capCard, setCapCard] = useState<CaptionsCard>();
   const [capBusy, setCapBusy] = useState(false);
@@ -56,6 +59,20 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
   const capAbort = useRef<AbortController | undefined>(undefined);
   const voiceAbort = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => { capAbort.current?.abort(); voiceAbort.current?.abort(); }, []);
+  // A key added in the side panel clears the card that asked for it.
+  const noKey = { cap: capCard === 'captions-no-key', voice: voiceCard === 'voiceover-no-key' };
+  useEffect(() => {
+    if (!noKey.cap && !noKey.voice) return;
+    const recheck = () => {
+      if (noKey.cap) void keyOf(provider).then((k) => { if (k) setCapCard((c) => (c === 'captions-no-key' ? undefined : c)); }).catch(() => undefined);
+      if (noKey.voice) void keyOf('openai').then((k) => { if (k) setVoiceCard((c) => (c === 'voiceover-no-key' ? undefined : c)); }).catch(() => undefined);
+    };
+    const onChange = (_c: unknown, area: string) => { if (area === 'session') recheck(); };
+    browser.storage.onChanged.addListener(onChange);
+    return () => browser.storage.onChanged.removeListener(onChange);
+    // keyOf is a stable seam.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noKey.cap, noKey.voice, provider]);
   const begin = (ref: { current: AbortController | undefined }) => {
     ref.current?.abort();
     return (ref.current = new AbortController());
@@ -102,6 +119,7 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
     if (!(await keyOf('openai'))) setVoiceCard('voiceover-no-key');
   };
   const make = async () => {
+    if (!p.onVoiceover) return;
     setVoiceCard(undefined);
     const key = await keyOf('openai');
     if (!key) { setVoiceCard('voiceover-no-key'); return; }
@@ -110,7 +128,7 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
     try {
       const audio = await makeVoiceover(key, script, voice, { fetch: p.fetch, signal: ctrl.signal, timeoutMs: p.timeoutMs });
       if (ctrl.signal.aborted) return;
-      const ms = await p.onVoiceover?.(audio, voice);
+      const ms = await p.onVoiceover(audio, voice);
       if (!ctrl.signal.aborted) setMadeMs(ms);
     } catch (error) {
       if (!ctrl.signal.aborted) {
@@ -141,10 +159,10 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
           <Notice state="captions-failed" title="Your narration couldn’t be written down" line="Your clip is fine and plays without captions. Try again to add them." action="Try again" onAction={() => void writeDown()} />
         )}
         {capCard === 'captions-no-key' && (
-          <Notice state="captions-no-key" title={STATES['captions-no-key'].title} line={STATES['captions-no-key'].line} action={STATES['captions-no-key'].action} action2={STATES['captions-no-key'].action2} onAction={p.onConnectPenv} onAction2={p.onAddKey} />
+          <Notice state="captions-no-key" title={STATES['captions-no-key'].title} line={STATES['captions-no-key'].line} action={STATES['captions-no-key'].action} action2={STATES['captions-no-key'].action2} onAction={p.onConnectPenv} onAction2={() => p.onAddKey?.(provider)} />
         )}
         {capCard === 'captions-no-voice' && (
-          <Notice state="captions-no-voice" title="No speech found in the narration" line="Your clip is unchanged. Captions appear once the narration has someone speaking." action="Choose narration" onAction={p.onChooseNarration} />
+          <Notice state="captions-no-voice" title="No speech found in the narration" line="Your clip is unchanged. Captions appear once the narration has someone speaking." action={p.onChooseNarration ? 'Choose narration' : undefined} onAction={p.onChooseNarration} />
         )}
       </Card>
       <Card>
@@ -159,16 +177,18 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
               ))}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button type="button" disabled={voiceBusy || !script.trim()} onClick={() => void make()} style={{ ...primaryButton, opacity: voiceBusy || !script.trim() ? 0.5 : 1 }}>Make voiceover</button>
+              {p.onVoiceover
+                ? <button type="button" disabled={voiceBusy || !script.trim()} onClick={() => void make()} style={{ ...primaryButton, opacity: voiceBusy || !script.trim() ? 0.5 : 1 }}>Make voiceover</button>
+                : <span style={hint}>Voiceover needs a clip audio track, which this clip does not have yet.</span>}
               {madeMs !== undefined && <span style={hint}>Ready · {clock(madeMs)}</span>}
             </div>
           </>
         )}
         {voiceCard === 'voiceover-failed' && (
-          <Notice state="voiceover-failed" title="Your voiceover wasn’t made" line="Your script is kept as written. Try again to make the voice." action="Try again" onAction={() => void make()} />
+          <Notice state="voiceover-failed" title="Your voiceover wasn’t made" line="Your script is kept as written. Try again to make the voice." action="Try again" onAction={p.onVoiceover ? () => void make() : undefined} />
         )}
         {voiceOn && voiceCard === 'voiceover-no-key' && (
-          <Notice state="voiceover-no-key" title="AI voiceover needs an OpenAI key" line="Only your script goes to OpenAI. Your clip works fine without a voice." action="Add an OpenAI key" onAction={p.onAddKey} />
+          <Notice state="voiceover-no-key" title="AI voiceover needs an OpenAI key" line="Only your script goes to OpenAI. Your clip works fine without a voice." action="Add an OpenAI key" onAction={() => p.onAddKey?.('openai')} />
         )}
       </Card>
       <p style={{ margin: 0, fontSize: 11.5, color: '#5F6168' }}>

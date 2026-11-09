@@ -104,7 +104,7 @@ async function probeExport(): Promise<Verdict> {
   }
 }
 
-async function probeAi(): Promise<boolean> {
+export async function probeAi(): Promise<boolean> {
   const lm = (globalThis as { LanguageModel?: { availability(): Promise<string> } }).LanguageModel;
   try { return (await lm?.availability()) === 'available'; } catch { return false; }
 }

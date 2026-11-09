@@ -12,7 +12,7 @@ import { voiceLanguage, voiceLanguageOptions, useVoicePath } from '../../lib/voi
 import { appVersion } from '../../screens/Privacy';
 import { KINDS, penvKeysLine, QUALITIES, showNoBuiltInAi } from '../../screens/Settings';
 import { ModelSection } from '../../screens/SettingsModel';
-import { probeMachine } from '../../screens/Setup';
+import { probeAi } from '../../screens/Setup';
 import { NoBuiltInAi } from '../../screens/StatesSetup';
 import { voiceSettingsLine } from '../../screens/StatesVoice';
 import { STATES } from '../states/copy';
@@ -50,7 +50,7 @@ export default function SettingsV3({ openCheck }: { openCheck?: () => void } = {
     getMachineResult().then(setMachine).catch((error: unknown) => console.error('Motikord: could not read the machine check', error));
     loadKeys().then((k) => { setKeys(k); setPenvKey(!!k.OPENAI_API_KEY); }).catch((error: unknown) => console.error('Motikord: could not read keys', error));
     getBrandKit().then(setKit).catch((error: unknown) => console.error('Motikord: could not read the brand kit', error));
-    probeMachine().then((m) => setBuiltInAi(m.builtInAi)).catch((error: unknown) => console.error('Motikord: could not check this computer', error));
+    probeAi().then(setBuiltInAi).catch((error: unknown) => console.error('Motikord: could not check this computer', error));
     return onSettingsChanged(setS);
   }, []);
 

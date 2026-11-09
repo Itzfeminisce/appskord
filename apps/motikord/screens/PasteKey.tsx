@@ -7,6 +7,7 @@ import { HOSTS, requestHost } from '../lib/hostAccess';
 import { createKeyWatcher, detectKey, serviceLabel, verifyKey, type KeyField, type ProviderKeyName } from '@appskord/llm';
 import { mergeKeys } from '../lib/penv';
 import { getSettings, updateSettings } from '../lib/settings';
+import { takePasteKeyFor } from '../lib/sidepanelGo';
 import { SourceToggle } from './PenvConnect';
 import { Footer, Page, StepHead, Title } from './Setup';
 import { KeyChecking, KeyCheckUnreachable, KeyNotRecognised, KeyRejected, KeyWrongProvider, PexelsKeyRejected, ProviderAccess } from './StatesSetup';
@@ -40,7 +41,7 @@ function Detected({ name, ready, compact }: { name: EnvKeyName; ready: boolean; 
 }
 
 /** One key field: paste or a 600 ms pause checks it, never each keystroke; a newer input drops older results. */
-function useKeyField(field: KeyField, expected: EnvKeyName) {
+function useKeyField(field: KeyField, expected: EnvKeyName, locked = false) {
   const [value, setValue] = useState('');
   const [status, setStatus] = useState<Status>({ kind: 'empty' });
   const run = useRef(0);
@@ -59,7 +60,7 @@ function useKeyField(field: KeyField, expected: EnvKeyName) {
 
   // A key for another provider pasted in the main field says which provider it belongs to.
   const mismatch = (name: EnvKeyName | null): Status => {
-    const detected = field === 'main' && name ? providerForKey(name) : undefined;
+    const detected = !locked && field === 'main' && name ? providerForKey(name) : undefined;
     return detected ? { kind: 'wrong-provider', detected } : { kind: 'not-recognised' };
   };
   const watcher = useRef(createKeyWatcher((name, key) => (name === expected ? check(key) : setStatus(mismatch(name))), { field, names: KEY_NAMES }));
@@ -90,17 +91,21 @@ function useKeyField(field: KeyField, expected: EnvKeyName) {
 }
 
 export default function PasteKey() {
-  const [provider, setProvider] = useState<Provider | null>(null);
+  const [which, setWhich] = useState<{ provider: Provider; asked: boolean } | null>(null);
   useEffect(() => {
-    getSettings().then((s) => setProvider(s.provider)).catch((error: unknown) => { console.error('Motikord: could not read settings', error); setProvider('groq'); });
+    // A provider the editor asked for wins; the clip-writing provider in settings is never changed by it.
+    void takePasteKeyFor().then(async (asked) => {
+      if (asked) return setWhich({ provider: asked, asked: true });
+      try { setWhich({ provider: (await getSettings()).provider, asked: false }); } catch (error) { console.error('Motikord: could not read settings', error); setWhich({ provider: 'groq', asked: false }); }
+    });
   }, []);
-  return provider ? <PasteKeyFor key={provider} provider={provider} /> : null;
+  return which ? <PasteKeyFor key={which.provider} provider={which.provider} asked={which.asked} /> : null;
 }
 
-function PasteKeyFor({ provider }: { provider: Provider }) {
+function PasteKeyFor({ provider, asked }: { provider: Provider; asked: boolean }) {
   const { back, navigate, replace } = useRouter();
   const info = PROVIDERS[provider];
-  const groq = useKeyField('main', info.keyName);
+  const groq = useKeyField('main', info.keyName, asked);
   const pexels = useKeyField('pexels', 'PEXELS_API_KEY');
   const [busy, setBusy] = useState(false);
   const status = groq.status;
@@ -129,10 +134,10 @@ function PasteKeyFor({ provider }: { provider: Provider }) {
       <Title title={`Add your ${info.label} key`}>Motikord keeps keys only until Chrome closes, and never shows them again.</Title>
       <div style={{ margin: '18px 24px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <SourceToggle value="paste" onPick={() => navigate('PenvConnect')} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--muted)' }}>
+        {!asked && <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--muted)' }}>
           <span>Writing clips with</span><span style={{ fontWeight: 600, color: 'var(--ink)' }}>{info.label}</span>
           <a href="#setup" onClick={(e) => { e.preventDefault(); navigate('Setup'); }} style={{ marginLeft: 'auto', fontWeight: 500 }}>Change</a>
-        </div>
+        </div>}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{`${info.label} key`}</span>
           <input

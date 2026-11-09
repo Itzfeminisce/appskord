@@ -52,9 +52,10 @@ export default function HomeV3() {
   const [recent, setRecent] = useState<Clip[]>([]);
   const [card, setCard] = useState(false);
   const online = useOnline();
-  const pageUrl = useActiveTabUrl();
   const [grabBlocked, setGrabBlocked] = useState(false);
   const [grabDenied, setGrabDenied] = useState(false);
+  // A not-allowed or not-given card is about one page; another tab clears it.
+  const pageUrl = useActiveTabUrl(() => { setGrabBlocked(false); setGrabDenied(false); });
   const promptBox = useRef<HTMLTextAreaElement>(null);
   // Heard words go where the cursor was when Speak was pressed, never over typed text.
   const cursor = useRef(0);
@@ -92,8 +93,10 @@ export default function HomeV3() {
   // Chrome grants a side-panel click no activeTab, so the page's site access is asked inside this click, before anything is awaited.
   const grab = () => {
     void requestPageAccess(pageUrl.current).then((access) => {
-      setGrabBlocked(access === 'blocked');
-      setGrabDenied(access === 'denied');
+      // With no URL known the page is not known to be off limits, so that is a retry, not "not allowed".
+      const blocked = access === 'blocked' && pageUrl.current !== undefined;
+      setGrabBlocked(blocked);
+      setGrabDenied(access === 'denied' || (access === 'blocked' && !blocked));
       if (access === 'granted') navigate('Grab');
     });
   };
