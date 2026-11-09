@@ -69,7 +69,7 @@ const defaultDeps: FlowDeps = {
     const settings = await getSettings();
     const critic = await criticModel(settings, { signal });
     const { qualityCheck } = await engine();
-    return qualityCheck({ recipe, clip, look }, { critic, signal, render: clipFrames() });
+    return qualityCheck({ recipe, clip, look }, { critic, signal, render: clipFrames(recipe, look) });
   },
   tick,
   now: Date.now,

@@ -1,7 +1,8 @@
 // "What's new" shows once after an update. Same rule as Rekord's: a new install records its version as seen, a patch
-// bump is a fix and skips it, a minor or major bump shows it. Kept here, in the panel's own storage keys, because
-// Motikord's settings and background carry no update hook yet.
+// bump is a fix and skips it, a minor or major bump shows it. The background records installs and updates as they
+// happen (runtime.onInstalled); the panel decides when it opens.
 const SEEN = 'motikordWhatsNewSeen';
+const PENDING = 'motikordWhatsNewPending';
 const CARD = 'motikordV3CardDismissed';
 
 const parts = (v: string) => v.split('.').map((n) => parseInt(n, 10) || 0);
@@ -30,6 +31,15 @@ async function read<T>(key: string): Promise<T | undefined> {
 /** Marks the current version as seen so What's new does not show again. */
 export async function markWhatsNewSeen(current: string): Promise<void> {
   await browser.storage.local.set({ [SEEN]: current });
+  await browser.storage.local.remove(PENDING);
+}
+
+/** runtime.onInstalled: an install marks this version seen; a minor or major update leaves What's new waiting for the panel. */
+export async function recordInstall(details: { reason: string; previousVersion?: string }, current: string): Promise<void> {
+  if (details.reason === 'install') return markWhatsNewSeen(current);
+  if (details.reason !== 'update' || !details.previousVersion) return;
+  if (compareVersions(current, details.previousVersion) <= 0 || sameMinor(current, details.previousVersion)) return;
+  await browser.storage.local.set({ [PENDING]: current });
 }
 
 /** Whether the panel should open on What's new now. Records the version when it should not. */
@@ -39,6 +49,7 @@ export async function shouldShowWhatsNew(current: string, onboarded: boolean): P
     if (seen !== current) await markWhatsNewSeen(current);
     return false;
   }
+  if ((await read<string>(PENDING)) === current) return true;
   if (seen === undefined) return true;
   if (compareVersions(current, seen) <= 0) return false;
   if (sameMinor(current, seen)) {

@@ -1,13 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from '../../entrypoints/editor/router';
 import { clipDuration } from '../../lib/render/drawFrame';
 import { getClip, putClip } from '../../lib/db';
 import { isPackId, type PackId } from '../../lib/look/packs';
-import { restyle } from '../../lib/restyle/restyle';
+import { cancelExport, clearSession, getSession, subscribe } from '../../lib/exportJob';
+import { clipHasCaptions, exportFps, v3Renders } from '../../lib/exportV3';
+import { isRestyled, restyle } from '../../lib/restyle/restyle';
+import { clipLook } from '../../lib/v3/look';
+import { folderFromClick } from '../../screens/Export';
 import type { Clip } from '../../lib/types';
-import { getV3 } from '../settings/store';
+import { getMachineResult, getV3, type MachineResult } from '../settings/store';
 import { ClipNotFound } from '../../screens/editor/StatesEditor';
-import ExportV3 from './ExportV3';
+import ExportV3, { EXPORT_COPY, type ExportChoiceV3, type ExportProgress } from './ExportV3';
 import RestyleV2 from './RestyleV2';
 
 // The editor tab's routes for the two v3 dialogs. Both read the stored clip, like the v2 dialogs do.
@@ -28,12 +32,58 @@ function useClip(): { clip?: Clip; clipId?: string; missing: boolean } {
   return { clip, clipId, missing };
 }
 
-/** The export dialog. Starting a run is the job runner's: this task installs the screen, not the runner. */
+/** The export dialog: runs the v3 export in this page through the shared export job, and follows its session. */
 export function ExportV3Route() {
   const { replace, back, canGoBack } = useRouter();
   const { clip, clipId } = useClip();
   const close = () => (canGoBack ? back() : replace('Editor', { clipId }));
-  return <ExportV3 clipSeconds={clip ? Math.round(clipDuration(clip.recipe) / 1000) : 0} hasCaptions={false} onClose={close} />;
+  const s = useSyncExternalStore(subscribe, getSession);
+  const [machine, setMachine] = useState<MachineResult>();
+  const [anyway60, setAnyway60] = useState(false);
+  const [notice, setNotice] = useState<string>();
+  const last = useRef<ExportChoiceV3>(undefined);
+  const restart = useRef(false);
+  useEffect(() => { void getMachineResult().then(setMachine).catch(() => undefined); }, []);
+  const fallback30 = machine?.fps60 === false && !anyway60;
+  const mine = s && s.job.clipId === clipId ? s : undefined;
+
+  const start = async (choice: ExportChoiceV3, fps: 30 | 60) => {
+    if (!clip || !isRestyled(clip)) return;
+    setNotice(v3Renders(choice.kind) ? undefined : EXPORT_COPY.notYet(choice.kind));
+    if (!v3Renders(choice.kind)) return;
+    last.current = choice;
+    // The folder is asked for first, inside the click.
+    const root = await folderFromClick();
+    if (!root) return;
+    const [{ startV3Export }, look] = await Promise.all([import('../../lib/encode/v3'), clipLook(clip)]);
+    void startV3Export({ clip, look, choice, fps, root });
+  };
+
+  useEffect(() => {
+    if (!mine) return;
+    if (mine.phase === 'done') replace('Exported', { clipId });
+    else if (mine.phase === 'cancelled') {
+      clearSession();
+      if (restart.current && last.current) { restart.current = false; void start(last.current, 60); }
+    } else if (mine.phase !== 'running') replace('Rendering', { clipId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mine?.phase]);
+
+  const running = mine?.phase === 'running' ? mine : undefined;
+  const progress: ExportProgress | undefined = running && {
+    index: running.index + 1, total: running.items.length, aspect: running.items[running.index]?.item.aspect ?? '9:16',
+    frame: running.frame, frames: running.frames, finishing: last.current?.finishing ?? false,
+  };
+  const anyway = () => {
+    setAnyway60(true);
+    // A run already going at 30 starts again at 60.
+    if (running) { restart.current = true; cancelExport(); }
+  };
+  return (
+    <ExportV3 clipSeconds={clip ? Math.round(clipDuration(clip.recipe) / 1000) : 0} hasCaptions={!!clip && isRestyled(clip) && clipHasCaptions(clip.v3)} onClose={close}
+      onExport={clip ? (c) => void start(c, exportFps(c.fps, fallback30)) : undefined} progress={progress} onCancel={cancelExport}
+      fallback30={fallback30} onExport60Anyway={anyway} notice={notice} />
+  );
 }
 
 /** The restyle dialog: restyles to v3 and opens the clip in the v3 editor, where the key frames wait when asked for. */

@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { createRouter } from '../../lib/router';
 import AccessPrompt from '../../screens/AccessPrompt';
 import BrandKit from '../../screens/BrandKit';
@@ -19,9 +20,13 @@ import Rendering from '../../screens/Rendering';
 import YourMedia from '../../screens/YourMedia';
 import Editor from './EditorSwitch';
 
+// The quality check's frames load three.js, so its route is its own chunk.
+const CriticV3Route = lazy(() => import('../../components/states/CriticV3Route'));
+const CriticV3 = () => <Suspense fallback={<main data-frame="CriticV3" />}><CriticV3Route /></Suspense>;
+
 /** Editor tab screens, one per FRAMES.md frame (rows 3, 4 and 5; v3 clips open in the v3 editor, row 15); Library, BrandKit and YourMedia stand in until their tasks route to the side panel. */
 export const editor = createRouter({
-  Editor, EditorPrompt, Formats, Presets, Checker,
+  Editor, EditorPrompt, Formats, Presets, Checker, CriticV3,
   MediaSearch, AccessPrompt, Music, Credits,
   Export, ExportV3: ExportV3Route, RestyleV2: RestyleV2Route, Rendering, Exported, StatesEditor, StatesMedia, StatesExport,
   Library, BrandKit, YourMedia,

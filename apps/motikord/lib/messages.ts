@@ -1,4 +1,5 @@
 import { on, send as sendMessage, type MessageSender } from '@appskord/platform';
+import type { ClipV3, LookGuide, SceneV3 } from '@appskord/motion/types';
 import type { PageInfo, Pick } from './grab/pick';
 
 /**
@@ -28,6 +29,11 @@ export interface MessageMap {
   // Side panel → page picker (sent to the tab): remove one pick, or stop picking.
   'grab/remove': { req: { id: string }; res: void };
   'grab/stop': { req: Record<never, never>; res: void };
+  // Side panel → render page (its hidden frame): v3 pictures drawn with three.js, which the panel never loads.
+  // A key-frame still as a JPEG data URL; `texts` are the text layers' words by layer id.
+  'render/still': { req: { scene: SceneV3; atMs: number; size: { width: number; height: number }; look?: LookGuide; texts: Record<string, string> }; res: { url?: string } };
+  // Quality-check frames of a whole clip; `texts` are keyed `${sceneIndex}:${layerId}`.
+  'render/frames': { req: { clip: ClipV3; times: number[]; look?: LookGuide; texts: Record<string, string> }; res: { urls: string[] } };
 }
 
 /** Session-storage key the editor sets for a side panel that is still loading. */

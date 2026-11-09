@@ -34,7 +34,7 @@ function Card({ frame, state }: { frame: KeyFrame; state: FlowState }) {
   return (
     <li data-scene={n} style={{ padding: 10, borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', gap: 12 }}>
       <div style={{ width: 96, flexShrink: 0 }}>
-        <Still frame={frame} ground={state.look.palette[0] ?? '#0B0B10'} ink={state.look.palette[1] ?? '#F5F5F7'} font={state.look.type.display} label={label} width={96} height={170} />
+        <Still frame={frame} ground={state.look.palette[0] ?? '#0B0B10'} ink={state.look.palette[1] ?? '#F5F5F7'} font={state.look.type.display} look={state.look} v2={state.recipe?.scenes[frame.index]} label={label} width={96} height={170} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1, minWidth: 0 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
