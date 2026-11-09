@@ -14,8 +14,9 @@ import {
   LibraryEffect,
   planEffects,
   type EffectUse,
+  VelocityBlurEffect,
 } from '../src/effects';
-import { DEFAULT_FINISH, FINISHING, finishParams, planFinish } from '../src/finish';
+import { DEFAULT_FINISH, FINISHING, FinishChain, finishParams, planFinish } from '../src/finish';
 import { layerVelocities, shutterMs } from '../src/motion-blur';
 import { frameAt } from '../src/scene';
 import { clip, scene } from './fixture';
@@ -157,6 +158,25 @@ describe('finishing', () => {
     expect(finishParams(off)).toBeNull();
     expect(shutterMs(off, 30)).toBe(0);
     expect(planFinish(off, [], { mode: 'export', fps: 30 })).toEqual({ blur: null, effects: [], finish: null });
+  });
+
+  it('builds no finish shader and no blur pass when finishing is off', () => {
+    const camera = new THREE.PerspectiveCamera();
+    const off = new FinishChain(camera, { ...DEFAULT_FINISH, on: false }, [], {
+      mode: 'export',
+      fps: 30,
+      width: 8,
+      height: 8,
+    });
+    const effects = off.passes.flatMap((p) => (p as unknown as { effects: unknown[] }).effects);
+    expect(off.blur).toBeNull();
+    expect(off.passes).toHaveLength(1);
+    expect(effects.some((e) => e instanceof FinishEffect)).toBe(false);
+    expect(effects.some((e) => e instanceof VelocityBlurEffect)).toBe(false);
+    const on = new FinishChain(camera, DEFAULT_FINISH, [], { mode: 'export', fps: 30, width: 8, height: 8 });
+    expect(
+      on.passes.flatMap((p) => (p as unknown as { effects: unknown[] }).effects).some((e) => e instanceof FinishEffect),
+    ).toBe(true);
   });
 
   it('never lightens export; a lighter preview uses fewer blur samples', () => {

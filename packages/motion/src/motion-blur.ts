@@ -53,15 +53,25 @@ void main() {
 }
 `;
 
-const viewProjection = (camera: THREE.Camera) => {
-  camera.updateMatrixWorld();
-  return new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-};
+const BACK_TO_FRONT = DEPTHS.slice().reverse();
+const MIN_SIZE = new THREE.Vector3(1e-3, 1e-3, 1e-3);
 
-/** The layer's content bounds in its own space, as a matrix that maps the unit cube onto them; null when empty. */
-function layerBounds(group: THREE.Object3D): THREE.Matrix4 | null {
-  const box = new THREE.Box3();
-  const inverse = group.matrixWorld.clone().invert();
+/** Scratch objects reused across frames so the per-frame path allocates nothing. */
+interface Scratch {
+  box: THREE.Box3;
+  part: THREE.Box3;
+  inverse: THREE.Matrix4;
+  toGroup: THREE.Matrix4;
+  size: THREE.Vector3;
+  center: THREE.Vector3;
+  rotation: THREE.Quaternion;
+}
+
+/** The layer's content bounds in its own space, written into `out` as a matrix that maps the unit cube onto them; false when empty. */
+function layerBounds(group: THREE.Object3D, s: Scratch, out: THREE.Matrix4): boolean {
+  const { box, part, inverse, toGroup } = s;
+  box.makeEmpty();
+  inverse.copy(group.matrixWorld).invert();
   group.traverse((o) => {
     const mesh = o as THREE.Mesh & { isInstancedMesh?: boolean; boundingBox?: THREE.Box3 | null };
     if (!mesh.isMesh || !mesh.geometry) return;
@@ -73,11 +83,15 @@ function layerBounds(group: THREE.Object3D): THREE.Matrix4 | null {
       if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
       b = mesh.geometry.boundingBox;
     }
-    if (b && !b.isEmpty()) box.union(b.clone().applyMatrix4(inverse.clone().multiply(mesh.matrixWorld)));
+    if (b && !b.isEmpty()) {
+      toGroup.multiplyMatrices(inverse, mesh.matrixWorld);
+      box.union(part.copy(b).applyMatrix4(toGroup));
+    }
   });
-  if (box.isEmpty()) return null;
-  const size = box.getSize(new THREE.Vector3()).max(new THREE.Vector3(1e-3, 1e-3, 1e-3));
-  return new THREE.Matrix4().compose(box.getCenter(new THREE.Vector3()), new THREE.Quaternion(), size);
+  if (box.isEmpty()) return false;
+  box.getSize(s.size).max(MIN_SIZE);
+  out.compose(box.getCenter(s.center), s.rotation.identity(), s.size);
+  return true;
 }
 
 /**
@@ -91,6 +105,19 @@ export class MotionBlur {
   private readonly box = new THREE.BoxGeometry(1, 1, 1);
   private readonly meshes = new Map<string, THREE.Mesh<THREE.BoxGeometry, THREE.ShaderMaterial>>();
   private readonly before = new Map<string, THREE.Matrix4>();
+  private readonly seen = new Set<string>();
+  private readonly previousViewProjection = new THREE.Matrix4();
+  private readonly bounds = new THREE.Matrix4();
+  private readonly clearColor = new THREE.Color();
+  private readonly scratch: Scratch = {
+    box: new THREE.Box3(),
+    part: new THREE.Box3(),
+    inverse: new THREE.Matrix4(),
+    toGroup: new THREE.Matrix4(),
+    size: new THREE.Vector3(),
+    center: new THREE.Vector3(),
+    rotation: new THREE.Quaternion(),
+  };
 
   constructor(samples: number, width: number, height: number) {
     this.target = new THREE.WebGLRenderTarget(width, height, {
@@ -111,21 +138,30 @@ export class MotionBlur {
     pose: (graph: MotionGraph, frame: FrameState) => void = applyFrame,
   ): void {
     pose(graph, before);
-    this.before.clear();
-    graph.layers.forEach((g, id) => this.before.set(id, g.matrixWorld.clone()));
+    graph.layers.forEach((g, id) => {
+      const m = this.before.get(id);
+      if (m) m.copy(g.matrixWorld);
+      else this.before.set(id, g.matrixWorld.clone());
+    });
+    for (const id of this.before.keys()) if (!graph.layers.has(id)) this.before.delete(id);
     pose(graph, now);
   }
 
   /** Draws the velocity buffer and points the blur at both cameras. Back layers first so front layers win. */
   render(renderer: THREE.WebGLRenderer, graph: MotionGraph, camera: THREE.Camera, previousCamera: THREE.Camera): void {
-    const previousViewProjection = viewProjection(previousCamera);
-    const seen = new Set<string>();
+    previousCamera.updateMatrixWorld();
+    const previousViewProjection = this.previousViewProjection.multiplyMatrices(
+      previousCamera.projectionMatrix,
+      previousCamera.matrixWorldInverse,
+    );
+    const seen = this.seen;
+    seen.clear();
     let order = 0;
     for (const depth of DEPTHS.slice().reverse()) {
       for (const g of graph.depths[depth].children) {
         const before = this.before.get(g.name);
-        const bounds = g.visible ? layerBounds(g) : null;
-        if (!before || !bounds) continue;
+        if (!before || !g.visible || !layerBounds(g, this.scratch, this.bounds)) continue;
+        const bounds = this.bounds;
         const mesh = this.proxy(g.name);
         mesh.matrixWorld.multiplyMatrices(g.matrixWorld, bounds);
         mesh.material.uniforms.previousModel!.value.multiplyMatrices(before, bounds);
@@ -138,7 +174,7 @@ export class MotionBlur {
     this.meshes.forEach((m, id) => (m.visible = seen.has(id)));
 
     const target = renderer.getRenderTarget();
-    const clear = renderer.getClearColor(new THREE.Color());
+    const clear = renderer.getClearColor(this.clearColor);
     const alpha = renderer.getClearAlpha();
     renderer.setRenderTarget(this.target);
     renderer.setClearColor(0x000000, 0);

@@ -129,6 +129,7 @@ export class FinishChain {
         center: new THREE.Vector2(...f.center),
       });
     }
+    // Tone mapping always runs: bloom and glow produce HDR values even when the finish is off.
     const last: Effect[] = [...merged, new ToneMappingEffect({ mode: ToneMappingMode.AGX })];
     if (this.finish) last.push(this.finish);
     this.passes.push(new EffectPass(camera, ...last));
