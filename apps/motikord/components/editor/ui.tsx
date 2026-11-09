@@ -1,0 +1,131 @@
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+
+// Small controls the v3 panels share, drawn as in the frames: segmented radios, pressed chips, switches, sliders.
+
+export const C = {
+  ink: 'var(--ink, #111114)',
+  muted: 'var(--muted, #6E7079)',
+  line: '#E8E8EB',
+  accent: 'var(--accent, #BE185D)',
+  tint: 'var(--tint, #FDF2F8)',
+  stage: 'var(--stage, #EDEDF0)',
+  surface: 'var(--surface, #FFFFFF)',
+  font: 'var(--font, Geist, system-ui, sans-serif)',
+} as const;
+
+export const label: CSSProperties = { fontSize: 11, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.4 };
+export const hint: CSSProperties = { fontSize: 12, color: C.muted, lineHeight: 1.4 };
+export const sectionStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 0', borderTop: `1px solid ${C.line}` };
+
+export function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section style={sectionStyle}>
+      <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+        <span style={label}>{title}</span>
+        {aside && <span style={{ fontSize: 11, color: C.muted }}>{aside}</span>}
+      </span>
+      {children}
+    </section>
+  );
+}
+
+/** A segmented radiogroup ("Feel": Smooth, Snappy…). */
+export function Segmented<T extends string>({ name, options, value, onChange, disabled }: { name: string; options: readonly (readonly [T, string])[]; value: T | undefined; onChange: (v: T) => void; disabled?: boolean }) {
+  return (
+    <div role="radiogroup" aria-label={name} style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: C.stage }}>
+      {options.map(([id, text]) => (
+        <button key={id} type="button" role="radio" aria-checked={id === value} disabled={disabled} onClick={() => onChange(id)}
+          style={{ flex: 1, minWidth: 0, height: 28, border: 0, borderRadius: 6, background: id === value ? C.surface : 'transparent', boxShadow: id === value ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', font: `${id === value ? 600 : 400} 12px/1 ${C.font}`, color: id === value ? C.ink : C.muted, cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A wrap of pressed chips; one on at a time unless `multi`. */
+export function Chips<T extends string>({ options, value, onChange, disabled }: { options: readonly (readonly [T, string])[]; value: T | undefined; onChange: (v: T) => void; disabled?: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {options.map(([id, text]) => (
+        <Chip key={id} on={id === value} disabled={disabled} onClick={() => onChange(id)}>{text}</Chip>
+      ))}
+    </div>
+  );
+}
+
+export function Chip({ on, onClick, children, disabled, title }: { on: boolean; onClick: () => void; children: ReactNode; disabled?: boolean; title?: string }) {
+  return (
+    <button type="button" aria-pressed={on} disabled={disabled} onClick={onClick} title={title}
+      style={{ height: 30, padding: '0 11px', borderRadius: 8, border: `1px solid ${on ? 'var(--tint-line, #FBCFE8)' : C.line}`, background: on ? C.tint : C.surface, color: on ? C.accent : C.ink, font: `${on ? 600 : 500} 12px/1 ${C.font}`, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+      {children}
+    </button>
+  );
+}
+
+export function Switch({ name, on, onChange, disabled }: { name: string; on: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-label={name} aria-checked={on} disabled={disabled} onClick={() => onChange(!on)}
+      style={{ width: 36, height: 20, flexShrink: 0, borderRadius: 10, border: 0, padding: 2, background: on ? C.accent : '#D4D4D9', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1, display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start' }}>
+      <span style={{ width: 16, height: 16, borderRadius: 8, background: '#FFFFFF' }} />
+    </button>
+  );
+}
+
+/** A row: title and line on the left, a switch on the right. */
+export function SwitchRow({ title, line, on, onChange, disabled }: { title: string; line?: string; on: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{title}</span>
+        {line && <span style={hint}>{line}</span>}
+      </span>
+      <Switch name={title} on={on} onChange={onChange} disabled={disabled} />
+    </div>
+  );
+}
+
+/** A labelled slider with its value on the right ("Amount 60%"). */
+export function Slider({ name, value, min, max, step = 1, text, onChange, onDone, disabled }: { name: string; value: number; min: number; max: number; step?: number; text: string; onChange: (v: number) => void; onDone?: () => void; disabled?: boolean }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+        <span style={{ color: C.muted }}>{name}</span>
+        <span style={{ fontWeight: 600 }}>{text}</span>
+      </span>
+      <input type="range" aria-label={name} min={min} max={max} step={step} value={value} disabled={disabled}
+        onChange={(e) => onChange(Number(e.currentTarget.value))} onPointerUp={onDone} onKeyUp={onDone} style={{ accentColor: '#BE185D', width: '100%' }} />
+    </label>
+  );
+}
+
+/** A small text field that commits on Enter or blur ("0.15 s"). */
+export function Field({ name, value, onCommit, disabled }: { name: string; value: string; onCommit?: (text: string) => void; disabled?: boolean }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const commit = () => { if (text !== value) onCommit?.(text); };
+  return (
+    <label style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 11, color: C.muted }}>{name}</span>
+      <input aria-label={name} value={text} readOnly={!onCommit || disabled} onChange={(e) => setText(e.currentTarget.value)} onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+        style={{ height: 30, minWidth: 0, border: `1px solid var(--line-input, #E0E0E4)`, borderRadius: 7, padding: '0 8px', font: `500 12px/1 ${C.font}`, color: onCommit ? C.ink : C.muted, background: onCommit ? C.surface : C.stage }} />
+    </label>
+  );
+}
+
+/** The heading at the top of a panel: icon, name and its line ("Headline", "Title text · scene 1"). */
+export function PanelHead({ icon, name, line }: { icon: ReactNode; name: string; line: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0 12px' }}>
+      <span aria-hidden="true" style={{ width: 32, height: 32, borderRadius: 8, background: C.tint, color: C.accent, display: 'grid', placeItems: 'center', font: `700 13px/1 ${C.font}` }}>{icon}</span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{name}</span>
+        <span style={{ fontSize: 12, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line}</span>
+      </span>
+    </div>
+  );
+}
+
+export const primaryButton: CSSProperties = { height: 36, padding: '0 14px', border: 0, borderRadius: 9, background: '#BE185D', color: '#FFFFFF', font: `600 13px/1 ${C.font}`, cursor: 'pointer' };
+export const quietButton: CSSProperties = { height: 30, padding: '0 10px', border: `1px solid ${C.line}`, borderRadius: 8, background: C.surface, color: C.ink, font: `500 12px/1 ${C.font}`, cursor: 'pointer' };
