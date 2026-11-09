@@ -108,6 +108,8 @@ export const TEMPLATES = {
   count: (n: number) => `${n} templates`,
   tap: 'Tap one to open your own copy',
   hover: 'Plays on hover',
+  failed: 'Couldn’t make your copy.',
+  retry: 'Try again',
 } as const;
 
 export const LIBRARY = {

@@ -15,6 +15,7 @@ import { copyTemplate, type Template } from './templates';
 import { clipTemplateRecipe, clipTemplateV3, type ClipTemplateV3, type TemplateClipRow } from './templates/v3/clips';
 import { autoStyle } from './templates/scenes';
 import type { Aspect, Asset, BrandKit, Change, Clip, ClipType, CriticNote, Issue, LookStyle, Mood, Pace, Provider, Recipe, Settings, StyleId, Storyboard } from './types';
+import type { RestyledClip } from './restyle/restyle';
 
 /** What a failed make shows: an AI state card, or one of the two setup cards Making can show. */
 export type MakeState = AiStateId | 'penv-disconnected' | 'provider-access' | 'storyboard-failed';
@@ -136,10 +137,10 @@ export async function makeFromTemplate(template: Template, hooks: { save?: (clip
 }
 
 /** Makes your own v3 clip from a v3 clip template; "Say it out loud" keeps its Auto captions style on the row. */
-export async function makeFromTemplateV3(template: ClipTemplateV3, hooks: { save?: (clip: Clip) => Promise<void>; now?: () => number; id?: string } = {}): Promise<Clip & TemplateClipRow> {
+export async function makeFromTemplateV3(template: ClipTemplateV3, hooks: { save?: (clip: Clip) => Promise<void>; now?: () => number; id?: string } = {}): Promise<RestyledClip & TemplateClipRow> {
   const at = (hooks.now ?? Date.now)();
   const recipe = clipTemplateRecipe(template, hooks.id ?? globalThis.crypto?.randomUUID?.() ?? `clip-${at.toString(36)}`);
-  const clip: Clip & TemplateClipRow = { id: recipe.id, recipe, history: [], createdAt: at, updatedAt: at, v3: clipTemplateV3(template, recipe) };
+  const clip: RestyledClip & TemplateClipRow = { id: recipe.id, recipe, history: [], createdAt: at, updatedAt: at, v3: clipTemplateV3(template, recipe), v2Version: structuredClone(recipe) };
   if (template.autoCaptions) clip.autoCaptions = template.autoCaptions;
   await (hooks.save ?? putClip)(clip);
   return clip;

@@ -6,9 +6,9 @@ import { CLIP_TEMPLATES_V3 as TEMPLATES } from '../../lib/templates/v3/clips';
 import { mount, settle } from '../../test/mountRouter';
 import { press } from './mountPanel';
 
-const made = vi.hoisted(() => ({ opened: [] as string[] }));
-vi.mock('../../lib/makeClip', async (orig) => ({ ...(await orig<typeof import('../../lib/makeClip')>()), makeFromTemplateV3: async (t: { id: string }) => { made.opened.push(t.id); return { id: `copy-${t.id}` }; } }));
-vi.mock('../../lib/messages', async (orig) => ({ ...(await orig<typeof import('../../lib/messages')>()), send: async () => undefined }));
+const made = vi.hoisted(() => ({ opened: [] as string[], saves: 0, sendFails: false }));
+vi.mock('../../lib/makeClip', async (orig) => ({ ...(await orig<typeof import('../../lib/makeClip')>()), makeFromTemplateV3: async (t: { id: string }) => { made.opened.push(t.id); made.saves++; return { id: `copy-${t.id}` }; } }));
+vi.mock('../../lib/messages', async (orig) => ({ ...(await orig<typeof import('../../lib/messages')>()), send: async () => { if (made.sendFails) throw new Error('no editor'); } }));
 
 describe('TemplatesListV3', () => {
   it('shows the frame copy and one card per template', async () => {
@@ -56,6 +56,18 @@ describe('TemplatesListV3', () => {
     const { host } = await mount(sidepanel, 'TemplatesListV3');
     await press(host, new RegExp(`^${TEMPLATES[0]!.name}, `));
     expect(made.opened).toEqual([TEMPLATES[0]!.id]);
+  });
+
+  it('shows an alert when opening fails and retries with the saved copy', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    made.saves = 0; made.sendFails = true;
+    const { host } = await mount(sidepanel, 'TemplatesListV3');
+    await press(host, new RegExp(`^${TEMPLATES[1]!.name}, `));
+    expect(host.querySelector('[role=alert]')?.textContent).toContain('Couldn’t make your copy.');
+    made.sendFails = false;
+    await press(host, 'Try again');
+    expect(made.saves).toBe(1);
+    expect(host.querySelector('[role=alert]')).toBeNull();
   });
 
   it('Back returns to Home', async () => {

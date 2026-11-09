@@ -3,10 +3,13 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchLike } from './llm';
 import { closeDB, deleteClip, getClip, listClips, putClip } from './db';
-import { canMake, createRunner, draft, failureFor, makeClip, makeFromTemplate, promptFor, type RunnerDeps } from './makeClip';
+import { canMake, createRunner, draft, failureFor, makeClip, makeFromTemplate, makeFromTemplateV3, promptFor, type RunnerDeps } from './makeClip';
 import { AiError } from './ai/errors';
 import { DEFAULT_SETTINGS } from './settings';
 import { TEMPLATES } from './templates';
+import { CLIP_TEMPLATES_V3 } from './templates/v3/clips';
+import { isRestyled } from './restyle/restyle';
+import { clipFileText, exportClip, readClipFile } from './look/bundle';
 import { validateRecipe } from './recipe/validate';
 import type { Asset, Clip, Settings } from './types';
 
@@ -136,6 +139,16 @@ describe('library', () => {
     expect(clip.recipe.id).toBe('mine');
     expect(validateRecipe(clip.recipe)).toEqual([]);
     expect(t.recipe.id).not.toBe('mine');
+  });
+
+  it('saves a v3 template copy as a full v3 clip that survives export and import', async () => {
+    const clip = await makeFromTemplateV3(CLIP_TEMPLATES_V3[0]!, { id: 'mine3' });
+    const row = (await getClip('mine3'))!;
+    expect(isRestyled(row)).toBe(true);
+    expect(clip.v2Version).toEqual(clip.recipe);
+    const file = await exportClip(row, { getLook: async () => undefined });
+    const back = readClipFile(clipFileText(file));
+    expect(isRestyled(back.clip)).toBe(true);
   });
 
   it('a prompt ends with a saved clip and the editor opened', async () => {

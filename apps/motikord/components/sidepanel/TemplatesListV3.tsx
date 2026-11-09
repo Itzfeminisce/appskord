@@ -29,12 +29,19 @@ const recipeOf = (t: ClipTemplateV3) => {
   return r;
 };
 
-const startFromTemplate = onceAtATime(async (t: ClipTemplateV3) => {
+/** A copy already saved whose editor failed to open; the retry reuses it instead of saving another. */
+const SAVED = new Map<string, string>();
+
+const startFromTemplate = onceAtATime(async (t: ClipTemplateV3, onFailed: (failed: boolean) => void) => {
+  onFailed(false);
   try {
-    const clip = await makeFromTemplateV3(t);
-    await send({ type: 'editor/open', clipId: clip.id });
+    const id = SAVED.get(t.id) ?? (await makeFromTemplateV3(t)).id;
+    SAVED.set(t.id, id);
+    await send({ type: 'editor/open', clipId: id });
+    SAVED.delete(t.id);
   } catch (error) {
     console.error('Motikord: could not start from the template', error);
+    onFailed(true);
   }
 });
 
@@ -54,12 +61,13 @@ function Thumb({ t, playing }: { t: ClipTemplateV3; playing: boolean }) {
 
 function Card({ t }: { t: ClipTemplateV3 }) {
   const [hover, setHover] = useState(false);
+  const [failed, setFailed] = useState(false);
   const pack = packOf(t.packId);
   const seconds = Math.round(t.lengthMs / 1000);
   const bg = pack.colours[0]!;
   return (
     <li>
-      <button type="button" onClick={() => void startFromTemplate(t)} aria-label={`${t.name}, ${TYPE_NAMES[t.type]} template, ${t.scenes.length} scenes, ${seconds} seconds, ${pack.name} style. Open your own copy`}
+      <button type="button" onClick={() => void startFromTemplate(t, setFailed)} aria-label={`${t.name}, ${TYPE_NAMES[t.type]} template, ${t.scenes.length} scenes, ${seconds} seconds, ${pack.name} style. Open your own copy`}
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}
         style={{ width: '100%', border: 0, background: 'none', padding: 0, font: 'inherit', textAlign: 'left', color: 'var(--ink)', display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer' }}>
         <span style={{ position: 'relative', width: '100%', aspectRatio: '9 / 16', borderRadius: 14, overflow: 'hidden', display: 'block', boxShadow: hover ? '0 0 0 2px var(--accent), 0 14px 28px -14px rgba(11,11,16,0.8)' : '0 1px 2px rgba(16,16,20,0.06), 0 8px 20px rgba(16,16,20,0.10)' }}>
@@ -76,6 +84,9 @@ function Card({ t }: { t: ClipTemplateV3 }) {
         </span>
         <span className="mono" style={{ fontSize: 11, color: 'var(--muted)', marginTop: -4, whiteSpace: 'nowrap' }}>{t.scenes.length} scenes · {seconds} s</span>
       </button>
+      {failed && (
+        <p role="alert" style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--error-ink)' }}>{TEMPLATES.failed} <button type="button" onClick={() => void startFromTemplate(t, setFailed)} style={{ border: 0, background: 'none', padding: 0, font: 'inherit', fontWeight: 600, color: 'inherit', textDecoration: 'underline', cursor: 'pointer' }}>{TEMPLATES.retry}</button></p>
+      )}
     </li>
   );
 }
