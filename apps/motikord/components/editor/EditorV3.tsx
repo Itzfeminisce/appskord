@@ -7,10 +7,11 @@ import type { Author } from '../../lib/types';
 import { AnimateDialog, AnimatedToast, type Animate } from './AnimateDialog';
 import { AssetPicker, type BundledAsset } from './AssetPicker';
 import { ChangesTab } from './ChangesTab';
+import { chartData, DataTab } from './DataScenes';
 import { EditorV3Provider, useEditorV3 } from './context';
 import { EffectsDialog } from './EffectsDialog';
 import { LayerTab, type Bakers } from './LayerTab';
-import { clipMs, clock, sceneStarts, sceneTitle, TABS, templateName } from './model';
+import { clipMs, clock, sceneStarts, sceneTitle, TABS, templateName, type Tab } from './model';
 import { MotionTab } from './MotionTab';
 import { SceneTab } from './SceneTab';
 import { Stage } from './Stage';
@@ -90,7 +91,10 @@ function Shell(p: EditorV3Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [ed]);
 
-  const tab = state.tab;
+  // A scene with a chart gets the Data tab, between Motion and Changes.
+  const hasData = !!chartData(state.clip, state.scene);
+  const tabs: readonly (readonly [Tab, string])[] = hasData ? [...TABS.slice(0, 3), ['data', 'Data'], ...TABS.slice(3)] : TABS;
+  const tab = state.tab === 'data' && !hasData ? 'motion' : state.tab;
   return (
     <div style={{ position: 'relative', width: '100%', minWidth: 1024, height: '100vh', minHeight: 640, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: '#F6F6F7', color: C.ink, fontFamily: C.font, overflow: 'hidden' }}>
       <TopBar status={status} go={p.go} checkCount={p.checkCount} />
@@ -100,7 +104,7 @@ function Shell(p: EditorV3Props) {
         <Stage preview={preview && overlay === 'effects' ? { effect: preview } : undefined} />
         <aside style={{ width: 320, flexShrink: 0, background: C.surface, borderLeft: '1px solid #E8E8EB', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 6, boxSizing: 'border-box', overflow: 'auto' }}>
           <div role="tablist" aria-label="Edit" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: C.stage, flexShrink: 0 }}>
-            {TABS.map(([id, name]) => (
+            {tabs.map(([id, name]) => (
               <button key={id} type="button" role="tab" aria-selected={id === tab} onClick={() => ed.setTab(id)}
                 style={{ flex: 1, height: 28, border: 0, borderRadius: 6, background: id === tab ? C.surface : 'transparent', boxShadow: id === tab ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', font: `${id === tab ? 600 : 400} 12px/1 ${C.font}`, color: id === tab ? C.ink : C.muted, cursor: 'pointer' }}>
                 {name}
@@ -114,6 +118,7 @@ function Shell(p: EditorV3Props) {
             {tab === 'scene' && <SceneTab />}
             {tab === 'layer' && <LayerTab bakers={p.bakers} />}
             {tab === 'motion' && <MotionTab />}
+            {tab === 'data' && <DataTab />}
             {tab === 'changes' && <ChangesTab onOpenV2={p.onOpenV2 ? () => p.onOpenV2!(state.clip) : undefined} />}
           </div>
         </aside>

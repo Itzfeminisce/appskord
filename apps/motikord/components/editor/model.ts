@@ -10,7 +10,7 @@ import type { RestyledClip } from '../../lib/restyle/restyle';
 import { getTemplateV3 } from '../../lib/templates/v3/templates';
 import type { Author, Change, Layer, PatchOp } from '../../lib/types';
 
-export type Tab = 'scene' | 'layer' | 'motion' | 'changes';
+export type Tab = 'scene' | 'layer' | 'motion' | 'data' | 'changes';
 export const TABS: readonly [Tab, string][] = [
   ['scene', 'Scene'],
   ['layer', 'Layer'],
