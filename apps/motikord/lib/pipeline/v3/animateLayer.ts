@@ -1,6 +1,5 @@
 // "Animate this layer": only the layer's settings go to the AI, never media or its words. The reply is tracks,
 // checked by validateScene before the layer changes.
-import { estimateTokens } from '@appskord/llm';
 import { FEEL } from '@appskord/motion/curves';
 import { validateScene } from '@appskord/motion/recipe';
 import { FEELS, PROPS, UNITS, type Curve, type Feel, type LayerV3, type SceneV3, type Unit } from '@appskord/motion/types';
@@ -10,6 +9,7 @@ import { chat, type ChatMessage } from '../../llm';
 import { PROVIDERS } from '../../providers';
 import type { Layer } from '../../types';
 import { stateCopy, type StateCopy } from './states';
+import { strictTokens, withTimeout } from './tokens';
 
 export const ANIMATE_TOKENS = 900;
 export const ANIMATE = {
@@ -49,7 +49,7 @@ export function layerSettings(scene: SceneV3, layer: LayerV3, v2?: Layer): Recor
     tracks: layer.tracks,
   };
   if (layer.type) out.type = layer.type;
-  if (layer.count) out.count = layer.count;
+  if (layer.count) out.count = { decimals: layer.count.decimals };
   if (v2?.type === 'text') {
     Object.assign(out, {
       role: v2.role,
@@ -74,12 +74,34 @@ export function animateSystem(): string {
   ].join('\n');
 }
 
-function readTracks(raw: unknown): { tracks: LayerV3['tracks']; unit?: Unit } | undefined {
+const MAX_KEYS = 32;
+const UNIT_PROPS = new Set(['opacity', 'draw', 'mask']);
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/** Keeps only keys that are finite and land inside the scene; opacity, draw and mask are clamped to 0..1. */
+function readTracks(raw: unknown, start: number, sceneMs: number): { tracks: LayerV3['tracks']; unit?: Unit } | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const o = raw as { tracks?: unknown; unit?: unknown };
   if (typeof o.tracks !== 'object' || o.tracks === null || !Object.keys(o.tracks).length) return undefined;
+  const tracks: Record<string, unknown> = {};
+  for (const [prop, list] of Object.entries(o.tracks)) {
+    if (!Array.isArray(list)) {
+      tracks[prop] = list;
+      continue;
+    }
+    const keys: unknown[] = [];
+    for (const k of list.slice(0, MAX_KEYS)) {
+      if (typeof k !== 'object' || k === null) continue;
+      const { t, v } = k as { t?: unknown; v?: unknown };
+      if (typeof t !== 'number' || !Number.isFinite(t) || t < 0 || start + t >= sceneMs) continue;
+      if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+      keys.push({ ...k, v: UNIT_PROPS.has(prop) ? clamp01(v) : v });
+    }
+    if (keys.length) tracks[prop] = keys;
+  }
+  if (!Object.keys(tracks).length) return undefined;
   const unit = (UNITS as readonly unknown[]).includes(o.unit) ? (o.unit as Unit) : undefined;
-  return { tracks: o.tracks as LayerV3['tracks'], ...(unit ? { unit } : {}) };
+  return { tracks: tracks as LayerV3['tracks'], ...(unit ? { unit } : {}) };
 }
 
 const FEEL_LABEL: Record<Feel, string> = {
@@ -121,7 +143,7 @@ export async function animateLayer(input: AnimateInput, opts: AiOptions = {}): P
       content: `Layer settings: ${JSON.stringify(layer ? layerSettings(input.scene, layer, input.v2) : {})}\nMotion: ${input.words.trim().slice(0, 300)}`,
     },
   ];
-  const tokens = estimateTokens(messages) + ANIMATE_TOKENS;
+  const tokens = strictTokens(messages) + ANIMATE_TOKENS;
   const unclear = (): AnimateResult => ({
     ok: false,
     state: 'animate-layer-unclear',
@@ -130,16 +152,18 @@ export async function animateLayer(input: AnimateInput, opts: AiOptions = {}): P
   });
   if (!layer || !input.words.trim() || tokens > CALL_BUDGET) return unclear();
   let text: string;
+  const signal = withTimeout(opts.signal);
   try {
-    text = (await chat(messages, { ...opts, json: true, maxTokens: ANIMATE_TOKENS, temperature: 0.2 })).text;
+    text = (await chat(messages, { ...opts, signal, json: true, maxTokens: ANIMATE_TOKENS, temperature: 0.2 })).text;
   } catch (e) {
     const err = toAiError(e, 'edit');
-    if (err.code === 'cancelled') throw err;
+    // The 30 s limit is a failure to answer; only the caller's cancel stops quietly.
+    if (err.code === 'cancelled' && !(signal.aborted && !opts.signal?.aborted)) throw err;
     if (err.code === 'bad-reply' || err.code === 'invalid-reply') return unclear();
     console.error('Motikord: could not animate layer', err);
     return { ok: false, state: 'animate-layer-failed', copy: stateCopy('animate-layer-failed', { provider }), tokens };
   }
-  const read = readTracks(parseJsonReply(text));
+  const read = readTracks(parseJsonReply(text), layer.start ?? 0, input.scene.ms);
   if (!read) return unclear();
   const next: LayerV3 = { ...layer, tracks: read.tracks };
   if (read.unit && layer.kind === 'text') next.type = { ...layer.type, unit: read.unit };

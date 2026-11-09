@@ -6,16 +6,19 @@ import { sceneColours } from './checks';
 
 export type Detail = 'full' | 'short' | 'bare';
 
-const clip = (s: string, words: number) => {
+const SLOT_CHARS = 120;
+const cut = (s: string, chars: number) => (s.length > chars ? `${s.slice(0, chars)}…` : s);
+const clip = (s: string, words: number, chars = SLOT_CHARS) => {
   const w = s.trim().split(/\s+/);
-  return w.length > words ? `${w.slice(0, words).join(' ')}…` : s.trim();
+  return cut(w.length > words ? `${w.slice(0, words).join(' ')}…` : s.trim(), chars);
 };
 const slot = (v: SlotValue): string =>
   typeof v === 'string'
     ? clip(v, 14)
     : Array.isArray(v)
-      ? v.map((x) => (typeof x === 'string' ? clip(x, 8) : 'label' in x ? `${x.label} ${x.value}` : '')).join(' / ')
+      ? cut(v.map((x) => (typeof x === 'string' ? clip(x, 8, 40) : 'label' in x ? `${cut(String(x.label), 40)} ${cut(String(x.value), 20)}` : '')).join(' / '), SLOT_CHARS)
       : 'media';
+const id = (s: string) => cut(String(s), 24);
 
 function layerLine(l: LayerV3): string {
   const keys = Object.values(l.tracks).flatMap((t) => t ?? []);
@@ -23,20 +26,20 @@ function layerLine(l: LayerV3): string {
   const curve = keys.find((k) => k.curve)?.curve;
   const c = curve ? (curve.kind === 'spring' ? `spring${curve.bounce}` : 'ease') : 'linear';
   const unit = l.type ? ` per ${l.type.unit}` : '';
-  return `${l.id}:${l.kind}/${l.depth}@${l.start ?? 0}+${end}ms ${Object.keys(l.tracks).join(',')} ${c}${unit}${l.carry ? ' carry' : ''}`;
+  return `${id(l.id)}:${l.kind}/${l.depth}@${l.start ?? 0}+${end}ms ${Object.keys(l.tracks).join(',')} ${c}${unit}${l.carry ? ' carry' : ''}`;
 }
 
 /** One line per scene, plus the look guide. `short` drops the layers' props, `bare` drops layers. */
 export function summary(recipe: Recipe, v3: ClipV3, look: LookGuide, detail: Detail = 'full'): string {
-  const head = `Look guide "${look.name}": palette ${look.palette.join(' ')}; type ${look.type.display} / ${look.type.text}; feel ${look.feel}; camera ${look.camera}; light ${look.light}. ${v3.fps} fps.`;
+  const head = `Look guide "${cut(look.name, 60)}": palette ${look.palette.slice(0, 12).map(id).join(' ')}; type ${cut(look.type.display, 40)} / ${cut(look.type.text, 40)}; feel ${look.feel}; camera ${look.camera}; light ${look.light}. ${v3.fps} fps.`;
   const scenes = v3.scenes.map((s, i) => {
     const v2 = recipe.scenes[i];
-    const words = Object.entries(v2?.slots ?? {}).map(([k, v]) => `${k}="${slot(v)}"`);
+    const words = Object.entries(v2?.slots ?? {}).map(([k, v]) => `${cut(k, 24)}="${slot(v)}"`);
     const text = words.length ? words : (v2?.layers ?? []).flatMap((l) => (l.type === 'text' ? [`"${clip(l.text, 14)}"`] : []));
-    const colours = [...new Set(sceneColours(recipe, i).map((c) => c.colour))].join(' ');
+    const colours = [...new Set(sceneColours(recipe, i).map((c) => id(c.colour)))].join(' ');
     const fx = (s.effects ?? []).map((e) => `${e.effect} ${e.amount}`).join(', ');
     const parts = [
-      `Scene ${i + 1} ${s.templateId} ${s.ms}ms`,
+      `Scene ${i + 1} ${id(s.templateId)} ${s.ms}ms`,
       `words ${text.join('; ') || 'none'}`,
       `colours ${colours || 'none'}`,
       `camera ${s.camera.move} ${s.camera.amount}`,
@@ -44,7 +47,7 @@ export function summary(recipe: Recipe, v3: ClipV3, look: LookGuide, detail: Det
     ];
     if (fx) parts.push(`effects ${fx}`);
     if (detail === 'full') parts.push(`layers ${s.layers.map(layerLine).join(' | ')}`);
-    if (detail === 'short') parts.push(`layers ${s.layers.map((l) => `${l.id}:${l.depth}@${l.start ?? 0}`).join(' ')}`);
+    if (detail === 'short') parts.push(`layers ${s.layers.map((l) => `${id(l.id)}:${l.depth}@${l.start ?? 0}`).join(' ')}`);
     return parts.join('; ');
   });
   return [head, ...scenes].join('\n');

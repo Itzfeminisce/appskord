@@ -4,7 +4,8 @@ import { validateClip, validateScene } from '@appskord/motion/recipe';
 import { CALL_BUDGET } from '../../ai/writeRecipe';
 import { getPackV3 } from '../../look/packs';
 import type { Recipe } from '../../types';
-import { animateLayer } from './animateLayer';
+import { ANIMATE_TOKENS, animateLayer } from './animateLayer';
+import { strictTokens } from './tokens';
 import { allApproved, approve, approveAll, drawKeyFrames, footer, redraw, tryAnother } from './keyFrames';
 import { addMotion, continuity } from './motion';
 import { KEY_FRAMES, MAKING_MOTION, stateCopy } from './states';
@@ -134,6 +135,29 @@ describe('Add the motion', () => {
     expect(continuity(scenes, recipe, bold).carries).toEqual([]);
   });
 
+  it('continuity: a layer that took a carry is not the next cut’s outgoing carry, and a cut has one pair', () => {
+    const recipe = testRecipe();
+    const base = drawKeyFrames(recipe, LOOK, PACK).frames[0]!.still!;
+    const scenes = [0, 1, 2].map((i) => ({ ...structuredClone(base), id: `c${i}` }));
+    for (const s of scenes) for (const l of s.layers) delete l.carry;
+    const r2 = { ...recipe, scenes: [0, 1, 2].map((i) => ({ ...structuredClone(recipe.scenes[0]!), id: `c${i}` })) };
+    const { scenes: linked, carries } = continuity(scenes, r2, PACK);
+    expect(carries).toHaveLength(2);
+    expect(carries[1]!.layerId).not.toBe(carries[0]!.toLayerId);
+    for (const s of linked) expect(s.layers.filter((l) => l.carry).length).toBeLessThanOrEqual(2);
+    expect(linked[0]!.transition.carry).toHaveLength(1);
+    expect(linked[1]!.transition.carry).toHaveLength(1);
+    expect(linked[1]!.layers.filter((l) => l.carry === linked[0]!.transition.carry![0])).toHaveLength(1);
+    // A carry the template made already is the cut's pair.
+    const tpl = structuredClone(scenes);
+    tpl[0]!.layers[0]!.carry = 'tpl';
+    tpl[1]!.layers[1]!.carry = 'tpl';
+    tpl[0]!.transition = { kind: 'carry', carry: ['tpl'] };
+    const kept = continuity(tpl, r2, PACK);
+    expect(kept.carries.some((c) => c.from === 0)).toBe(false);
+    expect(kept.scenes[0]!.transition).toEqual({ kind: 'carry', carry: ['tpl'] });
+  });
+
   it('motion-failed: stops at the scene that fails, keeps the ones before, and carries on from there', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const recipe = testRecipe();
@@ -223,5 +247,53 @@ describe('Animate this layer', () => {
       copy: { title: 'Groq didn’t answer', line: 'Your layer is unchanged. Try again to send the same words.', action: 'Try again' },
     });
     spy.mockRestore();
+  });
+
+  it('keeps only safe keys: inside the scene, finite, 0 to 1 for opacity, at most 32 a track', async () => {
+    const { scene, layer, v2 } = setup();
+    const bad = '{"tracks":{"opacity":[{"t":0,"v":50},{"t":900000,"v":0}]}}';
+    const r = await animateLayer({ scene, layerId: layer.id, words: 'Fade', name: 'Headline', v2 }, fakeGroq({ animate: bad }).opts);
+    if (!r.ok) throw new Error(r.state);
+    expect(r.layer.tracks).toEqual({ opacity: [{ t: 0, v: 1 }] });
+    const lots = JSON.stringify({ tracks: { y: Array.from({ length: 60 }, (_, i) => ({ t: i * 10, v: i })) } });
+    const r2 = await animateLayer({ scene, layerId: layer.id, words: 'Wobble', name: 'Headline', v2 }, fakeGroq({ animate: lots }).opts);
+    if (!r2.ok) throw new Error(r2.state);
+    expect(r2.layer.tracks.y).toHaveLength(32);
+    const late = JSON.stringify({ tracks: { y: [{ t: scene.ms, v: 1 }] } });
+    const r3 = await animateLayer({ scene, layerId: layer.id, words: 'Late', name: 'Headline', v2 }, fakeGroq({ animate: late }).opts);
+    expect(r3).toMatchObject({ ok: false, state: 'animate-layer-unclear' });
+  });
+
+  it('sends a count as decimals only, and sizes the call with 3 characters a token', async () => {
+    const { scene, layer, v2 } = setup();
+    const counted = { ...scene, layers: scene.layers.map((l) => (l.id === layer.id ? { ...l, count: { from: 123, to: 987654, decimals: 1 } } : l)) };
+    const g = fakeGroq({ animate: PER_LETTER });
+    const r = await animateLayer({ scene: counted, layerId: layer.id, words: 'Drop', name: 'Headline', v2 }, g.opts);
+    expect(g.sent[0]!.raw).toContain('\\"count\\":{\\"decimals\\":1}');
+    expect(g.sent[0]!.raw).not.toMatch(/987654|"from"/);
+    expect(r.tokens).toBe(strictTokens(g.sent[0]!.body.messages as never) + ANIMATE_TOKENS);
+  });
+
+  it('a call that never answers stops at 30 s and shows the failed state', async () => {
+    vi.useFakeTimers();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+      const c = new AbortController();
+      setTimeout(() => c.abort(new DOMException('timed out', 'TimeoutError')), ms);
+      return c.signal;
+    });
+    try {
+      const { scene, layer, v2 } = setup();
+      const fetch = (_u: unknown, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)));
+      const p = animateLayer({ scene, layerId: layer.id, words: 'Drop', name: 'Headline', v2 }, { ...fakeGroq({}).opts, fetch: fetch as never });
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await p).toMatchObject({ ok: false, state: 'animate-layer-failed' });
+      expect(timeout).toHaveBeenCalledWith(30_000);
+    } finally {
+      timeout.mockRestore();
+      spy.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

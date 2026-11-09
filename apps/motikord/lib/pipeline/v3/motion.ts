@@ -43,13 +43,18 @@ export function continuity(
   const carries: Carry[] = [];
   if (!pack.transitions.includes('carry')) return { scenes: linkScenes(out), carries };
   const v2 = new Map(recipe.scenes.map((s) => [s.id, new Map(s.layers.map((l) => [l.id, l]))]));
+  // Layers that took a carry from the previous cut can't hand a second one on.
+  const received = new Set<LayerV3>();
   for (let i = 0; i + 1 < out.length; i++) {
     const a = out[i]!;
     const b = out[i + 1]!;
+    // A template carry already makes this cut's pair.
+    if ((a.transition.carry ?? []).some((c) => b.layers.some((l) => l.carry === c))) continue;
     const va = v2.get(a.id);
     const vb = v2.get(b.id);
     let best: { la: LayerV3; lb: LayerV3; why: CarryWhy } | undefined;
     for (const la of a.layers) {
+      if (received.has(la)) continue;
       for (const lb of b.layers) {
         // A layer already carrying something else can't take a second carry id.
         if (lb.carry && lb.carry !== la.carry) continue;
@@ -61,7 +66,8 @@ export function continuity(
     const id = best.la.carry ?? `carry-${b.id}-${best.lb.id}`;
     best.la.carry = id;
     best.lb.carry = id;
-    a.transition = { kind: 'carry', carry: [...new Set([...(a.transition.carry ?? []), id])] };
+    received.add(best.lb);
+    a.transition = { kind: 'carry', carry: [id] };
     carries.push({ from: i, layerId: best.la.id, toLayerId: best.lb.id, carry: id, why: best.why });
   }
   return { scenes: linkScenes(out), carries };

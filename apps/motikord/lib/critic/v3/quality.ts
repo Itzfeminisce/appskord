@@ -1,12 +1,13 @@
 // "Quality check": three passes, Story, Same look throughout, Look and motion. Free checks first, then one AI call
 // per pass on the compact recipe. One automatic fix per scene, then Motikord asks.
-import { estimateTokens, IMAGE_TOKENS } from '@appskord/llm';
+import { IMAGE_TOKENS } from '@appskord/llm';
 import type { ClipV3 } from '@appskord/motion/types';
 import { criticSkip, type CriticModel } from '../../ai/critic';
 import { toAiError, type AiStateId } from '../../ai/errors';
 import { CALL_BUDGET, parseJsonReply, type AiOptions } from '../../ai/writeRecipe';
 import { chat, type ChatMessage } from '../../llm';
 import { stateCopy, type StateCopy } from '../../pipeline/v3/states';
+import { strictTokens, withTimeout } from '../../pipeline/v3/tokens';
 import { note, PASS_KINDS, PASSES, runChecks, type CheckInput, type NoteKind, type PassId, type QualityNote } from './checks';
 import { applyFix, type Fixed } from './fixes';
 import { summary, type Detail } from './summary';
@@ -95,7 +96,7 @@ export function passMessages(pass: PassId, x: CheckInput, images: string[] = [])
   ];
   for (const d of ['full', 'short'] as const) {
     const m = build(d);
-    if (estimateTokens(m) + CRITIC_V3_TOKENS <= CALL_BUDGET) return m;
+    if (strictTokens(m) + CRITIC_V3_TOKENS <= CALL_BUDGET) return m;
   }
   return build('bare');
 }
@@ -124,18 +125,23 @@ async function runPass(pass: PassId, x: CheckInput, o: QualityOptions): Promise<
   const result = (r: Partial<PassResult>): PassResult => ({ id: pass, name, ran: false, notes: checks, frames: 0, tokens: 0, ...r });
   if (visual && criticSkip(true, o.critic)) return result({ state: 'critic-not-available' });
   const text = passMessages(pass, x);
-  const room = Math.floor((CALL_BUDGET - CRITIC_V3_TOKENS - estimateTokens(text)) / IMAGE_TOKENS);
+  // Even the bare recipe is too big: the free checks stand and the AI part is skipped.
+  if (strictTokens(text) + CRITIC_V3_TOKENS > CALL_BUDGET) return result({});
+  const room = Math.floor((CALL_BUDGET - CRITIC_V3_TOKENS - strictTokens(text)) / IMAGE_TOKENS);
   const n = visual && o.render ? Math.max(0, Math.min(MAX_PASS_FRAMES, room)) : 0;
   const images = n ? (await o.render!(x.clip, frameTimes(x.clip, n))).slice(0, n) : [];
   const messages = images.length ? passMessages(pass, x, images) : text;
-  const tokens = estimateTokens(messages) + CRITIC_V3_TOKENS;
+  const tokens = strictTokens(messages) + CRITIC_V3_TOKENS;
   const model = visual ? o.critic.model : o.model;
+  const signal = withTimeout(o.signal);
   try {
-    const reply = await chat(messages, { ...o, model, json: true, maxTokens: CRITIC_V3_TOKENS, temperature: 0.2 });
+    const reply = await chat(messages, { ...o, signal, model, json: true, maxTokens: CRITIC_V3_TOKENS, temperature: 0.2 });
     const ai = readNotes(parseJsonReply(reply.text), pass, x.clip.scenes.length);
     const notes = [...checks, ...ai.filter((a) => !checks.some((c) => c.sceneIndex === a.sceneIndex && c.kind === a.kind))];
     return result({ ran: true, notes, frames: images.length, tokens });
   } catch (e) {
+    // The 30 s limit, not the caller's cancel: the provider is busy.
+    if (signal.aborted && !o.signal?.aborted) return result({ state: 'provider-busy', frames: images.length, tokens });
     const err = toAiError(e, 'make');
     if (err.code === 'cancelled') throw err;
     // A garbled reply means no AI notes; the free checks still stand.

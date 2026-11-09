@@ -1,4 +1,5 @@
 // The one automatic fix a scene gets. Each returns a new recipe and clip, or undefined when the kind asks instead.
+import { validateScene } from '@appskord/motion/recipe';
 import type { ClipV3, LookGuide, SceneV3 } from '@appskord/motion/types';
 import type { Recipe } from '../../types';
 import { allowedColours, PLASTIC_AMOUNT, sceneColours, stiffLines, type QualityNote } from './checks';
@@ -52,8 +53,17 @@ function withScene(clip: ClipV3, i: number, f: (s: SceneV3) => SceneV3): ClipV3 
   return { ...clip, scenes: clip.scenes.map((s, j) => (j === i ? f(structuredClone(s)) : s)) };
 }
 
-/** Applies the fix for a note; undefined when it is a question for the user. */
+/** Applies the fix for a note; undefined when it is a question for the user, changes nothing, or breaks the scene. */
 export function applyFix(n: QualityNote, x: FixInput): { recipe: Recipe; clip: ClipV3; line: string } | undefined {
+  const f = rawFix(n, x);
+  if (!f) return undefined;
+  if (JSON.stringify(f.recipe) === JSON.stringify(x.recipe) && JSON.stringify(f.clip) === JSON.stringify(x.clip)) return undefined;
+  const scene = f.clip.scenes[n.sceneIndex];
+  if (!scene || !validateScene(scene).ok) return undefined;
+  return f;
+}
+
+function rawFix(n: QualityNote, x: FixInput): { recipe: Recipe; clip: ClipV3; line: string } | undefined {
   const i = n.sceneIndex;
   const scene = x.clip.scenes[i];
   if (!scene) return undefined;
@@ -73,6 +83,11 @@ export function applyFix(n: QualityNote, x: FixInput): { recipe: Recipe; clip: C
         }
         return s;
       });
+      // Every line needs its own start; if the scene is too short to spread them, ask instead.
+      const lines = clip.scenes[i]!.layers.filter((l) => l.kind === 'text' && !l.type);
+      const starts = lines.filter((l) => ids.includes(l.id)).map((l) => l.start ?? 0);
+      const taken = new Set(lines.filter((l) => !ids.includes(l.id)).map((l) => l.start ?? 0));
+      if (new Set(starts).size < starts.length || starts.some((t) => taken.has(t))) return undefined;
       const v2 = x.recipe.scenes[i]?.layers.find((l) => l.id === ids[1]);
       const name = (v2?.name ?? 'text').toLowerCase();
       return { recipe: x.recipe, clip, line: `${sn} ${name} now overlaps by ${OVERLAP_MS} ms` };

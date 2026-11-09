@@ -9,7 +9,9 @@ import { approveAll, drawKeyFrames } from '../../pipeline/v3/keyFrames';
 import { addMotion } from '../../pipeline/v3/motion';
 import { fakeGroq, LOOK, PACK, testRecipe } from '../../pipeline/v3/testClip';
 import type { Recipe } from '../../types';
-import { isFlat, runChecks, stiffLines } from './checks';
+import { strictTokens } from '../../pipeline/v3/tokens';
+import { isFlat, note, runChecks, stiffLines } from './checks';
+import { applyFix } from './fixes';
 import { passMessages, QUALITY, qualityCheck } from './quality';
 
 function made(recipe: Recipe = testRecipe()) {
@@ -191,5 +193,84 @@ describe('quality check: three passes', () => {
     const r = await qualityCheck(x, { ...g.opts, critic: vision(), render: frames });
     for (const s of g.sent) expect(estimateTokens(s.body.messages as never) + s.body.max_tokens).toBeLessThanOrEqual(CALL_BUDGET);
     expect(r.passes.map((p) => p.tokens).every((t) => t <= CALL_BUDGET)).toBe(true);
+  });
+});
+
+describe('quality check: hard caps, validated fixes, timeout', () => {
+  const many = (n: number) => {
+    const x = made();
+    const recipe = structuredClone(x.recipe);
+    const clip = structuredClone(x.clip);
+    recipe.scenes = Array.from({ length: n }, (_, i) => ({ ...structuredClone(x.recipe.scenes[i % 5]!), id: `m${i}` }));
+    clip.scenes = Array.from({ length: n }, (_, i) => ({ ...structuredClone(x.clip.scenes[i % 5]!), id: `m${i}` }));
+    return { ...x, recipe, clip };
+  };
+
+  it('keeps a 40k-character slot and a 40-scene clip under the budget, and skips the AI when even bare is too big', async () => {
+    const x = made();
+    const recipe = structuredClone(x.recipe);
+    const slots = recipe.scenes[0]!.slots as Record<string, string>;
+    slots[Object.keys(slots)[0]!] = 'x'.repeat(40000);
+    for (const pass of ['story', 'look', 'motion'] as const) {
+      const m = passMessages(pass, { ...x, recipe });
+      expect(m[1]!.content).not.toContain('x'.repeat(200));
+      expect(strictTokens(m) + 600).toBeLessThanOrEqual(CALL_BUDGET);
+      expect(strictTokens(passMessages(pass, many(40))) + 600).toBeLessThanOrEqual(CALL_BUDGET);
+    }
+    const g = fakeGroq({});
+    const r = await qualityCheck(many(400), { ...g.opts, critic: vision() });
+    expect(g.sent).toEqual([]);
+    expect(r.passes.map((p) => [p.ran, p.state])).toEqual([[false, undefined], [false, undefined], [false, undefined]]);
+  });
+
+  it('discards a fix that breaks the scene, and one that changes nothing', async () => {
+    const x = flawed();
+    const bad = structuredClone(x.clip);
+    bad.scenes[3]!.layers[0]!.tracks.y = [{ t: 500, v: 0 }, { t: 100, v: 1 }];
+    expect(applyFix(note('plastic', 3, 'check'), { ...x, clip: bad })).toBeUndefined();
+    const g = fakeGroq({});
+    const r = await qualityCheck({ ...x, clip: bad }, { ...g.opts, critic: vision() });
+    expect(r.fixed.some((f) => f.sceneIndex === 3)).toBe(false);
+    expect(r.fixesUsed.sc4).toBeUndefined();
+    const soft = structuredClone(x.clip);
+    soft.scenes[3]!.effects![0]!.amount = 0.2;
+    expect(applyFix(note('plastic', 3, 'ai'), { ...x, clip: soft })).toBeUndefined();
+  });
+
+  it('stiff: gives each line its own start, or asks when it cannot', () => {
+    const x = flawed();
+    const f = applyFix(note('stiff', 0, 'check'), x)!;
+    const starts = x.stiff.map((id) => f.clip.scenes[0]!.layers.find((l) => l.id === id)!.start);
+    expect(new Set(starts).size).toBe(2);
+    const crowded = structuredClone(x.clip);
+    const first = crowded.scenes[0]!.layers.find((l) => l.id === x.stiff[0])!;
+    crowded.scenes[0]!.layers.push({ ...structuredClone(first), id: 'third', start: starts[1] });
+    crowded.scenes[0]!.layers.push({ ...structuredClone(first), id: 'fourth', start: starts[1] });
+    expect(applyFix(note('stiff', 0, 'check'), { ...x, clip: crowded })).toBeUndefined();
+  });
+
+  it('a call that never answers stops at 30 s and shows the busy state', async () => {
+    vi.useFakeTimers();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+      const c = new AbortController();
+      setTimeout(() => c.abort(new DOMException('timed out', 'TimeoutError')), ms);
+      return c.signal;
+    });
+    try {
+      const fetch = vi.fn(
+        (_u: unknown, init?: RequestInit) =>
+          new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason))),
+      );
+      const p = qualityCheck(made(), { ai: 'cloud', provider: 'groq', model: 'openai/gpt-oss-120b', key: 'gsk_test', fetch: fetch as never, critic: vision() });
+      for (let i = 0; i < 3; i++) await vi.advanceTimersByTimeAsync(30_000);
+      const r = await p;
+      expect(timeout).toHaveBeenCalledWith(30_000);
+      expect(r.passes.map((q) => q.state)).toEqual(['provider-busy', 'provider-busy', 'provider-busy']);
+    } finally {
+      timeout.mockRestore();
+      spy.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });
