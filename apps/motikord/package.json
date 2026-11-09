@@ -26,7 +26,7 @@
     "fake-indexeddb": "^6.2.7",
     "happy-dom": "21.0.1",
     "rolldown": "^1.2.16",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.5",
     "wxt": "^0.21.5"
   },
