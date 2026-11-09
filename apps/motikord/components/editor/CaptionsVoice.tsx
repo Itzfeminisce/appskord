@@ -23,11 +23,14 @@ export interface CaptionsVoiceProps {
   /** Test seams: key lookup and fetch. */
   keyOf?: (name: KeyName) => Promise<string | undefined>;
   fetch?: typeof fetch;
+  timeoutMs?: number;
   /** Hands the made voice to the clip's audio; returns its length in ms. */
   onVoiceover?: (audio: Blob, voice: VoiceId) => Promise<number> | number;
   onChooseNarration?: () => void;
   onAddKey?: () => void;
   onSettings?: () => void;
+  /** Defaults to closing the editor overlay. */
+  onClose?: () => void;
 }
 
 const PROVIDER_NAME: Record<SpeechProvider, string> = { groq: 'Groq', openai: 'OpenAI' };
@@ -46,8 +49,13 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
   const [voiceCard, setVoiceCard] = useState<VoiceCard>();
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [madeMs, setMadeMs] = useState<number>();
-  const abort = useRef<AbortController | undefined>(undefined);
-  useEffect(() => () => abort.current?.abort(), []);
+  const capAbort = useRef<AbortController | undefined>(undefined);
+  const voiceAbort = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => { capAbort.current?.abort(); voiceAbort.current?.abort(); }, []);
+  const begin = (ref: { current: AbortController | undefined }) => {
+    ref.current?.abort();
+    return (ref.current = new AbortController());
+  };
   const text = (scene: number, layer: Parameters<typeof ed.text>[0]) => ed.text(layer, scene);
 
   const writeDown = async (chosen: CaptionStyle = style) => {
@@ -55,26 +63,27 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
     if (!p.narration) { setCapCard('captions-no-voice'); return; }
     const key = await keyOf(provider);
     if (!key) { setCapCard('captions-failed'); return; }
+    const ctrl = begin(capAbort);
     setCapBusy(true);
-    abort.current = new AbortController();
     try {
-      const cues = await transcribeCues(provider, key, p.narration, { lang: p.lang, fetch: p.fetch, signal: abort.current.signal });
+      const cues = await transcribeCues(provider, key, p.narration, { lang: p.lang, fetch: p.fetch, signal: ctrl.signal, timeoutMs: p.timeoutMs });
+      if (ctrl.signal.aborted) return;
       if (!cues.length) { setCapCard('captions-no-voice'); return; }
       ed.update((st) => writeCaptions(st, cues, chosen, 'Auto captions added'));
     } catch (error) {
-      if ((error as { code?: string })?.code !== 'cancelled') {
+      if (!ctrl.signal.aborted) {
         console.error('Motikord: could not write down the narration', error);
         setCapCard('captions-failed');
       }
     } finally {
-      setCapBusy(false);
+      if (!ctrl.signal.aborted) setCapBusy(false);
     }
   };
 
   const toggleCaptions = (on: boolean) => {
     setCaptions(on);
     if (on) void writeDown();
-    else { setCapCard(undefined); ed.update((st) => writeCaptions(st, [], style, 'Auto captions removed')); }
+    else { capAbort.current?.abort(); setCapBusy(false); setCapCard(undefined); ed.update((st) => writeCaptions(st, [], style, 'Auto captions removed')); }
   };
   const pickStyle = (s: CaptionStyle) => {
     setStyle(s);
@@ -84,7 +93,7 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
   const toggleVoice = async (on: boolean) => {
     setVoiceOn(on);
     setVoiceCard(undefined);
-    if (!on) return;
+    if (!on) { voiceAbort.current?.abort(); setVoiceBusy(false); return; }
     if (!script) setScript(scriptOf(ed.state, text));
     if (!(await keyOf('openai'))) setVoiceCard('voiceover-no-key');
   };
@@ -92,18 +101,20 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
     setVoiceCard(undefined);
     const key = await keyOf('openai');
     if (!key) { setVoiceCard('voiceover-no-key'); return; }
+    const ctrl = begin(voiceAbort);
     setVoiceBusy(true);
-    abort.current = new AbortController();
     try {
-      const audio = await makeVoiceover(key, script, voice, { fetch: p.fetch, signal: abort.current.signal });
-      setMadeMs(await p.onVoiceover?.(audio, voice));
+      const audio = await makeVoiceover(key, script, voice, { fetch: p.fetch, signal: ctrl.signal, timeoutMs: p.timeoutMs });
+      if (ctrl.signal.aborted) return;
+      const ms = await p.onVoiceover?.(audio, voice);
+      if (!ctrl.signal.aborted) setMadeMs(ms);
     } catch (error) {
-      if ((error as { code?: string })?.code !== 'cancelled') {
+      if (!ctrl.signal.aborted) {
         console.error('Motikord: could not make the voiceover', error);
         setVoiceCard('voiceover-failed');
       }
     } finally {
-      setVoiceBusy(false);
+      if (!ctrl.signal.aborted) setVoiceBusy(false);
     }
   };
 
@@ -112,6 +123,7 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 14, fontWeight: 600 }}>Voice and captions</span>
         <span style={{ fontFamily: "var(--mono, 'Geist Mono', monospace)", fontSize: 11, color: C.muted }}>Whole clip</span>
+        <button type="button" aria-label="Close voice and captions" onClick={p.onClose ?? (() => ed.setOverlay(undefined))} style={{ width: 28, height: 28, border: 0, borderRadius: 7, background: 'transparent', cursor: 'pointer' }}>×</button>
       </div>
       <Card>
         <Row title="Auto captions" line={`Uses your narration. It goes to ${PROVIDER_NAME[provider]} to be written down.`} on={captions} onChange={toggleCaptions} />
@@ -148,7 +160,7 @@ export function CaptionsVoice(p: CaptionsVoiceProps) {
         {voiceCard === 'voiceover-failed' && (
           <Notice state="voiceover-failed" title="Your voiceover wasn’t made" line="Your script is kept as written. Try again to make the voice." action="Try again" onAction={() => void make()} />
         )}
-        {voiceCard === 'voiceover-no-key' && (
+        {voiceOn && voiceCard === 'voiceover-no-key' && (
           <Notice state="voiceover-no-key" title="AI voiceover needs an OpenAI key" line="Only your script goes to OpenAI. Your clip works fine without a voice." action="Add an OpenAI key" onAction={p.onAddKey} />
         )}
       </Card>

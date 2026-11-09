@@ -1,4 +1,4 @@
-import { VoiceError, voiceErrorForStatus } from './transcribe';
+import { VoiceError, voiceErrorForStatus, timedOut, withTimeout } from './transcribe';
 
 /** OpenAI's speech endpoint and model, checked against the docs on 2026-11-09. */
 export const TTS_API = { url: 'https://api.openai.com/v1/audio/speech', model: 'gpt-4o-mini-tts' } as const;
@@ -30,16 +30,16 @@ export function buildSpeechRequest(key: string, script: string, voice: VoiceId):
 /** Only the script is sent. No key means `key`; the caller shows voiceover-no-key before any request. */
 export async function makeVoiceover(
   key: string | undefined, script: string, voice: VoiceId,
-  { fetch: f = fetch, signal }: { fetch?: typeof fetch; signal?: AbortSignal } = {},
+  { fetch: f = fetch, signal, timeoutMs }: { fetch?: typeof fetch; signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<Blob> {
   if (!key) throw new VoiceError('key');
   const { url, init } = buildSpeechRequest(key, script, voice);
   let res: Response;
   try {
-    res = await f(url, { ...init, signal });
+    res = await f(url, { ...init, signal: withTimeout(signal, timeoutMs) });
   } catch (error) {
-    if (signal?.aborted || (error as { name?: string })?.name === 'AbortError') throw new VoiceError('cancelled');
-    throw new VoiceError('offline');
+    if (signal?.aborted) throw new VoiceError('cancelled');
+    throw new VoiceError(timedOut(error) ? 'failed' : 'offline');
   }
   if (!res.ok) throw new VoiceError(voiceErrorForStatus(res.status), res.status);
   const audio = await res.blob().catch(() => null);

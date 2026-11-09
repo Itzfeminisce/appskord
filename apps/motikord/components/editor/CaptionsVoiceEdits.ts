@@ -33,7 +33,8 @@ export function captionPieces(starts: number[], sceneMs: number[], cues: readonl
 
 function pair(n: number, scene: number, p: { startMs: number; endMs: number; text: string }, style: CaptionStyle, font: string): { v2: TextLayer; v3: LayerV3 } {
   const id = `${CAPTION_PREFIX}${scene + 1}-${n}`;
-  const hold = Math.max(p.endMs - p.startMs - FADE_MS, FADE_MS);
+  const len = p.endMs - p.startMs;
+  const fade = Math.min(FADE_MS, Math.floor(len / 2));
   const unit = style === 'pop' || style === 'karaoke' ? 'word' : 'line';
   const v2: TextLayer = {
     id, name: 'Caption', type: 'text', role: 'caption', text: p.text, startMs: p.startMs, endMs: p.endMs,
@@ -43,7 +44,7 @@ function pair(n: number, scene: number, p: { startMs: number; endMs: number; tex
   };
   const v3: LayerV3 = {
     id, kind: 'text', depth: 'front', start: p.startMs, slotId: id, type: { unit },
-    tracks: { opacity: [{ t: 0, v: 0 }, { t: FADE_MS, v: 1 }, { t: hold, v: 1 }, { t: hold + FADE_MS, v: 0 }] },
+    tracks: { opacity: fade * 2 >= len ? [{ t: 0, v: 0 }, { t: fade, v: 1 }, { t: len, v: 0 }] : [{ t: 0, v: 0 }, { t: fade, v: 1 }, { t: len - fade, v: 1 }, { t: len, v: 0 }] },
   };
   return { v2, v3 };
 }

@@ -31,6 +31,14 @@ describe('captions', () => {
     const off = vi.fn(async () => { throw new TypeError('x'); });
     await expect(transcribeCues('groq', 'gsk_test', audio, { fetch: off as unknown as typeof fetch })).rejects.toBeInstanceOf(VoiceError);
   });
+  it('maps a timeout to failed and a caller abort to cancelled', async () => {
+    const stall = (_u: unknown, init?: RequestInit) => new Promise<Response>((_r, rej) => init?.signal?.addEventListener('abort', () => rej(init.signal!.reason)));
+    await expect(transcribeCues('groq', 'gsk_test', audio, { fetch: stall as unknown as typeof fetch, timeoutMs: 10 })).rejects.toMatchObject({ code: 'failed' });
+    const ctl = new AbortController();
+    const p = transcribeCues('groq', 'gsk_test', audio, { fetch: stall as unknown as typeof fetch, signal: ctl.signal });
+    ctl.abort();
+    await expect(p).rejects.toMatchObject({ code: 'cancelled' });
+  });
   it('writes .srt', () => {
     expect(srtTime(3_661_005)).toBe('01:01:01,005');
     expect(toSrt([{ startMs: 0, endMs: 1500, text: 'A' }, { startMs: 2000, endMs: 3000, text: 'B' }])).toBe('1\n00:00:00,000 --> 00:00:01,500\nA\n\n2\n00:00:02,000 --> 00:00:03,000\nB\n');
@@ -38,6 +46,10 @@ describe('captions', () => {
 });
 
 describe('voiceover', () => {
+  it('times out as failed', async () => {
+    const stall = (_u: unknown, init?: RequestInit) => new Promise<Response>((_r, rej) => init?.signal?.addEventListener('abort', () => rej(init.signal!.reason)));
+    await expect(makeVoiceover('sk-test', 'hi', 'warm', { fetch: stall as unknown as typeof fetch, timeoutMs: 10 })).rejects.toMatchObject({ code: 'failed' });
+  });
   it('sends only the script, model and voice', () => {
     const { url, init } = buildSpeechRequest('sk-test', 'Hello there.', 'deep');
     expect(url).toBe(TTS_API.url);

@@ -1,5 +1,5 @@
 import type { SpeechProvider } from './path';
-import { SPEECH_APIS, VoiceError, voiceErrorForStatus } from './transcribe';
+import { SPEECH_APIS, VoiceError, voiceErrorForStatus, timedOut, withTimeout } from './transcribe';
 
 /** Timestamped captions need `verbose_json`, which on OpenAI only whisper-1 returns; Groq's turbo model does it too. Checked 2026-11-09. */
 export const CAPTION_MODELS: Record<SpeechProvider, string> = { groq: 'whisper-large-v3-turbo', openai: 'whisper-1' };
@@ -34,15 +34,15 @@ export function cuesFromResponse(json: unknown): CaptionCue[] {
 /** Only the narration audio is sent. An empty list means no speech was found. */
 export async function transcribeCues(
   provider: SpeechProvider, key: string, audio: Blob,
-  { lang, fetch: f = fetch, signal }: { lang?: string; fetch?: typeof fetch; signal?: AbortSignal } = {},
+  { lang, fetch: f = fetch, signal, timeoutMs }: { lang?: string; fetch?: typeof fetch; signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<CaptionCue[]> {
   const { url, init } = buildCaptionRequest(provider, key, audio, lang);
   let res: Response;
   try {
-    res = await f(url, { ...init, signal });
+    res = await f(url, { ...init, signal: withTimeout(signal, timeoutMs) });
   } catch (error) {
-    if (signal?.aborted || (error as { name?: string })?.name === 'AbortError') throw new VoiceError('cancelled');
-    throw new VoiceError('offline');
+    if (signal?.aborted) throw new VoiceError('cancelled');
+    throw new VoiceError(timedOut(error) ? 'failed' : 'offline');
   }
   if (!res.ok) throw new VoiceError(voiceErrorForStatus(res.status), res.status);
   const json = await res.json().catch(() => null);

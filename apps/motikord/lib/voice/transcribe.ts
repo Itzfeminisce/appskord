@@ -16,6 +16,16 @@ export class VoiceError extends Error {
   }
 }
 
+export const VOICE_TIMEOUT_MS = 60_000;
+
+/** The caller's signal joined with a timeout. A timeout is a failure, a caller abort is a cancel. */
+export function withTimeout(signal: AbortSignal | undefined, ms = VOICE_TIMEOUT_MS): AbortSignal {
+  const t = AbortSignal.timeout(ms);
+  return signal ? AbortSignal.any([signal, t]) : t;
+}
+
+export const timedOut = (error: unknown) => (error as { name?: string })?.name === 'TimeoutError';
+
 export function voiceErrorForStatus(status: number): VoiceErrorCode {
   if (status === 401 || status === 403) return 'key';
   if (status === 429) return 'busy';

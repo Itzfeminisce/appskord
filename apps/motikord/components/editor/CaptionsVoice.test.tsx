@@ -3,9 +3,10 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CaptionsVoice, type CaptionsVoiceProps } from './CaptionsVoice';
-import { captionPieces, hasCaptions } from './CaptionsVoiceEdits';
+import { captionPieces, hasCaptions, writeCaptions } from './CaptionsVoiceEdits';
 import { EditorV3Provider, useEditorV3, type EditorV3Api } from './context';
 import { sampleClip } from './fixture';
+import { initV3 } from './model';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const unmounts: (() => void)[] = [];
@@ -85,6 +86,77 @@ describe('CaptionsVoice', () => {
     expect(onVoiceover).toHaveBeenCalled();
     expect(v.host.textContent).toContain('Ready · 0:14');
   });
+
+  // A fetch that never answers until its signal aborts, like a stalled provider.
+  const hang = () => vi.fn((_u: unknown, init?: RequestInit) => new Promise<Response>((_res, rej) => {
+    init?.signal?.addEventListener('abort', () => rej(init.signal!.reason ?? new DOMException('x', 'AbortError')));
+  }));
+  let resolveLater: (r: Response) => void = () => undefined;
+
+  it('switching captions off aborts the request and writes nothing', async () => {
+    let signal: AbortSignal | undefined;
+    const fetch = vi.fn((_u: unknown, init?: RequestInit) => { signal = init?.signal ?? undefined; return new Promise<Response>((res) => { resolveLater = res; }); });
+    const v = await open({ narration, fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => 'gsk_test' });
+    await v.click(v.sw('Auto captions'));
+    await v.click(v.sw('Auto captions'));
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { resolveLater(json({ segments: [{ start: 0.2, end: 2.2, text: 'Late.' }] })); });
+    expect(hasCaptions(v.api().state)).toBe(false);
+    expect(v.host.querySelector('[data-state=captions-failed]')).toBeNull();
+  });
+
+  it('switching voiceover off aborts and never calls onVoiceover', async () => {
+    let signal: AbortSignal | undefined;
+    const fetch = vi.fn((_u: unknown, init?: RequestInit) => { signal = init?.signal ?? undefined; return new Promise<Response>((res) => { resolveLater = res; }); });
+    const onVoiceover = vi.fn(async () => 1000);
+    const v = await open({ fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => 'sk-test', onVoiceover });
+    await v.click(v.sw('AI voiceover'));
+    await v.click(v.button('Make voiceover'));
+    await v.click(v.sw('AI voiceover'));
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { resolveLater(new Response(new Uint8Array([1]), { status: 200 })); });
+    expect(onVoiceover).not.toHaveBeenCalled();
+  });
+
+  it('a second request aborts the first, per feature', async () => {
+    const signals: AbortSignal[] = [];
+    const fetch = vi.fn((_u: unknown, init?: RequestInit) => { signals.push(init!.signal!); return new Promise<Response>(() => undefined); });
+    const v = await open({ narration, fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => 'sk-test' });
+    await v.click(v.sw('AI voiceover'));
+    await v.click(v.button('Make voiceover'));
+    await v.click(v.sw('Auto captions'));
+    expect(signals).toHaveLength(2);
+    expect(signals[0]!.aborted).toBe(false);
+    await v.click(v.sw('Auto captions'));
+    await v.click(v.sw('Auto captions'));
+    expect(signals[0]!.aborted).toBe(false);
+  });
+
+  it('a timeout shows the failed cards, not a cancel', async () => {
+    const v = await open({ narration, fetch: hang() as unknown as typeof globalThis.fetch, keyOf: async () => 'sk-test', timeoutMs: 20 });
+    await v.click(v.sw('Auto captions'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 60)); });
+    expect(v.host.querySelector('[data-state=captions-failed]')).not.toBeNull();
+    await v.click(v.sw('AI voiceover'));
+    await v.click(v.button('Make voiceover'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 60)); });
+    expect(v.host.querySelector('[data-state=voiceover-failed]')).not.toBeNull();
+  });
+
+  it('closes from the close button', async () => {
+    const onClose = vi.fn();
+    const v = await open({ onClose });
+    await v.click(v.host.querySelector('[aria-label="Close voice and captions"]'));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('hides voiceover-no-key once the voice switch is off', async () => {
+    const v = await open({ keyOf: async () => undefined });
+    await v.click(v.sw('AI voiceover'));
+    expect(v.host.querySelector('[data-state=voiceover-no-key]')).not.toBeNull();
+    await v.click(v.sw('AI voiceover'));
+    expect(v.host.querySelector('[data-state=voiceover-no-key]')).toBeNull();
+  });
 });
 
 describe('captionPieces', () => {
@@ -93,5 +165,19 @@ describe('captionPieces', () => {
       { scene: 0, startMs: 2500, endMs: 3000, text: 'x' },
       { scene: 1, startMs: 0, endMs: 500, text: 'x' },
     ]);
+  });
+});
+
+describe('short caption pieces', () => {
+  it('scales the fade so the last key equals the piece length', () => {
+    const st = writeCaptions(initV3(sampleClip()), [{ startMs: 0, endMs: 100, text: 'a' }, { startMs: 500, endMs: 760, text: 'b' }, { startMs: 1000, endMs: 2000, text: 'c' }], 'line', 'x');
+    const lens = [100, 260, 1000];
+    const layers = st.clip.v3.scenes.flatMap((sc) => sc.layers).filter((l) => l.id.startsWith('caption-'));
+    expect(layers).toHaveLength(3);
+    layers.forEach((l, n) => {
+      const keys = l.tracks!.opacity!;
+      expect(keys[keys.length - 1]).toEqual({ t: lens[n], v: 0 });
+      expect(keys.every((k, j) => j === 0 || k.t > keys[j - 1]!.t)).toBe(true);
+    });
   });
 });
