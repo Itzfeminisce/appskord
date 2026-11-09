@@ -33,7 +33,7 @@ export function Timeline() {
   const move = (layerId: string, from: number, to: number) => {
     const l = scene.layers.find((x) => x.id === layerId);
     if (!l || Math.round(to) === from) return;
-    ed.update((st) => editLayer(st, layerId, (x) => moveKey(x, from, to), { summary: `${ed.name(l)}: ${seconds(from)} → ${seconds(Math.round(to))}` }));
+    ed.update((st) => editLayer(st, layerId, (x, s) => moveKey(x, from, to, s.ms), { summary: `${ed.name(l)}: ${seconds(from)} → ${seconds(Math.round(to))}` }));
   };
   const drag = (layerId: string, start: number, at: number) => (e: PointerEvent<HTMLButtonElement>) => {
     e.currentTarget.setPointerCapture?.(e.pointerId);

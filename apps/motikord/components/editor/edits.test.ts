@@ -100,6 +100,14 @@ describe('motion tab edits', () => {
     expect(keyTimes(headline(out))).toContain(last + 200);
   });
 
+  it('keeps the last keyframe inside the scene', () => {
+    const st = st0();
+    const s = st.clip.v3.scenes[0]!;
+    const l = { ...headline(st), start: 100 };
+    const last = keyTimes(l).at(-1)!;
+    expect(keyTimes(moveKey(l, last, s.ms * 10, s.ms)).at(-1)).toBe(s.ms - 100);
+  });
+
   it('parses the timing and type fields', () => {
     expect(parseMs('0.15 s')).toBe(150);
     expect(parseMs('40 ms')).toBe(40);

@@ -28,7 +28,11 @@ function useGl(canvas: HTMLCanvasElement | null): Gl | undefined {
     } catch (error) {
       console.error('Motikord: could not start the preview', error);
     }
-    return () => r?.dispose();
+    return () => {
+      // Hand the GPU context back now rather than when the canvas is collected.
+      r?.forceContextLoss();
+      r?.dispose();
+    };
   }, [canvas]);
   return gl;
 }
@@ -83,23 +87,36 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
 
   // Playback: the clip runs through its scenes; "Play scene N" stops at the scene's end.
   const [sceneOnly, setSceneOnly] = useState(false);
+  // The loop reads the newest timing and editor, not the ones from when Play was pressed.
+  const live = useRef({ starts, total, ed });
+  useEffect(() => { live.current = { starts, total, ed }; });
   useEffect(() => {
     if (!playing) return;
     let raf = 0;
     let last = performance.now();
-    let at = (starts[state.scene] ?? 0) + t;
+    let shown = state.scene;
+    const from = live.current.starts[shown] ?? 0;
+    const sceneEnd = from + scene.ms;
+    let at = from + t;
     const tick = (now: number) => {
+      const { starts, total, ed } = live.current;
       at += now - last;
       last = now;
-      const end = sceneOnly ? (starts[state.scene] ?? 0) + scene.ms : total;
-      if (at >= end) {
+      const end = sceneOnly ? sceneEnd : total;
+      const done = at >= end;
+      if (done) at = end;
+      let i = 0;
+      // At the very end, stay on the scene that just finished.
+      while (i + 1 < starts.length && (done ? starts[i + 1]! < at : starts[i + 1]! <= at)) i++;
+      if (i !== shown) {
+        shown = i;
+        ed.select(i);
+      }
+      setT(at - (starts[i] ?? 0));
+      if (done) {
         setPlaying(false);
         return;
       }
-      let i = 0;
-      while (i + 1 < starts.length && starts[i + 1]! <= at) i++;
-      if (i !== state.scene) ed.select(i);
-      setT(at - (starts[i] ?? 0));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -167,7 +184,15 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
       </div>
       {preview && <div style={{ fontSize: 11, color: C.muted }}>{EFFECTS_NOTE}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button type="button" aria-label={playing ? 'Pause' : 'Play'} onClick={() => { setSceneOnly(false); setPlaying(!playing); }}
+        <button type="button" aria-label={playing ? 'Pause' : 'Play'} onClick={() => {
+          setSceneOnly(false);
+          if (!playing && at >= total) {
+            // Play at the end starts the clip over.
+            ed.select(0);
+            setT(0);
+          }
+          setPlaying(!playing);
+        }}
           style={{ width: 32, height: 32, borderRadius: 16, border: 0, background: C.ink, color: '#FFFFFF', cursor: 'pointer' }}>
           {playing ? '❚❚' : '▶'}
         </button>

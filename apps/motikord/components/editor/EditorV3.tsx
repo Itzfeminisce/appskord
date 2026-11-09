@@ -61,7 +61,16 @@ function Shell(p: EditorV3Props) {
     const save = p.save;
     const a = createAutosave({ write: (c) => save(c as RestyledClip), onStatus: (s, error) => { setStatus(s); if (error) console.error('Motikord: could not save the clip', error); } });
     saver.current = a;
-    return () => { void a.flush(); a.dispose(); };
+    const hide = () => { if (document.visibilityState === 'hidden') void a.flush(); };
+    const leave = () => void a.flush();
+    document.addEventListener('visibilitychange', hide);
+    window.addEventListener('pagehide', leave);
+    return () => {
+      document.removeEventListener('visibilitychange', hide);
+      window.removeEventListener('pagehide', leave);
+      a.dispose();
+      void a.flush();
+    };
   }, [p.save]);
   const first = useRef(true);
   useEffect(() => {
@@ -72,7 +81,7 @@ function Shell(p: EditorV3Props) {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && TEXT_INPUTS.has((t as HTMLInputElement).type)))) return;
       e.preventDefault();
       if (e.shiftKey) ed.redo();
       else ed.undo();
@@ -88,7 +97,7 @@ function Shell(p: EditorV3Props) {
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <ScenesList />
         {overlay === 'add' && <AssetPicker catalog={p.catalog} />}
-        <Stage preview={preview ? { effect: preview } : undefined} />
+        <Stage preview={preview && overlay === 'effects' ? { effect: preview } : undefined} />
         <aside style={{ width: 320, flexShrink: 0, background: C.surface, borderLeft: '1px solid #E8E8EB', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 6, boxSizing: 'border-box', overflow: 'auto' }}>
           <div role="tablist" aria-label="Edit" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: C.stage, flexShrink: 0 }}>
             {TABS.map(([id, name]) => (
@@ -117,6 +126,9 @@ function Shell(p: EditorV3Props) {
     </div>
   );
 }
+
+// Inputs whose own undo should win over the editor's.
+const TEXT_INPUTS = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'number']);
 
 const barButton = (on = false) => ({
   height: 34, padding: '0 12px', border: 0, borderRadius: 9, background: on ? C.tint : 'transparent', color: on ? C.accent : C.ink,

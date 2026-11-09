@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   EFFECT_COLOURS, EFFECT_FILTERS, EFFECT_SCOPES, EFFECTS, EFFECTS_NOTE, effectTracks,
   type EffectColour, type EffectId, type EffectScope, type EffectUse,
@@ -37,6 +37,8 @@ export function EffectsDialog({ onPreview }: { onPreview?: (effect: EffectId | u
     onPreview?.(id);
   };
   const close = () => { onPreview?.(undefined); ed.setOverlay(undefined); };
+  // However the dialog goes away, the preview goes with it.
+  useEffect(() => () => onPreview?.(undefined), [onPreview]);
   const target = scope === 'layer' && layer ? ed.name(layer) : scope === 'scene' ? `scene ${state.scene + 1}` : state.clip.recipe.name;
   const add = () => {
     if (!entry) return;

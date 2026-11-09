@@ -33,7 +33,16 @@ export function AnimateDialog({ animate = animateLayer, by = 'groq' }: { animate
         return;
       }
       const i = state.scene;
-      ed.update((st) => editScene(st, i, () => r.scene, { summary: `${r.title}\n${r.line}`, by }));
+      const sceneId = scene.id;
+      const next = r.layer;
+      // Only the animated layer lands, into the scene as it is now; edits made meanwhile stay.
+      ed.update((st) => {
+        if (st.clip.v3.scenes[i]?.id !== sceneId) return st;
+        return editScene(st, i, (s) => {
+          const j = s.layers.findIndex((l) => l.id === next.id);
+          if (j >= 0) s.layers[j] = next;
+        }, { summary: `${r.title}\n${r.line}`, by });
+      });
       ed.setOverlay({ animated: { title: r.title, line: r.line } });
     } catch (error) {
       console.error('Motikord: could not animate layer', error);

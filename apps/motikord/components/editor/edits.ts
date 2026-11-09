@@ -251,14 +251,15 @@ export function keyTimes(l: LayerV3): number[] {
   return [...set].sort((a, b) => a - b);
 }
 
-/** Moves every key at `from` to `to`, kept between its neighbours on each track. */
-export function moveKey(l: LayerV3, from: number, to: number): LayerV3 {
+/** Moves every key at `from` to `to`, kept between its neighbours on each track and inside the scene. */
+export function moveKey(l: LayerV3, from: number, to: number, sceneMs = Number.POSITIVE_INFINITY): LayerV3 {
+  const end = sceneMs - (l.start ?? 0);
   const tracks: Tracks = {};
   for (const [p, track] of Object.entries(l.tracks) as [keyof Tracks, Track<number>][]) {
     tracks[p] = track.map((k, i) => {
       if (k.t !== from) return k;
       const lo = i > 0 ? track[i - 1]!.t + 1 : 0;
-      const hi = i < track.length - 1 ? track[i + 1]!.t - 1 : Number.POSITIVE_INFINITY;
+      const hi = i < track.length - 1 ? track[i + 1]!.t - 1 : end;
       return { ...k, t: Math.round(Math.min(hi, Math.max(lo, to))) };
     });
   }
