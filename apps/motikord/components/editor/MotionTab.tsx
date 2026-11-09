@@ -1,6 +1,7 @@
 import { FEEL } from '@appskord/motion/curves';
 import type { Curve, LayerV3, SceneV3 } from '@appskord/motion/types';
 import { useEditorV3 } from './context';
+import { CurveEditor } from './CurveEditor';
 import {
   carryInto, COMES_IN, dropCarry, FEEL_NAMES, FEEL_ORDER, feelOf, GOES_OUT, HOLDS, OVERLAP, parseMs, parseRange,
   rangeText, readMotion, writeMotion, type MotionSpec,
@@ -57,12 +58,12 @@ function MotionFor({ scene, layer }: { scene: SceneV3; layer: LayerV3 }) {
       <Section title="Feel">
         <Segmented name="Feel" options={FEEL_ORDER.map((f) => [f, FEEL_NAMES[f]] as const)} value={feel}
           onChange={(f) => set({ curve: FEEL[f].curve, ms: FEEL[f].ms }, FEEL_NAMES[f])} />
-        <span style={{ fontSize: 12, color: C.muted }}>Custom curve</span>
-        <Segmented name="Curve or spring" options={[['curve', 'Curve'], ['spring', 'Spring']] as const} value={spring ? 'spring' : 'curve'}
-          onChange={(v) => {
+        <CurveEditor curve={spec.curve}
+          onKind={(v) => {
             const curve: Curve = v === 'spring' ? { kind: 'spring', bounce: 20, ms: spec.ms } : FEEL.smooth.curve;
             set({ curve }, v === 'spring' ? `Spring · ${20}% bounce` : 'Curve');
-          }} />
+          }}
+          onCommit={(curve) => set({ curve }, 'Curve')} />
         {spring && (
           <Slider name="Bounce" min={0} max={100} value={spring.bounce} text={`Spring · ${spring.bounce}% bounce`}
             onChange={(b) => set({ curve: { ...spring, bounce: b } }, `Spring · ${b}% bounce`, `${layer.id}:bounce`)} />

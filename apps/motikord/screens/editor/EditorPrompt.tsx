@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { toAiError } from '../../lib/ai/errors';
-import { applyPrompt, rebase } from '../../lib/editor/applyPrompt';
+import { applyPrompt, rebase, type PromptEdit } from '../../lib/editor/applyPrompt';
 import { HOSTS, requestHost, type HostAccess } from '../../lib/hostAccess';
 import { getSettings, onSettingsChanged } from '../../lib/settings';
 import { openSidePanelOn } from '../../lib/sidepanelGo';
-import type { AiMode, Provider } from '../../lib/types';
+import type { AiMode, Provider, Recipe } from '../../lib/types';
 import { insertWords } from '../../lib/voice/listen';
 import { useVoice } from '../../lib/voice/useVoice';
 import { EditorListening, MIC_PATHS, VoiceStateCard } from '../StatesVoice';
@@ -22,6 +22,25 @@ type Ui =
 
 export function PromptBox() {
   const { state, edit, toast } = useEditor();
+  return (
+    <PromptField recipe={state.clip.recipe} chips={CHIPS} apply={(out) => edit(out.edit, { by: out.by })}
+      onDone={(out) => toast(out.detail ? `Done. ${out.detail}` : 'Done.')} />
+  );
+}
+
+export interface PromptFieldProps {
+  recipe: Recipe;
+  /** Writes the checked answer to the clip; false when it could not be applied. */
+  apply: (out: PromptEdit) => boolean;
+  onDone?: (out: PromptEdit) => void;
+  chips?: readonly string[];
+  /** Offer "Speak" when voice input is on. */
+  speak?: boolean;
+  maxWidth?: number;
+}
+
+/** "Tell Motikord what to change": the AI edit pipeline (applyPrompt, rebase) with its error states, for any editor. */
+export function PromptField({ recipe: now, apply, onDone, chips = [], speak: canSpeak = true, maxWidth = 620 }: PromptFieldProps) {
   const [text, setText] = useState('');
   const [ui, setUi] = useState<Ui>({ kind: 'idle' });
   const last = useRef('');
@@ -33,8 +52,8 @@ export function PromptBox() {
   const busy = useRef(false);
   // provider-busy retries by itself once per prompt; a send by the user starts the count again.
   const retried = useRef(false);
-  const recipe = useRef(state.clip.recipe);
-  recipe.current = state.clip.recipe;
+  const recipe = useRef(now);
+  recipe.current = now;
   const input = useRef<HTMLInputElement>(null);
   // Heard words land at the cursor and wait for send; voice never sends by itself.
   const cursor = useRef(0);
@@ -73,8 +92,8 @@ export function PromptBox() {
       const answer = await applyPrompt(from, prompt, { signal: ac.signal });
       // The clip may have been edited by hand meanwhile: re-check the answer against the clip as it is now.
       const out = rebase(answer, prompt, from, recipe.current);
-      if (!out || !edit(out.edit, { by: out.by })) { setUi({ kind: 'failed' }); return; }
-      toast(out.detail ? `Done. ${out.detail}` : 'Done.');
+      if (!out || !apply(out)) { setUi({ kind: 'failed' }); return; }
+      onDone?.(out);
       setText('');
       setUi({ kind: 'idle' });
     } catch (error) {
@@ -148,7 +167,7 @@ export function PromptBox() {
   })();
 
   return (
-    <div data-prompt-box style={{ position: 'relative', width: '100%', maxWidth: 620, display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+    <div data-prompt-box style={{ position: 'relative', width: '100%', maxWidth, display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
       {card && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(100% + 8px)', zIndex: 7 }}>{card}</div>}
       {ui.kind === 'working'
         ? <PromptWorking onStop={() => stop.current?.abort()} />
@@ -161,7 +180,7 @@ export function PromptBox() {
             <input ref={input} aria-label="Tell Motikord what to change" placeholder="Tell Motikord what to change" value={text}
               onChange={(e) => { setText(e.target.value); if (ui.kind !== 'idle' && ui.kind !== 'offline') setUi({ kind: 'idle' }); }}
               style={{ flexGrow: 1, minWidth: 0, border: 0, outline: 'none', font: '14px/1 var(--font)', color: 'var(--ink)', background: 'transparent' }} />
-            {voice.enabled && <button type="button" aria-label="Speak" title="Speak your change" onClick={speak}
+            {canSpeak && voice.enabled && <button type="button" aria-label="Speak" title="Speak your change" onClick={speak}
               style={{ width: 34, height: 34, border: 0, borderRadius: 10, background: 'transparent', color: 'var(--muted)', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{MIC_PATHS}</svg>
             </button>}
@@ -171,8 +190,8 @@ export function PromptBox() {
             </button>
           </form>
         )}
-      {voice.ui.kind !== 'listening' && <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
-        {CHIPS.map((c) => (
+      {voice.ui.kind !== 'listening' && chips.length > 0 && <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {chips.map((c) => (
           <button key={c} type="button" disabled={ui.kind === 'working'} onClick={() => { setText(c); send(c); }}
             style={{ height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--surface)', border: '1px solid var(--line-strong)', color: 'var(--ink)', font: '12px/1 var(--font)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>{c}</button>
         ))}
