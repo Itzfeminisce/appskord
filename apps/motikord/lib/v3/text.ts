@@ -23,7 +23,7 @@ export const aspectOfSize = (size: { width: number; height: number }): Aspect =>
 
 /**
  * What the renderer draws for a layer beyond its tracks, from its v2 layer in a frame of `aspect` (boxes reflowed
- * from `source`, the size the recipe was laid out at): a text's words, size and layout box; a shape's box, fill and
+ * from `source`, the size the recipe was laid out at): a text's words, size, layout box and alignment in it; a shape's box, fill and
  * corners. The editor, the export, the stills and the check all read it here, so they never drift apart.
  */
 export function sceneLayerContent(
@@ -37,12 +37,21 @@ export function sceneLayerContent(
   const box = b && { x: b.x, y: b.y, w: b.w, h: b.h };
   // Recipe px are 1080 wide; v2 sizes are px at a 1080 short side.
   const frame = { width: 1080, height: aspect === '9:16' ? 1920 : aspect === '1:1' ? 1080 : 607.5 };
+  const k = Math.min(frame.width, frame.height) / 1080;
   if (layer.kind === 'text') {
-    const fontSize = v2?.type === 'text' ? (sizeOn(v2, aspect) * Math.min(frame.width, frame.height)) / 1080 : undefined;
-    return { text: sceneLayerText(scene, layer) ?? '', ...(fontSize ? { fontSize } : {}), ...(box ? { box } : {}) };
+    const fontSize = v2?.type === 'text' ? sizeOn(v2, aspect) * k : undefined;
+    const align = v2?.type === 'text' && (v2.align === 'left' || v2.align === 'right') ? v2.align : undefined;
+    const valign = v2?.type === 'text' && v2.valign === 'top' ? v2.valign : undefined;
+    return {
+      text: sceneLayerText(scene, layer) ?? '',
+      ...(fontSize ? { fontSize } : {}),
+      ...(box ? { box } : {}),
+      ...(align ? { align } : {}),
+      ...(valign ? { valign } : {}),
+    };
   }
   if (v2?.type !== 'shape' || !box) return undefined;
-  return { size: { w: box.w * frame.width, h: box.h * frame.height }, color: v2.fill, shape: v2.shape, radius: v2.radius, box };
+  return { size: { w: box.w * frame.width, h: box.h * frame.height }, color: v2.fill, shape: v2.shape, radius: v2.radius === undefined ? undefined : v2.radius * k, box };
 }
 
 /** The content of every layer of `scene` that has some, by layer id. */

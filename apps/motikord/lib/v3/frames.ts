@@ -8,6 +8,7 @@ import type { LayerContent } from '@appskord/motion/draw';
 import type { ClipV3, Finish, LookGuide, SceneV3 } from '@appskord/motion/types';
 import type { ClipFrames } from '../critic/v3';
 import { aspectOfSize, type LayerContents } from './text';
+import { ownEntry } from './renderChannel';
 
 export interface DrawSetup {
   width: number;
@@ -142,7 +143,7 @@ export function clipFramesFor(contents: LayerContents, look: LookGuide | undefin
 export async function stillUrl(scene: SceneV3, atMs: number, size: { width: number; height: number }, look: LookGuide | undefined, contents: Record<string, LayerContent>): Promise<string> {
   const clip: ClipV3 = { version: 3, scenes: [scene], lookGuideId: look?.id ?? '', packId: '', fps: 30, finish: DEFAULT_FINISH };
   const canvas = canvasOf(1080, Math.round((1080 * size.height) / size.width));
-  const drawer = new ClipDrawer(clip, (_i, l) => contents[l.id], { width: canvas.width, height: canvas.height, quality: 'full', fps: 30, look, finish: DEFAULT_FINISH }, canvas);
+  const drawer = new ClipDrawer(clip, (_i, l) => ownEntry(contents, l.id), { width: canvas.width, height: canvas.height, quality: 'full', fps: 30, look, finish: DEFAULT_FINISH }, canvas);
   try {
     await drawer.draw(atMs);
     return jpeg(canvas, size.width * 2, size.height * 2);

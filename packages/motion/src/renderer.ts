@@ -3,8 +3,9 @@ import * as THREE from 'three';
 import { EffectComposer, RenderPass } from 'postprocessing';
 import { CAMERA_DISTANCE } from './camera';
 import { applyCamera, scenePose } from './depth';
+import { bounds as outlineBounds } from './shapes';
 import type { EffectUse } from './effects';
-import { bonePoses, drawSpec, formatCount, growOutline, type DrawSpec, type LayerContent } from './draw';
+import { bonePoses, chartPart, drawSpec, formatCount, growOutline, type DrawSpec, type LayerContent } from './draw';
 import { DEFAULT_FINISH, FinishChain } from './finish';
 import { disposeLight, GUIDE_LIGHT, keyLight } from './light';
 import { ParticlesView } from './particles';
@@ -21,6 +22,7 @@ import {
 import { applyMask, type Box } from './masks';
 import { morphRing } from './morph';
 import { StrokeMesh, type Point } from './paths';
+import { cameraLimit, freeSpot, limitPose } from './placement';
 import { deformPoints, poseBones, type Bone, type BoneId, type BonePose } from './rigs';
 import { bounds, ShapeMesh, triangulate } from './shapes';
 import { boxRect, CountText, KineticType, placeInside, safeRect, slotArea, type Measure, type Rect } from './type';
@@ -233,6 +235,28 @@ const roughMeasure =
  * saved particles), the camera and depth, the look's key light, and the finish chain with motion blur.
  * `pose` is pure and needs no GPU; `attach` and `render` draw. Preview passes quality 'reduced'.
  */
+interface Rest {
+  x: number;
+  y: number;
+  slot?: Rect;
+  align?: 'left' | 'right';
+  valign?: 'top';
+}
+
+/** The centre of a block `size` in its rest: on its slot's aligned edges, else the rest itself. */
+function restAt(rest: Rest, size: { width: number; height: number }): { x: number; y: number } {
+  const { slot } = rest;
+  if (!slot) return rest;
+  const x =
+    rest.align === 'left'
+      ? slot.x + size.width / 2
+      : rest.align === 'right'
+        ? slot.x + slot.width - size.width / 2
+        : rest.x;
+  const y = rest.valign === 'top' ? slot.y + size.height / 2 : rest.y;
+  return { x, y };
+}
+
 export class V3Renderer {
   readonly graph: MotionGraph;
   readonly three = new THREE.Scene();
@@ -245,8 +269,15 @@ export class V3Renderer {
   private readonly views = new Map<string, View>();
   /** Text boxes for masks, recipe px. */
   private readonly textBoxes = new Map<string, Box>();
-  /** Where layers with a layout box rest, recipe px from the frame's centre; their x and y tracks move them from there. */
-  private readonly rests = new Map<string, { x: number; y: number }>();
+  /**
+   * Where layers rest, recipe px from the frame's centre; their x and y tracks move them from there. Text rests in its
+   * layout box (`slot`), lined up by `align` and `valign` once its size is known.
+   */
+  private readonly rests = new Map<string, Rest>();
+  /** Text and counts where they rest, recipe px, as last placed: the camera keeps them inside the safe area. */
+  private readonly blocks = new Map<string, { rect: Rect; depth: LayerV3['depth'] }>();
+  /** Recipe px the text layout boxes take, which the layers a template adds are placed around. */
+  private readonly taken: Rect[] = [];
   private readonly masked: LayerV3[];
   private readonly props = new Map<string, Props>();
   private readonly light: THREE.DirectionalLight | null;
@@ -279,7 +310,13 @@ export class V3Renderer {
       accent: look?.palette[2] ?? '#8B9CFF',
       panel: look?.palette[3] ?? '#1A1B2E',
     };
-    for (const layer of scene.layers) this.addContent(layer, inks);
+    const contents = new Map(scene.layers.map((l) => [l.id, options.content?.(l)]));
+    for (const l of scene.layers) {
+      const box = contents.get(l.id)?.box;
+      if (l.kind === 'text' && box) this.taken.push(boxRect(box, this.page));
+    }
+    for (const layer of scene.layers) this.addContent(layer, inks, contents.get(layer.id));
+    this.layerOrder();
     this.masked = scene.layers.filter((l) => l.tracks.mask?.length);
     const scale = options.quality === 'full' ? 1 : 0.5;
     const uses = [...(options.effects ?? []), ...(scene.effects ?? [])];
@@ -293,11 +330,14 @@ export class V3Renderer {
     });
   }
 
-  private addContent(layer: LayerV3, inks: { ink: string; panel: string; accent: string }): void {
+  private addContent(
+    layer: LayerV3,
+    inks: { ink: string; panel: string; accent: string },
+    content: LayerContent | undefined,
+  ): void {
     const group = this.graph.layers.get(layer.id);
     if (!group) return;
-    const content: LayerContent | undefined = this.options.content?.(layer);
-    const spec = drawSpec(layer, this.scene.layers, content, inks);
+    const spec = this.placeAdded(layer, drawSpec(layer, this.scene.layers, content, inks), content);
     switch (spec.kind) {
       case 'text': {
         const measure = (this.options.measure ?? roughMeasure)(spec.fontSize);
@@ -305,7 +345,14 @@ export class V3Renderer {
         const slot = content?.box && boxRect(content.box, this.page);
         // Text in a layout box wraps and shrinks to it; without one, to the safe area at the frame's centre.
         const area = slot ? slotArea(slot, safe, spec.fontSize * 1.1) : { width: safe.width, height: safe.height };
-        if (slot) this.rests.set(layer.id, { x: slot.x + slot.width / 2, y: slot.y + slot.height / 2 });
+        if (slot)
+          this.rests.set(layer.id, {
+            x: slot.x + slot.width / 2,
+            y: slot.y + slot.height / 2,
+            slot,
+            align: content?.align,
+            valign: content?.valign,
+          });
         const k = new KineticType(spec.text, spec.unit, {
           measure,
           fontSize: spec.fontSize,
@@ -313,6 +360,7 @@ export class V3Renderer {
           color: spec.color,
           fill: spec.fill ? (slot ? { frameWidth: area.width, inset: 0 } : { frameWidth: 1080, inset: 80 }) : undefined,
           area,
+          align: slot ? content?.align : undefined,
         });
         group.add(k);
         this.kinetic.set(layer.id, k);
@@ -358,6 +406,53 @@ export class V3Renderer {
 
   private readonly propsOf: PropsOf = (id) => this.props.get(id);
 
+  /**
+   * A layer the template adds (no layout box, not a chart part): rests in the safe area where it covers the text
+   * boxes least, shrunk to clear them when it can. Text, chart parts and boxed layers keep their spec.
+   */
+  private placeAdded(layer: LayerV3, spec: DrawSpec, content: LayerContent | undefined): DrawSpec {
+    if (content?.box || chartPart(layer.id) || !this.taken.length) return spec;
+    const size =
+      spec.kind === 'count'
+        ? { width: spec.fontSize * 6, height: spec.fontSize }
+        : spec.kind === 'shape'
+          ? outlineBounds(spec.morphTo ? [...spec.outline, ...spec.morphTo] : spec.outline)
+          : spec.kind === 'path'
+            ? outlineBounds(spec.lines.flat())
+            : undefined;
+    if (!size) return spec;
+    // A rigged outline keeps its size: its bones were cut for it.
+    const rigged = (spec.kind === 'shape' || spec.kind === 'path') && !!spec.bones?.length;
+    const spot = freeSpot(size, this.taken, this.safe, rigged ? [1] : undefined);
+    // A count draws above its origin (anchored at its baseline), so its origin sits half a line below the spot.
+    const drop = spec.kind === 'count' ? (spec.fontSize * spot.scale) / 2 : 0;
+    this.rests.set(layer.id, { x: spot.x, y: spot.y + drop });
+    // The layer's own box stays clear for the next one placed.
+    const w = size.width * spot.scale;
+    const h = size.height * spot.scale;
+    this.taken.push({ x: spot.x - w / 2, y: spot.y - h / 2, width: w, height: h });
+    const k = spot.scale;
+    if (k === 1) return spec;
+    const at = (p: Point): Point => [p[0] * k, p[1] * k];
+    if (spec.kind === 'count') return { ...spec, fontSize: spec.fontSize * k };
+    if (spec.kind === 'shape') return { ...spec, outline: spec.outline.map(at), morphTo: spec.morphTo?.map(at) };
+    if (spec.kind === 'path') return { ...spec, lines: spec.lines.map((l) => l.map(at)) };
+    return spec;
+  }
+
+  /** Back to front: each depth after the one behind it, and within a depth the words over the shapes. */
+  private layerOrder(): void {
+    const rank = { back: 0, middle: 2, front: 4 } as const;
+    for (const layer of this.scene.layers) {
+      const group = this.graph.layers.get(layer.id);
+      if (!group) continue;
+      const words = this.kinetic.has(layer.id) || this.counts.has(layer.id) ? 1 : 0;
+      group.traverse((o) => {
+        o.renderOrder = rank[layer.depth] + words;
+      });
+    }
+  }
+
   /** The frame's size in recipe px: 1080 wide; square when the size is unknown. */
   private get page(): { width: number; height: number } {
     const { width, height } = this.options;
@@ -368,18 +463,25 @@ export class V3Renderer {
     return safeRect(this.page.width, this.page.height);
   }
 
-  /** Moves each layer with a layout box to it; text is kept inside the safe area at the size it is drawn. */
+  /**
+   * Moves each layer to where it rests; text lines up in its box by align and valign and is kept inside the safe
+   * area at the size it is drawn.
+   */
   private placeRests(): void {
     const safe = this.safe;
-    for (const [id, at] of this.rests) {
+    this.blocks.clear();
+    for (const [id, rest] of this.rests) {
       const group = this.graph.layers.get(id);
       if (!group) continue;
-      const k = this.kinetic.get(id);
-      const b = k?.bounds();
+      const kinetic = this.kinetic.get(id)?.bounds();
+      const b = kinetic ?? (this.counts.has(id) ? this.textBoxes.get(id) : undefined);
       const s = group.scale.x;
-      const p = b ? placeInside(at, { width: b.width * s, height: b.height * s }, safe) : at;
+      const size = b && { width: b.width * s, height: b.height * s };
+      const p = kinetic && size ? placeInside(restAt(rest, size), size, safe) : rest;
       group.position.x += p.x * UNIT;
       group.position.y -= p.y * UNIT;
+      const depth = this.scene.layers.find((l) => l.id === id)?.depth ?? 'front';
+      if (b && size) this.blocks.set(id, { rect: { x: p.x + b.x * s, y: p.y + b.y * s, ...size }, depth });
     }
   }
 
@@ -395,7 +497,12 @@ export class V3Renderer {
     const frame = frameAt(this.scene, t, feel);
     applyFrame(this.graph, frame);
     this.placeRests();
-    applyCamera(this.graph, scenePose(this.scene, frame, feel), 1, !!this.options.spread);
+    // The move is cut back just enough that no text at rest is carried past the safe area by either end of it.
+    const ends = [0, 1].map((progress) =>
+      scenePose(this.scene, { ...frame, camera: { ...frame.camera, progress } }, feel),
+    );
+    const k = cameraLimit([...this.blocks.values()], ends, this.safe);
+    applyCamera(this.graph, limitPose(scenePose(this.scene, frame, feel), k), 1, !!this.options.spread);
     this.props.clear();
     for (const l of frame.layers) this.props.set(l.id, l.props);
     for (const l of frame.layers) {

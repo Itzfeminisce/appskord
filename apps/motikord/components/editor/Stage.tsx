@@ -209,7 +209,9 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
           {`Previewing ${effectEntry(preview.effect as never).name}`}
         </div>
       )}
-      <div style={{ position: 'relative', flex: 1, minHeight: 0, aspectRatio: `${size.width} / ${size.height}`, maxWidth: '100%', borderRadius: 4, overflow: 'hidden', background: look.palette[0] ?? '#0B0B10', boxShadow: '0 14px 36px rgba(16,16,20,0.22), 0 1px 3px rgba(16,16,20,0.1)' }}>
+      {/* The stage fits inside the space left, at the clip's own shape: never stretched to fill it. */}
+      <div style={{ flex: 1, minHeight: 0, alignSelf: 'stretch', containerType: 'size', display: 'grid', placeItems: 'center' }}>
+      <div style={{ position: 'relative', width: `min(100cqw, 100cqh * ${size.width} / ${size.height})`, aspectRatio: `${size.width} / ${size.height}`, borderRadius: 4, overflow: 'hidden', background: look.palette[0] ?? '#0B0B10', boxShadow: '0 14px 36px rgba(16,16,20,0.22), 0 1px 3px rgba(16,16,20,0.1)' }}>
         <canvas ref={setCanvas} role="img" aria-label={`Scene ${state.scene + 1} of ${state.clip.recipe.name}`} style={{ width: '100%', height: '100%', display: 'block' }} />
         {changedLayer && (
           <span style={{ position: 'absolute', left: 8, top: 8, height: 18, padding: '0 6px', borderRadius: 4, background: '#BE185D', color: '#FFFFFF', fontFamily: C.mono, fontSize: 10, display: 'flex', alignItems: 'center' }}>
@@ -221,6 +223,7 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
             {`${effectEntry(preview.effect as never).name} · preview · not added yet`}
           </span>
         )}
+      </div>
       </div>
       {preview && <div style={{ fontSize: 11, color: C.muted }}>{EFFECTS_NOTE}</div>}
       {toast}

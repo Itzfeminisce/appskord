@@ -202,9 +202,9 @@ export function layerName(clip: RestyledClip, i: number, layer: LayerV3): string
 /** The words a text layer shows: its v2 text, or its slot's words. */
 export const layerText = (clip: RestyledClip, i: number, layer: LayerV3): string | undefined => sceneLayerText(clip.recipe.scenes[i], layer);
 
-/** What the stage draws for a layer beyond its tracks, in its 9:16 frame (see sceneLayerContent). */
+/** What the stage draws for a layer beyond its tracks, in a frame of the clip's own size (see sceneLayerContent). */
 export const layerContent = (clip: RestyledClip, i: number, layer: LayerV3): LayerContent | undefined =>
-  sceneLayerContent(clip.recipe.scenes[i], layer, '9:16', clip.recipe.aspect);
+  sceneLayerContent(clip.recipe.scenes[i], layer, clip.recipe.aspect, clip.recipe.aspect);
 
 /** "Notes that find you": the scene's first words. */
 export function sceneTitle(clip: RestyledClip, i: number): string {

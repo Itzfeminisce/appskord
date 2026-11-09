@@ -25,6 +25,10 @@ export interface LayerContent {
   strokeWidth?: number;
   /** The layer's layout box as fractions of the frame, x and y its top-left: the layer rests at its centre. */
   box?: { x: number; y: number; w: number; h: number };
+  /** Text: lines start at the box's left or right edge instead of its middle. */
+  align?: 'left' | 'right';
+  /** Text: the block starts at the top of its box instead of its middle. */
+  valign?: 'top';
 }
 
 export interface Inks {

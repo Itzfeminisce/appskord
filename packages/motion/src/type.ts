@@ -413,6 +413,8 @@ export class KineticType extends THREE.Group {
       fill?: { frameWidth: number; inset: number };
       /** The space the block has, recipe px: lines wrap to its width and the block shrinks to fit inside it. */
       area?: { width: number; height: number };
+      /** Lines line up on the block's left or right edge; centred when absent. */
+      align?: 'left' | 'right';
     },
   ) {
     super();
@@ -427,6 +429,9 @@ export class KineticType extends THREE.Group {
     this.lineCount = lines.length;
     this.boxes = layoutUnits(text, unit, options.measure, lineHeight, wrap);
     this.unitCount = unitCount(this.boxes);
+    const widths = lines.map((line) => options.measure(line));
+    const widest = Math.max(0, ...widths);
+    for (const box of this.boxes) box.x += this.alignShift(widths[box.line] ?? 0, widest);
     const make = (s: string): Text => {
       const t = new Text();
       Object.assign(t, {
@@ -454,7 +459,13 @@ export class KineticType extends THREE.Group {
             t.sync(() => this.place());
             return t;
           });
-    this.fit(Math.max(0, ...lines.map((line) => options.measure(line))));
+    this.fit(widest);
+  }
+
+  /** How far a centred line `lineWidth` wide moves to sit on the block's aligned edge. */
+  private alignShift(lineWidth: number, widest: number): number {
+    const { align } = this.options;
+    return align === 'left' ? (lineWidth - widest) / 2 : align === 'right' ? (widest - lineWidth) / 2 : 0;
   }
 
   private get lineHeight(): number {
@@ -495,12 +506,15 @@ export class KineticType extends THREE.Group {
     const infoOf = (t: Text | undefined): Typeset => (t as Syncing | undefined)?.textRenderInfo ?? null;
     const sources = this.unit === 'line' ? this.texts : this.lines;
     if (!sources.length || sources.some((t) => !infoOf(t))) return;
-    let widest = 0;
+    const widthOf = (i: number): number => {
+      const [x0 = 0, , x1 = 0] = infoOf(sources[i])!.blockBounds;
+      return (x1 - x0) / UNIT;
+    };
+    const widest = Math.max(0, ...sources.map((_, i) => widthOf(i)));
     this.boxes.forEach((box, i) => {
       const info = infoOf(sources[this.unit === 'line' ? i : box.line])!;
-      const [x0 = 0, , x1 = 0] = info.blockBounds;
-      const lineWidth = (x1 - x0) / UNIT;
-      widest = Math.max(widest, lineWidth);
+      const [x0 = 0] = info.blockBounds;
+      const lineWidth = widthOf(this.unit === 'line' ? i : box.line);
       const carets = info.caretPositions;
       const at = box.at ?? 0;
       const end = at + box.text.length - 1;
@@ -511,6 +525,7 @@ export class KineticType extends THREE.Group {
         box.x = -lineWidth / 2 + (carets[at * 4]! - x0) / UNIT;
         box.width = (carets[end * 4 + 1]! - carets[at * 4]!) / UNIT;
       }
+      box.x += this.alignShift(lineWidth, widest);
       this.texts[i]!.position.x = box.x * UNIT;
     });
     this.fit(widest);

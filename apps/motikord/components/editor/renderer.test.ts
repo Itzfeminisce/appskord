@@ -52,7 +52,28 @@ describe('layerContent', () => {
     const l = (id: string, kind: 'shape' | 'text') => ({ id, kind, depth: 'front' as const, tracks: {} });
     expect(layerContent(clip, 0, l('pill', 'shape'))).toEqual({ size: { w: 540, h: 192 }, color: '#123456', shape: 'rect', radius: 40, box });
     expect(layerContent(clip, 0, l('t', 'text'))).toEqual({ text: 'Hello', fontSize: 80, box });
+    const aligned = { recipe: { ...clip.recipe, scenes: [{ layout: 'center', layers: [{ id: 't', type: 'text', text: 'Hi', sizePx: 80, box, align: 'right', valign: 'top' }] }] } } as typeof clip;
+    expect(layerContent(aligned, 0, l('t', 'text'))).toMatchObject({ align: 'right', valign: 'top' });
     expect(layerContent(clip, 0, l('none', 'shape'))).toBeUndefined();
+    // On a wide frame the short side is 607.5 recipe px, so corners shrink with the type.
+    const wide = { recipe: { ...clip.recipe, aspect: '16:9' } } as typeof clip;
+    const pill = layerContent(wide, 0, l('pill', 'shape'))!;
+    expect(pill.radius).toBeCloseTo(40 * (607.5 / 1080));
+  });
+
+  it('lays boxes out at the size the stage draws, the clip\'s own', async () => {
+    const { layerContent } = await import('./model');
+    const { previewSize } = await import('./Stage');
+    const { aspectOfSize } = await import('../../lib/v3/text');
+    const clip = sampleClip();
+    for (const aspect of ['1:1', '16:9'] as const) {
+      const sized = { ...clip, recipe: { ...clip.recipe, aspect } };
+      expect(aspectOfSize(previewSize(aspect))).toBe(aspect);
+      const text = sized.v3.scenes[0]!.layers.find((l) => l.kind === 'text')!;
+      const box = layerContent(sized, 0, text)?.box;
+      expect(box).toBeDefined();
+      expect(box!.y + box!.h).toBeLessThanOrEqual(1.0001);
+    }
   });
 
   it('is what the export, the stills and the check draw too', async () => {
@@ -61,10 +82,10 @@ describe('layerContent', () => {
     const { clipContents } = await import('../sidepanel/stills');
     const clip = sampleClip();
     clip.v3.scenes.forEach((s, i) => {
-      const all = clipContents(clip.v3, clip.recipe, '9:16');
+      const all = clipContents(clip.v3, clip.recipe, clip.recipe.aspect);
       for (const l of s.layers) {
         const stage = layerContent(clip, i, l);
-        expect(sceneLayerContent(clip.recipe.scenes[i], l, '9:16', clip.recipe.aspect)).toEqual(stage);
+        expect(sceneLayerContent(clip.recipe.scenes[i], l, clip.recipe.aspect, clip.recipe.aspect)).toEqual(stage);
         expect(all[`${i}:${l.id}`]).toEqual(stage);
         if (l.kind === 'text' && clip.recipe.scenes[i]?.layers.some((v) => v.id === l.id)) expect(stage?.box).toBeDefined();
       }
