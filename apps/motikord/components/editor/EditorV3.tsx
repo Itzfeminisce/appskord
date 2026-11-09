@@ -144,9 +144,11 @@ function Shell(p: EditorV3Props) {
 const TEXT_INPUTS = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'number']);
 
 const barButton = (on = false) => ({
-  height: 34, padding: '0 10px', border: 0, borderRadius: 9, background: on ? C.tint : 'transparent', color: on ? C.accent : C.ink,
-  font: `500 13px/1 ${C.font}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' as const,
+  height: 36, padding: '0 10px', border: `1px solid ${on ? C.accent : '#E0E0E4'}`, borderRadius: 9, background: on ? C.tint : C.surface, color: on ? C.accentHover : C.ink,
+  font: `500 13px/1 ${C.font}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' as const, flexShrink: 0, boxSizing: 'border-box' as const,
 });
+const iconButton = { width: 36, height: 36, flexShrink: 0, border: 0, borderRadius: 9, background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 } as const;
+const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
 
 function TopBar({ status, go, checkCount }: { status: SaveStatus; go?: (to: ChromeGo) => void; checkCount?: number }) {
   const ed = useEditorV3();
@@ -154,25 +156,28 @@ function TopBar({ status, go, checkCount }: { status: SaveStatus; go?: (to: Chro
   const toggle = (o: 'add' | 'effects') => ed.setOverlay(overlay === o ? undefined : o);
   return (
     <header style={{ height: 52, flexShrink: 0, background: C.surface, borderBottom: '1px solid #E8E8EB', display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', boxSizing: 'border-box' }}>
-      <button type="button" aria-label="Your clips" onClick={() => go?.('library')} style={{ width: 36, height: 36, flexShrink: 0, border: 0, borderRadius: 9, background: '#111114', cursor: 'pointer' }} />
-      <input aria-label="Clip name" value={state.clip.recipe.name} readOnly style={{ width: 152, height: 34, flexShrink: 0, border: '1px solid transparent', borderRadius: 8, padding: '0 8px', font: `600 15px/1 ${C.font}`, color: C.ink, background: 'transparent' }} />
-      {status === 'saved' && <span style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap' }}>Saved on this computer</span>}
-      <span style={{ width: 1, height: 24, background: '#E8E8EB', flexShrink: 0 }} />
-      <button type="button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!state.clip.history.length} onClick={ed.undo} style={{ ...barButton(), padding: '0 9px' }}>↶</button>
-      <button type="button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!state.future.length} onClick={ed.redo} style={{ ...barButton(), padding: '0 9px' }}>↷</button>
-      <span style={{ flex: 1 }} />
-      <button type="button" aria-pressed={overlay === 'add'} onClick={() => toggle('add')} style={barButton(overlay === 'add')}>Add</button>
-      <button type="button" aria-pressed={overlay === 'effects'} onClick={() => toggle('effects')} style={barButton(overlay === 'effects')}>Effects</button>
-      <button type="button" title="Look guide" onClick={() => go?.('look')} style={barButton()}>
-        Look <span style={{ fontSize: 11, color: C.muted }}>{ed.look.name || pack.name}</span>
+      <button type="button" aria-label="Your clips" onClick={() => go?.('library')} style={{ width: 36, height: 36, flexShrink: 0, border: 0, borderRadius: 9, background: '#111114', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M3 8.5h5M2 12h6M3 15.5h5" /><circle cx="15.5" cy="12" r="4.5" fill="#BE185D" stroke="none" /></svg>
       </button>
-      <button type="button" onClick={() => go?.('brand')} style={barButton()}>Brand</button>
-      <button type="button" title="Voice and captions" aria-pressed={overlay === 'voice'} onClick={() => ed.setOverlay(overlay === 'voice' ? undefined : 'voice')} style={barButton(overlay === 'voice')}>Voice</button>
+      <input aria-label="Clip name" value={state.clip.recipe.name} readOnly style={{ width: 152, height: 34, flexShrink: 0, border: '1px solid transparent', borderRadius: 8, padding: '0 8px', boxSizing: 'border-box', textOverflow: 'ellipsis', font: `600 15px/1 ${C.font}`, color: C.ink, background: 'transparent' }} />
+      {status === 'saved' && <span style={{ fontSize: 12, color: '#6E7079', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', flexShrink: 0 }}><svg width="13" height="13" viewBox="0 0 24 24" {...stroke} stroke="#15803D" strokeWidth="2.4"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>Saved on this computer</span>}
+      <span style={{ width: 1, height: 24, background: '#E8E8EB', flexShrink: 0 }} />
+      <button type="button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!state.clip.history.length} onClick={ed.undo} style={{ ...iconButton, color: state.clip.history.length ? C.ink : '#A1A1AA' }}><svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M9 14L4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg></button>
+      <button type="button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!state.future.length} onClick={ed.redo} style={{ ...iconButton, color: state.future.length ? C.ink : '#A1A1AA' }}><svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M15 14l5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></svg></button>
+      <span style={{ flex: 1 }} />
+      <button type="button" aria-pressed={overlay === 'add'} onClick={() => toggle('add')} style={barButton(overlay === 'add')}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>Add</button>
+      <button type="button" aria-pressed={overlay === 'effects'} onClick={() => toggle('effects')} style={barButton(overlay === 'effects')}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke}><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /><circle cx="12" cy="12" r="3" /></svg>Effects</button>
+      <button type="button" title="Look guide" onClick={() => go?.('look')} style={{ ...barButton(), padding: '0 10px 0 8px', gap: 7 }}>
+        <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 5, background: ed.look.palette[0] ?? pack.colours[0], display: 'grid', placeItems: 'center' }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: ed.look.palette[1] ?? pack.colours[1] }} /></span>
+        <span style={{ color: C.muted, fontWeight: 400 }}>Look</span><span style={{ fontWeight: 600 }}>{ed.look.name || pack.name}</span>
+      </button>
+      <button type="button" onClick={() => go?.('brand')} style={barButton()}><span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', background: '#4F5BD5' }} />Brand</button>
+      <button type="button" title="Voice and captions" aria-pressed={overlay === 'voice'} onClick={() => ed.setOverlay(overlay === 'voice' ? undefined : 'voice')} style={barButton(overlay === 'voice')}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke}><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M7 11h3M13 11h4M7 15h6M15 15h2" /></svg>Voice</button>
       <button type="button" onClick={() => go?.('check')} style={barButton()}>
         Check
-        {!!checkCount && <span style={{ minWidth: 16, height: 16, borderRadius: 8, background: C.accent, color: '#FFFFFF', fontSize: 10, display: 'grid', placeItems: 'center' }}>{checkCount}</span>}
+        {!!checkCount && <span style={{ minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 600, display: 'grid', placeItems: 'center' }}>{checkCount}</span>}
       </button>
-      <button type="button" onClick={() => go?.('export')} style={{ ...barButton(), background: '#BE185D', color: '#FFFFFF', fontWeight: 600 }}>Export</button>
+      <button type="button" onClick={() => go?.('export')} style={{ ...barButton(), padding: '0 16px', border: 0, background: '#BE185D', color: '#FFFFFF', fontWeight: 600 }}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>Export</button>
     </header>
   );
 }
@@ -184,17 +189,23 @@ function ScenesList() {
   const starts = sceneStarts(v3);
   const rows: ReactNode[] = v3.scenes.map((s, i) => (
     <button key={s.id} type="button" aria-current={i === state.scene} onClick={() => ed.select(i)}
-      style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 8px', border: 0, borderRadius: 8, background: i === state.scene ? C.tint : 'transparent', textAlign: 'left', cursor: 'pointer', font: 'inherit', color: C.ink }}>
-      <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{`${i + 1} · ${sceneTitle(state.clip, i)}`}</span>
-      <span style={{ fontSize: 11, color: C.muted }}>{`${clock(starts[i]!)}–${clock(starts[i]! + s.ms)}`}</span>
-      <span style={{ fontSize: 11, color: C.muted }}>{templateName(s)}</span>
+      style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '7px 6px', border: 0, borderRadius: 10, background: i === state.scene ? C.tint : 'transparent', outline: i === state.scene ? `1.5px solid ${C.accent}` : 'none', textAlign: 'left', cursor: 'pointer', font: 'inherit', color: C.ink }}>
+      <span aria-hidden="true" style={{ position: 'relative', width: 44, height: 25, flexShrink: 0, borderRadius: 4, background: ed.look.palette[0] ?? '#0B0B10', boxShadow: 'inset 0 0 0 1px rgba(16,16,20,0.08)', overflow: 'hidden' }}>
+        <span style={{ position: 'absolute', left: 5, top: 9, width: 18, height: 3, borderRadius: 1, background: ed.look.palette[2] ?? '#F5F5F7' }} />
+        <span style={{ position: 'absolute', left: 5, top: 14, width: 12, height: 3, borderRadius: 1, background: ed.look.palette[1] ?? '#8B9CFF' }} />
+      </span>
+      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{`${i + 1} · ${sceneTitle(state.clip, i)}`}</span>
+        <span style={{ fontFamily: C.mono, fontSize: 11, color: C.muted }}>{`${clock(starts[i]!)}–${clock(starts[i]! + s.ms)}`}</span>
+        <span style={{ fontSize: 11, color: i === state.scene ? C.accentHover : C.muted }}>{templateName(s)}</span>
+      </span>
     </button>
   ));
   return (
     <aside style={{ width: 220, flexShrink: 0, background: C.surface, borderRight: '1px solid #E8E8EB', display: 'flex', flexDirection: 'column', padding: '12px 10px', gap: 2, boxSizing: 'border-box', overflow: 'auto' }}>
-      <span style={{ display: 'flex', justifyContent: 'space-between', padding: '0 8px 6px', fontSize: 12 }}>
-        <span style={{ fontWeight: 600 }}>Scenes</span>
-        <span style={{ color: C.muted }}>{`${v3.scenes.length} · ${Math.round(clipMs(v3) / 1000)} s`}</span>
+      <span style={{ display: 'flex', justifyContent: 'space-between', padding: '0 6px 6px', fontFamily: C.mono, fontSize: 11, color: '#6E7079' }}>
+        <span>Scenes</span>
+        <span>{`${v3.scenes.length} · ${Math.round(clipMs(v3) / 1000)} s`}</span>
       </span>
       {rows}
     </aside>

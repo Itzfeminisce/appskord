@@ -32,6 +32,8 @@ body { background: var(--ground); color: var(--ink); font: 14px/1.45 var(--font)
 a { color: var(--accent); }
 a:hover { color: var(--accent-hover); }
 .mono { font-family: var(--mono); }
+/* Decorative letters that stay out of a button's name. */
+[data-glyph]::before { content: attr(data-glyph); }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;

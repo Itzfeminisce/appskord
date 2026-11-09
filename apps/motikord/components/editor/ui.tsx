@@ -7,22 +7,24 @@ export const C = {
   muted: 'var(--muted, #6E7079)',
   line: '#E8E8EB',
   accent: 'var(--accent, #BE185D)',
+  accentHover: 'var(--accent-hover, #9D174D)',
   tint: 'var(--tint, #FDF2F8)',
   stage: 'var(--stage, #EDEDF0)',
   surface: 'var(--surface, #FFFFFF)',
   font: 'var(--font, Geist, system-ui, sans-serif)',
+  mono: 'var(--mono, "Geist Mono", monospace)',
 } as const;
 
-export const label: CSSProperties = { fontSize: 11, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.4 };
+export const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: C.ink };
 export const hint: CSSProperties = { fontSize: 12, color: C.muted, lineHeight: 1.4 };
-export const sectionStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 0', borderTop: `1px solid ${C.line}` };
+export const sectionStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 0' };
 
 export function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
     <section style={sectionStyle}>
       <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
         <span style={label}>{title}</span>
-        {aside && <span style={{ fontSize: 11, color: C.muted }}>{aside}</span>}
+        {aside && <span style={{ fontFamily: C.mono, fontSize: 10, color: '#6E7079' }}>{aside}</span>}
       </span>
       {children}
     </section>
@@ -32,10 +34,10 @@ export function Section({ title, aside, children }: { title: string; aside?: Rea
 /** A segmented radiogroup ("Feel": Smooth, Snappy…). */
 export function Segmented<T extends string>({ name, options, value, onChange, disabled }: { name: string; options: readonly (readonly [T, string])[]; value: T | undefined; onChange: (v: T) => void; disabled?: boolean }) {
   return (
-    <div role="radiogroup" aria-label={name} style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: C.stage }}>
+    <div role="radiogroup" aria-label={name} style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 8, background: '#F1F1F3' }}>
       {options.map(([id, text]) => (
         <button key={id} type="button" role="radio" aria-checked={id === value} disabled={disabled} onClick={() => onChange(id)}
-          style={{ flex: 1, minWidth: 0, height: 28, border: 0, borderRadius: 6, background: id === value ? C.surface : 'transparent', boxShadow: id === value ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', font: `${id === value ? 600 : 400} 12px/1 ${C.font}`, color: id === value ? C.ink : C.muted, cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          style={{ flex: 1, minWidth: 0, height: 26, border: 0, borderRadius: 6, background: id === value ? C.surface : 'transparent', boxShadow: id === value ? '0 1px 2px rgba(16,16,20,0.1)' : 'none', font: `${id === value ? 600 : 400} 11.5px/1 ${C.font}`, color: id === value ? C.accentHover : C.muted, cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {text}
         </button>
       ))}
@@ -46,7 +48,7 @@ export function Segmented<T extends string>({ name, options, value, onChange, di
 /** A wrap of pressed chips; one on at a time unless `multi`. */
 export function Chips<T extends string>({ options, value, onChange, disabled }: { options: readonly (readonly [T, string])[]; value: T | undefined; onChange: (v: T) => void; disabled?: boolean }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
       {options.map(([id, text]) => (
         <Chip key={id} on={id === value} disabled={disabled} onClick={() => onChange(id)}>{text}</Chip>
       ))}
@@ -57,7 +59,7 @@ export function Chips<T extends string>({ options, value, onChange, disabled }: 
 export function Chip({ on, onClick, children, disabled, title }: { on: boolean; onClick: () => void; children: ReactNode; disabled?: boolean; title?: string }) {
   return (
     <button type="button" aria-pressed={on} disabled={disabled} onClick={onClick} title={title}
-      style={{ height: 30, padding: '0 11px', borderRadius: 8, border: `1px solid ${on ? 'var(--tint-line, #FBCFE8)' : C.line}`, background: on ? C.tint : C.surface, color: on ? C.accent : C.ink, font: `${on ? 600 : 500} 12px/1 ${C.font}`, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+      style={{ height: 28, padding: '0 9px', borderRadius: 8, border: `1px solid ${on ? C.accent : 'var(--line-input, #E0E0E4)'}`, background: on ? C.tint : C.surface, color: on ? C.accentHover : C.ink, font: `${on ? 600 : 400} 12px/1 ${C.font}`, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
       {children}
     </button>
   );
@@ -105,11 +107,11 @@ export function Field({ name, value, onCommit, disabled }: { name: string; value
   useEffect(() => setText(value), [value]);
   const commit = () => { if (text !== value) onCommit?.(text); };
   return (
-    <label style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 11, color: C.muted }}>{name}</span>
+    <label style={{ flex: 1, minWidth: 0, height: 38, boxSizing: 'border-box', border: '1px solid var(--line-input, #E0E0E4)', borderRadius: 8, background: onCommit ? C.surface : C.stage, padding: '3px 8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <span style={{ fontSize: 10, color: C.muted }}>{name}</span>
       <input aria-label={name} value={text} readOnly={!onCommit || disabled} onChange={(e) => setText(e.currentTarget.value)} onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
-        style={{ height: 30, minWidth: 0, border: `1px solid var(--line-input, #E0E0E4)`, borderRadius: 7, padding: '0 8px', font: `500 12px/1 ${C.font}`, color: onCommit ? C.ink : C.muted, background: onCommit ? C.surface : C.stage }} />
+        style={{ minWidth: 0, width: '100%', border: 0, padding: 0, outline: 'none', font: `500 12px/1.3 ${C.mono}`, color: onCommit ? C.ink : C.muted, background: 'transparent' }} />
     </label>
   );
 }
@@ -117,12 +119,10 @@ export function Field({ name, value, onCommit, disabled }: { name: string; value
 /** The heading at the top of a panel: icon, name and its line ("Headline", "Title text · scene 1"). */
 export function PanelHead({ icon, name, line }: { icon: ReactNode; name: string; line: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0 12px' }}>
-      <span aria-hidden="true" style={{ width: 32, height: 32, borderRadius: 8, background: C.tint, color: C.accent, display: 'grid', placeItems: 'center', font: `700 13px/1 ${C.font}` }}>{icon}</span>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>{name}</span>
-        <span style={{ fontSize: 12, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line}</span>
-      </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 4px', fontSize: 12, minWidth: 0 }}>
+      <span aria-hidden="true" style={{ width: 22, height: 22, flexShrink: 0, borderRadius: 6, background: '#111114', color: '#FFFFFF', display: 'grid', placeItems: 'center', font: `700 11px/1 ${C.font}`, letterSpacing: '-0.04em' }}>{icon}</span>
+      <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{name}</span>
+      <span style={{ color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line}</span>
     </div>
   );
 }

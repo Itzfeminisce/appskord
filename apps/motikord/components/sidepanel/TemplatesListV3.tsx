@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from '../../entrypoints/sidepanel/router';
-import { PACKS_V3, type PackId } from '../../lib/look/packs';
 import { makeFromTemplateV3 } from '../../lib/makeClip';
 import { send } from '../../lib/messages';
+import { PACKS_V3, type PackId } from '../../lib/look/packs';
 import { CLIP_TEMPLATES_V3 as ALL, clipTemplateRecipe, type ClipTemplateV3 } from '../../lib/templates/v3/clips';
 import type { ClipType, Recipe } from '../../lib/types';
 import { SceneThumb } from '../../screens/makeParts';
@@ -11,8 +11,20 @@ import { onceAtATime, TYPE_NAMES, TYPE_ORDER } from '../../screens/Templates';
 import { TEMPLATES } from './copy';
 
 const sel = (on: boolean) => on
-  ? { border: '1px solid var(--accent)', background: 'var(--tint)', color: 'var(--accent-hover)', fontWeight: 600 }
-  : { border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', fontWeight: 400 };
+  ? { border: '1px solid var(--ink)', background: 'var(--ink)', color: '#FFFFFF' }
+  : { border: '1px solid var(--line-input)', background: 'var(--surface)', color: 'var(--ink)' };
+
+// Each style's tile as the frame draws it: face, ink, underline and an optional inset ring.
+const TILE: Record<PackId, { bg: string; ink: string; line: string; ring?: string }> = {
+  clean: { bg: 'linear-gradient(160deg,#FFFFFF 35%,#F1F5F9)', ink: '#0F172A', line: '#2563EB', ring: '#CBD5E1' },
+  bold: { bg: '#0A0A0A', ink: '#FACC15', line: '#FACC15' },
+  playful: { bg: '#FFF7ED', ink: '#1C1917', line: '#F97316', ring: '#FED7AA' },
+  corporate: { bg: '#0F2A4A', ink: '#FFFFFF', line: '#38BDF8' },
+  studio: { bg: 'radial-gradient(circle at 30% 20%,#2A2D48,#0B0B10 70%)', ink: '#F5F5F7', line: '#8B9CFF' },
+  kinetic: { bg: '#1F7A4D', ink: '#FFD23F', line: '#FF5FA2' },
+  gloss: { bg: '#2F6BFF', ink: '#FFFFFF', line: '#FFD60A' },
+  soft: { bg: '#EFE6DA', ink: '#2B2620', line: '#E4572E', ring: '#E2D6C6' },
+};
 
 /** Where the v2 packs end and the four new ones begin. */
 const NEW: readonly PackId[] = ['studio', 'kinetic', 'gloss', 'soft'];
@@ -72,6 +84,11 @@ function Card({ t }: { t: ClipTemplateV3 }) {
         style={{ width: '100%', border: 0, background: 'none', padding: 0, font: 'inherit', textAlign: 'left', color: 'var(--ink)', display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer' }}>
         <span style={{ position: 'relative', width: '100%', aspectRatio: '9 / 16', borderRadius: 14, overflow: 'hidden', display: 'block', boxShadow: hover ? '0 0 0 2px var(--accent), 0 14px 28px -14px rgba(11,11,16,0.8)' : '0 1px 2px rgba(16,16,20,0.06), 0 8px 20px rgba(16,16,20,0.10)' }}>
           <Thumb t={t} playing={hover} />
+          {!hover && (
+            <span aria-hidden="true" style={{ position: 'absolute', right: 8, top: 8, width: 24, height: 24, borderRadius: '50%', background: 'rgba(11,11,16,0.45)', display: 'grid', placeItems: 'center' }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="#FFFFFF"><path d="M7 5v14l12-7z" /></svg>
+            </span>
+          )}
           {hover && (
             <span style={{ position: 'absolute', left: 8, top: 8, height: 22, padding: '0 8px 0 6px', borderRadius: 999, background: 'rgba(11,11,16,0.7)', border: '1px solid rgba(255,255,255,0.14)', color: '#F5F5F7', fontSize: 10, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="#F5F5F7" aria-hidden="true"><path d="M7 5v14l12-7z" /></svg>{TEMPLATES.hover}
@@ -100,37 +117,41 @@ export default function TemplatesListV3() {
   const shown = useMemo(() => ALL.filter((t) => fits(t) && (style === 'any' || t.packId === style)), [type, style]);
   return (
     <main data-frame="TemplatesListV3" style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', paddingBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '12px 12px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '16px 16px 0 20px' }}>
         <BackButton onBack={back} />
-        <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>{TEMPLATES.title}</h1>
+        <h1 style={{ margin: 0, fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>{TEMPLATES.title}</h1>
       </div>
-      <p style={{ margin: '10px 24px 0', fontSize: 12, lineHeight: 1.5, color: 'var(--muted)' }}>{TEMPLATES.line}</p>
-      <div role="group" aria-label={TEMPLATES.type} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '14px 0 0', padding: '0 16px' }}>
+      <p style={{ margin: '6px 24px 0', fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>{TEMPLATES.line}</p>
+      <div role="group" aria-label={TEMPLATES.type} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '12px 0 0', padding: '0 16px' }}>
         {([['all', 'All'], ...TYPE_ORDER.map((t) => [t, TYPE_NAMES[t]])] as [ClipType | 'all', string][]).map(([id, label]) => (
           <button key={id} type="button" aria-pressed={type === id} onClick={() => { setType(id); if (style !== 'any' && !ALL.some((t) => (id === 'all' || t.type === id) && t.packId === style)) setStyle('any'); }}
-            style={{ height: 30, padding: '0 12px', borderRadius: 999, ...sel(type === id), fontSize: 13, fontFamily: 'var(--font)', cursor: 'pointer' }}>{label}</button>
+            style={{ height: 34, padding: '0 12px', borderRadius: 999, ...sel(type === id), fontSize: 12, fontWeight: 500, fontFamily: 'var(--font)', cursor: 'pointer' }}>{label}</button>
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', margin: '14px 16px 0', fontSize: 12 }}>
-        <span className="mono" style={{ fontWeight: 600, color: 'var(--muted)' }}>{TEMPLATES.style(style === 'any' ? TEMPLATES.any : packOf(style).name)}</span>
-        <span style={{ color: 'var(--faint)' }}>{TEMPLATES.newInV3}</span>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '16px 16px 0', padding: '0 8px 0 4px', fontSize: 11, color: 'var(--muted)' }}>
+        <span className="mono" style={{ letterSpacing: '0.06em' }}>{TEMPLATES.style(style === 'any' ? TEMPLATES.any : packOf(style).name)}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }} />{TEMPLATES.newInV3}</span>
       </div>
-      <div role="group" aria-label="Style" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '6px 16px 0' }}>
+      <div role="group" aria-label="Style" style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 16px 0' }}>
         {PACKS_V3.map((p) => {
           const on = style === p.id;
           const empty = !ALL.some((t) => fits(t) && t.packId === p.id);
           const fresh = NEW.includes(p.id);
           return (
             <button key={p.id} type="button" title={p.name} aria-label={fresh ? `${p.name} (new)` : p.name} aria-pressed={on} disabled={empty} onClick={() => setStyle(on ? 'any' : p.id)}
-              style={{ width: 44, height: 44, borderRadius: 10, ...sel(on), background: p.colours[0], color: p.colours[1], font: `${p.fonts.display.weight} 15px '${p.fonts.display.family}', sans-serif`, outline: on ? '2px solid var(--accent)' : fresh ? '1px dashed var(--accent)' : 'none', outlineOffset: 1, opacity: empty ? 0.4 : 1, cursor: empty ? 'default' : 'pointer' }}>Aa</button>
+              style={{ position: 'relative', width: 40, height: 40, padding: 0, border: 0, borderRadius: 10, background: TILE[p.id].bg, color: TILE[p.id].ink, boxShadow: `${TILE[p.id].ring ? `inset 0 0 0 1px ${TILE[p.id].ring}, ` : ''}0 4px 10px -6px rgba(0,0,0,0.35)`, display: 'grid', placeItems: 'center', font: `${p.fonts.display.weight} 13px '${p.fonts.display.family}', sans-serif`, outline: on ? '2px solid var(--accent)' : 'none', outlineOffset: 2, opacity: empty ? 0.4 : 1, cursor: empty ? 'default' : 'pointer' }}>
+              <span aria-hidden="true">Aa</span>
+              <span aria-hidden="true" style={{ position: 'absolute', left: 10, right: 10, bottom: 6, height: 2, borderRadius: 1, background: TILE[p.id].line }} />
+              {fresh && <span aria-hidden="true" style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--ground)', boxSizing: 'content-box' }} />}
+            </button>
           );
         })}
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '14px 16px 0' }}>
-        <span style={{ fontSize: 12, color: 'var(--faint)' }}>{TEMPLATES.count(shown.length)}</span>
-        <span style={{ fontSize: 12, color: 'var(--faint)' }}>{TEMPLATES.tap}</span>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '14px 24px 0' }}>
+        <span className="mono" style={{ fontSize: 12, fontWeight: 500 }}>{TEMPLATES.count(shown.length)}</span>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{TEMPLATES.tap}</span>
       </div>
-      <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: '0 16px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px 12px' }}>
+      <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: '0 16px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '14px 10px' }}>
         {shown.map((t) => <Card key={t.id} t={t} />)}
       </ul>
     </main>
