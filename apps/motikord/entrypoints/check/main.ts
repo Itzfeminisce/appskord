@@ -5,6 +5,7 @@ import { exportVerdict, memoryVerdict, previewVerdict, supportVerdict } from '@/
 import { drawFrame, makeImages } from './draw';
 import type { RenderReply } from './render.worker';
 import { BG_KINDS, jpegFrame, pipeline, previewBackground, previewTransition, TRANSITIONS, type V2Row } from './v2';
+import { failedRow, V3_ROWS, v3Tests, type V3Row } from './v3';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const results: Partial<Record<TestId, TestResult>> = {};
@@ -12,6 +13,8 @@ const results: Partial<Record<TestId, TestResult>> = {};
 const previewSeconds = Number(new URLSearchParams(location.search).get('preview')) || PREVIEW.seconds;
 // `?v2=3` sets the seconds per v2 preview test.
 const v2Seconds = Number(new URLSearchParams(location.search).get('v2')) || 10;
+// `?v3=3` sets the seconds of the v3 preview test.
+const v3Seconds = Number(new URLSearchParams(location.search).get('v3')) || 10;
 
 async function machine(): Promise<Numbers> {
   const nav = navigator as Navigator & { deviceMemory?: number; userAgentData?: { brands?: { brand: string; version: string }[]; platform?: string } };
@@ -216,7 +219,7 @@ for (const [k, v] of Object.entries(await machine())) {
 
 $('all').addEventListener('click', () => void guarded(TESTS.map((t) => t.id)));
 $('copy').addEventListener('click', async () => {
-  const text = JSON.stringify({ ...shapeResults(await machine(), results, new Date().toISOString()), v2: v2Results }, null, 2);
+  const text = JSON.stringify({ ...shapeResults(await machine(), results, new Date().toISOString()), v2: v2Results, v3: v3Results }, null, 2);
   try {
     await navigator.clipboard.writeText(text);
     $('status').textContent = 'Results copied. Paste them in the thread.';
@@ -270,6 +273,47 @@ async function runV2() {
   busy = false;
 }
 $('v2').addEventListener('click', () => void runV2());
+
+const v3Results: V3Row[] = [];
+const v3List = v3Tests($('v3preview'), v3Seconds, (s) => { $('status').textContent = s; });
+function v3Row(id: string, cells: string[]) {
+  let tr = document.getElementById(`v3-${id}`);
+  if (!tr) {
+    tr = document.createElement('tr');
+    tr.id = `v3-${id}`;
+    tr.innerHTML = '<td></td><td></td><td class="verdict"></td><td class="lines"></td>';
+    $('v3rows').append(tr);
+  }
+  cells.forEach((c, i) => { tr.children[i]!.textContent = c; });
+  const verdict = cells[2] ?? '';
+  tr.children[2]!.className = `verdict ${verdict === 'Running' ? 'running' : verdict}`;
+}
+const v3Text = (r: V3Row) => [`${r.value ?? ''} ${r.unit}`.trim(), r.fallback ? `Fallback: ${r.fallback}` : '', numbersText(r.numbers)].filter(Boolean).join('\n');
+for (const { id, name, budget } of V3_ROWS) v3Row(id, [name, budget, '', '']);
+async function runV3() {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  v3Results.length = 0;
+  for (const [id, test] of v3List) {
+    $('status').textContent = `Running v3 ${id}`;
+    v3Row(id, [id, '', 'Running', '']);
+    let r: V3Row;
+    try {
+      r = await test();
+    } catch (error) {
+      console.error('Motikord: could not run the v3 check', error);
+      r = failedRow(id, error);
+    }
+    v3Results.push(r);
+    v3Row(id, [r.name, r.budget, r.verdict, v3Text(r)]);
+  }
+  $('status').textContent = 'Done. Press Copy results.';
+  document.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+  busy = false;
+}
+$('v3').addEventListener('click', () => void runV3());
 // Results for scripted runs.
 (globalThis as { motikordV2?: () => Promise<V2Row[]> }).motikordV2 = async () => { await runV2(); return v2Results; };
+(globalThis as { motikordV3?: () => Promise<V3Row[]> }).motikordV3 = async () => { await runV3(); return v3Results; };
 (globalThis as { motikordResults?: () => unknown }).motikordResults = async () => shapeResults(await machine(), results, new Date().toISOString());
