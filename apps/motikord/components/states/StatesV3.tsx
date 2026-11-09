@@ -14,12 +14,14 @@ export interface StateCardProps extends StateParams {
   id: StateId;
   /** The action button, when the state has one. */
   onAction?: () => void;
+  /** The second button, when the state has one. */
+  onAction2?: () => void;
   /** keyframes-waiting only: key frames drawn so far, how many in all, the clip's name and the scene being drawn. */
   progress?: { done: number; total: number; name: string; scene: number };
 }
 
 /** One state's card: its title, its line and its action. */
-export function StateCard({ id, onAction, progress, ...params }: StateCardProps) {
+export function StateCard({ id, onAction, onAction2, progress, ...params }: StateCardProps) {
   const v = stateView(id, params);
   if (id === 'keyframes-waiting') {
     const p = progress ?? { done: 1, total: 4, name: 'Morning shift', scene: 1 };
@@ -47,6 +49,7 @@ export function StateCard({ id, onAction, progress, ...params }: StateCardProps)
         {v.action && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <button type="button" onClick={onAction} style={{ height: 34, padding: '0 14px', border: '1px solid var(--line-input)', borderRadius: 9, background: 'var(--surface)', font: '600 13px var(--font)', color: 'var(--ink)', cursor: 'pointer' }}>{v.action}</button>
+            {v.action2 && <button type="button" onClick={onAction2} style={{ height: 34, padding: '0 14px', border: '1px solid var(--line-input)', borderRadius: 9, background: 'var(--surface)', font: '600 13px var(--font)', color: 'var(--ink)', cursor: 'pointer' }}>{v.action2}</button>}
             {id === 'three-d-unavailable' && <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{THREE_D_OPENS} {CHROME_3D_URL}</span>}
           </span>
         )}

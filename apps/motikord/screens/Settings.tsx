@@ -16,8 +16,8 @@ import { NoBuiltInAi } from './StatesSetup';
 import { voiceSettingsLine } from './StatesVoice';
 import { voiceLanguage, voiceLanguageOptions, useVoicePath } from '../lib/voice/useVoice';
 
-const KINDS: [FileKind, string][] = [['mp4', 'MP4'], ['webm', 'WebM'], ['webm-alpha', 'See-through WebM'], ['gif', 'GIF']];
-const QUALITIES: Quality[] = ['1080p', '720p'];
+export const KINDS: [FileKind, string][] = [['mp4', 'MP4'], ['webm', 'WebM'], ['webm-alpha', 'See-through WebM'], ['gif', 'GIF']];
+export const QUALITIES: Quality[] = ['1080p', '720p'];
 
 function Section({ title, children, first: top, id }: { title?: string; children: ReactNode; first?: boolean; id?: string }) {
   return (

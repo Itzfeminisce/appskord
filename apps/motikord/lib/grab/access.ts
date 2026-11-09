@@ -31,14 +31,16 @@ export async function requestPageAccess(url: string | undefined): Promise<'grant
 }
 
 /** The active tab's URL, kept current so a click can ask for its origin without awaiting a tab lookup first. */
-export function useActiveTabUrl(): MutableRefObject<string | undefined> {
+export function useActiveTabUrl(onChange?: () => void): MutableRefObject<string | undefined> {
+  const changed = useRef(onChange);
+  changed.current = onChange;
   const url = useRef<string | undefined>(undefined);
   useEffect(() => {
     let alive = true;
     const refresh = () => {
-      browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => { if (alive) url.current = tab?.url; }, () => undefined);
+      browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => { if (alive) { if (url.current !== tab?.url) changed.current?.(); url.current = tab?.url; } }, () => undefined);
     };
-    const onUpdated = (_id: number, change: { url?: string; status?: string }, tab: { active?: boolean; url?: string }) => { if (tab.active && (change.url || change.status)) url.current = tab.url; };
+    const onUpdated = (_id: number, change: { url?: string; status?: string }, tab: { active?: boolean; url?: string }) => { if (tab.active && (change.url || change.status)) { if (url.current !== tab.url) changed.current?.(); url.current = tab.url; } };
     refresh();
     browser.tabs.onActivated.addListener(refresh);
     browser.tabs.onUpdated.addListener(onUpdated);

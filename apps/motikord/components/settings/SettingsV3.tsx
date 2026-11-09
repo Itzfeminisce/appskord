@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react';
 import { canSeeImages } from '@appskord/llm';
 import { useRouter } from '../../entrypoints/sidepanel/router';
+import { getBrandKit } from '../../lib/db';
+import { chooseFolder } from '../../lib/folder';
+import { sourcesSummary } from '../../lib/media/sources/summary';
 import { loadKeys } from '../../lib/penv';
 import { criticModelFor, pickedModel, PROVIDERS } from '../../lib/providers';
 import { getSettings, onSettingsChanged, updateSettings, type SettingsPatch } from '../../lib/settings';
-import type { LookStyle, Pace, Settings } from '../../lib/types';
+import type { BrandKit, FileKind, LookStyle, Pace, Quality, Settings } from '../../lib/types';
+import { voiceLanguage, voiceLanguageOptions, useVoicePath } from '../../lib/voice/useVoice';
 import { appVersion } from '../../screens/Privacy';
+import { KINDS, penvKeysLine, QUALITIES, showNoBuiltInAi } from '../../screens/Settings';
+import { ModelSection } from '../../screens/SettingsModel';
+import { probeAi } from '../../screens/Setup';
+import { NoBuiltInAi } from '../../screens/StatesSetup';
+import { voiceSettingsLine } from '../../screens/StatesVoice';
 import { STATES } from '../states/copy';
 import { SETTINGS } from './copy';
 import { getMachineResult, when, useV3, type MachineResult } from './store';
@@ -31,11 +40,17 @@ export default function SettingsV3({ openCheck }: { openCheck?: () => void } = {
   const [s, setS] = useState<Settings | null>(null);
   const [machine, setMachine] = useState<MachineResult | undefined>();
   const [penvKey, setPenvKey] = useState(false);
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [kit, setKit] = useState<BrandKit | undefined>();
+  const [builtInAi, setBuiltInAi] = useState<boolean | null>(null);
+  const voicePath = useVoicePath();
 
   useEffect(() => {
     getSettings().then(setS).catch((error: unknown) => console.error('Motikord: could not read settings', error));
     getMachineResult().then(setMachine).catch((error: unknown) => console.error('Motikord: could not read the machine check', error));
-    loadKeys().then((k) => setPenvKey(!!k.OPENAI_API_KEY)).catch((error: unknown) => console.error('Motikord: could not read keys', error));
+    loadKeys().then((k) => { setKeys(k); setPenvKey(!!k.OPENAI_API_KEY); }).catch((error: unknown) => console.error('Motikord: could not read keys', error));
+    getBrandKit().then(setKit).catch((error: unknown) => console.error('Motikord: could not read the brand kit', error));
+    probeAi().then(setBuiltInAi).catch((error: unknown) => console.error('Motikord: could not check this computer', error));
     return onSettingsChanged(setS);
   }, []);
 
@@ -48,6 +63,11 @@ export default function SettingsV3({ openCheck }: { openCheck?: () => void } = {
   const status = criticLine(s);
   const provider = PROVIDERS[s.provider].label;
   const captionsTo = s.provider === 'openai' ? 'OpenAI' : 'Groq';
+  const sources = sourcesSummary(s.media, { pexels: keys.PEXELS_API_KEY, pixabay: keys.PIXABAY_API_KEY, freesound: keys.FREESOUND_API_KEY, jamendo: keys.JAMENDO_CLIENT_ID, unsplash: keys.UNSPLASH_ACCESS_KEY });
+  const connected = s.keySource === 'penv-app';
+  const changeFolder = async () => {
+    try { await chooseFolder(); } catch (error) { console.error('Motikord: could not choose the save folder', error); }
+  };
   const check = openCheck ?? (() => { void browser.tabs.create({ url: browser.runtime.getURL('/check.html' as never) }); });
 
   return (
@@ -57,7 +77,27 @@ export default function SettingsV3({ openCheck }: { openCheck?: () => void } = {
         <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>{SETTINGS.title}</h1>
       </div>
 
-      <Section title={SETTINGS.lookAndQuality} first>
+      <Section title={SETTINGS.ai} first>
+        <div style={{ ...rowStyle, ...last, flexDirection: 'column', gap: 10 }}>
+          <ModelSection s={s} keys={keys} builtInAi={builtInAi} save={set}
+            onKeys={() => document.getElementById('keys')?.scrollIntoView({ behavior: 'smooth' })}
+            onPasteKey={() => navigate('PasteKey')} onPenv={() => navigate('PenvConnect')} />
+        </div>
+      </Section>
+      {showNoBuiltInAi(builtInAi, s.ai) && <div style={{ margin: '10px 16px 0' }}><NoBuiltInAi provider={s.provider} onUseGroq={() => set({ ai: 'cloud' })} /></div>}
+
+      <Section title={SETTINGS.keys} id="keys">
+        <button type="button" onClick={() => navigate('PenvConnected')} style={{ ...rowStyle, alignItems: 'center', width: '100%', border: 0, background: 'none', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+          <span className="mono" aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--ink)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 500, flexShrink: 0 }}>pv</span>
+          <Text title={SETTINGS.penvCloud} hint={penvKeysLine(s.provider, keys, connected)} />
+          {connected && <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--success-ink)' }}><span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success-ink)' }} />{SETTINGS.connected}</span>}
+          <span style={{ color: 'var(--muted)' }}>{chevron}</span>
+        </button>
+        <button type="button" onClick={() => navigate('PasteKey')} style={{ ...rowStyle, ...last, width: '100%', border: 0, background: 'none', font: '500 13px var(--font)', color: 'var(--accent)', cursor: 'pointer', textAlign: 'left' }}>{SETTINGS.pasteKey}</button>
+      </Section>
+      <p style={{ margin: '6px 24px 0', fontSize: 12, color: 'var(--muted)' }}>{SETTINGS.keysLine}</p>
+
+      <Section title={SETTINGS.lookAndQuality}>
         <label style={rowStyle}>
           <Text title={SETTINGS.defaultStyle} />
           <select aria-label={SETTINGS.defaultStyle} value={shownStyle} onChange={(e) => pickStyle(e.target.value as (typeof STYLES)[number])} style={selectStyle}>
@@ -104,6 +144,42 @@ export default function SettingsV3({ openCheck }: { openCheck?: () => void } = {
             </span>
           </div>
         )}
+      </Section>
+
+      <Section title={SETTINGS.voicePrompts}>
+        <Switch label={SETTINGS.speakPrompt} checked={s.voiceOn} onChange={(voiceOn) => set({ voiceOn })}
+          hint={SETTINGS.speakLine(s.voiceOn, voiceLanguageOptions(voiceLanguage(s.voiceLang)).find(([c]) => c === voiceLanguage(s.voiceLang))?.[1] ?? '', voicePath.path.kind === 'local' ? SETTINGS.onThisComputer : voiceSettingsLine(voicePath.path, voicePath.provider))} />
+        <label style={{ ...rowStyle, ...last, alignItems: 'center' }}>
+          <Text title="Language" />
+          <select aria-label="Language" value={voiceLanguage(s.voiceLang)} onChange={(e) => set({ voiceLang: e.target.value })} style={selectStyle}>
+            {voiceLanguageOptions(voiceLanguage(s.voiceLang)).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>
+        </label>
+      </Section>
+
+      <Section title={SETTINGS.clips}>
+        <button type="button" onClick={() => navigate('BrandKit')} style={{ ...rowStyle, alignItems: 'center', width: '100%', border: 0, background: 'none', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+          <Text title={SETTINGS.brandKit} hint={SETTINGS.brandKitLine} />
+          <span style={{ display: 'flex', gap: 4 }} aria-hidden="true">
+            {(kit?.colours ?? []).slice(0, 3).map((c, i) => <span key={i} style={{ width: 16, height: 16, borderRadius: 999, background: c.hex, border: '1px solid var(--line)' }} />)}
+          </span>
+          <span style={{ color: 'var(--muted)' }}>{chevron}</span>
+        </button>
+        <div style={{ ...rowStyle, alignItems: 'center' }}>
+          <Text title={SETTINGS.saveFolder} hint={s.folderName} />
+          <button type="button" onClick={() => void changeFolder()} style={{ height: 32, padding: '0 12px', border: '1px solid var(--line-input)', borderRadius: 9, background: 'var(--surface)', font: '600 12px var(--font)', color: 'var(--ink)', cursor: 'pointer', flexShrink: 0 }}>{SETTINGS.change}</button>
+        </div>
+        <label style={{ ...rowStyle, alignItems: 'center' }}>
+          <Text title={SETTINGS.defaultExport} />
+          <select aria-label={SETTINGS.defaultExport} value={`${s.defaultExport.kind}|${s.defaultExport.quality}`}
+            onChange={(e) => { const [kind, quality] = e.target.value.split('|') as [FileKind, Quality]; set({ defaultExport: { kind, quality } }); }} style={selectStyle}>
+            {KINDS.flatMap(([kind, name]) => QUALITIES.map((q) => <option key={`${kind}|${q}`} value={`${kind}|${q}`}>{`${name} · ${q} · ${s.defaultAspect} · ${v3.fps} fps`}</option>))}
+          </select>
+        </label>
+        <button type="button" onClick={() => navigate('MediaSources')} style={{ ...rowStyle, ...last, alignItems: 'center', width: '100%', border: 0, background: 'none', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+          <Text title={SETTINGS.mediaSources} hint={sources.line} />
+          <span style={{ fontSize: 12, color: 'var(--muted)', flexShrink: 0 }}>{`${sources.on} on`}</span>
+        </button>
       </Section>
 
       <div style={{ margin: '12px 16px 0', borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', overflow: 'hidden' }}>

@@ -8,7 +8,7 @@ import { PROVIDERS } from '../../lib/providers';
 import { isRestyled, openV2Version, restyle, type RestyledClip } from '../../lib/restyle/restyle';
 import { devTools } from '../../lib/router';
 import { getSettings } from '../../lib/settings';
-import { goInSidePanel, openSidePanel, useWindowId } from '../../lib/sidepanelGo';
+import { addKeyInSidePanel, goInSidePanel, openSidePanel, useWindowId } from '../../lib/sidepanelGo';
 import type { Author, Clip } from '../../lib/types';
 import Editor from '../../screens/editor/Editor';
 import { useRouter } from './router';
@@ -73,6 +73,12 @@ export default function EditorSwitch() {
   return (
     <Suspense fallback={null}>
       <EditorV3 key={open.clip.id} clip={open.clip} look={open.look} provider={open.provider} by={open.by} go={go} save={putClip}
+        voice={{
+          provider: open.provider === 'OpenAI' ? 'openai' : 'groq',
+          onConnectPenv: () => goInSidePanel(win.current, 'PenvConnect'),
+          onAddKey: (provider) => addKeyInSidePanel(win.current, provider),
+          onSettings: () => goInSidePanel(win.current, 'SettingsV3'),
+        }}
         onOpenV2={(clip) => void putClip(openV2Version(clip)).then(() => location.reload())} />
     </Suspense>
   );

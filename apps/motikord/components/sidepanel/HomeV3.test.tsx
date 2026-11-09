@@ -56,6 +56,24 @@ describe('HomeV3', () => {
     expect(view.router.route.screen).toBe('LibraryV3');
   });
 
+  it('keeps Speak in the prompt box, Grab from this page, and the privacy footer', async () => {
+    const { host } = await mount(sidepanel, 'HomeV3');
+    expect(host.querySelector('button[aria-label="Speak your prompt"]')?.textContent).toBe('Speak');
+    expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Grab from this page')).toBe(true);
+    expect(host.textContent).toContain('writes the clip from your words. Your media stays on this computer.');
+  });
+
+  it('shows the v1 offline banner above the prompt, and drops it when back online', async () => {
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const { host } = await mount(sidepanel, 'HomeV3');
+    expect(host.textContent).toContain('You’re offline');
+    expect(host.textContent).toContain('Making and changing clips with words needs the internet.');
+    act(() => { online.mockReturnValue(true); window.dispatchEvent(new Event('online')); });
+    await settle();
+    expect(host.textContent).not.toContain('You’re offline');
+    online.mockRestore();
+  });
+
   it('opens What’s new from the card and dismisses it for good', async () => {
     const view = await mount(sidepanel, 'HomeV3');
     await press(view.host, 'Dismiss');

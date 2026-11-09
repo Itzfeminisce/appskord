@@ -5,7 +5,7 @@ import { stateCopy, type PipelineStateId } from '../../lib/pipeline/v3/states';
 
 export const STATE_IDS = [
   'keyframe-failed', 'keyframes-waiting', 'motion-failed', 'animate-layer-failed', 'animate-layer-unclear',
-  'captions-failed', 'captions-no-voice', 'voiceover-failed', 'voiceover-no-key', 'restyle-failed',
+  'captions-failed', 'captions-no-key', 'captions-no-voice', 'voiceover-failed', 'voiceover-no-key', 'restyle-failed',
   'critic-not-available', 'critic-fix-limit', 'critic-ai-failed', 'preview-light', 'effect-heavy',
   'three-d-unavailable', 'lottie-credit', 'rig-photo', 'data-paste-failed', 'look-guide-saved', 'export-60-fallback',
 ] as const;
@@ -24,6 +24,8 @@ export interface StateView {
   title: string;
   line: string;
   action?: string;
+  /** A second button beside the first (captions-no-key: Paste a key instead). */
+  action2?: string;
   /** "error" for a failure, "notice" for a heads-up, "done" for good news. */
   tone: 'error' | 'notice' | 'done';
 }
@@ -36,6 +38,7 @@ export const WHERE: Readonly<Record<StateId, string>> = {
   'animate-layer-failed': 'Editor, Layer · Animate this layer',
   'animate-layer-unclear': 'Editor, Layer · Animate this layer',
   'captions-failed': 'Editor, Captions',
+  'captions-no-key': 'Editor, Captions',
   'captions-no-voice': 'Editor, Captions',
   'voiceover-failed': 'Editor, Voiceover',
   'voiceover-no-key': 'Editor, Voiceover',
@@ -70,6 +73,7 @@ export function stateView(id: StateId, v: StateParams = {}): StateView {
   const make = (title: string, line: string, action?: string, tone: StateView['tone'] = 'error'): StateView => ({ id, title, line, action, tone });
   switch (id) {
     case 'captions-failed': return make('Your narration couldn’t be written down', 'Your clip is fine and plays without captions. Try again to add them.', 'Try again');
+    case 'captions-no-key': return { ...make('Auto captions need a Groq or OpenAI key', 'Only your narration goes to it, to be written down. Your clip works fine without captions.', 'Connect Penv Cloud'), action2: 'Paste a key instead' };
     case 'captions-no-voice': return make('No speech found in the narration', 'Your clip is unchanged. Captions appear once the narration has someone speaking.', 'Choose narration');
     case 'voiceover-failed': return make('Your voiceover wasn’t made', 'Your script is kept as written. Try again to make the voice.', 'Try again');
     case 'voiceover-no-key': return make('AI voiceover needs an OpenAI key', 'Only your script goes to OpenAI. Your clip works fine without a voice.', 'Add an OpenAI key');

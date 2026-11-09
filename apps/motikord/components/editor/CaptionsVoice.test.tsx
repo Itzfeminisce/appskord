@@ -6,11 +6,12 @@ import { CaptionsVoice, type CaptionsVoiceProps } from './CaptionsVoice';
 import { captionPieces, hasCaptions, writeCaptions } from './CaptionsVoiceEdits';
 import { EditorV3Provider, useEditorV3, type EditorV3Api } from './context';
 import { sampleClip } from './fixture';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { initV3 } from './model';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const unmounts: (() => void)[] = [];
-beforeEach(() => { vi.spyOn(console, 'error').mockImplementation(() => undefined); });
+beforeEach(() => { fakeBrowser.reset(); vi.spyOn(console, 'error').mockImplementation(() => undefined); });
 afterEach(() => { for (const u of unmounts.splice(0)) u(); vi.restoreAllMocks(); });
 
 const narration = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
@@ -63,6 +64,21 @@ describe('CaptionsVoice', () => {
     const w = await open({ narration, fetch: empty as unknown as typeof globalThis.fetch, keyOf: async () => 'gsk_test' });
     await w.click(w.sw('Auto captions'));
     expect(w.host.querySelector('[data-state=captions-no-voice]')?.textContent).toContain('No speech found in the narration');
+  });
+
+  it('shows captions-no-key, not captions-failed, when there is no speech-to-text key', async () => {
+    const fetch = vi.fn();
+    const connect = vi.fn();
+    const add = vi.fn();
+    const v = await open({ narration, fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => undefined, onConnectPenv: connect, onAddKey: add });
+    await v.click(v.sw('Auto captions'));
+    expect(v.host.querySelector('[data-state=captions-no-key]')?.textContent).toContain('Auto captions need a Groq or OpenAI key');
+    expect(v.host.querySelector('[data-state=captions-failed]')).toBeNull();
+    await v.click(v.button('Connect Penv Cloud'));
+    await v.click(v.button('Paste a key instead'));
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('shows voiceover-no-key without a request when there is no OpenAI key', async () => {
@@ -121,7 +137,7 @@ describe('CaptionsVoice', () => {
   it('a second request aborts the first, per feature', async () => {
     const signals: AbortSignal[] = [];
     const fetch = vi.fn((_u: unknown, init?: RequestInit) => { signals.push(init!.signal!); return new Promise<Response>(() => undefined); });
-    const v = await open({ narration, fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => 'sk-test' });
+    const v = await open({ narration, fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => 'sk-test', onVoiceover: async () => 1 });
     await v.click(v.sw('AI voiceover'));
     await v.click(v.button('Make voiceover'));
     await v.click(v.sw('Auto captions'));
@@ -133,7 +149,7 @@ describe('CaptionsVoice', () => {
   });
 
   it('a timeout shows the failed cards, not a cancel', async () => {
-    const v = await open({ narration, fetch: hang() as unknown as typeof globalThis.fetch, keyOf: async () => 'sk-test', timeoutMs: 20 });
+    const v = await open({ narration, fetch: hang() as unknown as typeof globalThis.fetch, keyOf: async () => 'sk-test', timeoutMs: 20, onVoiceover: async () => 1 });
     await v.click(v.sw('Auto captions'));
     await act(async () => { await new Promise((r) => setTimeout(r, 60)); });
     expect(v.host.querySelector('[data-state=captions-failed]')).not.toBeNull();
@@ -179,5 +195,54 @@ describe('short caption pieces', () => {
       expect(keys[keys.length - 1]).toEqual({ t: lens[n], v: 0 });
       expect(keys.every((k, j) => j === 0 || k.t > keys[j - 1]!.t)).toBe(true);
     });
+  });
+});
+
+describe('CaptionsVoice follows the clip and the keys', () => {
+  it('turns the captions switch off on undo and back on on redo', async () => {
+    const fetch = vi.fn(async () => json({ segments: [{ start: 0.2, end: 2.2, text: 'Morning shift.' }] }));
+    const v = await open({ narration, fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => 'gsk_test' });
+    await v.click(v.sw('Auto captions'));
+    expect(v.sw('Auto captions').getAttribute('aria-checked')).toBe('true');
+    await act(async () => { v.api().undo(); });
+    expect(v.sw('Auto captions').getAttribute('aria-checked')).toBe('false');
+    await act(async () => { v.api().redo(); });
+    expect(v.sw('Auto captions').getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('clears the no-key cards once a key is added, and asks for the right provider', async () => {
+    let key: string | undefined;
+    const add = vi.fn();
+    const v = await open({ provider: 'groq', narration, keyOf: async () => key, onAddKey: add });
+    await v.click(v.sw('Auto captions'));
+    await v.click(v.sw('AI voiceover'));
+    await v.click(v.button('Paste a key instead'));
+    await v.click(v.button('Add an OpenAI key'));
+    expect(add.mock.calls).toEqual([['groq'], ['openai']]);
+    expect(v.host.querySelector('[data-state=captions-no-key]')).not.toBeNull();
+    key = 'gsk_test';
+    await act(async () => { await fakeBrowser.storage.session.set({ groq: 'x' }); });
+    expect(v.host.querySelector('[data-state=captions-no-key]')).toBeNull();
+    expect(v.host.querySelector('[data-state=voiceover-no-key]')).toBeNull();
+  });
+
+  it('removes its storage listener on unmount', async () => {
+    const remove = vi.spyOn(fakeBrowser.storage.onChanged, 'removeListener');
+    const v = await open({ narration, keyOf: async () => undefined });
+    await v.click(v.sw('Auto captions'));
+    act(() => { unmounts.pop()!(); });
+    expect(remove).toHaveBeenCalled();
+  });
+
+  it('offers no voiceover or narration button the clip cannot use', async () => {
+    const fetch = vi.fn();
+    const v = await open({ fetch: fetch as unknown as typeof globalThis.fetch, keyOf: async () => 'sk_test' });
+    await v.click(v.sw('AI voiceover'));
+    expect(v.button('Make voiceover')).toBeUndefined();
+    expect(v.host.textContent).toContain('Voiceover needs a clip audio track');
+    await v.click(v.sw('Auto captions'));
+    expect(v.host.querySelector('[data-state=captions-no-voice]')).not.toBeNull();
+    expect(v.button('Choose narration')).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
