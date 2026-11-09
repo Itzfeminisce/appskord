@@ -9,12 +9,15 @@ const W = 266;
 const H = 64;
 export const CURVE_EDITOR = 'Curve editor: slow start, soft landing. Drag the two handles.';
 
-export function CurveEditor({ curve, onKind, onDrag }: { curve: Curve; onKind: (kind: 'curve' | 'spring') => void; onDrag: (curve: Curve) => void }) {
+export function CurveEditor({ curve, onKind, onCommit }: { curve: Curve; onKind: (kind: 'curve' | 'spring') => void; onCommit: (curve: Curve) => void }) {
   const svg = useRef<SVGSVGElement>(null);
   const [held, setHeld] = useState<0 | 1>();
   const title = useId();
+  // The dragged curve lives here while the pointer is held; one change is committed on release.
+  const [drag, setDrag] = useState<Curve>();
   const b = EDITOR_BOX;
-  const bezier = curve.kind === 'bezier' ? curve : undefined;
+  const shown = drag ?? curve;
+  const bezier = shown.kind === 'bezier' ? shown : undefined;
   const at = (e: PointerEvent) => {
     const r = svg.current?.getBoundingClientRect();
     if (!r || !r.width || !r.height) return undefined;
@@ -23,7 +26,12 @@ export function CurveEditor({ curve, onKind, onDrag }: { curve: Curve; onKind: (
   const move = (e: PointerEvent<SVGSVGElement>) => {
     if (held === undefined || !bezier) return;
     const p = at(e);
-    if (p) onDrag(dragHandle(bezier, held, p, b));
+    if (p) setDrag(dragHandle(bezier, held, p, b));
+  };
+  const release = () => {
+    if (drag) onCommit(drag);
+    setDrag(undefined);
+    setHeld(undefined);
   };
   const start = toBox(b, 0, 0);
   const end = toBox(b, 1, 1);
@@ -35,11 +43,11 @@ export function CurveEditor({ curve, onKind, onDrag }: { curve: Curve; onKind: (
         <Segmented small name="Curve or spring" options={[['curve', 'Curve'], ['spring', 'Spring']] as const} value={bezier ? 'curve' : 'spring'} onChange={onKind} />
       </span>
       <svg ref={svg} role="img" {...(bezier ? { 'aria-label': CURVE_EDITOR } : { 'aria-labelledby': title })} width={W} height={H} viewBox={`0 0 ${W} ${H}`}
-        onPointerMove={move} onPointerUp={() => setHeld(undefined)} onPointerCancel={() => setHeld(undefined)}
+        onPointerMove={move} onPointerUp={release} onPointerCancel={release}
         style={{ position: 'absolute', left: 0, top: 22, overflow: 'visible', touchAction: 'none' }}>
         <path d={`M${b.left} ${b.top + b.height}h${b.width}M${b.left} ${b.top - 2}h${b.width}`} stroke="#EDEDF0" strokeWidth="1" />
         {hs && <path d={`M${start.x} ${start.y} L${hs[0].x} ${hs[0].y}M${end.x} ${end.y} L${hs[1].x} ${hs[1].y}`} stroke="#F9A8D4" strokeWidth="1.2" />}
-        <path data-curve d={curvePath(curve, b)} fill="none" stroke="#BE185D" strokeWidth="2" strokeLinecap="round" />
+        <path data-curve d={curvePath(shown, b)} fill="none" stroke="#BE185D" strokeWidth="2" strokeLinecap="round" />
         {hs?.map((h, i) => (
           <circle key={i} data-handle={i} cx={h.x} cy={h.y} r="5" fill="#FFFFFF" stroke="#BE185D" strokeWidth="2" style={{ cursor: 'grab' }}
             onPointerDown={(e) => { svg.current?.setPointerCapture?.(e.pointerId); setHeld(i as 0 | 1); }} />

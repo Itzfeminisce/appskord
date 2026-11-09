@@ -63,7 +63,7 @@ function MotionFor({ scene, layer }: { scene: SceneV3; layer: LayerV3 }) {
             const curve: Curve = v === 'spring' ? { kind: 'spring', bounce: 20, ms: spec.ms } : FEEL.smooth.curve;
             set({ curve }, v === 'spring' ? `Spring · ${20}% bounce` : 'Curve');
           }}
-          onDrag={(curve) => set({ curve }, 'Curve', `${layer.id}:curve`)} />
+          onCommit={(curve) => set({ curve }, 'Curve')} />
         {spring && (
           <Slider name="Bounce" min={0} max={100} value={spring.bounce} text={`Spring · ${spring.bounce}% bounce`}
             onChange={(b) => set({ curve: { ...spring, bounce: b } }, `Spring · ${b}% bounce`, `${layer.id}:bounce`)} />

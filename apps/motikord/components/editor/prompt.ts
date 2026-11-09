@@ -23,9 +23,11 @@ export function syncScenes(clip: RestyledClip, next: Recipe): SceneV3[] | undefi
   try {
     const scenes = next.scenes.map((s, i) => {
       const old = clip.v3.scenes.find((o) => o.id === s.id);
-      if (old && same(old.layers.map((l) => l.id).sort(), s.layers.map((l) => l.id).sort())) {
-        if (old.ms === s.durationMs) return old;
-        const kept = { ...old, ms: s.durationMs };
+      const ids = s.layers.map((l) => l.id);
+      if (old && same(old.layers.map((l) => l.id).sort(), [...ids].sort())) {
+        const layers = ids.map((id) => old.layers.find((l) => l.id === id)!);
+        const kept = { ...old, layers, ms: s.durationMs };
+        if (same(layers, old.layers) && old.ms === s.durationMs) return old;
         if (validateScene(kept).ok) return kept;
       }
       return built()[i]!;

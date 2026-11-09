@@ -15,9 +15,9 @@ import { chartData, DataTab } from './DataScenes';
 import { EditorV3Provider, useEditorV3 } from './context';
 import { EffectsDialog } from './EffectsDialog';
 import { LayerTab, type Bakers } from './LayerTab';
-import { clipMs, clock, sceneStarts, sceneTitle, TABS, templateName, type Tab } from './model';
+import { clipMs, clock, sceneStarts, sceneTitle, TABS, templateName, type Tab, type V3State } from './model';
 import { MotionTab } from './MotionTab';
-import { applyPromptV3, recipeOps, setSizeV3 } from './prompt';
+import { applyPromptV3, setSizeV3 } from './prompt';
 import { SceneTab } from './SceneTab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
@@ -177,7 +177,6 @@ function TopBar({ status, go, checkCount }: { status: SaveStatus; go?: (to: Chro
           );
         })}
       </div>
-      <button type="button" onClick={() => go?.('sizes')} style={barButton()}>All sizes</button>
       <button type="button" aria-pressed={overlay === 'add'} onClick={() => toggle('add')} style={barButton(overlay === 'add')}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>Add</button>
       <button type="button" aria-pressed={overlay === 'effects'} onClick={() => toggle('effects')} style={barButton(overlay === 'effects')}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke}><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /><circle cx="12" cy="12" r="3" /></svg>Effects</button>
       <button type="button" title="Look guide" onClick={() => go?.('look')} style={{ ...barButton(), padding: '0 10px 0 8px', gap: 7 }}>
@@ -200,9 +199,9 @@ function Prompt() {
   return (
     <PromptField recipe={ed.state.clip.recipe} speak={false} maxWidth={560}
       apply={(out) => {
-        if (!recipeOps(ed.state.clip, out.recipe, out.edit.ops)) return false;
-        ed.update((st) => applyPromptV3(st, out));
-        return true;
+        let base: V3State | undefined;
+        const next = ed.update((st) => (base = st, applyPromptV3(st, out)));
+        return next !== base;
       }} />
   );
 }

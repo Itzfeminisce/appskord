@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SceneV3 } from '@appskord/motion/types';
 import type { AnimateResult } from '../../lib/pipeline/v3/animateLayer';
 import type { BundledAsset } from './AssetPicker';
+import { EditorV3Provider, useEditorV3 } from './context';
 import { EditorV3, type EditorV3Props } from './EditorV3';
 import { sampleClip } from './fixture';
 import type { Bakers } from './LayerTab';
@@ -91,9 +92,8 @@ describe('Motion tab', () => {
 });
 
 describe('EditorMotion top bar: sizes', () => {
-  it('switches the size between 9:16, 1:1 and 16:9, and All sizes goes to sizes', async () => {
-    const go = vi.fn();
-    const v = await open({ go });
+  it('switches the size between 9:16, 1:1 and 16:9, and has no All sizes button', async () => {
+    const v = await open();
     const sizes = v.all('[role="radiogroup"][aria-label="Size"] [role="radio"]');
     expect(sizes.map((e) => e.textContent)).toEqual(['9:16', '1:1', '16:9']);
     expect(v.host.querySelector('canvas')!.parentElement!.style.aspectRatio).toBe('1920 / 1080');
@@ -101,8 +101,7 @@ describe('EditorMotion top bar: sizes', () => {
     expect(v.all('[role="radiogroup"][aria-label="Size"] [aria-checked="true"]')[0]!.textContent).toBe('1:1');
     expect(v.host.querySelector('canvas')!.parentElement!.style.aspectRatio).toBe('1080 / 1080');
     expect(await v.newest()).toBe('Size 1:1');
-    await v.click(v.button('All sizes'));
-    expect(go).toHaveBeenCalledWith('sizes');
+    expect(v.button('All sizes')).toBeUndefined();
   });
 });
 
@@ -124,11 +123,31 @@ describe('Motion tab: curve', () => {
     const before = svg.querySelector('[data-curve]')!.getAttribute('d');
     await act(async () => { svg.querySelector('[data-handle="0"]')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 })); });
     for (const x of [100, 134]) await act(async () => { svg.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: x, clientY: 56 })); });
+    expect(svg.querySelector('[data-curve]')!.getAttribute('d')).not.toBe(before);
     await act(async () => { svg.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })); });
     expect(v.host.querySelector('svg[aria-label^="Curve editor"] [data-curve]')!.getAttribute('d')).not.toBe(before);
     expect(v.host.querySelector('svg[aria-label^="Curve editor"] [data-handle="0"]')!.getAttribute('cx')).toBe('134');
     expect(v.host.querySelectorAll('[data-motion-curve="in"]').length).toBeGreaterThan(0);
     expect(await v.newest()).toMatch(/: Curve$/);
+    expect(v.all('[role="tabpanel"] li').length).toBe(2);
+  });
+
+  it('commits a cancelled drag once, and a click without a move not at all', async () => {
+    const v = await open();
+    let svg = v.host.querySelector<SVGSVGElement>('svg[aria-label^="Curve editor"]')!;
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 266, height: 64, right: 266, bottom: 64, x: 0, y: 0, toJSON: () => ({}) });
+    const down = () => act(async () => { svg.querySelector('[data-handle="1"]')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 })); });
+    await down();
+    await act(async () => { svg.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })); });
+    await v.tab('Changes');
+    expect(v.all('[role="tabpanel"] li').length).toBe(1);
+    await v.tab('Motion');
+    svg = v.host.querySelector<SVGSVGElement>('svg[aria-label^="Curve editor"]')!;
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 266, height: 64, right: 266, bottom: 64, x: 0, y: 0, toJSON: () => ({}) });
+    await down();
+    for (const x of [200, 220]) await act(async () => { svg.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: x, clientY: 10 })); });
+    await act(async () => { svg.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 })); });
+    await v.tab('Changes');
     expect(v.all('[role="tabpanel"] li').length).toBe(2);
   });
 
@@ -293,5 +312,24 @@ describe('Timeline keyframes', () => {
     expect(await v.newest()).toMatch(/: \d\.\d s → \d\.\d s$/);
     await v.click(v.host.querySelector('button[aria-label="Undo"]')!);
     expect(v.all('[role="tabpanel"] li').length).toBe(2);
+  });
+});
+
+describe('update', () => {
+  it('returns the state it made, so a caller can tell a refused change from an applied one', async () => {
+    let api!: ReturnType<typeof useEditorV3>;
+    const Probe = () => { api = useEditorV3(); return null; };
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    await act(async () => { root.render(<EditorV3Provider clip={structuredClone(clip)}><Probe /></EditorV3Provider>); });
+    unmounts.push(() => { act(() => root.unmount()); });
+    const before = api.state;
+    let refused: unknown;
+    await act(async () => { refused = api.update((st) => st); });
+    expect(refused).toBe(before);
+    let made: unknown;
+    await act(async () => { made = api.update((st) => ({ ...st, scene: 1 })); api.update((st) => ({ ...st, tab: 'Changes' as never })); });
+    expect((made as typeof before).scene).toBe(1);
+    expect(api.state.scene).toBe(1);
   });
 });

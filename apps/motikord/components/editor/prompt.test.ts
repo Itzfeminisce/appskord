@@ -47,6 +47,20 @@ describe('v3 prompt edits', () => {
     expect(validateClip({ ...clip.v3, scenes: b }).ok).toBe(true);
   });
 
+  it('follows a layer reorder and keeps each layer\'s motion', () => {
+    const base = structuredClone(clip);
+    const ids = new Set(base.recipe.scenes[0]!.layers.map((l) => l.id));
+    base.v3.scenes[0]!.layers = base.v3.scenes[0]!.layers.filter((l) => ids.has(l.id));
+    base.v3.scenes[0]!.effects = [];
+    const old = base.v3.scenes[0]!.layers;
+    const ops: PatchOp[] = [{ op: 'move', from: '/scenes/0/layers/0', path: '/scenes/0/layers/1' }];
+    const next = applyPatch(base.recipe, ops).doc;
+    const out = syncScenes(base, next)!;
+    expect(out[0]!.layers.map((l) => l.id)).toEqual(next.scenes[0]!.layers.map((l) => l.id));
+    expect(out[0]!.layers.map((l) => l.id)).not.toEqual(old.map((l) => l.id));
+    for (const l of out[0]!.layers) expect(l).toEqual(old.find((o) => o.id === l.id));
+  });
+
   it('undoes a prompt edit in one step', () => {
     const st = applyPromptV3(initV3(clip), answer([{ op: 'remove', path: '/scenes/1' }]));
     expect(st.clip.v3.scenes).toHaveLength(clip.v3.scenes.length - 1);

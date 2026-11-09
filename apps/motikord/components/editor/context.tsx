@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useReducer, useState, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LayerV3, LookGuide, SceneV3 } from '@appskord/motion/types';
 import { getPackV3, packLook, type PackV3 } from '../../lib/look/packs';
 import type { RestyledClip } from '../../lib/restyle/restyle';
@@ -12,8 +12,8 @@ export interface EditorV3Api {
   layer: LayerV3 | undefined;
   pack: PackV3;
   look: LookGuide;
-  /** Applies a state change: an edit (through validateScene) or a selection. */
-  update: (fn: (st: V3State) => V3State) => void;
+  /** Applies a state change: an edit (through validateScene) or a selection. Returns the state it made. */
+  update: (fn: (st: V3State) => V3State) => V3State;
   undo: () => void;
   redo: () => void;
   select: (scene: number, layerId?: string) => void;
@@ -43,7 +43,13 @@ export function useEditorV3(): EditorV3Api {
 }
 
 export function EditorV3Provider({ clip, look, provider = 'Groq', initial, children }: { clip: RestyledClip; look?: LookGuide; provider?: string; initial?: Partial<V3State>; children: ReactNode }) {
-  const [state, update] = useReducer((st: V3State, fn: (st: V3State) => V3State) => fn(st), clip, (c) => ({ ...initV3(c), ...initial }));
+  const [state, setState] = useState<V3State>(() => ({ ...initV3(clip), ...initial }));
+  const latest = useRef(state);
+  const update = useCallback((fn: (st: V3State) => V3State) => {
+    const next = fn(latest.current);
+    if (next !== latest.current) { latest.current = next; setState(next); }
+    return next;
+  }, []);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>();
