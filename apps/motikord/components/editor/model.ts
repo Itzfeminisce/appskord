@@ -208,14 +208,6 @@ export function layerContent(clip: RestyledClip, i: number, layer: LayerV3): Lay
   return { size: { w: v2.box.w, h: v2.box.h }, color: v2.fill, shape: v2.shape, radius: v2.radius };
 }
 
-/** What the renderer draws for a layer beyond its tracks: its words, or its v2 shape's size, fill and corners. */
-export function layerContent(clip: RestyledClip, i: number, layer: LayerV3): LayerContent | undefined {
-  if (layer.kind === 'text') return { text: layerText(clip, i, layer) ?? '' };
-  const v2 = v2Layer(clip, i, layer.id);
-  if (v2?.type !== 'shape') return undefined;
-  return { size: { w: v2.box.w, h: v2.box.h }, color: v2.fill, shape: v2.shape, radius: v2.radius };
-}
-
 /** "Notes that find you": the scene's first words. */
 export function sceneTitle(clip: RestyledClip, i: number): string {
   const s = clip.v3.scenes[i];
