@@ -67,6 +67,7 @@ export default function EditorSwitch() {
     const params = { clipId: open.clip.id };
     if (to === 'library') goInSidePanel(win.current, 'Library');
     else if (to === 'look') openSidePanel(win.current);
+    // ExportV3 stays registered; its runner arrives later, so Export goes to the working screen for now.
     else navigate(to === 'brand' ? 'BrandKit' : to === 'check' ? 'Checker' : 'Export', params);
   };
   return (

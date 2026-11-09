@@ -3,6 +3,9 @@ import LibraryV3 from '../../components/sidepanel/LibraryV3';
 import LookBible from '../../components/sidepanel/LookBible';
 import LookLock from '../../components/sidepanel/LookLock';
 import MakingMotion from '../../components/sidepanel/MakingMotion';
+import PrivacyV3 from '../../components/settings/PrivacyV3';
+import SettingsV3 from '../../components/settings/SettingsV3';
+import StatesV3 from '../../components/states/StatesV3';
 import TemplatesListV3 from '../../components/sidepanel/TemplatesListV3';
 import WhatsNewV3 from '../../components/sidepanel/WhatsNewV3';
 import { createRouter } from '../../lib/router';
@@ -43,7 +46,7 @@ export const sidepanel = createRouter({
   Main, Setup, PenvConnect, PasteKey, PenvConnected,
   Home, ImageKey, VoicePrompt, ClipType, Templates, YourMedia, LookSheet, StoryboardEdit, Making, MakingFailed, Grab,
   BrandKit, Library, LibraryEmpty, Settings, SettingsModel, MediaSources, AddSource, Privacy, Recovered, StatesSetup, StatesCreate, StatesLibrary, StatesVoice, StatesSources,
-  HomeV3, WhatsNewV3, LookLock, LookBible, MakingMotion, TemplatesListV3, LibraryV3,
+  HomeV3, WhatsNewV3, LookLock, LookBible, MakingMotion, TemplatesListV3, LibraryV3, SettingsV3, PrivacyV3, StatesV3,
 });
 export type SidepanelScreen = (typeof sidepanel.names)[number];
 export const { RouterProvider, useRouter, Outlet } = sidepanel;

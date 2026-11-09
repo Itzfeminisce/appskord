@@ -3,6 +3,7 @@ import AccessPrompt from '../../screens/AccessPrompt';
 import BrandKit from '../../screens/BrandKit';
 import Checker from '../../screens/Checker';
 import Credits from '../../screens/Credits';
+import { ExportV3Route, RestyleV2Route } from '../../components/export/routes';
 import StatesEditor from '../../screens/editor/StatesEditor';
 import StatesExport from '../../screens/StatesExport';
 import StatesMedia from '../../screens/StatesMedia';
@@ -22,7 +23,7 @@ import Editor from './EditorSwitch';
 export const editor = createRouter({
   Editor, EditorPrompt, Formats, Presets, Checker,
   MediaSearch, AccessPrompt, Music, Credits,
-  Export, Rendering, Exported, StatesEditor, StatesMedia, StatesExport,
+  Export, ExportV3: ExportV3Route, RestyleV2: RestyleV2Route, Rendering, Exported, StatesEditor, StatesMedia, StatesExport,
   Library, BrandKit, YourMedia,
 });
 export type EditorScreen = (typeof editor.names)[number];

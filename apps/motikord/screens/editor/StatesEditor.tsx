@@ -101,14 +101,14 @@ export function SaveStatusLine({ status }: { status: SaveStatus }) {
 }
 
 /** Whole tab: the clip was deleted (in the Library or another tab). */
-export function ClipNotFound({ onGo }: { onGo?: () => void }) {
+export function ClipNotFound({ onGo, label = 'Go to your clips' }: { onGo?: () => void; label?: string }) {
   return (
     <div role="alert" style={{ padding: 14, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
       <svg {...svg(20)} stroke="var(--muted)" strokeWidth={2}><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.01" /></svg>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
         <span style={{ fontSize: 14, fontWeight: 600 }}>This clip isn’t here anymore</span>
         <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>It was deleted, so there is nothing to open. Your other clips are safe.</span>
-        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}><button type="button" onClick={onGo} style={actionStyle}>Go to your clips</button></div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}><button type="button" onClick={onGo} style={actionStyle}>{label}</button></div>
       </div>
     </div>
   );

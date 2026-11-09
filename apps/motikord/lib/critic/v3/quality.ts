@@ -55,12 +55,17 @@ export interface QualityOptions extends AiOptions {
   /** Automatic fixes already used, by scene id; "Check again" passes the last result's. */
   fixesUsed?: Readonly<Record<string, number>>;
 }
+/** The two states that have a state card; key-needed is not a card id and shows the key card. */
+export type PassCardState = 'critic-not-available' | 'critic-ai-failed';
+export type PassState = PassCardState | 'key-needed';
+export const passCardState = (s: PassState | undefined): PassCardState | undefined => (s === 'key-needed' ? undefined : s);
+
 export interface PassResult {
   id: PassId;
   name: string;
   ran: boolean;
-  /** Why the AI part didn't run: critic-not-available, or critic-ai-failed (the call failed or timed out). */
-  state?: 'critic-not-available' | 'critic-ai-failed';
+  /** Why the AI part didn't run: critic-not-available, critic-ai-failed (the call failed or timed out), or key-needed (its own state, with the key card's copy). */
+  state?: PassState;
   copy?: StateCopy;
   notes: QualityNote[];
   frames: number;
@@ -149,6 +154,8 @@ async function runPass(pass: PassId, x: CheckInput, o: QualityOptions): Promise<
     if (signal.aborted && !o.signal?.aborted) return failed();
     const err = toAiError(e, 'make');
     if (err.code === 'cancelled') throw err;
+    // No key is not "the AI didn't answer": it keeps its own state.
+    if (err.state === 'key-needed') return result({ state: 'key-needed', frames: images.length, tokens });
     // A garbled reply means no AI notes; the free checks still stand.
     if (err.code === 'bad-reply') return result({ ran: true, frames: images.length, tokens });
     console.error('Motikord: could not run quality check', err);

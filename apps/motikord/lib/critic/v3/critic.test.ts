@@ -12,7 +12,7 @@ import type { Recipe } from '../../types';
 import { strictTokens } from '../../pipeline/v3/tokens';
 import { isFlat, note, runChecks, stiffLines } from './checks';
 import { applyFix } from './fixes';
-import { passMessages, QUALITY, qualityCheck } from './quality';
+import { passCardState, passMessages, QUALITY, qualityCheck } from './quality';
 
 function made(recipe: Recipe = testRecipe()) {
   const r = addMotion({ recipe, board: approveAll(drawKeyFrames(recipe, LOOK, PACK)), look: LOOK, pack: PACK });
@@ -191,6 +191,16 @@ describe('quality check: three passes', () => {
     spy.mockRestore();
   });
 
+  it('a missing key keeps its own state and is not shown as critic-ai-failed', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const g = fakeGroq({});
+    const r = await qualityCheck(flawed(), { ...g.opts, key: undefined, critic: vision() });
+    expect(r.passes.map((q) => q.state)).toEqual(['key-needed', 'key-needed', 'key-needed']);
+    expect(r.passes[2]!.copy).toBeUndefined();
+    expect(r.passes[2]!.notes.length).toBe(3);
+    spy.mockRestore();
+  });
+
   it('keeps a twelve-scene wordy clip under 8,000 tokens per call, frames included', async () => {
     const base = testRecipe();
     const recipe: Recipe = { ...base, scenes: Array.from({ length: 12 }, (_, i) => ({ ...structuredClone(base.scenes[i % 5]!), id: `s${i}` })) };
@@ -282,5 +292,12 @@ describe('quality check: hard caps, validated fixes, timeout', () => {
       spy.mockRestore();
       vi.useRealTimers();
     }
+  });
+});
+
+describe('passCardState', () => {
+  it('gives a card id for the two card states and none for key-needed', () => {
+    expect([passCardState('critic-ai-failed'), passCardState('critic-not-available'), passCardState('key-needed'), passCardState(undefined)])
+      .toEqual(['critic-ai-failed', 'critic-not-available', undefined, undefined]);
   });
 });
