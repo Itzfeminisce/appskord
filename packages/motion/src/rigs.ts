@@ -265,3 +265,53 @@ export function poseBones(bones: readonly Bone[], poses: Partial<Record<BoneId, 
   for (const b of bones) place(b);
   return out;
 }
+
+const segmentDistance = (p: Point, a: Point, c: Point): number => {
+  const dx = c[0] - a[0];
+  const dy = c[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  const k = len2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+  return Math.hypot(p[0] - a[0] - dx * k, p[1] - a[1] - dy * k);
+};
+
+/**
+ * Skins an outline to its bones: each point follows every joint segment from `rest` to `posed` (both from
+ * poseBones), weighted by nearness, keeping its offset along and across the segment (squash stretches along).
+ * At rest every point stays where it is.
+ */
+export function deformPoints(
+  points: readonly Point[],
+  rest: Partial<Record<BoneId, Point[]>>,
+  posed: Partial<Record<BoneId, Point[]>>,
+): Point[] {
+  const segs: [Point, Point, Point, Point][] = [];
+  for (const id of Object.keys(rest) as BoneId[]) {
+    const r = rest[id]!;
+    const p = posed[id];
+    if (!p) continue;
+    for (let j = 0; j + 1 < r.length && j + 1 < p.length; j++) segs.push([r[j]!, r[j + 1]!, p[j]!, p[j + 1]!]);
+  }
+  if (!segs.length) return points.map((q) => [q[0], q[1]]);
+  return points.map((q) => {
+    let x = 0;
+    let y = 0;
+    let total = 0;
+    for (const [a, c, a2, c2] of segs) {
+      const len = Math.hypot(c[0] - a[0], c[1] - a[1]);
+      const len2 = Math.hypot(c2[0] - a2[0], c2[1] - a2[1]);
+      if (!(len > 0) || !(len2 > 0)) continue;
+      const w = 1 / (1 + segmentDistance(q, a, c)) ** 4;
+      const ux = (c[0] - a[0]) / len;
+      const uy = (c[1] - a[1]) / len;
+      const along = (q[0] - a[0]) * ux + (q[1] - a[1]) * uy;
+      const across = -(q[0] - a[0]) * uy + (q[1] - a[1]) * ux;
+      const vx = (c2[0] - a2[0]) / len2;
+      const vy = (c2[1] - a2[1]) / len2;
+      const s = along * (len2 / len);
+      x += w * (a2[0] + vx * s - vy * across);
+      y += w * (a2[1] + vy * s + vx * across);
+      total += w;
+    }
+    return total > 0 ? [x / total, y / total] : [q[0], q[1]];
+  });
+}

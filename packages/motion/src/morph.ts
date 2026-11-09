@@ -26,6 +26,22 @@ export function morpher(
   };
 }
 
+/**
+ * Like morpher, but every t (ends included) gives the same resampled point count, so a mesh can be cut into
+ * triangles once and moved in place. Rings flubber cannot resample hold the nearer end.
+ */
+export function morphRing(
+  from: readonly Point[],
+  to: readonly Point[],
+  maxSegmentLength = MORPH_SEGMENT,
+): (t: number) => Point[] {
+  if (from.length < 3 || to.length < 3) return morpher(from, to, maxSegmentLength);
+  const a = from.map((p) => [p[0], p[1]]);
+  const b = to.map((p) => [p[0], p[1]]);
+  const mid = interpolate(a, b, { maxSegmentLength, string: false }) as unknown as (t: number) => number[][];
+  return (t) => mid(t > 0 ? (t < 1 ? t : 1) : 0).map((p) => [p[0] as number, p[1] as number]);
+}
+
 /** Morphs a ShapeMesh along the layer's `morph` track, reading the state applyFrame left in userData. */
 export class Morph {
   private readonly at: (t: number) => Point[];
