@@ -224,6 +224,7 @@ describe('textNumber', () => {
   it('reads the first number with its prefix and suffix as written', () => {
     expect(textNumber('1,200')).toEqual({
       raw: '1,200',
+      index: 0,
       value: 1200,
       decimals: 0,
       grouped: true,
@@ -242,8 +243,32 @@ describe('textNumber', () => {
     expect(countedNumber(n, 0, 0)).toBe('0');
     expect(countedNumber(n, 0, 0.5)).toBe('600');
     expect(countedNumber(n, 0, 1)).toBe('1,200');
-    expect(countedNumber(textNumber('2019')!, 0, 1)).toBe('2019');
     expect(countedNumber(textNumber('$4.5k')!, 0, 0.5)).toBe('2.3');
+  });
+
+  it('ends on the number exactly as typed', () => {
+    for (const text of ['1,200', '4.50', '007', '−12', '0.0']) {
+      const n = textNumber(text)!;
+      expect(countedNumber(n, 0, 1)).toBe(n.raw);
+      expect(countedNumber(n, 0, 1.2)).toBe(n.raw);
+    }
+  });
+
+  it('skips a bare year, but counts one written with a symbol', () => {
+    expect(textNumber('Since 2019')).toBeUndefined();
+    expect(textNumber('2019')).toBeUndefined();
+    expect(textNumber('Since 2019, 500 bakers')).toMatchObject({ raw: '500', index: 12 });
+    expect(textNumber('$2019')).toMatchObject({ value: 2019, prefix: '$' });
+    expect(textNumber('2019%')).toMatchObject({ value: 2019, suffix: '%' });
+    expect(textNumber('2,019 orders')).toMatchObject({ value: 2019 });
+    expect(textNumber('1850 miles')).toMatchObject({ value: 1850 });
+  });
+
+  it('keeps a Unicode minus sign', () => {
+    const n = textNumber('−40 °C')!;
+    expect(n).toMatchObject({ raw: '−40', value: -40, suffix: ' °C' });
+    expect(countedNumber(n, 0, 0.5)).toBe('−20');
+    expect(textNumber('Top−10')).toMatchObject({ value: 10 });
   });
 });
 

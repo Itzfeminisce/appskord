@@ -210,14 +210,18 @@ export function placeInside(
   at: { x: number; y: number },
   size: { width: number; height: number },
   rect: Rect,
+  out: { x: number; y: number } = { x: 0, y: 0 },
 ): { x: number; y: number } {
-  const axis = (c: number, s: number, lo: number, span: number): number => {
-    if (!Number.isFinite(c)) return 0;
-    if (!Number.isFinite(span)) return c;
-    if (s >= span) return lo + span / 2;
-    return Math.min(Math.max(c, lo + s / 2), lo + span - s / 2);
-  };
-  return { x: axis(at.x, size.width, rect.x, rect.width), y: axis(at.y, size.height, rect.y, rect.height) };
+  out.x = keepInside(at.x, size.width, rect.x, rect.width);
+  out.y = keepInside(at.y, size.height, rect.y, rect.height);
+  return out;
+}
+
+function keepInside(c: number, s: number, lo: number, span: number): number {
+  if (!Number.isFinite(c)) return 0;
+  if (!Number.isFinite(span)) return c;
+  if (s >= span) return lo + span / 2;
+  return Math.min(Math.max(c, lo + s / 2), lo + span - s / 2);
 }
 
 /** Scale to fill: the factor that makes a line `textWidth` wide span the frame between insets. */
@@ -401,7 +405,7 @@ export class KineticType extends THREE.Group {
   private widest = 0;
 
   constructor(
-    text: string,
+    readonly source: string,
     readonly unit: Unit,
     readonly options: {
       measure: Measure;
@@ -428,9 +432,9 @@ export class KineticType extends THREE.Group {
     const lineHeight = options.lineHeight ?? options.fontSize * 1.1;
     const width = options.area?.width;
     const wrap = width !== undefined && positive(width) ? width : Infinity;
-    const lines = wrapLines(text, options.measure, wrap);
+    const lines = wrapLines(source, options.measure, wrap);
     this.lineCount = lines.length;
-    this.boxes = layoutUnits(text, unit, options.measure, lineHeight, wrap);
+    this.boxes = layoutUnits(source, unit, options.measure, lineHeight, wrap);
     this.unitCount = unitCount(this.boxes);
     const widths = lines.map((line) => options.measure(line));
     const widest = Math.max(0, ...widths);
@@ -540,19 +544,34 @@ export class KineticType extends THREE.Group {
   }
 
   /**
-   * Shows `shown` in place of `raw` in each unit that holds it (a counting number), keeping the block laid out for
+   * The unit that holds the `length` characters at `index` of the source text, and where they start in it; undefined
+   * when no one unit holds them all.
+   */
+  unitOf(index: number, length: number): { unit: number; at: number } | undefined {
+    let from = 0;
+    for (let i = 0; i < this.boxes.length; i++) {
+      const text = this.boxes[i]!.text;
+      const start = this.source.indexOf(text, from);
+      if (start < 0) return undefined;
+      if (index >= start && index + length <= start + text.length) return { unit: i, at: index - start };
+      from = start + text.length;
+    }
+    return undefined;
+  }
+
+  /**
+   * Shows `shown` in place of the `length` characters at `where` (a counting number), keeping the block laid out for
    * the full text so nothing reflows while it counts.
    */
-  retext(raw: string, shown: string): void {
-    this.texts.forEach((t, i) => {
-      const base = this.boxes[i]!.text;
-      if (!base.includes(raw)) return;
-      const next = base.replace(raw, shown);
-      if ((t as TextProps).text !== next) {
-        (t as TextProps).text = next;
-        t.sync();
-      }
-    });
+  retext(where: { unit: number; at: number }, length: number, shown: string): void {
+    const t = this.texts[where.unit];
+    const base = this.boxes[where.unit]?.text;
+    if (!t || base === undefined) return;
+    const next = base.slice(0, where.at) + shown + base.slice(where.at + length);
+    if ((t as TextProps).text !== next) {
+      (t as TextProps).text = next;
+      t.sync();
+    }
   }
 
   /** Resolves once every unit has typeset and been placed from its real glyph widths. */

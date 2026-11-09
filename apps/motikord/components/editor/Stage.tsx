@@ -84,6 +84,7 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
         effects: [...(v3.effects ?? []), ...previewUses],
         look,
         spread,
+        hints: true,
         content: (l) => contents.get(l.id) ?? undefined,
       });
       next.attach(gl);

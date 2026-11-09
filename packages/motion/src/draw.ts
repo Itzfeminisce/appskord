@@ -105,6 +105,8 @@ export function formatCount(count: Count, draw: number, grouped = true): string 
 export interface TextNumber {
   /** The number as written, which the count replaces. */
   raw: string;
+  /** Where `raw` starts in the text (UTF-16 index). */
+  index: number;
   value: number;
   decimals: number;
   /** Written with thousands commas ("1,200"). */
@@ -113,28 +115,43 @@ export interface TextNumber {
   suffix: string;
 }
 
-// A minus counts only at the start of a word, so "Top-10" is 10.
-const NUMBER = /(?:(?<![^\s(])-)?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?/;
+// A minus ("-" or "−") counts only at the start of a word, so "Top-10" is 10.
+const NUMBER = /(?:(?<![^\s(])[-−])?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?/g;
+const YEAR = /^(?:19|20)\d\d$/;
+const SYMBOL = /[\p{S}%#]/u;
 
-/** The first number in `text`; undefined when it has none, so there is nothing to count. */
+/**
+ * The first number in `text`; undefined when it has none, so there is nothing to count. A bare year ("Since 2019")
+ * is a date, not a figure: it counts only with a symbol written against it ("$2019", "2019%").
+ */
 export function textNumber(text: string): TextNumber | undefined {
-  const m = NUMBER.exec(text);
-  if (!m) return undefined;
-  const raw = m[0];
-  const frac = raw.split('.')[1];
-  return {
-    raw,
-    value: Number(raw.replace(/,/g, '')),
-    decimals: frac?.length ?? 0,
-    grouped: raw.includes(','),
-    prefix: text.slice(0, m.index),
-    suffix: text.slice(m.index + raw.length),
-  };
+  for (const m of text.matchAll(NUMBER)) {
+    const raw = m[0];
+    const index = m.index;
+    const end = index + raw.length;
+    if (YEAR.test(raw) && !SYMBOL.test(text[index - 1] ?? '') && !SYMBOL.test(text[end] ?? '')) continue;
+    const frac = raw.split('.')[1];
+    return {
+      raw,
+      index,
+      value: Number(raw.replace(/,/g, '').replace('−', '-')),
+      decimals: frac?.length ?? 0,
+      grouped: raw.includes(','),
+      prefix: text.slice(0, index),
+      suffix: text.slice(end),
+    };
+  }
+  return undefined;
 }
 
-/** The number a text layer's count shows at progress `draw`, written as its text writes it, without the prefix and suffix. */
+/**
+ * The number a text layer's count shows at progress `draw`, written as its text writes it, without the prefix and
+ * suffix. Once the count is done it is the text's own number, exactly as typed.
+ */
 export function countedNumber(n: TextNumber, from: number, draw: number): string {
-  return formatCount({ from, to: n.value, decimals: n.decimals }, draw, n.grouped);
+  if (draw >= 1) return n.raw;
+  const shown = formatCount({ from, to: n.value, decimals: n.decimals }, draw, n.grouped);
+  return n.raw.startsWith('−') ? shown.replace(/^-/, '−') : shown;
 }
 
 /** The bones on `host` when the scene holds its rig layers: auto bones for its size, centred on `centre`. */
