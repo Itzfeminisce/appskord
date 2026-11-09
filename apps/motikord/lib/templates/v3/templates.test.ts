@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getSceneTemplate } from '@appskord/scenes/templates/scenes';
 import { validateClip, validateScene } from '@appskord/motion/recipe';
 import { PACKS_V3, packFinish } from '../../look/packs';
-import { buildScene, linkScenes, templateLayers } from './build';
+import { buildScene, linkScenes, startAtZero, templateLayers } from './build';
 import { TEMPLATES_V3 } from './templates';
 
 const ORDER = [
@@ -75,8 +75,35 @@ describe('v3 templates', () => {
 
   it('uses the real count, extrude and soft fields', () => {
     const layers = TEMPLATES_V3.flatMap((t) => buildScene(t, PACKS_V3.find((p) => p.id === t.packId)!, { id: t.id }).layers);
-    expect(layers.find((l) => l.id === 'count')!.count).toEqual({ from: 0, to: 2400, decimals: 0 });
+    // The stat's count runs on its number's own text layer: no layer of its own, no sample value.
+    expect(layers.some((l) => l.id === 'count')).toBe(false);
+    const number = layers.find((l) => l.slotId === 'number')!;
+    expect(number.count).toEqual({ from: 0 });
+    expect(number.tracks.draw!.map((k) => [k.t, k.v])).toEqual([[100, 0], [1000, 1]]);
     expect(layers.some((l) => l.tracks.extrude?.at(-1)?.v === 18 && l.tracks.extrude[0]!.v === 0)).toBe(true);
     expect(layers.find((l) => l.id === 'quote')!.tracks.soft!.map((k) => k.v)).toEqual([0, 100]);
+  });
+});
+
+describe('startAtZero', () => {
+  it('drops the keys before t=0 and starts with one key where the track was at t=0', () => {
+    const track = [
+      { t: -400, v: 0 },
+      { t: -100, v: 0.3 },
+      { t: 200, v: 0.6, curve: { kind: 'bezier' as const, p: [0, 0, 1, 1] as [number, number, number, number] } },
+      { t: 500, v: 1 },
+    ];
+    const out = startAtZero(track);
+    expect(out.map((k) => k.t)).toEqual([0, 200, 500]);
+    expect(out[0]!.v).toBeCloseTo(0.4, 6);
+    expect(out.filter((k) => k.t === 0)).toHaveLength(1);
+  });
+
+  it('leaves a track that starts at or after t=0 as it is', () => {
+    const track = [
+      { t: 0, v: 0 },
+      { t: 300, v: 1 },
+    ];
+    expect(startAtZero(track)).toBe(track);
   });
 });

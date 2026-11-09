@@ -10,7 +10,8 @@ import type { Aspect, Box, Issue } from '../../lib/types';
 import { toCheckLabel } from '../../screens/editor/Formats';
 import { useEditorV3 } from './context';
 import type { ChromeGo } from './EditorV3';
-import { clipMs, clockTenths, layerContent, sceneStarts, sceneTitle, templateName } from './model';
+import { clipMs, clockTenths, sceneStarts, sceneTitle, templateName } from './model';
+import { sceneLayerContent } from '../../lib/v3/text';
 import { setSizeV3 } from './prompt';
 import { previewSize, useGl } from './Stage';
 import { C } from './ui';
@@ -45,8 +46,8 @@ function SizeView({ aspect, w, h, sceneIndex, t, faults }: { aspect: Aspect; w: 
   // A rebuild on a scene boundary draws at the current t, not the one the last render left.
   shownT.current = t;
   const size = useMemo(() => previewSize(aspect), [aspect]);
-  const contentKey = JSON.stringify(scene.layers.map((l) => [l.id, layerContent(state.clip, sceneIndex, l) ?? null]));
-  const contents = useMemo(() => new Map(JSON.parse(contentKey) as [string, ReturnType<typeof layerContent> | null][]), [contentKey]);
+  const contentKey = JSON.stringify(scene.layers.map((l) => [l.id, sceneLayerContent(state.clip.recipe.scenes[sceneIndex], l, aspect, state.clip.recipe.aspect) ?? null]));
+  const contents = useMemo(() => new Map(JSON.parse(contentKey) as [string, ReturnType<typeof sceneLayerContent> | null][]), [contentKey]);
   useEffect(() => {
     if (!gl) return;
     let next: V3Renderer | undefined;

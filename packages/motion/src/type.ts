@@ -17,34 +17,107 @@ export interface UnitBox {
   width: number;
   /** The unit's first character in its line (UTF-16 index), where the line's typeset carets place it. */
   at?: number;
+  /** Which of choreo's splitUnits this box enters as; its stagger slot. */
+  order: number;
 }
 
 /** Width of a string at the type's size, in recipe units. */
 export type Measure = (text: string) => number;
 
-/** Lays out text by letter, word or line, each line centred on x = 0. Units match choreo's splitUnits. */
-export function layoutUnits(text: string, unit: Unit, measure: Measure, lineHeight: number): UnitBox[] {
+/** A wrapped line: `hard` counts the text's non-blank lines, `word` is choreo's index of the line's first word. */
+interface Wrapped {
+  text: string;
+  hard: number;
+  word: number;
+}
+
+/** Grapheme clusters of `s`, so a broken word never splits an accent or an emoji. */
+function graphemes(s: string): string[] {
+  if (typeof Intl.Segmenter !== 'function') return [...s];
+  return Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s), (g) => g.segment);
+}
+
+function wrap(text: string, measure: Measure, maxWidth: number): Wrapped[] {
+  const out: Wrapped[] = [];
+  let hard = 0;
+  let word = 0;
+  for (const raw of text.split('\n')) {
+    const words = raw.split(/\s+/).filter(Boolean);
+    if (!words.length) continue;
+    let line = '';
+    let first = word;
+    const push = (): void => {
+      if (line) out.push({ text: line, hard, word: first });
+      line = '';
+    };
+    for (const w of words) {
+      const next = line ? `${line} ${w}` : w;
+      if (measure(next) <= maxWidth) {
+        if (!line) first = word;
+        line = next;
+      } else {
+        push();
+        first = word;
+        // A word wider than the line (long words, CJK without spaces) breaks between graphemes.
+        for (const g of measure(w) <= maxWidth ? [w] : graphemes(w)) {
+          if (line && measure(line + g) > maxWidth) push();
+          line += g;
+        }
+      }
+      word++;
+    }
+    push();
+    hard++;
+  }
+  return out;
+}
+
+/**
+ * Breaks text into lines no wider than `maxWidth`: each word goes after the one before it (and a space) until the
+ * next would pass the edge. A word wider than the line breaks between graphemes.
+ */
+export function wrapLines(text: string, measure: Measure, maxWidth = Infinity): string[] {
+  return wrap(text, measure, maxWidth).map((l) => l.text);
+}
+
+/**
+ * Lays out text by letter, word or line, wrapped to `maxWidth`, each line centred on x = 0. Each box's `order` is
+ * its unit in choreo's splitUnits: the wrapped lines of one hard line, and the pieces of a broken word, share one.
+ */
+export function layoutUnits(
+  text: string,
+  unit: Unit,
+  measure: Measure,
+  lineHeight: number,
+  maxWidth = Infinity,
+): UnitBox[] {
   const boxes: UnitBox[] = [];
-  const lines = text.split('\n').filter((line) => line.trim() !== '');
-  lines.forEach((line, n) => {
+  let letter = 0;
+  wrap(text, measure, maxWidth).forEach((wrapped, n) => {
+    const line = wrapped.text;
     const left = -measure(line) / 2;
     const y = n * lineHeight;
     if (unit === 'line') {
-      boxes.push({ text: line, line: n, x: left, y, width: measure(line), at: 0 });
+      boxes.push({ text: line, line: n, x: left, y, width: measure(line), at: 0, order: wrapped.hard });
       return;
     }
     const parts = unit === 'letter' ? [...line] : line.split(/(\s+)/);
     let x = left;
     let at = 0;
+    let word = wrapped.word;
     for (const part of parts) {
       const width = measure(part);
-      if (part && !/^\s+$/.test(part)) boxes.push({ text: part, line: n, x, y, width, at });
+      if (part && !/^\s+$/.test(part))
+        boxes.push({ text: part, line: n, x, y, width, at, order: unit === 'letter' ? letter++ : word++ });
       x += width;
       at += part.length;
     }
   });
   return boxes;
 }
+
+/** How many units the boxes animate as: choreo's splitUnits count. */
+export const unitCount = (boxes: readonly UnitBox[]): number => 1 + Math.max(-1, ...boxes.map((b) => b.order));
 
 /** Eased entrance progress of each of `count` units at `local` ms, staggered as in MotionV3. Springs may pass 1. */
 export function unitProgress(
@@ -65,6 +138,90 @@ export function unitProgress(
 export function unitPose(unit: Unit, p: number, lineHeight: number): { opacity: number; dy: number; clip: boolean } {
   if (unit === 'line') return { opacity: 1, dy: lineRise(p, lineHeight), clip: true };
   return { opacity: clamp01(p), dy: (1 - p) * (lineHeight / 3), clip: false };
+}
+
+const positive = (n: number): boolean => Number.isFinite(n) && n > 0;
+
+/** The largest scale at which a block `width` × `height` still fits inside `area`. An empty or unknown side never limits it. */
+export function fitScale(width: number, height: number, area: { width: number; height: number }): number {
+  return Math.min(
+    width > 0 && positive(area.width) ? area.width / width : Infinity,
+    height > 0 && positive(area.height) ? area.height / height : Infinity,
+  );
+}
+
+/** A rectangle in recipe px around the frame's centre, y down: `x`, `y` its top-left. */
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The safe area of a frame `width` × `height` (recipe px) around its centre: 9:16 7% sides, 10% top, 16% bottom;
+ * 1:1 6%; 16:9 5% sides, 6% top and bottom. A frame with no size has no limit.
+ */
+export function safeRect(width: number, height: number): Rect {
+  if (!positive(width) || !positive(height)) return { x: -Infinity, y: -Infinity, width: Infinity, height: Infinity };
+  const [side, top, bottom] =
+    height > width ? [0.07, 0.1, 0.16] : height === width ? [0.06, 0.06, 0.06] : [0.05, 0.06, 0.06];
+  return {
+    x: -width / 2 + width * side,
+    y: -height / 2 + height * top,
+    width: width * (1 - 2 * side),
+    height: height * (1 - top - bottom),
+  };
+}
+
+/** A layout box given as fractions of the frame (x, y its top-left) as a Rect in recipe px around its centre. */
+export function boxRect(
+  box: { x: number; y: number; w: number; h: number },
+  frame: { width: number; height: number },
+): Rect {
+  return {
+    x: (box.x - 0.5) * frame.width,
+    y: (box.y - 0.5) * frame.height,
+    width: box.w * frame.width,
+    height: box.h * frame.height,
+  };
+}
+
+/**
+ * The space a text gets in its layout box: the box's width (never wider than the safe area) to wrap to, and its
+ * height, at least one line, to shrink into.
+ */
+export function slotArea(slot: Rect, safe: Rect, lineHeight: number): { width: number; height: number } {
+  const width = slot.width > 0 ? Math.min(slot.width, safe.width) : safe.width;
+  return { width, height: Math.min(Math.max(slot.height, lineHeight), safe.height) };
+}
+
+/** The size of the frame's safe area (see safeRect). */
+export function safeArea(width: number, height: number): { width: number; height: number } {
+  const { width: w, height: h } = safeRect(width, height);
+  return { width: w, height: h };
+}
+
+/**
+ * Where a block `size` centred at `at` rests so it stays inside `rect`: moved in just far enough, or centred
+ * on the rect along a side it is too big for.
+ */
+export function placeInside(
+  at: { x: number; y: number },
+  size: { width: number; height: number },
+  rect: Rect,
+  out: { x: number; y: number } = { x: 0, y: 0 },
+): { x: number; y: number } {
+  out.x = keepInside(at.x, size.width, rect.x, rect.width);
+  out.y = keepInside(at.y, size.height, rect.y, rect.height);
+  return out;
+}
+
+function keepInside(c: number, s: number, lo: number, span: number): number {
+  if (!Number.isFinite(c)) return 0;
+  if (!Number.isFinite(span)) return c;
+  if (s >= span) return lo + span / 2;
+  return Math.min(Math.max(c, lo + s / 2), lo + span - s / 2);
 }
 
 /** Scale to fill: the factor that makes a line `textWidth` wide span the frame between insets. */
@@ -229,7 +386,8 @@ export function synced(text: Text): Promise<void> {
     const target = t as unknown as THREE.EventDispatcher<{ synccomplete: object }>;
     const once = (): void => {
       target.removeEventListener('synccomplete', once);
-      done();
+      // A sync asked for while one ran (a count's next number) is queued behind it: wait for that one too.
+      void synced(text).then(done);
     };
     target.addEventListener('synccomplete', once);
   });
@@ -242,9 +400,12 @@ export class KineticType extends THREE.Group {
   /** One whole-line text per line, typeset only to read where its carets fall (letter and word units). */
   private readonly lines: Text[];
   private placed = false;
+  private readonly lineCount: number;
+  private readonly unitCount: number;
+  private widest = 0;
 
   constructor(
-    text: string,
+    readonly source: string,
     readonly unit: Unit,
     readonly options: {
       measure: Measure;
@@ -255,6 +416,12 @@ export class KineticType extends THREE.Group {
       unitMs?: number;
       curve?: Curve;
       fill?: { frameWidth: number; inset: number };
+      /** The space the block has, recipe px: lines wrap to its width and the block shrinks to fit inside it. */
+      area?: { width: number; height: number };
+      /** Lines line up on the block's left or right edge; centred when absent. */
+      align?: 'left' | 'right';
+      /** A further uniform shrink after wrapping and fitting, so the block keeps its lines in a smaller area. */
+      shrink?: number;
     },
   ) {
     super();
@@ -263,7 +430,15 @@ export class KineticType extends THREE.Group {
         `Motikord: fontUrl "${options.fontUrl}" is not extension-local; bundle the font and pass a path starting with "/" or "chrome-extension://".`,
       );
     const lineHeight = options.lineHeight ?? options.fontSize * 1.1;
-    this.boxes = layoutUnits(text, unit, options.measure, lineHeight);
+    const width = options.area?.width;
+    const wrap = width !== undefined && positive(width) ? width : Infinity;
+    const lines = wrapLines(source, options.measure, wrap);
+    this.lineCount = lines.length;
+    this.boxes = layoutUnits(source, unit, options.measure, lineHeight, wrap);
+    this.unitCount = unitCount(this.boxes);
+    const widths = lines.map((line) => options.measure(line));
+    const widest = Math.max(0, ...widths);
+    for (const box of this.boxes) box.x += this.alignShift(widths[box.line] ?? 0, widest);
     const make = (s: string): Text => {
       const t = new Text();
       Object.assign(t, {
@@ -278,26 +453,60 @@ export class KineticType extends THREE.Group {
     this.texts = this.boxes.map((box) => {
       const t = make(box.text);
       t.color = (options.color ?? '#111114') as string;
-      t.position.set(box.x * UNIT, -box.y * UNIT, 0);
+      t.position.set(box.x * UNIT, -this.top(box.y) * UNIT, 0);
       t.sync(() => this.place());
       this.add(t);
       return t;
     });
-    const lineCount = 1 + Math.max(-1, ...this.boxes.map((b) => b.line));
     this.lines =
       unit === 'line'
         ? []
-        : Array.from({ length: lineCount }, (_, n) => {
-            const t = make(text.split('\n').filter((l) => l.trim() !== '')[n] ?? '');
+        : lines.map((line) => {
+            const t = make(line);
             t.sync(() => this.place());
             return t;
           });
-    this.fill(Math.max(0, ...text.split('\n').map((line) => options.measure(line))));
+    this.fit(widest);
   }
 
-  private fill(widest: number): void {
-    const { fill } = this.options;
-    if (fill) this.scale.setScalar(fillScale(widest, fill.frameWidth, fill.inset));
+  /** How far a centred line `lineWidth` wide moves to sit on the block's aligned edge. */
+  private alignShift(lineWidth: number, widest: number): number {
+    const { align } = this.options;
+    return align === 'left' ? (lineWidth - widest) / 2 : align === 'right' ? (widest - lineWidth) / 2 : 0;
+  }
+
+  private get lineHeight(): number {
+    return this.options.lineHeight ?? this.options.fontSize * 1.1;
+  }
+
+  /** y below the layer's origin, recipe px, of a point `y` below the first line's top: the block is centred. */
+  private top(y: number): number {
+    return y - (this.lineCount * this.lineHeight) / 2;
+  }
+
+  /** Scales to fill when asked, then down until the block fits its area. Without either the scale is left alone. */
+  private fit(widest: number): void {
+    const { fill, area } = this.options;
+    const shrink = this.options.shrink ?? 1;
+    this.widest = widest;
+    if (!fill && !area) {
+      if (shrink !== 1 && positive(shrink)) this.scale.setScalar(shrink);
+      return;
+    }
+    const height = this.lineCount * this.lineHeight;
+    const s = Math.min(
+      fill ? fillScale(widest, fill.frameWidth, fill.inset) : 1,
+      area ? fitScale(widest, height, area) : Infinity,
+    );
+    // A degenerate frame or fill never hides the words.
+    if (positive(s * shrink)) this.scale.setScalar(s * shrink);
+  }
+
+  /** The block's box in recipe px around the layer's origin, scaled as drawn. */
+  bounds(): { x: number; y: number; width: number; height: number } {
+    const s = this.scale.x;
+    const height = this.lineCount * this.lineHeight;
+    return { x: (-this.widest / 2) * s, y: (-height / 2) * s, width: this.widest * s, height: height * s };
   }
 
   /**
@@ -308,12 +517,15 @@ export class KineticType extends THREE.Group {
     const infoOf = (t: Text | undefined): Typeset => (t as Syncing | undefined)?.textRenderInfo ?? null;
     const sources = this.unit === 'line' ? this.texts : this.lines;
     if (!sources.length || sources.some((t) => !infoOf(t))) return;
-    let widest = 0;
+    const widthOf = (i: number): number => {
+      const [x0 = 0, , x1 = 0] = infoOf(sources[i])!.blockBounds;
+      return (x1 - x0) / UNIT;
+    };
+    const widest = Math.max(0, ...sources.map((_, i) => widthOf(i)));
     this.boxes.forEach((box, i) => {
       const info = infoOf(sources[this.unit === 'line' ? i : box.line])!;
-      const [x0 = 0, , x1 = 0] = info.blockBounds;
-      const lineWidth = (x1 - x0) / UNIT;
-      widest = Math.max(widest, lineWidth);
+      const [x0 = 0] = info.blockBounds;
+      const lineWidth = widthOf(this.unit === 'line' ? i : box.line);
       const carets = info.caretPositions;
       const at = box.at ?? 0;
       const end = at + box.text.length - 1;
@@ -324,10 +536,42 @@ export class KineticType extends THREE.Group {
         box.x = -lineWidth / 2 + (carets[at * 4]! - x0) / UNIT;
         box.width = (carets[end * 4 + 1]! - carets[at * 4]!) / UNIT;
       }
+      box.x += this.alignShift(lineWidth, widest);
       this.texts[i]!.position.x = box.x * UNIT;
     });
-    this.fill(widest);
+    this.fit(widest);
     this.placed = true;
+  }
+
+  /**
+   * The unit that holds the `length` characters at `index` of the source text, and where they start in it; undefined
+   * when no one unit holds them all.
+   */
+  unitOf(index: number, length: number): { unit: number; at: number } | undefined {
+    let from = 0;
+    for (let i = 0; i < this.boxes.length; i++) {
+      const text = this.boxes[i]!.text;
+      const start = this.source.indexOf(text, from);
+      if (start < 0) return undefined;
+      if (index >= start && index + length <= start + text.length) return { unit: i, at: index - start };
+      from = start + text.length;
+    }
+    return undefined;
+  }
+
+  /**
+   * Shows `shown` in place of the `length` characters at `where` (a counting number), keeping the block laid out for
+   * the full text so nothing reflows while it counts.
+   */
+  retext(where: { unit: number; at: number }, length: number, shown: string): void {
+    const t = this.texts[where.unit];
+    const base = this.boxes[where.unit]?.text;
+    if (!t || base === undefined) return;
+    const next = base.slice(0, where.at) + shown + base.slice(where.at + length);
+    if ((t as TextProps).text !== next) {
+      (t as TextProps).text = next;
+      t.sync();
+    }
   }
 
   /** Resolves once every unit has typeset and been placed from its real glyph widths. */
@@ -340,12 +584,13 @@ export class KineticType extends THREE.Group {
   update(local: number, opacity = 1): void {
     const { fontSize, unitMs, curve } = this.options;
     const lineHeight = this.options.lineHeight ?? fontSize * 1.1;
-    const progress = unitProgress(this.texts.length, this.unit, local, unitMs, curve);
+    // Staggered by choreo's units, so wrapping never makes the entrance longer.
+    const progress = unitProgress(this.unitCount, this.unit, local, unitMs, curve);
     this.texts.forEach((text, i) => {
       const t = text as TextProps;
       const box = this.boxes[i] as UnitBox;
-      const pose = unitPose(this.unit, progress[i] as number, lineHeight);
-      t.position.y = -(box.y + pose.dy) * UNIT;
+      const pose = unitPose(this.unit, progress[box.order] ?? 1, lineHeight);
+      t.position.y = -this.top(box.y + pose.dy) * UNIT;
       // clipRect is in the text's own space, so the line's box moves up by the rise.
       const clipRect = pose.clip ? [-1e4, (pose.dy - lineHeight) * UNIT, 1e4, pose.dy * UNIT] : null;
       t.fillOpacity = pose.opacity * opacity;

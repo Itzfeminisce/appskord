@@ -19,7 +19,7 @@ vi.mock('@appskord/motion/renderer', () => ({
 
 import { sampleClip } from '../../components/editor/fixture';
 import { ClipDrawer, sceneAt, textReady, TextNotReady } from './frames';
-import { sceneLayerText } from './text';
+import { sceneLayerContent } from './text';
 
 describe('v3 frames', () => {
   it('finds the scene and the time inside it; the very end stays on the last scene', () => {
@@ -33,7 +33,7 @@ describe('v3 frames', () => {
 
   it('does not draw after dispose when a frame times out late', async () => {
     const clip = sampleClip().v3;
-    const d = new ClipDrawer(clip, () => '', { width: 10, height: 10, quality: 'full', fps: 30 } as never, {} as HTMLCanvasElement, 5);
+    const d = new ClipDrawer(clip, () => ({ text: '' }), { width: 10, height: 10, quality: 'full', fps: 30 } as never, {} as HTMLCanvasElement, 5);
     await d.draw(0);
     calls.hang = true;
     const drawing = d.draw(1);
@@ -56,7 +56,7 @@ describe('v3 frames', () => {
   it('draws the clip scene by scene with each layer’s words, one renderer at a time', async () => {
     const clip = sampleClip();
     const canvas = {} as HTMLCanvasElement;
-    const d = new ClipDrawer(clip.v3, (i, l) => sceneLayerText(clip.recipe.scenes[i], l), { width: 1080, height: 1920, quality: 'full', fps: 30 }, canvas);
+    const d = new ClipDrawer(clip.v3, (i, l, aspect) => sceneLayerContent(clip.recipe.scenes[i], l, aspect, clip.recipe.aspect), { width: 1080, height: 1920, quality: 'full', fps: 30 }, canvas);
     const first = clip.v3.scenes[0]!;
     await d.draw(0);
     await d.draw(100);
@@ -74,7 +74,7 @@ describe('v3 frames', () => {
     calls.stuck = true;
     try {
       const clip = sampleClip();
-      const d = new ClipDrawer(clip.v3, () => 'Hi', { width: 64, height: 64, quality: 'full', fps: 30 }, {} as HTMLCanvasElement);
+      const d = new ClipDrawer(clip.v3, () => ({ text: 'Hi' }), { width: 64, height: 64, quality: 'full', fps: 30 }, {} as HTMLCanvasElement);
       const before = calls.rendered.length;
       const drawn = d.draw(0);
       const check = expect(drawn).rejects.toBeInstanceOf(TextNotReady);
@@ -92,7 +92,7 @@ describe('v3 frames', () => {
     vi.useFakeTimers();
     try {
       const clip = sampleClip();
-      const d = new ClipDrawer(clip.v3, () => 'Hi', { width: 64, height: 64, quality: 'full', fps: 30 }, {} as HTMLCanvasElement, 500);
+      const d = new ClipDrawer(clip.v3, () => ({ text: 'Hi' }), { width: 64, height: 64, quality: 'full', fps: 30 }, {} as HTMLCanvasElement, 500);
       await d.draw(0);
       const before = calls.rendered.length;
       calls.hang = true;

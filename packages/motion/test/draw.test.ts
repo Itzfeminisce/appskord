@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { chartLayers, CHART_DEFAULTS, PLOT, type Row } from '../src/charts';
-import { chartPart, drawSpec, formatCount, growOutline, rigBones } from '../src/draw';
+import {
+  chartPart,
+  countedNumber,
+  DECOR_ALPHA,
+  DECOR_OPACITY,
+  drawSpec,
+  formatCount,
+  growOutline,
+  rigBones,
+  textNumber,
+} from '../src/draw';
 import { splitSharpJoins, strokeStrip } from '../src/paths';
 import { autoRig, deformPoints, poseBones, rigLayers, RIG_DEFAULTS } from '../src/rigs';
-import { bounds, roundedRect } from '../src/shapes';
+import { arch, blob, bounds, roundedRect } from '../src/shapes';
 import type { LayerV3 } from '../src/types';
 
 const inks = { ink: '#fff', panel: '#222', accent: '#8B9CFF' };
@@ -207,5 +217,87 @@ describe('pure geometry', () => {
     for (const [i, p] of hop.entries()) expect(p[1]).toBeCloseTo(outline[i]![1] - 50);
     const lean = deformPoints(outline, rest, poseBones(bones, { body: { rotate: 20, y: 0, scale: 1 } }));
     expect(lean[0]![0]).not.toBeCloseTo(outline[0]![0]);
+  });
+});
+
+describe('textNumber', () => {
+  it('reads the first number with its prefix and suffix as written', () => {
+    expect(textNumber('1,200')).toEqual({
+      raw: '1,200',
+      index: 0,
+      value: 1200,
+      decimals: 0,
+      grouped: true,
+      prefix: '',
+      suffix: '',
+    });
+    expect(textNumber('$4.5k')).toMatchObject({ raw: '4.5', value: 4.5, decimals: 1, prefix: '$', suffix: 'k' });
+    expect(textNumber('98%')).toMatchObject({ value: 98, prefix: '', suffix: '%' });
+    expect(textNumber('-12 days')).toMatchObject({ value: -12, suffix: ' days' });
+    expect(textNumber('Top-10')).toMatchObject({ value: 10, prefix: 'Top-' });
+    expect(textNumber('Fresh sourdough')).toBeUndefined();
+  });
+
+  it('counts up from `from` to the number, written as the text writes it', () => {
+    const n = textNumber('1,200')!;
+    expect(countedNumber(n, 0, 0)).toBe('0');
+    expect(countedNumber(n, 0, 0.5)).toBe('600');
+    expect(countedNumber(n, 0, 1)).toBe('1,200');
+    expect(countedNumber(textNumber('$4.5k')!, 0, 0.5)).toBe('2.3');
+  });
+
+  it('ends on the number exactly as typed', () => {
+    for (const text of ['1,200', '4.50', '007', '−12', '0.0']) {
+      const n = textNumber(text)!;
+      expect(countedNumber(n, 0, 1)).toBe(n.raw);
+      expect(countedNumber(n, 0, 1.2)).toBe(n.raw);
+    }
+  });
+
+  it('skips a bare year, but counts one written with a symbol', () => {
+    expect(textNumber('Since 2019')).toBeUndefined();
+    expect(textNumber('2019')).toBeUndefined();
+    expect(textNumber('Since 2019, 500 bakers')).toMatchObject({ raw: '500', index: 12 });
+    expect(textNumber('$2019')).toMatchObject({ value: 2019, prefix: '$' });
+    expect(textNumber('2019%')).toMatchObject({ value: 2019, suffix: '%' });
+    expect(textNumber('2,019 orders')).toMatchObject({ value: 2019 });
+    expect(textNumber('1850 miles')).toMatchObject({ value: 1850 });
+  });
+
+  it('keeps a Unicode minus sign', () => {
+    const n = textNumber('−40 °C')!;
+    expect(n).toMatchObject({ raw: '−40', value: -40, suffix: ' °C' });
+    expect(countedNumber(n, 0, 0.5)).toBe('−20');
+    expect(textNumber('Top−10')).toMatchObject({ value: 10 });
+  });
+});
+
+describe('layers with no asset', () => {
+  it('draws nothing for a media, lottie or model layer rather than a stand-in box', () => {
+    const inks = { ink: '#fff', panel: '#123', accent: '#f80' };
+    for (const kind of ['media', 'lottie', 'model'] as const) {
+      const l: LayerV3 = { id: 'pills', kind, depth: 'middle', tracks: {} };
+      expect(drawSpec(l, [l], { size: { w: 200, h: 100 } }, inks)).toEqual({ kind: 'none' });
+    }
+  });
+});
+
+describe('decor', () => {
+  const shape: LayerV3 = { id: 'blob', kind: 'shape', depth: 'back', tracks: {} };
+  const inks = { ink: '#fff', panel: '#123', accent: '#f80' };
+
+  it('draws a blob or an arch at low contrast in the accent', () => {
+    const spec = drawSpec(shape, [shape], { shape: 'blob', decor: true }, inks);
+    expect(spec).toMatchObject({ kind: 'shape', alpha: DECOR_OPACITY, color: '#f80' });
+    // Blended in linear light over a dark ground, it reads at DECOR_ALPHA after gamma, not near 40%.
+    expect(DECOR_OPACITY ** (1 / 2.2)).toBeCloseTo(DECOR_ALPHA, 5);
+    expect(DECOR_OPACITY).toBeLessThan(0.03);
+    expect(drawSpec(shape, [shape], undefined, inks)).not.toHaveProperty('alpha');
+    const b = bounds(blob(320, 200));
+    expect(b.width).toBeLessThanOrEqual(320);
+    expect(b.height).toBeLessThanOrEqual(200);
+    const a = bounds(arch(200, 300));
+    expect(a).toMatchObject({ width: 200, height: 300 });
+    expect(arch(200, 300).length).toBeGreaterThan(20);
   });
 });

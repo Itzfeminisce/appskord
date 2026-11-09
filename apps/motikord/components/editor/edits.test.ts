@@ -4,7 +4,8 @@ import { validateClip } from '@appskord/motion/recipe';
 import { addEffect } from './EffectsDialog';
 import { cameraSummary, keyTimes, moveKey, parseMs, parseRange, readMotion, writeMotion } from './edits';
 import { sampleClip } from './fixture';
-import { editLayer, editScene, goBackTo, initV3, layerName, redoV3, sceneTitle, undoV3, type V3State } from './model';
+import { STAGGER_MS, staggeredMs } from '@appskord/motion/choreo';
+import { editLayer, editScene, goBackTo, initV3, layerName, posterMs, redoV3, sceneTitle, undoV3, type V3State } from './model';
 import { setMotion } from './MotionTab';
 import { setTransition } from './TransitionDialog';
 
@@ -147,5 +148,25 @@ describe('names', () => {
     const st = st0();
     expect(layerName(st.clip, 0, headline(st))).toBeTruthy();
     expect(sceneTitle(st.clip, 0)).not.toBe('');
+  });
+});
+
+describe('the paused stage at a scene start', () => {
+  it('shows the template key frame, or the moment the last layer has come in', () => {
+    const scene = sampleClip().v3.scenes[0]!;
+    expect(posterMs(scene)).toBe(900);
+    const untemplated = { ...scene, templateId: 'none' };
+    expect(posterMs(untemplated)).toBeGreaterThan(0);
+    expect(posterMs({ ...untemplated, ms: 100 })).toBe(99);
+  });
+
+  it('waits for kinetic type to finish its staggered units, counted as choreo counts them', () => {
+    const base = sampleClip().v3.scenes[0]!;
+    const text = { id: 'words', kind: 'text' as const, depth: 'front' as const, type: { unit: 'line' as const }, start: 0, tracks: { opacity: [{ t: 0, v: 0 }, { t: 100, v: 1 }] } };
+    const scene = { ...base, templateId: 'none', ms: 20_000, layers: [text] };
+    expect(posterMs(scene)).toBe(100);
+    // Two hard lines, however many lines they wrap into: 600 ms each, 120 ms apart.
+    const lines = 'A long first line that wraps on a narrow frame\nsecond';
+    expect(posterMs(scene, () => lines)).toBe(staggeredMs(FEEL.smooth.ms, 2, STAGGER_MS.line));
   });
 });

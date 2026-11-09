@@ -1,32 +1,23 @@
 // Key-frame stills and quality-check frames are drawn by the render page in a hidden frame, never in the side panel,
 // so the panel imports no three.js. When the page can't draw, a still falls back to the scene's words on the
 // look's ground colour.
+import type { LayerContent } from '@appskord/motion/draw';
 import type { ClipV3, LookGuide, SceneV3 } from '@appskord/motion/types';
 import type { ClipFrames } from '../../lib/critic/v3';
-import type { Recipe, Scene } from '../../lib/types';
+import type { Aspect, Recipe } from '../../lib/types';
 import { RENDER_PORT, renderClient, type RenderAsk } from '../../lib/v3/renderChannel';
-import { sceneLayerText } from '../../lib/v3/text';
+import { sceneContents } from '../../lib/v3/text';
 
-export interface StillContext { look?: LookGuide; texts: Record<string, string> }
+export interface StillContext { look?: LookGuide; contents: Record<string, LayerContent> }
 /** A small picture URL of the scene at `atMs`, or undefined when it can't be drawn. */
 export type StillRenderer = (scene: SceneV3, atMs: number, size: { width: number; height: number }, context: StillContext) => Promise<string | undefined>;
 export type FramesFor = (recipe: Recipe, look?: LookGuide) => ClipFrames;
 
-/** The words of each text layer of a v3 scene, by layer id, read from its v2 scene. */
-export function sceneTexts(scene: SceneV3, v2: Scene | undefined): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const l of scene.layers) {
-    const text = l.kind === 'text' ? sceneLayerText(v2, l) : undefined;
-    if (text !== undefined) out[l.id] = text;
-  }
-  return out;
-}
-
-/** The words of every text layer of a clip, keyed `${sceneIndex}:${layerId}`. */
-export function clipTexts(clip: ClipV3, recipe: Recipe): Record<string, string> {
-  const out: Record<string, string> = {};
+/** What every layer of a clip draws at `aspect`, keyed `${sceneIndex}:${layerId}`. */
+export function clipContents(clip: ClipV3, recipe: Recipe, aspect: Aspect): Record<string, LayerContent> {
+  const out: Record<string, LayerContent> = {};
   clip.scenes.forEach((s, i) => {
-    for (const [id, text] of Object.entries(sceneTexts(s, recipe.scenes[i]))) out[`${i}:${id}`] = text;
+    for (const [id, c] of Object.entries(sceneContents(s, recipe.scenes[i], aspect, recipe.aspect))) out[`${i}:${id}`] = c;
   });
   return out;
 }
@@ -57,12 +48,13 @@ const noPage = () => new Error('The render page did not load');
 const portStill: StillRenderer = async (scene, atMs, size, c) => {
   const ask = await renderPage();
   if (!ask) throw noPage();
-  return ask({ type: 'still', scene, atMs, size, look: c.look, texts: c.texts });
+  return ask({ type: 'still', scene, atMs, size, look: c.look, contents: c.contents });
 };
 const portFrames: FramesFor = (recipe, look) => async (clip, times) => {
   const ask = await renderPage();
   if (!ask) throw noPage();
-  return ask({ type: 'frames', clip, times, look, texts: clipTexts(clip, recipe) });
+  // The render page draws check frames 1080 x 1920.
+  return ask({ type: 'frames', clip, times, look, contents: clipContents(clip, recipe, '9:16') });
 };
 
 let still: StillRenderer = portStill;
@@ -75,7 +67,7 @@ export function setRenderers(r: { still?: StillRenderer; frames?: FramesFor }): 
 }
 export const clipFrames = (recipe: Recipe, look?: LookGuide): ClipFrames => frames(recipe, look);
 
-export async function renderStill(scene: SceneV3, atMs: number, size: { width: number; height: number }, context: StillContext = { texts: {} }): Promise<string | undefined> {
+export async function renderStill(scene: SceneV3, atMs: number, size: { width: number; height: number }, context: StillContext = { contents: {} }): Promise<string | undefined> {
   try {
     return await still(scene, atMs, size, context);
   } catch (error) {

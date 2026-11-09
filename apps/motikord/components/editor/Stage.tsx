@@ -6,7 +6,7 @@ import type { LayerV3 } from '@appskord/motion/types';
 import type { Aspect } from '../../lib/types';
 import { useEditorV3 } from './context';
 import { motionLine, similarLayers, readMotion, writeMotion } from './edits';
-import { clipMs, clockTenths, editScenes, layerContent, sceneStarts } from './model';
+import { clipMs, clockTenths, editScenes, layerContent, posterMs, sceneStarts } from './model';
 import { C, quietButton } from './ui';
 
 // The stage: the scene drawn by packages/motion at reduced quality, the selected layer's line and the transport.
@@ -66,7 +66,9 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
   // What each layer draws comes from the v2 layers (text, fill, size); a string key rebuilds only when it changes.
   const contentKey = JSON.stringify(scene.layers.map((l) => [l.id, layerContent(state.clip, state.scene, l) ?? null]));
   const contents = useMemo(() => new Map(JSON.parse(contentKey) as [string, LayerContent | null][]), [contentKey]);
-  const shownT = useRef(t);
+  // Paused at a scene's start nothing has come in yet, so the stage shows the scene's key frame instead of an empty frame.
+  const drawT = !playing && t === 0 ? posterMs(scene, (l) => contents.get(l.id)?.text) : t;
+  const shownT = useRef(drawT);
 
   useEffect(() => {
     if (!gl) return;
@@ -82,10 +84,11 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
         effects: [...(v3.effects ?? []), ...previewUses],
         look,
         spread,
+        hints: true,
         content: (l) => contents.get(l.id) ?? undefined,
       });
       next.attach(gl);
-      next.render(t);
+      next.render(shownT.current);
       // Text typesets asynchronously; draw again once it has, at whatever t is showing by then.
       const drawn = next;
       void drawn.ready().then(() => {
@@ -104,13 +107,18 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
   }, [gl, scene, contents, v3.finish, v3.effects, v3.fps, look, spread, previewUses, size]);
 
   useEffect(() => {
-    shownT.current = t;
+    shownT.current = drawT;
     try {
-      view.current?.render(t);
+      const v = view.current;
+      v?.render(drawT);
+      // A count re-typesets its number as t moves: draw again once it has, if t is still showing.
+      void v?.ready().then(() => {
+        if (view.current === v && shownT.current === drawT) v.render(drawT);
+      });
     } catch (error) {
       console.error('Motikord: could not draw the scene', error);
     }
-  }, [t]);
+  }, [drawT]);
 
   // Playback: the clip runs through its scenes; "Play scene N" stops at the scene's end.
   const [sceneOnly, setSceneOnly] = useState(false);
@@ -207,7 +215,9 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
           {`Previewing ${effectEntry(preview.effect as never).name}`}
         </div>
       )}
-      <div style={{ position: 'relative', flex: 1, minHeight: 0, aspectRatio: `${size.width} / ${size.height}`, maxWidth: '100%', borderRadius: 4, overflow: 'hidden', background: look.palette[0] ?? '#0B0B10', boxShadow: '0 14px 36px rgba(16,16,20,0.22), 0 1px 3px rgba(16,16,20,0.1)' }}>
+      {/* The stage fits inside the space left, at the clip's own shape: never stretched to fill it. */}
+      <div style={{ flex: 1, minHeight: 0, alignSelf: 'stretch', containerType: 'size', display: 'grid', placeItems: 'center' }}>
+      <div style={{ position: 'relative', width: `min(100cqw, 100cqh * ${size.width} / ${size.height})`, aspectRatio: `${size.width} / ${size.height}`, borderRadius: 4, overflow: 'hidden', background: look.palette[0] ?? '#0B0B10', boxShadow: '0 14px 36px rgba(16,16,20,0.22), 0 1px 3px rgba(16,16,20,0.1)' }}>
         <canvas ref={setCanvas} role="img" aria-label={`Scene ${state.scene + 1} of ${state.clip.recipe.name}`} style={{ width: '100%', height: '100%', display: 'block' }} />
         {changedLayer && (
           <span style={{ position: 'absolute', left: 8, top: 8, height: 18, padding: '0 6px', borderRadius: 4, background: '#BE185D', color: '#FFFFFF', fontFamily: C.mono, fontSize: 10, display: 'flex', alignItems: 'center' }}>
@@ -219,6 +229,7 @@ export function Stage({ preview, prompt, toast }: { preview?: { effect: string }
             {`${effectEntry(preview.effect as never).name} · preview · not added yet`}
           </span>
         )}
+      </div>
       </div>
       {preview && <div style={{ fontSize: 11, color: C.muted }}>{EFFECTS_NOTE}</div>}
       {toast}

@@ -12,12 +12,16 @@ vi.mock('../src/text', () => ({
   },
 }));
 
+import { cameraAt } from '../src/camera';
 import { chartLayers, CHART_DEFAULTS } from '../src/charts';
 import { bakeParticles, PARTICLE_DEFAULTS } from '../src/particles';
 import { StrokeMesh } from '../src/paths';
 import { autoRig, rigLayers, RIG_DEFAULTS } from '../src/rigs';
 import { ShapeMesh } from '../src/shapes';
+import { mapSlot, travelSafe } from '../src/placement';
 import { V3Renderer } from '../src/renderer';
+import { UNIT } from '../src/scene';
+import { safeRect } from '../src/type';
 import { clip, scene } from './fixture';
 
 const look = {
@@ -55,6 +59,56 @@ describe('V3Renderer', () => {
     expect(r.graph.layers.get('headline')!.children).toHaveLength(1);
     expect(() => r.render(0)).toThrow(/attach/);
     r.dispose();
+  });
+
+  it('rests each text layer at the centre of its layout box, inside the safe area', () => {
+    const s = scene();
+    const ids = s.layers.filter((l) => l.kind === 'text').map((l) => l.id);
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    const kicker = { x: 0.07, y: 0.16, w: 0.86, h: 0.04 };
+    const r = new V3Renderer(s, {
+      width: 1080,
+      height: 1920,
+      quality: 'reduced',
+      fps: 30,
+      fontUrl: '/fonts/geist.woff2',
+      finish: clip().finish,
+      look,
+      // The second layer's box runs off the bottom: it is pulled back inside the safe area.
+      content: (l) => {
+        const i = ids.indexOf(l.id);
+        if (i < 0) return undefined;
+        return {
+          text: 'Fresh sourdough',
+          fontSize: 60,
+          box: i === 0 ? kicker : { x: 0.07, y: 0.95, w: 0.86, h: 0.2 },
+        };
+      },
+    });
+    const still = new V3Renderer(s, {
+      width: 1080,
+      height: 1920,
+      quality: 'reduced',
+      fps: 30,
+      fontUrl: '/fonts/geist.woff2',
+      finish: clip().finish,
+      look,
+      content: (l) => (ids.includes(l.id) ? { text: 'Fresh sourdough', fontSize: 60 } : undefined),
+    });
+    r.pose(5000);
+    still.pose(5000);
+    const y = (v: V3Renderer, id: string) => -v.graph.layers.get(id)!.position.y / UNIT;
+    // Without a box a layer sits where its tracks put it; with one, at the box's centre, inset by the push-in's travel.
+    const push = [0, 1].map((progress) => cameraAt({ move: 'push-in', amount: 0.4, progress }));
+    const safe = safeRect(1080, 1920);
+    const inner = travelSafe(safe, push, 'front');
+    const slot = mapSlot({ x: 0, y: -960 + 0.16 * 1920, width: 0, height: 0.04 * 1920 }, safe, inner);
+    expect(y(r, ids[0]!) - y(still, ids[0]!)).toBeCloseTo(Math.max(slot.y + slot.height / 2, inner.y + 33), 3);
+    const bottom = inner.y + inner.height;
+    expect(y(r, ids[1]!) - y(still, ids[1]!)).toBeLessThanOrEqual(bottom);
+    expect(y(r, ids[1]!) - y(still, ids[1]!)).toBeGreaterThan(bottom - 100);
+    r.dispose();
+    still.dispose();
   });
 
   it('shows saved particles and spreads depth for Show depth', async () => {
@@ -226,6 +280,87 @@ describe('V3Renderer', () => {
       expect([...(position.array as Float32Array)]).not.toEqual(before);
     }
     r.dispose();
+  });
+
+  it('counts only the unit that holds the number, and never a letter-unit text', () => {
+    const units = (letter: boolean) => {
+      const s = scene();
+      const head = s.layers.find((l) => l.id === 'headline')!;
+      head.type = { unit: letter ? 'letter' : 'word' };
+      head.count = { from: 0 };
+      head.tracks.draw = [
+        { t: 0, v: 0 },
+        { t: 1000, v: 1 },
+      ];
+      const r = new V3Renderer(s, {
+        width: 1080,
+        height: 1920,
+        quality: 'reduced',
+        fps: 30,
+        fontUrl: '/f.woff2',
+        content: (l) => (l.id === 'headline' ? { text: 'Rated 4 out of 45' } : undefined),
+      });
+      const k = r.graph.layers.get('headline')!.children[0]!;
+      const shown = (t: number) => {
+        r.pose(t);
+        return k.children.flatMap((c) =>
+          (c as { text?: string }).text !== undefined ? [(c as { text: string }).text] : [],
+        );
+      };
+      return { shown, dispose: () => r.dispose() };
+    };
+    const word = units(false);
+    const mid = word.shown(500);
+    expect(mid).toContain('45');
+    expect(mid).not.toContain('4');
+    expect(word.shown(1000)).toEqual(['Rated', '4', 'out', 'of', '45']);
+    word.dispose();
+    const letter = units(true);
+    expect(letter.shown(500).join('')).toBe('Rated4outof45');
+    letter.dispose();
+  });
+
+  it('insets an old saved count by the camera travel, the same as text', () => {
+    const s = scene();
+    s.layers.push({ id: 'stat', kind: 'text', depth: 'front', count: { from: 0, to: 100 }, tracks: {} });
+    const r = new V3Renderer(s, {
+      width: 1080,
+      height: 1920,
+      quality: 'reduced',
+      fps: 30,
+      fontUrl: '/f.woff2',
+      content: (l) =>
+        l.id === 'headline'
+          ? { text: 'Fresh sourdough', box: { x: 0.05, y: 0, w: 0.9, h: 0.8 } }
+          : l.id === 'stat'
+            ? { fontSize: 80 }
+            : undefined,
+    });
+    r.pose(0);
+    const push = [0, 1].map((progress) => cameraAt({ move: 'push-in', amount: 0.4, progress }));
+    const inner = travelSafe(safeRect(1080, 1920), push, 'front');
+    const g = r.graph.layers.get('stat')!;
+    const [x, y] = [g.position.x / UNIT, -g.position.y / UNIT];
+    // Placed clear of the headline's box, low in the frame: pulled up so the push-in keeps it inside the safe area.
+    expect(x).toBeGreaterThanOrEqual(inner.x);
+    expect(x).toBeLessThanOrEqual(inner.x + inner.width);
+    expect(y).toBeGreaterThan(inner.y);
+    expect(y).toBeLessThanOrEqual(inner.y + inner.height + 1e-6);
+    r.dispose();
+  });
+
+  it('outlines a layer with no drawn asset only when asked to (the editor), never in export or stills', () => {
+    const drawn = (hints: boolean) => {
+      const s = scene();
+      s.layers.push({ id: 'photo', kind: 'media', depth: 'middle', tracks: {} });
+      const r = new V3Renderer(s, { width: 540, height: 960, quality: 'full', fps: 30, fontUrl: '/f.woff2', hints });
+      r.pose(0);
+      const n = r.graph.layers.get('photo')!.children.length;
+      r.dispose();
+      return n;
+    };
+    expect(drawn(false)).toBe(0);
+    expect(drawn(true)).toBeGreaterThan(0);
   });
 
   it('ready() waits for every text still typesetting', async () => {

@@ -11,7 +11,7 @@ import { getSettings } from '../../lib/settings';
 import { goInSidePanel, useWindowId } from '../../lib/sidepanelGo';
 import type { Settings } from '../../lib/types';
 import { clipLook } from '../../lib/v3/look';
-import { sceneLayerText } from '../../lib/v3/text';
+import { sceneLayerContent } from '../../lib/v3/text';
 import { ClipNotFound } from '../../screens/editor/StatesEditor';
 import { applyOps, initV3 } from '../editor/model';
 import CriticV3 from './CriticV3';
@@ -29,7 +29,7 @@ const liveDeps: CriticDeps = {
     const critic = await criticModel(settings, { signal });
     // three.js loads only now, when frames are drawn.
     const { clipFramesFor } = await import('../../lib/v3/frames');
-    const render = clipFramesFor((i, l) => sceneLayerText(clip.recipe.scenes[i], l), look);
+    const render = clipFramesFor((i, l, aspect) => sceneLayerContent(clip.recipe.scenes[i], l, aspect, clip.recipe.aspect), look);
     return qualityCheck({ recipe: clip.recipe, clip: clip.v3, look }, { critic, signal, render, fixesUsed });
   },
   save: putClip,

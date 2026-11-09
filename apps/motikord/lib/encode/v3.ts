@@ -5,9 +5,9 @@ import type { ExportChoiceV3 } from '../../components/export/ExportV3';
 import { clearSession, getSession, runExport, type RenderHooks, type RenderRun, type RunDeps } from '../exportJob';
 import type { RenderItem } from '../exportPlan';
 import { captionCues, drawnClip, jobChoiceV3, planV3, srtFileName } from '../exportV3';
-import { ClipDrawer, type DrawSetup, type LayerTexts } from '../v3/frames';
+import { ClipDrawer, type DrawSetup } from '../v3/frames';
 import type { RestyledClip } from '../restyle/restyle';
-import { sceneLayerText } from '../v3/text';
+import { sceneLayerContent, type LayerContents } from '../v3/text';
 import { toSrt } from '../voice/captions';
 import { encodeAudio, pickAudioCodec, type IsAudioSupported, type MixedAudio } from './audio';
 import { gifWriter } from './gif';
@@ -37,10 +37,10 @@ export interface V3Env {
 
 const canvasOf = (w: number, h: number) => Object.assign(document.createElement('canvas'), { width: w, height: h });
 
-export function pageEnv(texts: LayerTexts): V3Env {
+export function pageEnv(contents: LayerContents): V3Env {
   let copy: HTMLCanvasElement | undefined;
   return {
-    drawer: (clip, setup) => new ClipDrawer(clip, texts, setup, canvasOf(setup.width, setup.height)),
+    drawer: (clip, setup) => new ClipDrawer(clip, contents, setup, canvasOf(setup.width, setup.height)),
     isSupported: (c) => VideoEncoder.isConfigSupported(c),
     isAudioSupported: typeof AudioEncoder === 'undefined' ? undefined : (c) => AudioEncoder.isConfigSupported(c),
     frame: (source, timestamp, duration) => new VideoFrame(source, { timestamp, duration }),
@@ -124,8 +124,8 @@ export interface StartV3 {
 
 /** Starts a v3 export in this page; ExportV3 follows the shared export session. */
 export function startV3Export(s: StartV3) {
-  const texts: LayerTexts = (i, l) => sceneLayerText(s.clip.recipe.scenes[i], l);
-  const env = s.env ?? pageEnv(texts);
+  const contents: LayerContents = (i, l, aspect) => sceneLayerContent(s.clip.recipe.scenes[i], l, aspect, s.clip.recipe.aspect);
+  const env = s.env ?? pageEnv(contents);
   const drawn = drawnClip(s.clip.v3, s.choice);
   const cues = s.choice.captions === 'srt' ? captionCues(s.clip) : [];
   const deps: RunDeps = {

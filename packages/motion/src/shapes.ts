@@ -40,6 +40,26 @@ export function circle(radius: number, steps = 48): Point[] {
   });
 }
 
+/** A soft organic blob filling a `width` x `height` ellipse, clockwise from the top. */
+export function blob(width: number, height: number, steps = 48): Point[] {
+  return Array.from({ length: steps }, (_, i) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / steps;
+    const r = 0.84 + 0.1 * Math.sin(3 * a + 0.6) + 0.06 * Math.sin(5 * a + 1.3);
+    return [(width / 2) * r * Math.cos(a), (height / 2) * r * Math.sin(a)] as Point;
+  });
+}
+
+/** An arch centred on 0,0: a half circle on straight sides, clockwise from the top. */
+export function arch(width: number, height: number, steps = 24): Point[] {
+  const r = Math.min(width / 2, height);
+  const top = -height / 2 + r;
+  const curve = Array.from({ length: steps + 1 }, (_, i) => {
+    const a = -Math.PI + (Math.PI * i) / steps;
+    return [r * Math.cos(a) * (width / 2 / r), top + r * Math.sin(a)] as Point;
+  });
+  return [...curve.slice(steps / 2), [width / 2, height / 2], [-width / 2, height / 2], ...curve.slice(0, steps / 2)];
+}
+
 /** A regular polygon centred on 0,0 with a point at the top. */
 export function polygon(sides: number, radius: number): Point[] {
   return circle(radius, Math.max(3, Math.round(sides)));

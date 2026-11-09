@@ -1,7 +1,7 @@
 // Turns a v3 template's layer plan into a SceneV3 in a pack. Pure: same template, pack and layers give the same scene.
 import { getSceneTemplate } from '@appskord/scenes/templates/scenes';
 import type { SlotDef } from '@appskord/scenes';
-import { FEEL } from '@appskord/motion/curves';
+import { FEEL, valueAt } from '@appskord/motion/curves';
 import type { CameraV3, Curve, Key, LayerV3, SceneV3, Track } from '@appskord/motion/types';
 import type { PackV3 } from '../../look/packs';
 import type { LayerPlan, Move, TemplateV3 } from './templates';
@@ -160,6 +160,10 @@ export function buildScene(t: TemplateV3, pack: PackV3, input: SceneInput): Scen
   const taken = new Set(layers.map((l) => l.id));
   for (const plan of t.plan) {
     if (plan.slot) continue;
+    if (plan.onto) {
+      countOnto(plan, layers, pack);
+      continue;
+    }
     const id = taken.has(plan.id) ? `v3-${plan.id}` : plan.id;
     taken.add(id);
     byPlan.set(plan.id, id);
@@ -192,6 +196,28 @@ export function buildScene(t: TemplateV3, pack: PackV3, input: SceneInput): Scen
   if (t.depthBlur) scene.depthBlur = t.depthBlur;
   if (t.depthShadows) scene.depthShadows = true;
   return scene;
+}
+
+/**
+ * Runs a template's count on its slot's text layer: the layer's own number counts up from `from`, on a draw track
+ * timed from the plan's beat. Without that layer there is nothing to count, so nothing is added.
+ */
+function countOnto(plan: LayerPlan, layers: LayerV3[], pack: PackV3): void {
+  const target = layers.find((l) => l.slotId === plan.onto && l.kind === 'text');
+  if (!target || !plan.count) return;
+  const curve = plan.curve ?? pack.curve;
+  const shift = Math.round(plan.at * 1000) - (target.start ?? 0);
+  const draw = moveTracks(plan.move, plan.ms ?? curveMs(curve, pack), curve).draw;
+  if (!draw) return;
+  target.tracks.draw = startAtZero(draw.map((k) => ({ ...k, t: k.t + shift })));
+  target.count = { from: plan.count.from };
+}
+
+/** A track moved to start before its layer does: the keys before t=0 go, and one key at t=0 holds where it was then. */
+export function startAtZero(track: Track<number>): Track<number> {
+  if (!track.length || track[0]!.t >= 0) return track;
+  const after = track.filter((k) => k.t > 0);
+  return [{ t: 0, v: valueAt(track, 0) }, ...after];
 }
 
 /** Links scenes into a clip: a carry stays only when the next scene has a layer with the same carry id. */
