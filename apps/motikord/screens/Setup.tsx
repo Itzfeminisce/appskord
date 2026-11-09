@@ -3,7 +3,7 @@ import { frameStats } from '../lib/check/stats';
 import { previewVerdict, supportVerdict, type Verdict } from '../lib/check/verdict';
 import { CODECS } from '../lib/check/plan';
 import { Button } from '../components/ui';
-import { useRouter } from '../entrypoints/sidepanel/router';
+import { HOME_ROUTE, useRouter } from '../entrypoints/sidepanel/router';
 import { getSettings, updateSettings } from '../lib/settings';
 import { DEFAULT_PROVIDER, PROVIDER_IDS, PROVIDERS } from '../lib/providers';
 import type { AiMode, Provider } from '../lib/types';
@@ -194,7 +194,7 @@ export default function Setup() {
         navigate('PenvConnect');
       } else {
         await updateSettings({ ai: 'local', onboarded: true });
-        replace('Home');
+        replace(HOME_ROUTE);
       }
     } catch (error) {
       console.error('Motikord: could not save the AI choice', error);
