@@ -16,6 +16,8 @@ export function morpher(
 ): (t: number) => Point[] {
   const a = from.map((p) => [p[0], p[1]]);
   const b = to.map((p) => [p[0], p[1]]);
+  // flubber throws on rings it cannot resample; hold the nearer end instead.
+  if (a.length < 3 || b.length < 3) return (t) => (t >= 0.5 ? b : a).map((p) => [p[0] as number, p[1] as number]);
   const mid = interpolate(a, b, { maxSegmentLength, string: false }) as unknown as (t: number) => number[][];
   return (t) => {
     if (!(t > 0)) return from.map((p) => [p[0], p[1]]);

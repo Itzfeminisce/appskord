@@ -10,7 +10,7 @@ export interface Box {
   height: number;
 }
 
-const clamp01 = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x);
+const clamp01 = (x: number): number => (x > 0 ? (x >= 1 ? 1 : x) : 0);
 
 /** The uncovered part of a layer's box at mask progress 0..1 (the layer's `mask` track), and where the moving edge is. Recipe units, y down. */
 export function maskReveal(box: Box, mask: number, from: MaskFrom = 'left'): { visible: Box; edge: number } {
@@ -46,7 +46,8 @@ export function maskPlanes(visible: Box, matrixWorld: THREE.Matrix4 = new THREE.
 
 /** Puts a mask reveal on every material under a layer group, from the state applyFrame left in its userData. */
 export function applyMask(group: THREE.Object3D, box: Box, from: MaskFrom = 'left'): void {
-  const mask = (group.userData.mask as number | undefined) ?? 1;
+  const raw = (group.userData.mask as number | undefined) ?? 1;
+  const mask = Number.isFinite(raw) ? raw : 1;
   const planes = mask >= 1 ? [] : maskPlanes(maskReveal(box, mask, from).visible, group.matrixWorld);
   group.traverse((o) => {
     const material = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;

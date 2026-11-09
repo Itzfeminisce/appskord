@@ -3,7 +3,7 @@ import { UNIT } from './scene';
 
 export type Point = [number, number];
 
-const clamp01 = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x);
+const clamp01 = (x: number): number => (x > 0 ? (x >= 1 ? 1 : x) : 0);
 
 /** Points along a cubic Bézier, excluding its start. */
 function cubic(a: Point, b: Point, c: Point, d: Point, steps: number): Point[] {
@@ -30,7 +30,12 @@ export function parsePath(d: string, steps = 16): Point[][] {
   let ctrl: Point | null = null;
   let cmd = '';
   let i = 0;
-  const num = (): number => Number(tokens[i++]);
+  const num = (): number => {
+    const t = tokens[i];
+    if (t === undefined || /[a-zA-Z]/.test(t)) throw new Error(`Motikord: path command ${cmd} is missing operands`);
+    i++;
+    return Number(t);
+  };
   const pt = (rel: boolean): Point => {
     const x = num();
     const y = num();
@@ -40,6 +45,7 @@ export function parsePath(d: string, steps = 16): Point[][] {
     if (/[a-zA-Z]/.test(tokens[i] as string)) cmd = tokens[i++] as string;
     const rel = cmd === cmd.toLowerCase();
     const C = cmd.toUpperCase();
+    if (C !== 'M' && C !== 'Z' && !line.length) line = [cur]; // a draw after Z starts a new subpath
     if (C === 'M') {
       if (line.length) paths.push(line);
       cur = pt(rel);
@@ -73,7 +79,11 @@ export function parsePath(d: string, steps = 16): Point[][] {
       cur = end;
       continue;
     } else if (C === 'Z') {
-      if (line.length) line.push(start);
+      if (line.length) {
+        line.push(start);
+        paths.push(line);
+        line = [];
+      }
       cur = start;
     } else {
       throw new Error(`Motikord: path command ${cmd} is not supported`);

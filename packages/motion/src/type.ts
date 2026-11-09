@@ -6,7 +6,7 @@ import { UNIT } from './scene';
 import { Text } from './text';
 import type { Curve, Unit } from './types';
 
-const clamp01 = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x);
+const clamp01 = (x: number): number => (x > 0 ? (x >= 1 ? 1 : x) : 0);
 
 /** One unit of kinetic type laid out in recipe units: x from the line's left, y down from the first line's top. */
 export interface UnitBox {
@@ -52,7 +52,9 @@ export function unitProgress(
   stepMs: number = STAGGER_MS[unit],
 ): number[] {
   const fn = ease(curve);
-  return stagger(count, unit, stepMs).map((start) => fn(clamp01((local - start) / unitMs)));
+  return stagger(count, unit, stepMs).map((start) =>
+    fn(unitMs > 0 ? clamp01((local - start) / unitMs) : local >= start ? 1 : 0),
+  );
 }
 
 /** Pose of a unit at entrance progress p: letters and words fade up a third of a line; lines rise out of a mask. */
@@ -151,10 +153,16 @@ export function axisShapes(font: AxisFont, text: string, size: number, coords: R
   return path.toShapes();
 }
 
-/** Variable-axis text: re-cuts its glyphs from opentype.js when the weight or width track moves. */
+const WEIGHT_STEP = 10;
+const WIDTH_STEP = 2;
+const CUT_CACHE = 8;
+
+/** Variable-axis text: re-cuts its glyphs from opentype.js when the weight or width track crosses a step. */
 export class AxisText extends THREE.Mesh<THREE.ShapeGeometry, THREE.MeshBasicMaterial> {
   private readonly axes: FontAxis[];
   private key = '';
+  // Insertion order is recency order; the oldest entry is evicted first.
+  private readonly cuts = new Map<string, THREE.ShapeGeometry>();
 
   constructor(
     private readonly font: AxisFont,
@@ -168,17 +176,36 @@ export class AxisText extends THREE.Mesh<THREE.ShapeGeometry, THREE.MeshBasicMat
   }
 
   update(userData: { weight?: number; width?: number; opacity?: number }): void {
-    const coords = axisCoords(userData.weight ?? 400, userData.width ?? 100, this.axes);
-    const key = JSON.stringify(coords);
+    const w = Math.round((userData.weight ?? 400) / WEIGHT_STEP) * WEIGHT_STEP;
+    const wd = Math.round((userData.width ?? 100) / WIDTH_STEP) * WIDTH_STEP;
+    const key = `${w}|${wd}`;
     if (key !== this.key) {
+      let cut = this.cuts.get(key);
+      if (cut) this.cuts.delete(key);
+      else {
+        cut = new THREE.ShapeGeometry(axisShapes(this.font, this.text, this.size, axisCoords(w, wd, this.axes)));
+        cut.computeBoundingBox();
+        const box = cut.boundingBox as THREE.Box3;
+        cut.translate(-(box.min.x + box.max.x) / 2, 0, 0);
+      }
+      this.cuts.set(key, cut);
+      while (this.cuts.size > CUT_CACHE) {
+        const [oldKey, old] = this.cuts.entries().next().value as [string, THREE.ShapeGeometry];
+        this.cuts.delete(oldKey);
+        if (old !== cut) old.dispose();
+      }
       this.geometry.dispose();
-      this.geometry = new THREE.ShapeGeometry(axisShapes(this.font, this.text, this.size, coords));
-      this.geometry.computeBoundingBox();
-      const box = this.geometry.boundingBox as THREE.Box3;
-      this.geometry.translate(-(box.min.x + box.max.x) / 2, 0, 0);
+      this.geometry = cut;
       this.key = key;
     }
     this.material.opacity = userData.opacity ?? 1;
+  }
+
+  dispose(): void {
+    for (const g of this.cuts.values()) g.dispose();
+    this.cuts.clear();
+    this.geometry.dispose();
+    this.material.dispose();
   }
 }
 
@@ -202,6 +229,10 @@ export class KineticType extends THREE.Group {
     },
   ) {
     super();
+    if (!options.fontUrl.startsWith('/') && !options.fontUrl.startsWith('chrome-extension://'))
+      throw new Error(
+        `Motikord: fontUrl "${options.fontUrl}" is not extension-local; bundle the font and pass a path starting with "/" or "chrome-extension://".`,
+      );
     const lineHeight = options.lineHeight ?? options.fontSize * 1.1;
     this.boxes = layoutUnits(text, unit, options.measure, lineHeight);
     this.texts = this.boxes.map((box) => {
@@ -236,7 +267,19 @@ export class KineticType extends THREE.Group {
       t.position.y = -(box.y + pose.dy) * UNIT;
       // clipRect is in the text's own space, so the line's box moves up by the rise.
       const clipRect = pose.clip ? [-1e4, (pose.dy - lineHeight) * UNIT, 1e4, pose.dy * UNIT] : null;
-      Object.assign(t, { fillOpacity: pose.opacity, clipRect });
+      t.fillOpacity = pose.opacity;
+      // Assigning clipRect re-typesets, so only touch it when its values change.
+      const prev = t.clipRect as number[] | null | undefined;
+      const same = clipRect === null ? !prev : !!prev && clipRect.every((v, k) => v === prev[k]);
+      if (!same) t.clipRect = clipRect as never;
     });
+  }
+
+  dispose(): void {
+    for (const t of this.texts) {
+      this.remove(t);
+      t.dispose();
+    }
+    this.texts.length = 0;
   }
 }
