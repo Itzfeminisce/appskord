@@ -34,10 +34,12 @@ export interface CriticNote { sceneIndex: number; problem: string; fix: string }
 
 
 export interface MusicTrack { assetId: string; volume: number; fadeInMs: number; fadeOutMs: number }
+/** The clip's one voice: narration you chose or an AI voiceover. Plays from the start; music ducks under it. */
+export interface VoiceTrack { assetId: string; volume: number; source: 'narration' | 'voiceover' }
 
 export interface Recipe {
   version: 1 | 2; id: string; name: string; type: ClipType; aspect: Aspect;   // aspect = size being edited
-  scenes: Scene[]; music?: MusicTrack; brandApplied?: boolean; creditsEndCard?: boolean;
+  scenes: Scene[]; music?: MusicTrack; voice?: VoiceTrack; brandApplied?: boolean; creditsEndCard?: boolean;
   assets: Record<string, Asset>;                             // every asset the clip uses, with its credit
   prompt?: string;                                           // first prompt, for library search
   style?: StyleId; pace?: Pace; mood?: Mood; beatSync?: boolean;

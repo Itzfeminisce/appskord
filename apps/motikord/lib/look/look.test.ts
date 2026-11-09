@@ -120,6 +120,32 @@ describe('look guide store', () => {
     expect(() => readClipFile('{"app":"other"}')).toThrow('It is not a Motikord clip.');
   });
 
+  it('carries the voice track’s audio and the Auto captions style through export and import', async () => {
+    const v2: Clip = {
+      id: 'c9',
+      recipe: {
+        version: 2, id: 'c9', name: 'Say it', type: 'promo', aspect: '9:16', assets: {},
+        scenes: [{ id: 's1', durationMs: 3000, background: '#000000', layout: 'center', layers: [], template: 'title-hook' }],
+      },
+      history: [], createdAt: 1, updatedAt: 1,
+    };
+    const restyled = restyle(v2, { packId: 'studio', now: 9, changeId: 'ch9' });
+    const clip = {
+      ...restyled, autoCaptions: 'pop',
+      recipe: { ...restyled.recipe, voice: { assetId: 'voice-1', volume: 1, source: 'narration' as const }, assets: { 'voice-1': { id: 'voice-1', kind: 'audio' as const, name: 'take.mp3', mime: 'audio/mpeg', bytes: 3, opfsPath: 'media/voice-1.mp3' } } },
+    } as Clip;
+    const file = await exportClip(clip, { getLook, readMedia: async (p) => (p === 'media/voice-1.mp3' ? new Blob([new Uint8Array([7, 8, 9])], { type: 'audio/mpeg' }) : undefined) });
+    expect(file.media?.['voice-1']?.mime).toBe('audio/mpeg');
+    const put = new Map<string, Blob>();
+    const back = await importClip(clipFileText(file), { putLook, putClip: async () => undefined, hasClip: async () => false, putMedia: async (p, b) => void put.set(p, b) });
+    expect((back as Clip & { autoCaptions?: string }).autoCaptions).toBe('pop');
+    expect(back.recipe.voice).toEqual(clip.recipe.voice);
+    expect([...new Uint8Array(await put.get('media/voice-1.mp3')!.arrayBuffer())]).toEqual([7, 8, 9]);
+    const odd = JSON.parse(clipFileText(file)) as { clip: { autoCaptions: string } };
+    odd.clip.autoCaptions = 'shout';
+    expect(() => readClipFile(JSON.stringify(odd))).toThrow('clip.autoCaptions');
+  });
+
   it('refuses a clip file that is too big or malformed, naming the key and fix', async () => {
     const v2: Clip = {
       id: 'c1',

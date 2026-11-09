@@ -104,6 +104,15 @@ export function validateRecipe(value: unknown): string[] {
       if (!isNum(m.fadeOutMs) || m.fadeOutMs < 0) bad('Music fade out must be 0 ms or more.');
     }
   }
+  if (r.voice !== undefined) {
+    const v = r.voice;
+    if (!isObj(v)) bad('Voice is not an object.');
+    else {
+      if (assetKind(v.assetId) !== 'audio') bad('Voice must point to an audio file in the assets list.');
+      if (!isNum(v.volume) || v.volume < 0 || v.volume > 1) bad('Voice volume must be between 0 and 1.');
+      if (!oneOf(['narration', 'voiceover'], v.source)) bad('Voice source must be narration or voiceover.');
+    }
+  }
   return problems;
 }
 

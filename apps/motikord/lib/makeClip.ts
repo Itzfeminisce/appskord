@@ -62,6 +62,7 @@ function pruneAssets(recipe: Recipe): Recipe {
     if (layer.type === 'text') fonts.add(layer.font);
   }
   if (recipe.music) used.add(recipe.music.assetId);
+  if (recipe.voice) used.add(recipe.voice.assetId);
   const assets = Object.fromEntries(Object.entries(recipe.assets).filter(([id, a]) => used.has(id) || (a.kind === 'font' && fonts.has(a.name))));
   return { ...recipe, assets };
 }

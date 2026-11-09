@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { audioParts, pickAudioCodec } from './audio';
+import { audioParts, DUCK_GAIN, pickAudioCodec } from './audio';
+import { hasAudio } from '../exportPlan';
 import { gifDelayMs } from './gif';
 import { Cancelled, pickVideoConfig, runFrames, seeThroughSupported, videoTrack, type EncoderLike, type Muxed } from './video';
 import type { Recipe } from '../types';
@@ -71,6 +72,20 @@ describe('encode', () => {
       { assetId: 'm', atSec: 0, durSec: 9, gain: 0.5, fadeInSec: 0.5, fadeOutSec: 1, loop: true },
       { assetId: 'v', atSec: 4, durSec: 2, gain: 1, fadeInSec: 0, fadeOutSec: 0, loop: false },
     ]);
+  });
+
+  it('mixes the voice from the start and ducks the music under it', () => {
+    const r = {
+      assets: { m: { id: 'm', kind: 'audio' }, n: { id: 'n', kind: 'audio', durationMs: 4000 } },
+      music: { assetId: 'm', volume: 0.5, fadeInMs: 0, fadeOutMs: 0 },
+      voice: { assetId: 'n', volume: 1, source: 'narration' },
+      scenes: [],
+    } as unknown as Recipe;
+    expect(audioParts(r, 9000)).toEqual([
+      { assetId: 'm', atSec: 0, durSec: 9, gain: 0.5, fadeInSec: 0, fadeOutSec: 0, loop: true, duck: { atSec: 0, endSec: 4, gain: DUCK_GAIN } },
+      { assetId: 'n', atSec: 0, durSec: 4, gain: 1, fadeInSec: 0, fadeOutSec: 0, loop: false },
+    ]);
+    expect(hasAudio({ ...r, music: undefined })).toBe(true);
   });
 
   it('times GIF frames so the whole loop keeps its length', () => {
