@@ -30,6 +30,11 @@ import {
 } from 'three.quarks';
 import { FinishEffect, VelocityBlurEffect } from './effects';
 import { seeded, withRandom } from './seed';
+import { layerStarts } from './choreo';
+import { FEEL, valueAt } from './curves';
+import { progress } from './time';
+import { DEPTHS, PARALLAX, PROPS } from './types';
+import type { CameraMove, Depth, Feel, Prop, SceneV3 } from './types';
 
 export type Quality = 'full' | 'reduced';
 export interface SceneOptions {
@@ -262,4 +267,108 @@ export class TestScene {
     this.renderer.forceContextLoss();
     this.renderer.dispose();
   }
+}
+
+/** What every animatable property is when its layer has no track for it. */
+export const REST: Readonly<Record<Prop, number>> = {
+  x: 0,
+  y: 0,
+  z: 0,
+  scale: 1,
+  rotate: 0,
+  opacity: 1,
+  blur: 0,
+  weight: 400,
+  width: 100,
+  draw: 1,
+  morph: 0,
+  mask: 1,
+};
+
+export interface LayerFrame {
+  id: string;
+  start: number;
+  /** ms since the layer started; negative before it starts. */
+  local: number;
+  props: Record<Prop, number>;
+}
+export interface FrameState {
+  t: number;
+  layers: LayerFrame[];
+  /** Progress 0..1 of the scene's camera move; T3 turns it into a camera. */
+  camera: { move: CameraMove; amount: number; focus?: string; progress: number };
+}
+
+/** The state of a v3 scene at `t` ms. Pure: depends only on the recipe and t. */
+export function frameAt(scene: SceneV3, t: number, feel: Feel = 'smooth'): FrameState {
+  const starts = layerStarts(scene.layers);
+  const fallback = FEEL[feel].curve;
+  const layers = scene.layers.map((layer, i) => {
+    const start = starts[i] as number;
+    const local = t - start;
+    const props = { ...REST };
+    for (const prop of PROPS) {
+      const track = layer.tracks[prop];
+      if (track?.length) props[prop] = valueAt(track, local, fallback);
+    }
+    if (layer.z) props.z += layer.z;
+    return { id: layer.id, start, local, props };
+  });
+  const { move, amount, focus } = scene.camera;
+  return { t, layers, camera: { move, amount, focus, progress: progress(t, 0, scene.ms) } };
+}
+
+/** World units per recipe unit: recipe x/y are in a 1080-wide frame, the graph is 10 units wide. */
+export const UNIT = 10 / 1080;
+
+/** A three.js graph for a v3 scene: one group per layer under a depth group with its parallax. */
+export interface MotionGraph {
+  root: THREE.Group;
+  depths: Record<Depth, THREE.Group>;
+  layers: Map<string, THREE.Group>;
+}
+
+/** Builds the scene graph for a SceneV3. Layer content (type, paths, media) is added by later tasks under each layer group. */
+export function buildGraph(scene: SceneV3): MotionGraph {
+  const root = new THREE.Group();
+  root.name = scene.id;
+  const depths = {} as Record<Depth, THREE.Group>;
+  for (const depth of DEPTHS) {
+    const g = new THREE.Group();
+    g.name = `depth:${depth}`;
+    g.userData.parallax = PARALLAX[depth];
+    depths[depth] = g;
+    root.add(g);
+  }
+  const layers = new Map<string, THREE.Group>();
+  for (const layer of scene.layers) {
+    const g = new THREE.Group();
+    g.name = layer.id;
+    g.userData.kind = layer.kind;
+    depths[layer.depth].add(g);
+    layers.set(layer.id, g);
+  }
+  return { root, depths, layers };
+}
+
+/** Puts a frame's state onto the graph. Opacity, blur and the type axes go to userData for the layer's content to read. */
+export function applyFrame(graph: MotionGraph, frame: FrameState): void {
+  for (const { id, props, local } of frame.layers) {
+    const g = graph.layers.get(id);
+    if (!g) continue;
+    g.position.set(props.x * UNIT, -props.y * UNIT, props.z * UNIT);
+    g.scale.setScalar(props.scale);
+    g.rotation.set(0, 0, (-props.rotate * Math.PI) / 180);
+    g.visible = local >= 0 && props.opacity > 0;
+    Object.assign(g.userData, {
+      opacity: props.opacity,
+      blur: props.blur,
+      weight: props.weight,
+      width: props.width,
+      draw: props.draw,
+      morph: props.morph,
+      mask: props.mask,
+    });
+  }
+  graph.root.updateMatrixWorld(true);
 }
