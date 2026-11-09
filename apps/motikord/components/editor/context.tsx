@@ -4,7 +4,7 @@ import { getPackV3, packLook, type PackV3 } from '../../lib/look/packs';
 import type { RestyledClip } from '../../lib/restyle/restyle';
 import { initV3, layerName, layerText, redoV3, undoV3, type Tab, type V3State } from './model';
 
-export type Overlay = 'effects' | 'add' | 'animate' | { transition: number } | { animated: { title: string; line: string } } | undefined;
+export type Overlay = 'effects' | 'add' | 'animate' | 'voice' | { transition: number } | { animated: { title: string; line: string } } | undefined;
 
 export interface EditorV3Api {
   state: V3State;
