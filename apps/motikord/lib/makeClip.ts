@@ -12,6 +12,7 @@ import type { HostAccess } from './hostAccess';
 import { send, UNFINISHED_CLIP } from './messages';
 import { getSettings, onSettingsChanged } from './settings';
 import { copyTemplate, type Template } from './templates';
+import { clipTemplateRecipe, clipTemplateV3, type ClipTemplateV3, type TemplateClipRow } from './templates/v3/clips';
 import { autoStyle } from './templates/scenes';
 import type { Aspect, Asset, BrandKit, Change, Clip, ClipType, CriticNote, Issue, LookStyle, Mood, Pace, Provider, Recipe, Settings, StyleId, Storyboard } from './types';
 
@@ -130,6 +131,16 @@ export async function makeFromTemplate(template: Template, hooks: { save?: (clip
   const at = (hooks.now ?? Date.now)();
   const recipe = copyTemplate(template, hooks.id);
   const clip: Clip = { id: recipe.id, recipe, history: [], createdAt: at, updatedAt: at };
+  await (hooks.save ?? putClip)(clip);
+  return clip;
+}
+
+/** Makes your own v3 clip from a v3 clip template; "Say it out loud" keeps its Auto captions style on the row. */
+export async function makeFromTemplateV3(template: ClipTemplateV3, hooks: { save?: (clip: Clip) => Promise<void>; now?: () => number; id?: string } = {}): Promise<Clip & TemplateClipRow> {
+  const at = (hooks.now ?? Date.now)();
+  const recipe = clipTemplateRecipe(template, hooks.id ?? globalThis.crypto?.randomUUID?.() ?? `clip-${at.toString(36)}`);
+  const clip: Clip & TemplateClipRow = { id: recipe.id, recipe, history: [], createdAt: at, updatedAt: at, v3: clipTemplateV3(template, recipe) };
+  if (template.autoCaptions) clip.autoCaptions = template.autoCaptions;
   await (hooks.save ?? putClip)(clip);
   return clip;
 }

@@ -107,6 +107,7 @@ export const TEMPLATES = {
   newInV3: 'New in v3',
   count: (n: number) => `${n} templates`,
   tap: 'Tap one to open your own copy',
+  hover: 'Plays on hover',
 } as const;
 
 export const LIBRARY = {
