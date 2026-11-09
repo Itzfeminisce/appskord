@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 // No WebGL in unit tests: the renderer is a fake that records what it was asked to draw.
-const calls: { made: string[]; rendered: [string, number][]; disposed: string[]; texts: string[]; gl: number } = { made: [], rendered: [], disposed: [], texts: [], gl: 0 };
+const calls: { made: string[]; rendered: [string, number][]; disposed: string[]; texts: string[]; gl: number; stuck?: boolean } = { made: [], rendered: [], disposed: [], texts: [], gl: 0 };
 vi.mock('@appskord/motion/renderer', () => ({
   createCanvasRenderer: () => ({ forceContextLoss: () => { calls.gl++; }, dispose: () => undefined }),
   V3Renderer: class {
-    three = { children: [{ children: [], _isSyncing: false }] };
+    three = { children: [{ children: [], _isSyncing: !!calls.stuck }] };
     constructor(readonly scene: { id: string; layers: { kind: string; id: string }[] }, o: { content: (l: unknown) => { text?: string } | undefined }) {
       calls.made.push(scene.id);
       for (const l of scene.layers) if (l.kind === 'text') calls.texts.push(o.content(l)?.text ?? '');
@@ -17,7 +17,7 @@ vi.mock('@appskord/motion/renderer', () => ({
 }));
 
 import { sampleClip } from '../../components/editor/fixture';
-import { ClipDrawer, sceneAt, textReady } from './frames';
+import { ClipDrawer, sceneAt, textReady, TextNotReady } from './frames';
 import { sceneLayerText } from './text';
 
 describe('v3 frames', () => {
@@ -53,5 +53,24 @@ describe('v3 frames', () => {
     expect(calls.disposed).toEqual([first.id, clip.v3.scenes[1]!.id]);
     expect(calls.gl).toBe(1);
     expect(calls.texts.some((t) => t.length > 0)).toBe(true);
+  });
+
+  it('fails the frame rather than drawing blank words when the text never typesets', async () => {
+    vi.useFakeTimers();
+    calls.stuck = true;
+    try {
+      const clip = sampleClip();
+      const d = new ClipDrawer(clip.v3, () => 'Hi', { width: 64, height: 64, quality: 'full', fps: 30 }, {} as HTMLCanvasElement);
+      const before = calls.rendered.length;
+      const drawn = d.draw(0);
+      const check = expect(drawn).rejects.toBeInstanceOf(TextNotReady);
+      await vi.advanceTimersByTimeAsync(10_100);
+      await check;
+      expect(calls.rendered.length).toBe(before);
+      d.dispose();
+    } finally {
+      calls.stuck = false;
+      vi.useRealTimers();
+    }
   });
 });

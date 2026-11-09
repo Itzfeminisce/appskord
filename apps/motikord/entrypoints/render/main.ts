@@ -1,9 +1,17 @@
-import { onMessage } from '../../lib/messages';
+import { isPortHandoff, serveRenderPort } from '../../lib/v3/renderChannel';
 
 // The side panel's hidden frame: draws v3 stills and quality-check frames, so three.js never loads in the panel itself.
+// It answers only the port its parent panel hands it; runtime messages from elsewhere never reach it.
 const frames = () => import('../../lib/v3/frames');
 
-onMessage({
-  'render/still': async (m) => ({ url: await (await frames()).stillUrl(m.scene, m.atMs, m.size, m.look, m.texts) }),
-  'render/frames': async (m) => ({ urls: await (await frames()).clipFramesFor((i, l) => m.texts[`${i}:${l.id}`], m.look)(m.clip, m.times) }),
-});
+let served = false;
+const onHandoff = (e: MessageEvent) => {
+  if (served || !isPortHandoff(e, { origin: location.origin, parent: window.parent, window })) return;
+  served = true;
+  window.removeEventListener('message', onHandoff);
+  serveRenderPort(e.ports[0]!, {
+    still: async (m) => (await frames()).stillUrl(m.scene, m.atMs, m.size, m.look, m.texts),
+    frames: async (m) => (await frames()).clipFramesFor((i, l) => m.texts[`${i}:${l.id}`], m.look)(m.clip, m.times),
+  });
+};
+window.addEventListener('message', onHandoff);

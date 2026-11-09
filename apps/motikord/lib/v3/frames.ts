@@ -33,6 +33,11 @@ export async function textReady(root: Node3, timeoutMs = 10_000, wait = (ms: num
   return true;
 }
 
+/** Thrown when a scene's text is still typesetting after the wait. */
+export class TextNotReady extends Error {
+  constructor(readonly sceneIndex: number) { super(`Scene ${sceneIndex + 1}'s text did not typeset in time`); this.name = 'TextNotReady'; }
+}
+
 /** The scene playing at `tMs` on the clip's timeline and the time inside it; the very end stays on the last scene. */
 export function sceneAt(clip: ClipV3, tMs: number): { index: number; local: number } {
   let start = 0;
@@ -70,7 +75,8 @@ export class ClipDrawer {
       this.view = view;
       this.index = index;
       view.attach(this.gl);
-      await textReady(view.three as unknown as Node3);
+      // Blank words are never drawn: a scene whose text won't typeset fails the export, still or check frame.
+      if (!(await textReady(view.three as unknown as Node3))) throw new TextNotReady(index);
     }
     this.view!.render(local);
   }

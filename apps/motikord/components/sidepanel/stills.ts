@@ -3,8 +3,8 @@
 // look's ground colour.
 import type { ClipV3, LookGuide, SceneV3 } from '@appskord/motion/types';
 import type { ClipFrames } from '../../lib/critic/v3';
-import { send } from '../../lib/messages';
 import type { Recipe, Scene } from '../../lib/types';
+import { RENDER_PORT, renderClient, type RenderAsk } from '../../lib/v3/renderChannel';
 import { sceneLayerText } from '../../lib/v3/text';
 
 export interface StillContext { look?: LookGuide; texts: Record<string, string> }
@@ -31,38 +31,47 @@ export function clipTexts(clip: ClipV3, recipe: Recipe): Record<string, string> 
   return out;
 }
 
-let page: Promise<void> | undefined;
-/** Loads the render page once, in a hidden frame of this document. */
-function renderPage(): Promise<void> {
-  page ??= new Promise<void>((resolve) => {
+let page: Promise<RenderAsk | undefined> | undefined;
+/** Loads the render page once, in a hidden frame of this document, and hands it a port only this panel holds. */
+function renderPage(): Promise<RenderAsk | undefined> {
+  page ??= new Promise<RenderAsk | undefined>((resolve) => {
     const frame = document.createElement('iframe');
     frame.hidden = true;
     frame.setAttribute('aria-hidden', 'true');
-    frame.addEventListener('load', () => resolve(), { once: true });
+    const url = browser.runtime.getURL('/render.html');
+    frame.addEventListener('load', () => {
+      const { port1, port2 } = new MessageChannel();
+      // Posted to the extension's origin only, so a frame that navigated elsewhere never gets the port.
+      frame.contentWindow?.postMessage({ type: RENDER_PORT }, new URL(url).origin, [port2]);
+      resolve(renderClient(port1));
+    }, { once: true });
     // A frame that never loads leaves the stills as words rather than waiting forever.
-    setTimeout(resolve, 10_000);
-    frame.src = browser.runtime.getURL('/render.html');
+    setTimeout(() => resolve(undefined), 10_000);
+    frame.src = url;
     document.body.append(frame);
   });
   return page;
 }
 
-const messageStill: StillRenderer = async (scene, atMs, size, c) => {
-  await renderPage();
-  return (await send({ type: 'render/still', scene, atMs, size, look: c.look, texts: c.texts }))?.url;
+const noPage = () => new Error('The render page did not load');
+const portStill: StillRenderer = async (scene, atMs, size, c) => {
+  const ask = await renderPage();
+  if (!ask) throw noPage();
+  return ask({ type: 'still', scene, atMs, size, look: c.look, texts: c.texts });
 };
-const messageFrames: FramesFor = (recipe, look) => async (clip, times) => {
-  await renderPage();
-  return (await send({ type: 'render/frames', clip, times, look, texts: clipTexts(clip, recipe) }))?.urls ?? [];
+const portFrames: FramesFor = (recipe, look) => async (clip, times) => {
+  const ask = await renderPage();
+  if (!ask) throw noPage();
+  return ask({ type: 'frames', clip, times, look, texts: clipTexts(clip, recipe) });
 };
 
-let still: StillRenderer = messageStill;
-let frames: FramesFor = messageFrames;
+let still: StillRenderer = portStill;
+let frames: FramesFor = portFrames;
 
 /** Tests swap the renderers. */
 export function setRenderers(r: { still?: StillRenderer; frames?: FramesFor }): void {
-  still = r.still ?? messageStill;
-  frames = r.frames ?? messageFrames;
+  still = r.still ?? portStill;
+  frames = r.frames ?? portFrames;
 }
 export const clipFrames = (recipe: Recipe, look?: LookGuide): ClipFrames => frames(recipe, look);
 

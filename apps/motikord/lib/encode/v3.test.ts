@@ -8,7 +8,7 @@ import { sampleClip } from '../../components/editor/fixture';
 import { initV3 } from '../../components/editor/model';
 import { cancelExport, clearSession, getSession, type RenderHooks, type RunDeps } from '../exportJob';
 import type { RenderItem } from '../exportPlan';
-import { renderV3, startV3Export, type V3Env } from './v3';
+import { renderV3, startV3Export, type StartV3, type V3Env } from './v3';
 
 const notFound = () => Object.assign(new Error('not found'), { name: 'NotFoundError' });
 class FakeDir {
@@ -26,16 +26,16 @@ class FakeDir {
   async removeEntry(name: string) { this.dirs.delete(name); this.files.delete(name); }
 }
 
-function fakeEnv(o: { slow?: boolean } = {}) {
+function fakeEnv(o: { slow?: boolean; pick?: Promise<void> } = {}) {
   const drawn: number[] = [];
-  const log = { drawn, disposed: 0, encoded: 0, closedFrames: 0, gifFrames: 0 };
+  const log = { drawn, disposed: 0, encoded: 0, closedFrames: 0, gifFrames: 0, muxCancelled: 0 };
   const env: V3Env = {
     drawer: () => ({
       canvas: { width: 4, height: 4 } as never,
       draw: async (t) => { drawn.push(t); if (o.slow) await new Promise((r) => setTimeout(r, 1)); },
       dispose: () => { log.disposed++; },
     }),
-    isSupported: async () => ({ supported: true }),
+    isSupported: async () => { await o.pick; return { supported: true }; },
     makeEncoder: (init) => ({
       encodeQueueSize: 0,
       configure: () => undefined,
@@ -45,7 +45,7 @@ function fakeEnv(o: { slow?: boolean } = {}) {
     }),
     frame: () => ({ close: () => { log.closedFrames++; } }) as unknown as VideoFrame,
     pixels: (_s, w, h) => { log.gifFrames++; return new Uint8ClampedArray(w * h * 4); },
-    muxer: () => ({ mime: 'video/mp4', addVideo: () => undefined, addAudio: () => undefined, finish: async () => new Blob(['video'], { type: 'video/mp4' }) }),
+    muxer: () => ({ mime: 'video/mp4', addVideo: () => undefined, addAudio: () => undefined, finish: async () => new Blob(['video'], { type: 'video/mp4' }), cancel: async () => { log.muxCancelled++; } }),
   };
   return { env, log };
 }
@@ -116,5 +116,36 @@ describe('v3 export renderer', () => {
     expect(getSession()?.phase).toBe('cancelled');
     expect(root.dirs.size).toBe(0);
     expect(log.disposed).toBe(1);
+  });
+
+  it('Cancel while the encoder is being picked stops before any frame is drawn', async () => {
+    let picked!: () => void;
+    const { env, log } = fakeEnv({ pick: new Promise<void>((r) => { picked = r; }) });
+    const run = renderV3(sampleClip().v3, undefined, item(), undefined, hooks(), env);
+    run.cancel();
+    picked();
+    await expect(run.done).rejects.toMatchObject({ name: 'Cancelled' });
+    expect([log.drawn.length, log.disposed]).toEqual([0, 1]);
+  });
+
+  it('cancels the muxer when Cancel lands mid-file', async () => {
+    const { env, log } = fakeEnv({ slow: true });
+    const run = renderV3(sampleClip().v3, undefined, item({ frames: 500 }), undefined, hooks(), env);
+    await new Promise((r) => setTimeout(r, 5));
+    run.cancel();
+    await expect(run.done).rejects.toMatchObject({ name: 'Cancelled' });
+    expect(log.muxCancelled).toBe(1);
+  });
+
+  it('a second export while one runs is turned away, so a double click makes one run', async () => {
+    const root = new FakeDir('Motikord clips');
+    const { env } = fakeEnv({ slow: true });
+    const deps = { root, now: () => 1, badge: () => undefined, mix: async () => undefined, saveJob: async () => undefined, removeJob: async () => undefined, markExported: async () => undefined, render: () => { throw new Error('replaced'); } } as unknown as RunDeps;
+    const s: StartV3 = { clip: sampleClip(), choice: { kind: 'mp4', aspects: ['9:16'], fps: 30, finishing: true, captions: 'off' }, fps: 30, root: root as never, deps, env };
+    const first = startV3Export(s);
+    await expect(startV3Export(s)).rejects.toThrow(/already running/);
+    cancelExport();
+    expect((await first).phase).toBe('cancelled');
+    expect(root.dirs.size).toBe(0);
   });
 });

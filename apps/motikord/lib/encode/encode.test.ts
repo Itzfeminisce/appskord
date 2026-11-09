@@ -43,7 +43,7 @@ describe('encode', () => {
   it('feeds a fake encoder, keys every 2 s, and passes chunks to the muxer', async () => {
     const chunks: unknown[] = [];
     const keys: boolean[] = [];
-    const mux: Muxed = { mime: 'video/mp4', addVideo: (c) => chunks.push(c), addAudio: () => undefined, finish: async () => new Blob() };
+    const mux: Muxed = { mime: 'video/mp4', addVideo: (c) => chunks.push(c), addAudio: () => undefined, finish: async () => new Blob(), cancel: async () => undefined };
     let init: VideoEncoderInit | undefined;
     const fake: EncoderLike = { encodeQueueSize: 0, configure: () => undefined, encode: (_f, o) => { keys.push(!!o?.keyFrame); init!.output({} as EncodedVideoChunk); }, flush: async () => undefined, close: () => undefined };
     const track = videoTrack({ codec: 'avc1.640028', width: 2, height: 2, framerate: 30 }, mux, (i) => { init = i; return fake; });

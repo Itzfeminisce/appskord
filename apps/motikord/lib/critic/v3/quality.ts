@@ -138,7 +138,14 @@ async function runPass(pass: PassId, x: CheckInput, o: QualityOptions): Promise<
   if (strictTokens(text) + CRITIC_V3_TOKENS > CALL_BUDGET) return result({});
   const room = Math.floor((CALL_BUDGET - CRITIC_V3_TOKENS - strictTokens(text)) / IMAGE_TOKENS);
   const n = visual && o.render ? Math.max(0, Math.min(MAX_PASS_FRAMES, room)) : 0;
-  const images = n ? (await o.render!(x.clip, frameTimes(x.clip, n))).slice(0, n) : [];
+  let images: string[] = [];
+  try {
+    images = n ? (await o.render!(x.clip, frameTimes(x.clip, n))).slice(0, n) : [];
+  } catch (error) {
+    // Frames that couldn't be drawn (or drawn without their words) are never judged: the pass reports failure.
+    console.error('Motikord: could not draw the quality check frames', error);
+    return result({ state: 'critic-ai-failed', copy: stateCopy('critic-ai-failed', { provider: providerName(o) }) });
+  }
   const messages = images.length ? passMessages(pass, x, images) : text;
   const tokens = strictTokens(messages) + CRITIC_V3_TOKENS;
   const model = visual ? o.critic.model : o.model;

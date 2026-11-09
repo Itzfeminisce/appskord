@@ -37,6 +37,7 @@ export const EXPORT_COPY = {
   cancel: 'Cancel',
   estimate: (about: string, n: number) => `${about} for ${n} ${n === 1 ? 'size' : 'sizes'} on this computer`,
   exporting: (i: number, n: number) => `Exporting ${i} of ${n}`,
+  failed: 'The export stopped before it began. Your clip is safe. Try again.',
   notYet: (kind: ExportKindV3) => `${kind === 'lottie' ? 'Lottie' : 'Transparent WebM'} export from v3 motion is not ready yet. Choose MP4, WebM or GIF.`,
   detail: (aspect: Aspect, frame: number, frames: number, finishing: boolean) => ` · ${aspect} · frame ${frame} of ${frames}${finishing ? ' · Finishing on' : ''}`,
 } as const;

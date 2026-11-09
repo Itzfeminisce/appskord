@@ -47,16 +47,34 @@ export function ExportV3Route() {
   const fallback30 = machine?.fps60 === false && !anyway60;
   const mine = s && s.job.clipId === clipId ? s : undefined;
 
-  const start = async (choice: ExportChoiceV3, fps: 30 | 60) => {
+  // Set inside the click, before any await, so a double click starts one run.
+  const starting = useRef(false);
+  // The folder of the last run, reused by "Export at 60 anyway", which restarts outside a click.
+  const lastRoot = useRef<FileSystemDirectoryHandle>(undefined);
+
+  const failed = (error: unknown) => {
+    console.error('Motikord: could not start the export', error);
+    setNotice(EXPORT_COPY.failed);
+  };
+  const run = async (choice: ExportChoiceV3, fps: 30 | 60, again?: FileSystemDirectoryHandle) => {
     if (!clip || !isRestyled(clip)) return;
     setNotice(v3Renders(choice.kind) ? undefined : EXPORT_COPY.notYet(choice.kind));
     if (!v3Renders(choice.kind)) return;
     last.current = choice;
     // The folder is asked for first, inside the click.
-    const root = await folderFromClick();
+    const root = again ?? await folderFromClick();
     if (!root) return;
+    lastRoot.current = root;
     const [{ startV3Export }, look] = await Promise.all([import('../../lib/encode/v3'), clipLook(clip)]);
-    void startV3Export({ clip, look, choice, fps, root });
+    // The session is running once this call returns, so the check in start turns a second click away.
+    startV3Export({ clip, look, choice, fps, root }).catch(failed);
+  };
+  const start = (choice: ExportChoiceV3, fps: 30 | 60, again?: FileSystemDirectoryHandle) => {
+    if (starting.current || getSession()?.phase === 'running') return;
+    starting.current = true;
+    run(choice, fps, again)
+      .catch(failed)
+      .finally(() => { starting.current = false; });
   };
 
   useEffect(() => {
@@ -64,7 +82,7 @@ export function ExportV3Route() {
     if (mine.phase === 'done') replace('Exported', { clipId });
     else if (mine.phase === 'cancelled') {
       clearSession();
-      if (restart.current && last.current) { restart.current = false; void start(last.current, 60); }
+      if (restart.current && last.current) { restart.current = false; start(last.current, 60, lastRoot.current); }
     } else if (mine.phase !== 'running') replace('Rendering', { clipId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mine?.phase]);
@@ -81,7 +99,7 @@ export function ExportV3Route() {
   };
   return (
     <ExportV3 clipSeconds={clip ? Math.round(clipDuration(clip.recipe) / 1000) : 0} hasCaptions={!!clip && isRestyled(clip) && clipHasCaptions(clip.v3)} onClose={close}
-      onExport={clip ? (c) => void start(c, exportFps(c.fps, fallback30)) : undefined} progress={progress} onCancel={cancelExport}
+      onExport={clip ? (c) => start(c, exportFps(c.fps, fallback30)) : undefined} progress={progress} onCancel={cancelExport}
       fallback30={fallback30} onExport60Anyway={anyway} notice={notice} />
   );
 }

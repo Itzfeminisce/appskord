@@ -2,7 +2,7 @@
 // mediabunny muxes. It plugs into runExport, so the job row, folder, badge and Cancel are the v2 export's.
 import type { ClipV3, LookGuide } from '@appskord/motion/types';
 import type { ExportChoiceV3 } from '../../components/export/ExportV3';
-import { clearSession, runExport, type RenderHooks, type RenderRun, type RunDeps } from '../exportJob';
+import { clearSession, getSession, runExport, type RenderHooks, type RenderRun, type RunDeps } from '../exportJob';
 import type { RenderItem } from '../exportPlan';
 import { captionCues, drawnClip, jobChoiceV3, planV3, srtFileName } from '../exportV3';
 import { ClipDrawer, type DrawSetup, type LayerTexts } from '../v3/frames';
@@ -13,7 +13,7 @@ import { encodeAudio, pickAudioCodec, type IsAudioSupported, type MixedAudio } f
 import { gifWriter } from './gif';
 import { mp4Muxer } from './mp4';
 import { pageDeps } from './page';
-import { pickVideoConfig, runFrames, Unsupported, videoTrack, type IsSupported, type MakeEncoder, type Muxed } from './video';
+import { Cancelled, pickVideoConfig, runFrames, Unsupported, videoTrack, type IsSupported, type MakeEncoder, type Muxed } from './video';
 import { webmMuxer } from './webm';
 
 /** What draws the frames: the real one is ClipDrawer on a canvas; tests pass a fake. */
@@ -54,17 +54,19 @@ export function pageEnv(texts: LayerTexts): V3Env {
   };
 }
 
-/** Renders one planned file; Cancel stops at the next frame and frees the renderer, encoder and GPU context. */
+/** Renders one planned file; Cancel stops at the next frame or step and frees the renderer, encoder, muxer and GPU context. */
 export function renderV3(clip: ClipV3, look: LookGuide | undefined, item: RenderItem, audio: MixedAudio | undefined, hooks: RenderHooks, env: V3Env): RenderRun {
   let cancelled = false;
+  const stopIfCancelled = () => { if (cancelled) throw new Cancelled(); };
   const done = (async () => {
     const drawer = env.drawer(clip, { width: item.width, height: item.height, quality: 'full', fps: item.fps, look, finish: clip.finish, effects: clip.effects });
     const base = {
       frames: item.frames, fps: item.fps, cancelled: () => cancelled,
       draw: () => undefined,
-      prepare: (_i: number, t: number) => drawer.draw(t),
+      prepare: async (_i: number, t: number) => { await drawer.draw(t); stopIfCancelled(); },
       progress: (f: number, n: number, t: number) => hooks.progress(f, n, t),
     };
+    let mux: Muxed | undefined;
     try {
       if (item.kind === 'gif') {
         const out = gifWriter(item.width, item.height, item.fps);
@@ -74,13 +76,16 @@ export function renderV3(clip: ClipV3, look: LookGuide | undefined, item: Render
       }
       if (item.kind !== 'mp4' && item.kind !== 'webm') throw new Unsupported(item.label);
       const picked = await pickVideoConfig({ kind: item.kind, width: item.width, height: item.height, fps: item.fps, bitrate: item.bitrate }, env.isSupported);
+      stopIfCancelled();
       if (!picked) throw new Unsupported(item.label);
       hooks.encoder(picked.hardware);
       const sound = audio && env.isAudioSupported ? await pickAudioCodec(item.kind, env.isAudioSupported) : null;
+      stopIfCancelled();
       if (audio && !sound) throw new Unsupported('Audio');
-      const mux = env.muxer(item, sound ?? undefined);
+      mux = env.muxer(item, sound ?? undefined);
       // Sound first: it is small, so mediabunny holds it while the video chunks arrive in order.
       if (audio && sound) await (env.encodeAudio ?? encodeAudio)(audio, sound, mux);
+      stopIfCancelled();
       const track = videoTrack(picked.config, mux, env.makeEncoder);
       try {
         const frameUs = 1e6 / item.fps;
@@ -90,7 +95,14 @@ export function renderV3(clip: ClipV3, look: LookGuide | undefined, item: Render
         track.close();
         throw error;
       }
-      return await mux.finish();
+      stopIfCancelled();
+      const blob = await mux.finish();
+      mux = undefined;
+      return blob;
+    } catch (error) {
+      // An abandoned file is cancelled, so mediabunny lets go of what it holds.
+      await mux?.cancel().catch(() => undefined);
+      throw error;
     } finally {
       drawer.dispose();
     }
@@ -121,6 +133,8 @@ export function startV3Export(s: StartV3) {
     extras: cues.length ? [{ name: srtFileName(s.clip.recipe.name), text: toSrt(cues) }] : [],
     render: (_recipe, item, audio, hooks) => renderV3(drawn, s.look, item, audio, hooks, env),
   };
+  // One run at a time: a second Export while one runs is turned away rather than started beside it.
+  if (getSession()?.phase === 'running') return Promise.reject(new Error('An export is already running'));
   clearSession();
   return runExport(s.clip.recipe, s.clip.id, jobChoiceV3(s.clip, s.choice), deps);
 }
