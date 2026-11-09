@@ -4,23 +4,28 @@ import { EffectComposer, RenderPass } from 'postprocessing';
 import { CAMERA_DISTANCE } from './camera';
 import { applyCamera, scenePose } from './depth';
 import type { EffectUse } from './effects';
+import { bonePoses, drawSpec, formatCount, growOutline, type DrawSpec, type LayerContent } from './draw';
 import { DEFAULT_FINISH, FinishChain } from './finish';
 import { disposeLight, GUIDE_LIGHT, keyLight } from './light';
 import { ParticlesView } from './particles';
-import { applyFrame, buildGraph, frameAt, type FrameState, type MotionGraph, type Quality } from './scene';
-import { roundedRect, ShapeMesh } from './shapes';
-import { KineticType, type Measure } from './type';
+import {
+  applyFrame,
+  buildGraph,
+  frameAt,
+  type FrameState,
+  type LayerFrame,
+  type MotionGraph,
+  type Quality,
+} from './scene';
+import { applyMask, type Box } from './masks';
+import { morpher } from './morph';
+import { StrokeMesh, type Point } from './paths';
+import { deformPoints, poseBones, type Bone, type BoneId } from './rigs';
+import { bounds, ShapeMesh } from './shapes';
+import { CountText, KineticType, type Measure } from './type';
 import type { Finish, LayerV3, LookGuide, SceneV3 } from './types';
 
-/** What the app knows about a layer that the v3 recipe does not hold: its words and colour. */
-export interface LayerContent {
-  text?: string;
-  color?: string;
-  /** Recipe px. */
-  fontSize?: number;
-  /** Recipe px, for shapes, media and stickers. */
-  size?: { w: number; h: number };
-}
+export type { LayerContent } from './draw';
 
 export interface RendererOptions {
   width: number;
@@ -45,6 +50,124 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement | OffscreenCanvas
   return r;
 }
 
+type Props = LayerFrame['props'];
+type Joints = Partial<Record<BoneId, Point[]>>;
+
+/** One layer's content under its group, posed from the layer's props each frame. */
+interface View {
+  readonly id: string;
+  /** Local bounds for the mask, recipe px. */
+  readonly box: Box;
+  update(l: LayerFrame, joints: JointsOf): void;
+  dispose(): void;
+}
+type JointsOf = (host: string, bones: readonly Bone[]) => Joints;
+
+const restOf = (bones: readonly Bone[]): Joints => poseBones(bones, {});
+const jointsKey = (j: Joints | undefined): string =>
+  j
+    ? Object.values(j)
+        .map((ps) => ps!.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' '))
+        .join('|')
+    : '';
+
+class ShapeView implements View {
+  readonly box: Box;
+  private readonly mesh: ShapeMesh;
+  private readonly edge?: StrokeMesh;
+  private readonly at?: (t: number) => Point[];
+  private readonly rest?: Joints;
+  private drawn: readonly Point[];
+  private key = '';
+
+  constructor(
+    readonly id: string,
+    group: THREE.Group,
+    private readonly spec: Extract<DrawSpec, { kind: 'shape' }>,
+  ) {
+    this.mesh = new ShapeMesh(spec.outline, spec.color);
+    this.drawn = spec.outline;
+    group.add(this.mesh);
+    if (spec.stroke) {
+      this.edge = new StrokeMesh([...spec.outline, spec.outline[0]!], spec.stroke.width, spec.stroke.color);
+      group.add(this.edge);
+    }
+    if (spec.morphTo) this.at = morpher(spec.outline, spec.morphTo);
+    if (spec.bones) this.rest = restOf(spec.bones);
+    this.box = bounds(spec.morphTo ? [...spec.outline, ...spec.morphTo] : spec.outline);
+  }
+
+  update({ props }: LayerFrame, joints: JointsOf): void {
+    const { spec } = this;
+    const morph = this.at ? Math.min(1, Math.max(0, props.morph)) : 0;
+    const draw = spec.grow ? Math.min(1, Math.max(0, props.draw)) : 1;
+    const posed = spec.bones ? joints(this.id, spec.bones) : undefined;
+    const key = `${morph}|${draw}|${jointsKey(posed)}`;
+    if (key !== this.key) {
+      this.key = key;
+      let points = this.at ? this.at(morph) : spec.outline;
+      if (spec.grow) points = growOutline(points, draw);
+      if (posed && this.rest) points = deformPoints(points, this.rest, posed);
+      if (points !== this.drawn) {
+        this.mesh.setPoints(points);
+        this.edge?.setPoints([...points, points[0]!], 1);
+        this.drawn = points;
+      }
+    }
+    this.mesh.material.opacity = props.opacity;
+    if (this.edge) this.edge.material.opacity = props.opacity;
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose();
+    this.mesh.material.dispose();
+    this.edge?.geometry.dispose();
+    this.edge?.material.dispose();
+  }
+}
+
+class PathView implements View {
+  readonly box: Box;
+  private readonly strokes: StrokeMesh[];
+  private readonly lines: Point[][];
+  private readonly rest?: Joints;
+  private key = '';
+
+  constructor(
+    readonly id: string,
+    group: THREE.Group,
+    private readonly spec: Extract<DrawSpec, { kind: 'path' }>,
+  ) {
+    this.lines = spec.lines.filter((l) => l.length > 1);
+    this.strokes = this.lines.map((l) => new StrokeMesh(l, spec.width, spec.color));
+    for (const s of this.strokes) group.add(s);
+    if (spec.bones) this.rest = restOf(spec.bones);
+    const b = bounds(spec.lines.flat());
+    const pad = spec.width / 2;
+    this.box = { x: b.x - pad, y: b.y - pad, width: b.width + 2 * pad, height: b.height + 2 * pad };
+  }
+
+  update({ props }: LayerFrame, joints: JointsOf): void {
+    const posed = this.spec.bones ? joints(this.id, this.spec.bones) : undefined;
+    const key = `${props.draw}|${jointsKey(posed)}`;
+    if (key !== this.key) {
+      this.key = key;
+      this.strokes.forEach((s, i) => {
+        const line = this.lines[i]!;
+        s.setPoints(posed && this.rest ? deformPoints(line, this.rest, posed) : line, props.draw);
+      });
+    }
+    for (const s of this.strokes) s.material.opacity = props.opacity;
+  }
+
+  dispose(): void {
+    for (const s of this.strokes) {
+      s.geometry.dispose();
+      s.material.dispose();
+    }
+  }
+}
+
 const roughMeasure =
   (fontSize: number): Measure =>
   (s) =>
@@ -62,8 +185,13 @@ export class V3Renderer {
   readonly chain: FinishChain;
   private readonly previous: THREE.PerspectiveCamera;
   private readonly kinetic = new Map<string, KineticType>();
+  private readonly counts = new Map<string, { view: CountText; count: NonNullable<LayerV3['count']> }>();
   private readonly particles = new Map<string, ParticlesView>();
-  private readonly shapes: ShapeMesh[] = [];
+  private readonly views = new Map<string, View>();
+  /** Text boxes for masks, recipe px. */
+  private readonly textBoxes = new Map<string, Box>();
+  private readonly masked: LayerV3[];
+  private readonly props = new Map<string, Props>();
   private readonly light: THREE.DirectionalLight | null;
   private composer: EffectComposer | null = null;
   private renderer: THREE.WebGLRenderer | null = null;
@@ -89,9 +217,13 @@ export class V3Renderer {
     const dot = GUIDE_LIGHT[look?.light ?? 'none'];
     this.light = dot ? keyLight(dot, !!scene.depthShadows) : null;
     if (this.light) this.three.add(this.light);
-    const ink = look?.palette[1] ?? '#F5F5F7';
-    const panel = look?.palette[3] ?? '#1A1B2E';
-    for (const layer of scene.layers) this.addContent(layer, ink, panel);
+    const inks = {
+      ink: look?.palette[1] ?? '#F5F5F7',
+      accent: look?.palette[2] ?? '#8B9CFF',
+      panel: look?.palette[3] ?? '#1A1B2E',
+    };
+    for (const layer of scene.layers) this.addContent(layer, inks);
+    this.masked = scene.layers.filter((l) => l.tracks.mask?.length);
     const scale = options.quality === 'full' ? 1 : 0.5;
     const uses = [...(options.effects ?? []), ...(scene.effects ?? [])];
     this.chain = new FinishChain(this.camera, options.finish ?? DEFAULT_FINISH, uses, {
@@ -104,42 +236,71 @@ export class V3Renderer {
     });
   }
 
-  private addContent(layer: LayerV3, ink: string, panel: string): void {
+  private addContent(layer: LayerV3, inks: { ink: string; panel: string; accent: string }): void {
     const group = this.graph.layers.get(layer.id);
     if (!group) return;
-    const c = this.options.content?.(layer) ?? {};
-    if (layer.kind === 'text') {
-      const fontSize = c.fontSize ?? 72;
-      const measure = (this.options.measure ?? roughMeasure)(fontSize);
-      const k = new KineticType(c.text ?? '', layer.type?.unit ?? 'line', {
-        measure,
-        fontSize,
-        fontUrl: this.options.fontUrl,
-        color: c.color ?? ink,
-        fill: layer.type?.fill ? { frameWidth: 1080, inset: 80 } : undefined,
-      });
-      group.add(k);
-      this.kinetic.set(layer.id, k);
-      return;
+    const content: LayerContent | undefined = this.options.content?.(layer);
+    const spec = drawSpec(layer, this.scene.layers, content, inks);
+    switch (spec.kind) {
+      case 'text': {
+        const measure = (this.options.measure ?? roughMeasure)(spec.fontSize);
+        const k = new KineticType(spec.text, spec.unit, {
+          measure,
+          fontSize: spec.fontSize,
+          fontUrl: this.options.fontUrl,
+          color: spec.color,
+          fill: spec.fill ? { frameWidth: 1080, inset: 80 } : undefined,
+        });
+        group.add(k);
+        this.kinetic.set(layer.id, k);
+        const lineHeight = spec.fontSize * 1.1;
+        const lines = 1 + Math.max(0, ...k.boxes.map((b) => b.line));
+        const x0 = Math.min(0, ...k.boxes.map((b) => b.x));
+        const x1 = Math.max(0, ...k.boxes.map((b) => b.x + b.width));
+        this.textBoxes.set(layer.id, { x: x0, y: 0, width: x1 - x0, height: lines * lineHeight });
+        return;
+      }
+      case 'count': {
+        const view = new CountText(this.options.fontUrl, spec.fontSize, spec.color);
+        group.add(view);
+        this.counts.set(layer.id, { view, count: spec.count });
+        this.textBoxes.set(layer.id, {
+          x: -spec.fontSize * 3,
+          y: -spec.fontSize,
+          width: spec.fontSize * 6,
+          height: spec.fontSize,
+        });
+        return;
+      }
+      case 'particles': {
+        const p = layer.particles!;
+        const view = new ParticlesView(
+          p.bake!,
+          p.preset,
+          this.options.look?.palette ?? [inks.ink],
+          this.options.height,
+        );
+        group.add(view.points);
+        this.particles.set(layer.id, view);
+        return;
+      }
+      case 'shape':
+        this.views.set(layer.id, new ShapeView(layer.id, group, spec));
+        return;
+      case 'path':
+        this.views.set(layer.id, new PathView(layer.id, group, spec));
+        return;
+      case 'none':
+        return;
     }
-    if (layer.kind === 'particles') {
-      const bake = layer.particles?.bake;
-      if (!bake || !layer.particles) return;
-      const view = new ParticlesView(
-        bake,
-        layer.particles.preset,
-        this.options.look?.palette ?? [ink],
-        this.options.height,
-      );
-      group.add(view.points);
-      this.particles.set(layer.id, view);
-      return;
-    }
-    const size = c.size ?? { w: 320, h: 200 };
-    const mesh = new ShapeMesh(roundedRect(size.w, size.h, 24), c.color ?? panel);
-    group.add(mesh);
-    this.shapes.push(mesh);
   }
+
+  /** A rigged host's joints this frame, posed from its hidden bone layers. */
+  private readonly joints: JointsOf = (host, bones) =>
+    poseBones(
+      bones,
+      bonePoses(host, bones, (id) => this.props.get(id)),
+    );
 
   /** Poses the graph, content, camera and finish for `t` ms into the scene. Pure of GPU work. */
   pose(t: number): FrameState {
@@ -147,9 +308,19 @@ export class V3Renderer {
     const frame = frameAt(this.scene, t, feel);
     applyFrame(this.graph, frame);
     applyCamera(this.graph, scenePose(this.scene, frame, feel), 1, !!this.options.spread);
+    this.props.clear();
+    for (const l of frame.layers) this.props.set(l.id, l.props);
     for (const l of frame.layers) {
-      this.kinetic.get(l.id)?.update(l.local);
+      this.kinetic.get(l.id)?.update(l.local, l.props.opacity);
+      const c = this.counts.get(l.id);
+      c?.view.update(formatCount(c.count, l.props.draw), l.props.opacity);
       this.particles.get(l.id)?.update(Math.max(0, l.local));
+      this.views.get(l.id)?.update(l, this.joints);
+    }
+    for (const layer of this.masked) {
+      const group = this.graph.layers.get(layer.id);
+      const box = this.views.get(layer.id)?.box ?? this.textBoxes.get(layer.id);
+      if (group && box) applyMask(group, box);
     }
     this.chain.update({ sceneId: this.scene.id, t, frame, graph: this.graph });
     this.last = frame;
@@ -159,6 +330,8 @@ export class V3Renderer {
   /** Builds the composer on a WebGL renderer the caller owns (one per canvas). */
   attach(renderer: THREE.WebGLRenderer): void {
     this.renderer = renderer;
+    // Masks clip with per-material planes.
+    renderer.localClippingEnabled = true;
     const scale = this.options.quality === 'full' ? 1 : 0.5;
     renderer.setSize(this.options.width * scale, this.options.height * scale, false);
     this.composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
@@ -182,10 +355,8 @@ export class V3Renderer {
   dispose(): void {
     for (const k of this.kinetic.values()) k.dispose();
     for (const p of this.particles.values()) p.dispose();
-    for (const s of this.shapes) {
-      s.geometry.dispose();
-      s.material.dispose();
-    }
+    for (const c of this.counts.values()) c.view.dispose();
+    for (const v of this.views.values()) v.dispose();
     if (this.light) disposeLight(this.light);
     this.chain.dispose();
     this.composer?.dispose();

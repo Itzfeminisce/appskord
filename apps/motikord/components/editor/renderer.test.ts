@@ -37,3 +37,20 @@ describe('V3Renderer smoke', () => {
     expect(built).toBe(TEMPLATES_V3.length * PACKS_V3.length);
   });
 });
+
+describe('layerContent', () => {
+  it('gives text its words and a shape its v2 size, fill and corners', async () => {
+    const { layerContent } = await import('./model');
+    const box = { x: 0, y: 0, w: 300, h: 80 };
+    const clip = {
+      recipe: { scenes: [{ layers: [
+        { id: 'pill', type: 'shape', shape: 'rect', fill: '#123456', radius: 40, box },
+        { id: 't', type: 'text', text: 'Hello' },
+      ] }] },
+    } as unknown as Parameters<typeof layerContent>[0];
+    const l = (id: string, kind: 'shape' | 'text') => ({ id, kind, depth: 'front' as const, tracks: {} });
+    expect(layerContent(clip, 0, l('pill', 'shape'))).toEqual({ size: { w: 300, h: 80 }, color: '#123456', shape: 'rect', radius: 40 });
+    expect(layerContent(clip, 0, l('t', 'text'))).toEqual({ text: 'Hello' });
+    expect(layerContent(clip, 0, l('none', 'shape'))).toBeUndefined();
+  });
+});

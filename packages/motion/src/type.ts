@@ -259,8 +259,8 @@ export class KineticType extends THREE.Group {
     }
   }
 
-  /** Poses every unit at `local` ms from the layer's start. */
-  update(local: number): void {
+  /** Poses every unit at `local` ms from the layer's start, faded by the layer's opacity. */
+  update(local: number, opacity = 1): void {
     const { fontSize, unitMs, curve } = this.options;
     const lineHeight = this.options.lineHeight ?? fontSize * 1.1;
     const progress = unitProgress(this.texts.length, this.unit, local, unitMs, curve);
@@ -271,7 +271,7 @@ export class KineticType extends THREE.Group {
       t.position.y = -(box.y + pose.dy) * UNIT;
       // clipRect is in the text's own space, so the line's box moves up by the rise.
       const clipRect = pose.clip ? [-1e4, (pose.dy - lineHeight) * UNIT, 1e4, pose.dy * UNIT] : null;
-      t.fillOpacity = pose.opacity;
+      t.fillOpacity = pose.opacity * opacity;
       // Assigning clipRect re-typesets, so only touch it when its values change.
       const prev = t.clipRect;
       const same = clipRect === null ? !prev : !!prev && clipRect.every((v, k) => v === prev[k]);
@@ -285,5 +285,32 @@ export class KineticType extends THREE.Group {
       t.dispose();
     }
     this.texts.length = 0;
+  }
+}
+
+/** A counting number: one troika text centred on the layer, re-typeset only when the shown string changes. */
+export class CountText extends THREE.Group {
+  private readonly text = new Text() as TextProps;
+  private shown = '';
+
+  constructor(fontUrl: string, fontSize: number, color: THREE.ColorRepresentation = '#111114') {
+    super();
+    Object.assign(this.text, { font: fontUrl, fontSize: fontSize * UNIT, anchorX: 'center', anchorY: 'bottom' });
+    this.text.color = color as string;
+    this.add(this.text);
+  }
+
+  update(value: string, opacity = 1): void {
+    if (value !== this.shown) {
+      this.text.text = value;
+      this.text.sync();
+      this.shown = value;
+    }
+    this.text.fillOpacity = opacity;
+  }
+
+  override dispose(): void {
+    this.remove(this.text);
+    this.text.dispose();
   }
 }

@@ -160,3 +160,73 @@ export class PathLine extends THREE.Line<THREE.BufferGeometry, THREE.LineBasicMa
     this.material.opacity = userData.opacity ?? 1;
   }
 }
+
+/**
+ * The two edges of a stroke `width` wide along a polyline, written as [lx, ly, rx, ry] per point into `out`
+ * (grown when too short). Each point is offset along the normal of its neighbours' chord. Recipe units, y down.
+ */
+export function strokeStrip(points: readonly Point[], width: number, out?: Float32Array): Float32Array {
+  const n = points.length;
+  const strip = out && out.length >= n * 4 ? out : new Float32Array(n * 4);
+  const half = width / 2;
+  for (let i = 0; i < n; i++) {
+    const p = points[i] as Point;
+    const a = points[Math.max(0, i - 1)] as Point;
+    const b = points[Math.min(n - 1, i + 1)] as Point;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = (-dy / len) * half;
+    const ny = (dx / len) * half;
+    strip[i * 4] = p[0] + nx;
+    strip[i * 4 + 1] = p[1] + ny;
+    strip[i * 4 + 2] = p[0] - nx;
+    strip[i * 4 + 3] = p[1] - ny;
+  }
+  return strip;
+}
+
+/** A stroke with real width (a triangle strip; GL lines are always 1 px) whose drawn length follows `draw`. */
+export class StrokeMesh extends THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> {
+  private points: Point[] = [];
+  private strip: Float32Array = new Float32Array(0);
+
+  constructor(
+    points: readonly Point[],
+    readonly width: number,
+    color: THREE.ColorRepresentation = '#111114',
+  ) {
+    super(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial({ color, transparent: true, side: THREE.DoubleSide }),
+    );
+    this.setPoints(points, 1);
+  }
+
+  /** Swaps the polyline (rigs deform it) and lays it out for `draw`; buffers grow only when the line does. */
+  setPoints(points: readonly Point[], draw: number): void {
+    this.points = points as Point[];
+    const n = points.length;
+    const position = this.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+    if (!position || position.count < n * 2) {
+      this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 6), 3));
+      const index: number[] = [];
+      for (let i = 0; i + 1 < n; i++) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+      this.geometry.setIndex(index);
+    }
+    this.setDraw(draw);
+  }
+
+  setDraw(draw: number): void {
+    const drawn = drawPoints(this.points, draw);
+    this.strip = strokeStrip(drawn, this.width, this.strip);
+    const position = this.geometry.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < drawn.length; i++) {
+      position.setXYZ(i * 2, this.strip[i * 4]! * UNIT, -this.strip[i * 4 + 1]! * UNIT, 0);
+      position.setXYZ(i * 2 + 1, this.strip[i * 4 + 2]! * UNIT, -this.strip[i * 4 + 3]! * UNIT, 0);
+    }
+    position.needsUpdate = true;
+    this.geometry.setDrawRange(0, Math.max(0, drawn.length - 1) * 6);
+    this.geometry.computeBoundingSphere();
+  }
+}

@@ -5,7 +5,7 @@ import { EFFECTS_NOTE, effectEntry } from '@appskord/motion/effects';
 import type { LayerV3 } from '@appskord/motion/types';
 import { useEditorV3 } from './context';
 import { motionLine, similarLayers, readMotion, writeMotion } from './edits';
-import { clipMs, clockTenths, editScenes, sceneStarts } from './model';
+import { clipMs, clockTenths, editScenes, layerContent, sceneStarts } from './model';
 import { C, quietButton } from './ui';
 
 // The stage: the scene drawn by packages/motion at reduced quality, the selected layer's line and the transport.
@@ -64,7 +64,7 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
         effects: [...(v3.effects ?? []), ...previewUses],
         look,
         spread,
-        content: (l) => (l.kind === 'text' ? { text: ed.text(l) ?? '' } : undefined),
+        content: (l) => layerContent(state.clip, state.scene, l),
       });
       next.attach(gl);
       next.render(t);

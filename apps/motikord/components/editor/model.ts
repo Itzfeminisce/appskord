@@ -1,6 +1,7 @@
 // The v3 editor's state: the clip, what is selected, and every edit written through validateScene into Changes.
 import { getSceneTemplate } from '@appskord/scenes/templates/scenes';
 import { validateClip, validateScene } from '@appskord/motion/recipe';
+import type { LayerContent } from '@appskord/motion/draw';
 import type { EffectUse } from '@appskord/motion/effects';
 import type { ClipV3, LayerV3, SceneV3 } from '@appskord/motion/types';
 import { record, redo, undo, type History } from '../../lib/editor/history';
@@ -203,6 +204,14 @@ export function layerText(clip: RestyledClip, i: number, layer: LayerV3): string
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.map((x) => (typeof x === 'string' ? x : x.label)).join('\n');
   return undefined;
+}
+
+/** What the renderer draws for a layer beyond its tracks: its words, or its v2 shape's size, fill and corners. */
+export function layerContent(clip: RestyledClip, i: number, layer: LayerV3): LayerContent | undefined {
+  if (layer.kind === 'text') return { text: layerText(clip, i, layer) ?? '' };
+  const v2 = v2Layer(clip, i, layer.id);
+  if (v2?.type !== 'shape') return undefined;
+  return { size: { w: v2.box.w, h: v2.box.h }, color: v2.fill, shape: v2.shape, radius: v2.radius };
 }
 
 /** "Notes that find you": the scene's first words. */
