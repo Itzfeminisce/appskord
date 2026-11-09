@@ -11,7 +11,14 @@ export interface AudioPart {
   fadeInSec: number; fadeOutSec: number; loop: boolean;
   /** Music only: drops to `gain` times its level while the voice speaks. */
   duck?: { atSec: number; endSec: number; gain: number };
+  /** The voice track: it must decode, or the export fails. */
+  voice?: true;
 }
+
+/** The voice track's audio could not be read or decoded; the export stops rather than ship a clip without its narration. */
+export const VOICE_NOT_DECODED = 'Motikord: could not export clip. Its voice track could not be read. Choose the narration again or make the voiceover again, then export.';
+/** The mix is scaled to this level before a limiter so the voice, music and video sound never clip. */
+export const MASTER_GAIN = 0.8;
 
 /** Music under the voice plays at this share of its level ("quieter under the voice"). */
 export const DUCK_GAIN = 0.3;
@@ -30,7 +37,7 @@ export function audioParts(r: Recipe, totalMs: number): AudioPart[] {
       ...(voiceSec > 0 ? { duck: { atSec: 0, endSec: voiceSec, gain: DUCK_GAIN } } : {}),
     });
   }
-  if (r.voice && voiceSec > 0) parts.push({ assetId: r.voice.assetId, atSec: 0, durSec: voiceSec, gain: r.voice.volume, fadeInSec: 0, fadeOutSec: 0, loop: false });
+  if (r.voice && voiceSec > 0) parts.push({ assetId: r.voice.assetId, atSec: 0, durSec: voiceSec, gain: r.voice.volume, fadeInSec: 0, fadeOutSec: 0, loop: false, voice: true });
   let sceneStart = 0;
   for (const s of r.scenes) {
     for (const l of s.layers) {
@@ -56,11 +63,22 @@ export async function mixAudio(parts: AudioPart[], totalSec: number, read: (asse
   const decoded = new Map<string, AudioBuffer | null>();
   let any = false;
   for (const p of parts) {
-    if (!decoded.has(p.assetId)) {
-      const blob = await read(p.assetId);
-      // A video with no sound track fails to decode; it just adds nothing.
-      decoded.set(p.assetId, blob ? await ctx.decodeAudioData(await blob.arrayBuffer()).catch(() => null) : null);
-    }
+    if (decoded.has(p.assetId)) continue;
+    const blob = await read(p.assetId);
+    // A video with no sound track fails to decode; it just adds nothing.
+    decoded.set(p.assetId, blob ? await ctx.decodeAudioData(await blob.arrayBuffer()).catch(() => null) : null);
+  }
+  if (parts.some((p) => p.voice && !decoded.get(p.assetId))) throw new Error(VOICE_NOT_DECODED);
+  const master = ctx.createGain();
+  master.gain.value = MASTER_GAIN;
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.1;
+  master.connect(limiter).connect(ctx.destination);
+  for (const p of parts) {
     const buffer = decoded.get(p.assetId);
     if (!buffer) continue;
     any = true;
@@ -86,7 +104,7 @@ export async function mixAudio(parts: AudioPart[], totalSec: number, read: (asse
       duck.gain.linearRampToValueAtTime(1, endSec + DUCK_RAMP_SEC);
       out = out.connect(duck);
     }
-    out.connect(ctx.destination);
+    out.connect(master);
     src.start(p.atSec, 0, p.loop ? undefined : p.durSec);
     if (p.loop) src.stop(end);
   }

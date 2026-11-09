@@ -1,6 +1,6 @@
 // The clip's voice track: narration you choose or the AI voiceover, kept in OPFS like music (the recipe keeps the path).
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getMedia, mediaPath, putMedia } from '../../lib/media';
+import { deleteMedia, getMedia, mediaPath, putMedia } from '../../lib/media';
 import type { Asset, PatchOp, VoiceTrack } from '../../lib/types';
 import type { VoiceId } from '../../lib/voice/speech';
 import type { CaptionsVoiceProps } from './CaptionsVoice';
@@ -10,14 +10,19 @@ import { applyOps, type V3State } from './model';
 /** Narration files over this are refused: speech-to-text takes 25 MB and the clip file must carry it. */
 export const MAX_NARRATION_BYTES = 15 * 1024 * 1024;
 export const NARRATION_TOO_BIG = 'That narration is over 15 MB. Pick a shorter audio file.';
-export const NARRATION_NOT_AUDIO = 'That file is not audio. Pick an MP3, M4A, WAV, OGG or WebM file.';
+const AUDIO_EXT = /\.(m4a|aac|mp3|wav|ogg|opus|webm|flac)$/i;
+/** Browsers leave file.type empty for some audio files (.flac, .opus, .m4a), so the extension decides then. */
+export const isAudioFile = (f: { type: string; name: string }): boolean => (f.type ? f.type.startsWith('audio/') : AUDIO_EXT.test(f.name));
+export const NARRATION_NOT_AUDIO = 'That file is not audio. Pick an MP3, M4A, WAV, OGG, FLAC or WebM file.';
 export const VOICE_NOT_SAVED = 'The voice could not be saved on this computer. Try again.';
 
 const EXT: Record<string, string> = { 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac' };
 
 export function voiceAsset(id: string, blob: Blob, name: string, durationMs: number): Asset {
   const mime = blob.type || 'audio/mpeg';
-  return { id, kind: 'audio', name, mime, bytes: blob.size, ...(durationMs > 0 ? { durationMs } : {}), opfsPath: mediaPath(id, EXT[mime] ?? 'audio') };
+  const named = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase();
+  const ext = EXT[mime] ?? (blob.type || !named ? undefined : named) ?? 'audio';
+  return { id, kind: 'audio', name, mime, bytes: blob.size, ...(durationMs > 0 ? { durationMs } : {}), opfsPath: mediaPath(id, ext) };
 }
 
 const usedElsewhere = (st: V3State, id: string) =>
@@ -40,6 +45,8 @@ export interface VoiceMedia {
   /** Opens the audio file picker; calls back with the chosen file. */
   pick(onFile: (file: File) => void): void;
   durationMs(blob: Blob): Promise<number>;
+  /** Deletes a file that was written but never attached to the clip. */
+  remove?(path: string): Promise<void>;
   id(): string;
 }
 
@@ -58,6 +65,7 @@ function audioDuration(blob: Blob): Promise<number> {
 export const pageVoiceMedia: VoiceMedia = {
   get: (path) => getMedia(path),
   put: (path, blob) => putMedia(path, blob),
+  remove: (path) => deleteMedia(path),
   pick(onFile) {
     const input = Object.assign(document.createElement('input'), { type: 'file', accept: 'audio/*' });
     input.onchange = () => { const f = input.files?.[0]; if (f) onFile(f); };
@@ -88,13 +96,14 @@ export function useClipVoice(media: VoiceMedia = pageVoiceMedia): Pick<CaptionsV
       const a = voiceAsset(media.id(), blob, name, ms);
       await media.put(a.opfsPath, blob);
       if (live.current) ed.update((st) => setVoice(st, a, source));
+      else await media.remove?.(a.opfsPath).catch((error: unknown) => { console.error('Motikord: could not delete an unused voice file', error); });
       return ms;
     };
     return {
       narration,
       onVoiceover: (audio: Blob, voice: VoiceId) => keep(audio, `AI voiceover (${voice})`, 'voiceover'),
       onChooseNarration: () => media.pick((file) => {
-        if (!file.type.startsWith('audio/')) return fail(NARRATION_NOT_AUDIO);
+        if (!isAudioFile(file)) return fail(NARRATION_NOT_AUDIO);
         if (file.size > MAX_NARRATION_BYTES) return fail(NARRATION_TOO_BIG);
         keep(file, file.name, 'narration').catch((error: unknown) => {
           console.error('Motikord: could not keep the narration', error);

@@ -10,7 +10,7 @@ import { useEditorV3 } from './context';
 import { CAPTION_POSITION, CAPTION_STYLES, hasCaptions, scriptOf, writeCaptions, type CaptionStyle } from './CaptionsVoiceEdits';
 import { C, Chip, hint, primaryButton, quietButton, Segmented, Switch } from './ui';
 
-// The "Voice and captions" panel. Both features are off until switched on. Only the narration audio goes to
+// The "Voice and captions" panel. Both features are off until switched on (the "Say it out loud" template turns Auto captions on when narration is added). Only the narration audio goes to
 // speech-to-text; only the script goes to the voice provider. Keys come from the session store, never props.
 
 export type CaptionsCard = 'captions-failed' | 'captions-no-key' | 'captions-no-voice';

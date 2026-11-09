@@ -1,11 +1,44 @@
 import { describe, expect, it } from 'vitest';
-import { audioParts, DUCK_GAIN, pickAudioCodec } from './audio';
+import { audioParts, DUCK_GAIN, MASTER_GAIN, mixAudio, pickAudioCodec, VOICE_NOT_DECODED } from './audio';
 import { hasAudio } from '../exportPlan';
 import { gifDelayMs } from './gif';
 import { Cancelled, pickVideoConfig, runFrames, seeThroughSupported, videoTrack, type EncoderLike, type Muxed } from './video';
 import type { Recipe } from '../types';
 
 const spec = { kind: 'webm-alpha' as const, width: 720, height: 1280, fps: 30, bitrate: 1 };
+
+function fakeAudio(decodes: (len: number) => boolean) {
+  const connections: string[] = [];
+  const node = (name: string): any => ({ name, gain: { value: 1, setValueAtTime() {}, linearRampToValueAtTime() {} }, threshold: {}, knee: {}, ratio: {}, attack: {}, release: {}, connect(to: any) { connections.push(`${name}>${to.name}`); return to; }, start() {}, stop() {} });
+  class Fake {
+    destination = node('dest');
+    constructor(..._a: unknown[]) {}
+    decodeAudioData(buf: ArrayBuffer) { return decodes(buf.byteLength) ? Promise.resolve({}) : Promise.reject(new Error('bad')); }
+    createBufferSource() { return node('src'); }
+    createGain() { return node('gain'); }
+    createDynamicsCompressor() { return node('limiter'); }
+    startRendering() { return Promise.resolve({ sampleRate: 48000, numberOfChannels: 1, getChannelData: () => new Float32Array(2) }); }
+  }
+  (globalThis as any).OfflineAudioContext = Fake;
+  return connections;
+}
+
+describe('mixAudio', () => {
+  it('runs the mix through a master gain and limiter, and fails the export when the voice will not decode', async () => {
+    const connections = fakeAudio((n) => n > 1);
+    const part = { atSec: 0, durSec: 1, gain: 1, fadeInSec: 0, fadeOutSec: 0, loop: false };
+    const read = async (id: string) => new Blob([new Uint8Array(id === 'bad' ? 1 : 4)]);
+    await mixAudio([{ ...part, assetId: 'm', duck: { atSec: 0, endSec: 1, gain: DUCK_GAIN } }, { ...part, assetId: 'n', voice: true }], 1, read);
+    expect(connections).toContain('gain>gain');
+    expect(connections).toContain('gain>limiter');
+    expect(connections).toContain('limiter>dest');
+    expect(connections.filter((c) => c === 'dest')).toEqual([]);
+    expect(MASTER_GAIN).toBeLessThan(1);
+    await expect(mixAudio([{ ...part, assetId: 'm', duck: { atSec: 0, endSec: 1, gain: DUCK_GAIN } }, { ...part, assetId: 'bad', voice: true }], 1, read)).rejects.toThrow(VOICE_NOT_DECODED);
+    await expect(mixAudio([{ ...part, assetId: 'n', voice: true }], 1, async () => undefined)).rejects.toThrow(VOICE_NOT_DECODED);
+    delete (globalThis as any).OfflineAudioContext;
+  });
+});
 
 describe('encode', () => {
   it('prefers the video chip, falls back to software, and reports no alpha support', async () => {
@@ -83,7 +116,7 @@ describe('encode', () => {
     } as unknown as Recipe;
     expect(audioParts(r, 9000)).toEqual([
       { assetId: 'm', atSec: 0, durSec: 9, gain: 0.5, fadeInSec: 0, fadeOutSec: 0, loop: true, duck: { atSec: 0, endSec: 4, gain: DUCK_GAIN } },
-      { assetId: 'n', atSec: 0, durSec: 4, gain: 1, fadeInSec: 0, fadeOutSec: 0, loop: false },
+      { assetId: 'n', atSec: 0, durSec: 4, gain: 1, fadeInSec: 0, fadeOutSec: 0, loop: false, voice: true },
     ]);
     expect(hasAudio({ ...r, music: undefined })).toBe(true);
   });

@@ -1,6 +1,7 @@
 // A clip as one file for export and import, carrying the look guides it uses so it looks the same elsewhere.
 import { validateClip, validateLookGuide } from '@appskord/motion/recipe';
 import type { Clip } from '../types';
+import { mediaPath } from '../media';
 import { isRestyled } from '../restyle/restyle';
 import { isPackLookId } from './packs';
 import type { SavedLook } from './store';
@@ -31,7 +32,15 @@ const toBase64 = async (b: Blob) => {
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
 };
-const fromBase64 = (data: string, mime: string) => new Blob([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], { type: mime });
+const fromBase64 = (data: string, mime: string, key = 'media.x') => {
+  let bin: string;
+  try {
+    bin = atob(data);
+  } catch {
+    throw bad(key, 'is not valid base64. Export the clip again from Motikord');
+  }
+  return new Blob([Uint8Array.from(bin, (c) => c.charCodeAt(0))], { type: mime });
+};
 const AUTO_CAPTIONS = ['pop'];
 
 /** The clip, its saved look guide (a pack's own guide needs no copy) and its voice audio. */
@@ -45,9 +54,20 @@ export async function exportClip(clip: Clip, deps: Pick<BundleDeps, 'getLook' | 
   const { thumbnail: _thumbnail, ...rest } = clip;
   const voice = clip.recipe.voice ? clip.recipe.assets[clip.recipe.voice.assetId] : undefined;
   const blob = voice && deps.readMedia ? await deps.readMedia(voice.opfsPath) : undefined;
+  if (blob && blob.size > MAX_EXPORT_MEDIA_BYTES)
+    throw new Error('Motikord: could not export clip. Its voice audio is too big for a clip file (over 15 MB). Choose a shorter narration, then export.');
   const media = voice && blob ? { [voice.id]: { mime: voice.mime, data: await toBase64(blob) } } : undefined;
+  // A voice whose audio cannot be read is dropped from the file rather than exported as a dead reference.
+  if (clip.recipe.voice && !media) {
+    const { voice: _voice, assets, ...recipe } = rest.recipe;
+    const { [clip.recipe.voice.assetId]: _gone, ...kept } = assets;
+    return { app: 'motikord', kind: 'clip', version: 3, clip: { ...rest, recipe: { ...recipe, assets: kept } } as Clip, lookGuides: look ? [look] : [] };
+  }
   return { app: 'motikord', kind: 'clip', version: 3, clip: rest, lookGuides: look ? [look] : [], ...(media ? { media } : {}) };
 }
+
+/** Voice audio is base64 (4/3 its size) inside a file capped at 25 MB; this keeps the whole file under that cap. */
+export const MAX_EXPORT_MEDIA_BYTES = 15 * 1024 * 1024;
 
 /** The largest clip file read; a bigger one is refused before it is parsed. */
 export const MAX_CLIP_FILE_BYTES = 25 * 1024 * 1024;
@@ -95,6 +115,7 @@ export function readClipFile(text: string): ClipFile {
     for (const [id, m] of Object.entries(media)) {
       if (assets[id]?.kind !== 'audio') throw bad(`media.${id}`, 'is not an audio asset of the clip. Remove it or export the clip again');
       if (!isObj(m) || typeof m.mime !== 'string' || typeof m.data !== 'string') throw bad(`media.${id}`, 'needs a mime and base64 data. Export the clip again from Motikord');
+      fromBase64(m.data, m.mime, `media.${id}`);
     }
   }
   const looks = Array.isArray(file.lookGuides) ? file.lookGuides : [];
@@ -121,7 +142,17 @@ export async function importClip(text: string, deps: Pick<BundleDeps, 'putLook' 
       clip = { ...clip, v3: { ...clip.v3, restyledFrom: id } } as Clip;
   }
   for (const look of file.lookGuides) await deps.putLook(look);
-  for (const [id, m] of Object.entries(file.media ?? {})) await deps.putMedia?.(clip.recipe.assets[id]!.opfsPath, fromBase64(m.data, m.mime));
+  // The file's own opfsPath is never trusted: the audio goes to a path made from the asset id.
+  const assets = { ...clip.recipe.assets };
+  for (const [id, m] of Object.entries(file.media ?? {})) {
+    const asset = assets[id]!;
+    const sub = (asset.mime.split('/')[1] ?? '').replace(/^x-/, '');
+    const safe = `${id}${clip.id === file.clip.id ? '' : `-${clip.id}`}`.replace(/[^A-Za-z0-9_-]/g, '_');
+    const opfsPath = mediaPath(safe, sub === 'mpeg' ? 'mp3' : sub === 'mp4' ? 'm4a' : sub);
+    await deps.putMedia?.(opfsPath, fromBase64(m.data, m.mime, `media.${id}`));
+    assets[id] = { ...asset, opfsPath };
+  }
+  clip = { ...clip, recipe: { ...clip.recipe, assets } };
   await deps.putClip(clip);
   return clip;
 }

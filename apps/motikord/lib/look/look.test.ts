@@ -146,6 +146,29 @@ describe('look guide store', () => {
     expect(() => readClipFile(JSON.stringify(odd))).toThrow('clip.autoCaptions');
   });
 
+  it('imports voice audio only to a path made from the asset id, never the file’s own path, and drops an unreadable voice on export', async () => {
+    const v2: Clip = { id: 'c9', recipe: { version: 2, id: 'c9', name: 'Say it', type: 'promo', aspect: '9:16', assets: {}, scenes: [{ id: 's1', durationMs: 3000, background: '#000000', layout: 'center', layers: [], template: 'title-hook' }] }, history: [], createdAt: 1, updatedAt: 1 };
+    const restyled = restyle(v2, { packId: 'studio', now: 9, changeId: 'ch9' });
+    const clip = { ...restyled, recipe: { ...restyled.recipe, voice: { assetId: 'voice-1', volume: 1, source: 'narration' as const }, assets: { 'voice-1': { id: 'voice-1', kind: 'audio' as const, name: 'take.mp3', mime: 'audio/mpeg', bytes: 3, opfsPath: 'media/voice-1.mp3' } } } } as Clip;
+    const file = await exportClip(clip, { getLook, readMedia: async () => new Blob([new Uint8Array([7, 8, 9])], { type: 'audio/mpeg' }) });
+    const evil = JSON.parse(clipFileText(file)) as { clip: Clip };
+    evil.clip.recipe.assets['voice-1']!.opfsPath = 'media/other-clip-photo.png';
+    const put = new Map<string, Blob>();
+    const back = await importClip(JSON.stringify(evil), { putLook, putClip: async () => undefined, hasClip: async () => false, putMedia: async (p, b) => void put.set(p, b) });
+    expect([...put.keys()]).toEqual(['media/voice-1.mp3']);
+    expect(back.recipe.assets['voice-1']!.opfsPath).toBe('media/voice-1.mp3');
+    const dup = await importClip(clipFileText(file), { putLook, putClip: async () => undefined, hasClip: async () => true, putMedia: async (p, b) => void put.set(p, b) });
+    expect(dup.recipe.assets['voice-1']!.opfsPath).not.toBe('media/voice-1.mp3');
+    const dropped = await exportClip(clip, { getLook, readMedia: async () => undefined });
+    expect(dropped.clip.recipe.voice).toBeUndefined();
+    expect(dropped.clip.recipe.assets['voice-1']).toBeUndefined();
+    await expect(exportClip(clip, { getLook, readMedia: async () => ({ size: 16 * 1024 * 1024 }) as Blob })).rejects.toThrow('too big');
+    evil.clip.recipe.assets['voice-1']!.opfsPath = 'media/voice-1.mp3';
+    const badB64 = JSON.parse(clipFileText(file)) as { media: Record<string, { data: string }> };
+    badB64.media['voice-1']!.data = '!!!not base64';
+    expect(() => readClipFile(JSON.stringify(badB64))).toThrow('media.voice-1');
+  });
+
   it('refuses a clip file that is too big or malformed, naming the key and fix', async () => {
     const v2: Clip = {
       id: 'c1',

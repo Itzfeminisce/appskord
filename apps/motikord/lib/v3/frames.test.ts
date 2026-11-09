@@ -31,6 +31,19 @@ describe('v3 frames', () => {
     expect(sceneAt(v3, total)).toEqual({ index: v3.scenes.length - 1, local: v3.scenes.at(-1)!.ms });
   });
 
+  it('does not draw after dispose when a frame times out late', async () => {
+    const clip = sampleClip().v3;
+    const d = new ClipDrawer(clip, () => '', { width: 10, height: 10, quality: 'full', fps: 30 } as never, {} as HTMLCanvasElement, 5);
+    await d.draw(0);
+    calls.hang = true;
+    const drawing = d.draw(1);
+    d.dispose();
+    await expect(drawing).rejects.toBeInstanceOf(TextNotReady);
+    await expect(d.draw(2)).rejects.toBeInstanceOf(TextNotReady);
+    calls.hang = false;
+    calls.made.length = calls.rendered.length = calls.disposed.length = calls.texts.length = calls.gl = 0;
+  });
+
   it('waits for troika to finish typesetting, and gives up after the limit', async () => {
     const node = { children: [{ children: [], _isSyncing: true }] };
     let waits = 0;

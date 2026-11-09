@@ -7,7 +7,7 @@ import { validateRecipe } from '../../lib/recipe/validate';
 import type { RestyledClip } from '../../lib/restyle/restyle';
 import { CaptionsVoice, type CaptionsVoiceProps } from './CaptionsVoice';
 import { hasCaptions } from './CaptionsVoiceEdits';
-import { MAX_NARRATION_BYTES, NARRATION_TOO_BIG, setVoice, useClipVoice, voiceAsset, type VoiceMedia } from './clipVoice';
+import { MAX_NARRATION_BYTES, NARRATION_NOT_AUDIO, NARRATION_TOO_BIG, setVoice, useClipVoice, voiceAsset, type VoiceMedia } from './clipVoice';
 import { EditorV3Provider, useEditorV3, type EditorV3Api } from './context';
 import { sampleClip } from './fixture';
 import { initV3 } from './model';
@@ -86,6 +86,32 @@ describe('clip voice track', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     await act(async () => { v.api().undo(); });
     expect(v.api().state.clip.recipe.voice?.assetId).toBe('voice-1');
+  });
+
+  it('accepts narration by extension when the browser gives no type, and deletes a file written after unmount', async () => {
+    const m = fakeMedia();
+    const removed: string[] = [];
+    m.media.remove = async (p) => { removed.push(p); m.files.delete(p); };
+    const v = await open(sampleClip(), m.media, {});
+    m.choose(new File([new Uint8Array(4)], 'take.flac', { type: '' }));
+    await v.choose();
+    await v.settle();
+    expect(v.api().state.errors ?? []).toEqual([]);
+    expect(v.api().state.clip.recipe.voice?.assetId).toBe('voice-1');
+    m.choose(new File([new Uint8Array(4)], 'notes.pdf', { type: '' }));
+    await v.choose();
+    expect(v.api().state.errors).toEqual([NARRATION_NOT_AUDIO]);
+    let release!: () => void;
+    const slow = fakeMedia();
+    slow.media.durationMs = () => new Promise((r) => { release = () => r(1000); });
+    slow.media.remove = async (p) => { removed.push(p); };
+    const w = await open(sampleClip(), slow.media, {});
+    slow.choose(audio());
+    await w.choose();
+    unmounts.splice(0).forEach((u) => u());
+    release();
+    await act(async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); });
+    expect(removed).toEqual(['media/voice-1.mp3']);
   });
 
   it('turns Auto captions on in the clip’s style when narration first arrives on a "Say it out loud" clip', async () => {

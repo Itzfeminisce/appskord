@@ -71,6 +71,7 @@ function viewFor(scene: SceneV3, i: number, texts: LayerTexts, s: DrawSetup): V3
 export class ClipDrawer {
   private view: V3Renderer | undefined;
   private index = -1;
+  private disposed = false;
   private readonly gl: Gl;
 
   constructor(readonly clip: ClipV3, private readonly texts: LayerTexts, private readonly setup: DrawSetup, readonly canvas: HTMLCanvasElement | OffscreenCanvas, private readonly timeoutMs = 10_000) {
@@ -90,10 +91,15 @@ export class ClipDrawer {
       if (!(await textReady(view.three as unknown as Node3, this.timeoutMs))) throw new TextNotReady(index);
     }
     // Counts and kinetic type retypeset as they change, so every frame waits for its own words before drawing.
-    if (!(await within(this.view!.renderReady(local), this.timeoutMs))) throw new TextNotReady(index);
+    if (this.disposed || !this.view) throw new TextNotReady(index);
+    const ready = await within(this.view.renderReady(local), this.timeoutMs);
+    // A timeout can resolve after dispose; the renderer is gone, so nothing is drawn.
+    if (this.disposed) throw new TextNotReady(index);
+    if (!ready) throw new TextNotReady(index);
   }
 
   dispose(): void {
+    this.disposed = true;
     this.view?.dispose();
     this.view = undefined;
     // Hand the GPU context back now rather than when the canvas is collected.

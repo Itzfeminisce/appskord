@@ -60,6 +60,14 @@ describe('media safety and space', () => {
     expect(exclusivePaths(b, fakes())).toEqual([]);
     expect(mediaPaths(fakes()).sort()).toEqual(['media/logo.png', 'media/photo.png']);
   });
+  it('also deletes voice files its history replaced, unless another clip still lists them', () => {
+    const [a, b] = fakes() as [Clip, Clip, Clip];
+    const old = { id: 'voice-1', kind: 'audio', name: 'a', mime: 'audio/mpeg', bytes: 1, opfsPath: 'media/voice-1.mp3' };
+    const history = [{ id: 'h', at: 1, by: 'user', summary: 's', patch: [{ op: 'add', path: '/recipe/assets/voice-1', value: old }], inverse: [{ op: 'remove', path: '/recipe/assets/voice-1' }] }] as unknown as Clip['history'];
+    const withHistory = { ...a, history };
+    expect(exclusivePaths(withHistory, [withHistory, b])).toEqual(['media/photo.png', 'media/voice-1.mp3']);
+    expect(exclusivePaths(withHistory, [withHistory, { ...b, history }])).toEqual(['media/photo.png']);
+  });
   it('counts a shared file once and adds the database estimate', async () => {
     const sizes: Record<string, number> = { 'media/logo.png': 100, 'media/photo.png': 50 };
     const deps = { ...libraryDeps, size: async (p: string) => sizes[p] ?? 0, databaseEstimate: async () => 7 };
