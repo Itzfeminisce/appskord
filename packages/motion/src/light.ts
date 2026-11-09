@@ -40,6 +40,12 @@ export function lightLabel(dot: LightDot): string {
   return words[0]!.toUpperCase() + words.slice(1);
 }
 
+/** The owner of a light disposes its shadow map: call this when the scene is torn down. */
+export function disposeLight(light: THREE.DirectionalLight): void {
+  light.shadow?.map?.dispose();
+  (light as { dispose?: () => void }).dispose?.();
+}
+
 /** One key light from the look guide's direction, with soft shadows when `shadow` is on. */
 export function keyLight(dot: LightDot, shadow: boolean): THREE.DirectionalLight {
   const light = new THREE.DirectionalLight(0xfff4e8, 2.4);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { bakeParticles, PARTICLE_DEFAULTS, PARTICLE_PRESETS, particlesAt } from '../src/particles';
+import { bakeParticles, fillFrame, PARTICLE_DEFAULTS, PARTICLE_PRESETS, particlesAt } from '../src/particles';
 import type { ParticleInput } from '../src/particles';
 import { bakeSecondary } from '../src/physics';
 import type { SecondaryInput } from '../src/physics';
@@ -72,5 +72,36 @@ describe('secondary motion bake', () => {
     expect(Math.max(...a.a!.y!.map((k) => k.v))).toBeLessThanOrEqual(241);
     expect(Math.max(...a.a!.y!.map((k) => k.v))).toBeGreaterThan(200);
     expect(await bakeSecondary({ ...spec, seed: 8 })).not.toEqual(a);
+  });
+});
+
+describe('particles bake robustness', () => {
+  test('emission lasts the whole clip at speed 2', async () => {
+    const bake = await bakeParticles(
+      input({ ms: 15000, fps: 10, settings: { ...PARTICLE_DEFAULTS, preset: 'dust', bounce: false, speed: 2 } }),
+    );
+    expect(bake.counts.slice(-10).some((n) => n > 0)).toBe(true);
+  });
+  test('speed 0 stays finite, with and without physics', async () => {
+    for (const bounce of [false, true]) {
+      const bake = await bakeParticles(
+        input({ colliders: words, settings: { ...PARTICLE_DEFAULTS, bounce, speed: 0 } }),
+      );
+      for (let t = 0; t < 2000; t += 250)
+        for (const p of particlesAt(bake, t)) expect(Object.values(p).every(Number.isFinite)).toBe(true);
+    }
+  });
+  test('fillFrame matches particlesAt', async () => {
+    const bake = await bakeParticles(input());
+    const n = bake.counts[30]!;
+    const pos = new Float32Array(n * 3 + 3);
+    const col = new Float32Array(n * 2 + 2);
+    const siz = new Float32Array(n + 1);
+    expect(fillFrame(bake, 1000, pos, col, siz)).toBe(n);
+    const s = particlesAt(bake, 1000);
+    s.forEach((p, k) => {
+      expect([pos[k * 3], pos[k * 3 + 1]]).toEqual([p.x, p.y]);
+      expect(siz[k]).toBeCloseTo(p.size, 4);
+    });
   });
 });

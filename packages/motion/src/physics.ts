@@ -42,7 +42,7 @@ export class World2D {
 
   constructor(gravity: number, colliders: readonly Rect[], restitution: number, timestep = STEP) {
     this.world = new RAPIER.World({ x: 0, y: gravity / PX });
-    this.world.timestep = timestep;
+    this.world.timestep = Math.max(STEP * 0.05, timestep);
     for (const r of colliders) {
       const desc = RAPIER.ColliderDesc.cuboid(r.w / 2 / PX, r.h / 2 / PX)
         .setTranslation(r.x / PX, r.y / PX)

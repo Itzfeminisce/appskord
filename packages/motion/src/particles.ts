@@ -187,7 +187,7 @@ function system(input: ParticleInput, physics: boolean): { batch: BatchedRendere
   if (settings.gravity && !physics) behaviors.push(new ApplyForce(new QVector3(0, 1, 0), new ConstantValue(s.gravity)));
   if (s.spin) behaviors.push(new RotationOverLife(new IntervalValue(-s.spin, s.spin)));
   const sys = new ParticleSystem({
-    duration: input.ms / 1000 + 1,
+    duration: (input.ms / 1000) * settings.speed + 1,
     looping: false,
     worldSpace: true,
     shape: e.shape,
@@ -238,16 +238,15 @@ const clamp16 = (v: number): number => Math.max(-32768, Math.min(32767, Math.rou
  * the particles and the words are its colliders. The frame at t then reads only the bake.
  */
 export async function bakeParticles(input: ParticleInput): Promise<ParticleBake> {
-  const { settings } = input;
+  const settings = { ...input.settings, speed: Math.max(0.05, input.settings.speed) };
   const physics = settings.bounce && (input.colliders?.length ?? 0) > 0;
   if (physics) await loadPhysics();
   const random = seeded(input.seed);
   const s = SHAPES[settings.preset];
   const frame = input.frame ?? { w: 1080, h: 1920 };
-  const { batch, system: sys } = withRandom(random, () => system(input, physics));
-  const world = physics
-    ? new World2D(settings.gravity ? s.gravity : 0, input.colliders!, 0.6, STEP * settings.speed)
-    : null;
+  let batch: BatchedRenderer | undefined;
+  let sys: ParticleSystem | undefined;
+  let world: World2D | null = null;
   const bodies = new Map<Particle, { id: number; age: number }>();
   const counts: number[] = [];
   const out: number[] = [];
@@ -255,14 +254,17 @@ export async function bakeParticles(input: ParticleInput): Promise<ParticleBake>
   const frames = frameCount(input.ms, input.fps);
   let steps = 0;
   try {
+    ({ batch, system: sys } = withRandom(random, () => system({ ...input, settings }, physics)));
+    const live = sys;
+    if (physics) world = new World2D(settings.gravity ? s.gravity : 0, input.colliders!, 0.6, dt);
     for (let i = 0; i < frames; i++) {
       for (; steps < Math.round(i / input.fps / STEP); steps++) {
         world?.step();
-        withRandom(random, () => batch.update(dt));
-        if (world) sync(world, sys.particles.slice(0, sys.particleNum), bodies, settings.size);
+        withRandom(random, () => batch!.update(dt));
+        if (world) sync(world, live.particles.slice(0, live.particleNum), bodies, settings.size);
       }
       let n = 0;
-      for (const p of sys.particles.slice(0, sys.particleNum)) {
+      for (const p of live.particles.slice(0, live.particleNum)) {
         if (p.age >= p.life || Math.abs(p.position.x) > frame.w || Math.abs(p.position.y) > frame.h) continue;
         const fade = Math.min(1, p.age / 0.2, (p.life - p.age) / 0.4);
         const rotate = typeof p.rotation === 'number' ? ((p.rotation * 180) / Math.PI) % 360 : 0;
@@ -279,8 +281,11 @@ export async function bakeParticles(input: ParticleInput): Promise<ParticleBake>
       counts.push(n);
     }
   } finally {
+    if (sys) batch?.deleteSystem(sys);
+    batch?.dispose?.();
+    (sys?.material as THREE.Material | undefined)?.dispose?.();
+    sys?.dispose?.();
     world?.free();
-    sys.dispose();
   }
   return { key: bakeKey(input), fps: input.fps, counts, data: encode(new Int16Array(out)) };
 }
@@ -321,30 +326,34 @@ function encode(a: Int16Array): string {
   return btoa(s);
 }
 
-const decoded = new WeakMap<ParticleBake, { data: Int16Array; offsets: number[] }>();
-function decode(bake: ParticleBake): { data: Int16Array; offsets: number[] } {
-  let d = decoded.get(bake);
-  if (!d) {
-    const s = atob(bake.data);
-    const bytes = new Uint8Array(s.length);
-    for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
-    const offsets: number[] = [];
-    let o = 0;
-    for (const n of bake.counts) {
-      offsets.push(o);
-      o += n * STRIDE;
-    }
-    d = { data: new Int16Array(bytes.buffer), offsets };
-    decoded.set(bake, d);
-  }
-  return d;
+interface Decoded {
+  data: Int16Array;
+  offsets: number[];
 }
+function decode(bake: ParticleBake): Decoded {
+  const s = atob(bake.data);
+  const bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  const offsets: number[] = [];
+  let o = 0;
+  for (const n of bake.counts) {
+    offsets.push(o);
+    o += n * STRIDE;
+  }
+  return { data: new Int16Array(bytes.buffer), offsets };
+}
+const decodedBakes = new WeakMap<ParticleBake, Decoded>();
+const decodeCached = (bake: ParticleBake): Decoded => {
+  let d = decodedBakes.get(bake);
+  if (!d) decodedBakes.set(bake, (d = decode(bake)));
+  return d;
+};
 
 /** The saved particles at `t` ms from the layer's start. Pure: reads the bake only. */
 export function particlesAt(bake: ParticleBake, t: number): ParticleSample[] {
   if (t < 0 || !bake.counts.length) return [];
   const i = Math.min(bake.counts.length - 1, frameAtMs(t, bake.fps));
-  const { data, offsets } = decode(bake);
+  const { data, offsets } = decodeCached(bake);
   const out: ParticleSample[] = [];
   for (let k = 0, o = offsets[i]!; k < bake.counts[i]!; k++, o += STRIDE)
     out.push({
@@ -356,6 +365,33 @@ export function particlesAt(bake: ParticleBake, t: number): ParticleSample[] {
       color: data[o + 5]!,
     });
   return out;
+}
+
+/**
+ * Writes the frame at `t` ms into caller-owned typed arrays and returns the particle count. No allocation.
+ * positions: x, y (recipe px, y down), rotate (deg) per particle; colours: alpha, palette slot per particle.
+ */
+export function fillFrame(
+  bake: ParticleBake,
+  t: number,
+  positions: Float32Array,
+  colours: Float32Array,
+  sizes: Float32Array,
+  decoded: Decoded = decodeCached(bake),
+): number {
+  if (t < 0 || !bake.counts.length) return 0;
+  const i = Math.min(bake.counts.length - 1, frameAtMs(t, bake.fps));
+  const { data, offsets } = decoded;
+  const n = Math.min(bake.counts[i]!, sizes.length);
+  for (let k = 0, o = offsets[i]!; k < n; k++, o += STRIDE) {
+    positions[k * 3] = data[o]!;
+    positions[k * 3 + 1] = data[o + 1]!;
+    positions[k * 3 + 2] = data[o + 3]! / 10;
+    colours[k * 2] = data[o + 4]! / 1000;
+    colours[k * 2 + 1] = data[o + 5]!;
+    sizes[k] = data[o + 2]! / 10;
+  }
+  return n;
 }
 
 const vertex = /* glsl */ `
@@ -393,6 +429,8 @@ export class ParticlesView {
   private readonly geometry = new THREE.BufferGeometry();
   private readonly material: THREE.ShaderMaterial;
   private readonly colors: THREE.Color[];
+  private readonly decoded: Decoded;
+  private readonly scratch: { positions: Float32Array; colours: Float32Array; sizes: Float32Array };
 
   constructor(
     private readonly bake: ParticleBake,
@@ -405,6 +443,12 @@ export class ParticlesView {
       (_, i) => new THREE.Color(palette[i % palette.length] ?? '#ffffff'),
     );
     const max = Math.max(1, ...bake.counts);
+    this.decoded = decode(bake);
+    this.scratch = {
+      positions: new Float32Array(max * 3),
+      colours: new Float32Array(max * 2),
+      sizes: new Float32Array(max),
+    };
     this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(max * 3), 3));
     this.geometry.setAttribute('size', new THREE.BufferAttribute(new Float32Array(max), 1));
     this.geometry.setAttribute('spin', new THREE.BufferAttribute(new Float32Array(max), 1));
@@ -426,20 +470,21 @@ export class ParticlesView {
 
   /** Shows the saved frame at `t` ms from the layer's start. */
   update(t: number): void {
-    const list = particlesAt(this.bake, t);
+    const { positions, colours, sizes } = this.scratch;
+    const n = fillFrame(this.bake, t, positions, colours, sizes, this.decoded);
     const pos = this.geometry.getAttribute('position') as THREE.BufferAttribute;
     const size = this.geometry.getAttribute('size') as THREE.BufferAttribute;
     const spin = this.geometry.getAttribute('spin') as THREE.BufferAttribute;
     const tint = this.geometry.getAttribute('tint') as THREE.BufferAttribute;
-    list.forEach((p, i) => {
-      pos.setXYZ(i, p.x * UNIT, -p.y * UNIT, 0);
-      size.setX(i, p.size);
-      spin.setX(i, (p.rotate * Math.PI) / 180);
-      const c = this.colors[p.color % COLOR_SLOTS]!;
-      tint.setXYZW(i, c.r, c.g, c.b, p.alpha);
-    });
+    for (let k = 0; k < n; k++) {
+      pos.setXYZ(k, positions[k * 3]! * UNIT, -positions[k * 3 + 1]! * UNIT, 0);
+      size.setX(k, sizes[k]!);
+      spin.setX(k, (positions[k * 3 + 2]! * Math.PI) / 180);
+      const c = this.colors[colours[k * 2 + 1]! % COLOR_SLOTS]!;
+      tint.setXYZW(k, c.r, c.g, c.b, colours[k * 2]!);
+    }
     for (const a of [pos, size, spin, tint]) a.needsUpdate = true;
-    this.geometry.setDrawRange(0, list.length);
+    this.geometry.setDrawRange(0, n);
   }
 
   dispose(): void {
