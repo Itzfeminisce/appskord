@@ -28,28 +28,71 @@ export interface ParsedTable {
   skipped: number[];
 }
 
-/** One delimited line; quotes may wrap a field and "" inside quotes is a quote. */
-function splitLine(line: string, sep: string): string[] {
-  const out: string[] = [];
+/** Most rows and columns a chart table keeps; the rest is dropped. */
+export const MAX_ROWS = 200;
+export const MAX_COLS = 12;
+/** Most records read from a paste, so a huge file cannot stall the parse. */
+const MAX_RECORDS = 5000;
+
+/** Separator for the text: tabs win, then semicolons, then commas, counted outside quotes over the first 5 lines. */
+function detectSeparator(text: string): string {
+  const counts = { '\t': 0, ';': 0, ',': 0 };
+  let quoted = false;
+  let lines = 0;
+  let blank = true;
+  for (let i = 0; i < text.length && lines < 5; i++) {
+    const c = text[i]!;
+    if (c === '"') quoted = !quoted;
+    else if (quoted) continue;
+    else if (c === '\n' || c === '\r') {
+      if (!blank) lines++;
+      blank = true;
+      continue;
+    } else if (c in counts) counts[c as keyof typeof counts]++;
+    if (c.trim()) blank = false;
+  }
+  return counts['\t'] ? '\t' : counts[';'] ? ';' : ',';
+}
+
+/** The whole text in one pass: quotes may wrap a field (newlines and separators inside), "" inside quotes is a quote. */
+function records(text: string, sep: string): { n: number; cells: string[] }[] {
+  const out: { n: number; cells: string[] }[] = [];
+  let cells: string[] = [];
   let cell = '';
   let quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i]!;
+  let line = 1;
+  let first = 1;
+  const end = () => {
+    cells.push(cell.trim());
+    if (cells.length > 1 || cells[0] !== '') out.push({ n: first, cells: cells.slice(0, MAX_COLS) });
+    cells = [];
+    cell = '';
+    first = line;
+  };
+  for (let i = 0; i < text.length && out.length < MAX_RECORDS; i++) {
+    const c = text[i]!;
     if (quoted) {
-      if (c === '"' && line[i + 1] === '"') {
+      if (c === '"' && text[i + 1] === '"') {
         cell += '"';
         i++;
       } else if (c === '"') quoted = false;
-      else cell += c;
+      else {
+        if (c === '\n' || (c === '\r' && text[i + 1] !== '\n')) line++;
+        cell += c;
+      }
     } else if (c === '"' && cell.trim() === '') {
       quoted = true;
       cell = '';
     } else if (c === sep) {
-      out.push(cell.trim());
+      cells.push(cell.trim());
       cell = '';
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      line++;
+      end();
     } else cell += c;
   }
-  out.push(cell.trim());
+  if (out.length < MAX_RECORDS) end();
   return out;
 }
 
@@ -69,12 +112,8 @@ export function parseNumber(text: string): number | undefined {
  * the label and the first numeric column after it the value; a first row without a number is a header.
  */
 export function parseTable(text: string): ParsedTable {
-  const lines = text.replace(/^﻿/, '').split(/\r\n|\n|\r/);
-  const sample = lines.find((l) => l.trim()) ?? '';
-  const sep = sample.includes('\t') ? '\t' : sample.includes(';') ? ';' : ',';
-  const table = lines
-    .map((l, i) => ({ n: i + 1, cells: l.trim() ? splitLine(l, sep) : [] }))
-    .filter((r) => r.cells.length);
+  const clean = text.replace(/^\uFEFF/, '');
+  const table = records(clean, detectSeparator(clean));
   const valueCol = (cells: string[]) => cells.findIndex((c, i) => i > 0 && parseNumber(c) !== undefined);
   // A one-column table is a list of numbers.
   const single = table.every((r) => r.cells.length === 1);
@@ -87,7 +126,7 @@ export function parseTable(text: string): ParsedTable {
       if (i > 0 || rows.length) skipped.push(r.n);
       return;
     }
-    rows.push({ label: single ? `Row ${rows.length + 1}` : r.cells[0]!, value });
+    if (rows.length < MAX_ROWS) rows.push({ label: single ? `Row ${rows.length + 1}` : r.cells[0]!, value });
   });
   return { rows, skipped };
 }
@@ -107,11 +146,14 @@ const key = (t: number, v: number): Key<number> => ({ t, v });
 const hold = (v: number): Track<number> => [key(0, v)];
 const ramp = (a: number, b: number, ms: number): Track<number> => (a === b ? hold(b) : [key(0, a), key(ms, b)]);
 const decimalsOf = (rows: readonly Row[]) =>
-  Math.min(6, Math.max(0, ...rows.map((r) => (String(r.value).split('.')[1] ?? '').length)));
+  Math.min(
+    6,
+    rows.reduce((m, r) => Math.max(m, (String(r.value).split('.')[1] ?? '').length), 0),
+  );
 
 /** Each row's share of the tallest bar, 0..1 (negative rows draw nothing). */
 export function heights(rows: readonly Row[]): number[] {
-  const max = Math.max(0, ...rows.map((r) => r.value));
+  const max = rows.reduce((m, r) => Math.max(m, r.value), 0);
   return rows.map((r) => (max > 0 ? Math.max(0, r.value) / max : 0));
 }
 
@@ -124,6 +166,12 @@ export const chartPartId = (base: string, part: 'bar' | 'count' | 'dot' | 'cell'
   i === undefined ? `${base}~${part}` : `${base}~${part}~${i}`;
 const isPart = (base: string, id: string) => id.startsWith(`${base}~`);
 
+/** The stagger scaled down so the last row finishes growing inside `room` ms of scene. */
+const fitStagger = (staggerMs: number, n: number, room: number): number => {
+  const s = Math.max(0, staggerMs);
+  return n > 1 ? Math.floor(Math.max(0, Math.min(s, (room - GROW_MS) / (n - 1)))) : s;
+};
+
 /**
  * The layers that draw `rows` for the chart layer `base`. On a bar the `draw` track is its height as a share of the
  * plot; on a count it is the count's progress. Every row starts `staggerMs` after the one before.
@@ -133,12 +181,14 @@ export function chartLayers(
   rows: readonly Row[],
   o: ChartOptions,
   start = 0,
+  sceneMs?: number,
 ): LayerV3[] {
   const n = rows.length;
+  const stagger = fitStagger(o.staggerMs, n, sceneMs === undefined ? Infinity : sceneMs - start);
   const xs = columns(n);
   const hs = heights(rows);
   const decimals = decimalsOf(rows);
-  const at = (i: number) => start + i * Math.max(0, o.staggerMs);
+  const at = (i: number) => start + i * stagger;
   const count = (r: Row) => (o.countUp ? { from: 0, to: r.value, decimals } : { from: r.value, to: r.value, decimals });
   const out: LayerV3[] = [];
   const top = (i: number) => PLOT.baseline - hs[i]! * PLOT.height;
@@ -163,7 +213,7 @@ export function chartLayers(
       });
     });
   } else if (o.show === 'line') {
-    const lineMs = GROW_MS + Math.max(0, n - 1) * Math.max(0, o.staggerMs);
+    const lineMs = GROW_MS + Math.max(0, n - 1) * stagger;
     out.push({
       id: chartPartId(base.id, 'line'),
       kind: 'path',
@@ -247,7 +297,7 @@ export function chartOptionsOf(base: string, layers: readonly LayerV3[]): ChartO
   const has = (part: string) => parts.some((l) => l.id.startsWith(`${base}~${part}`));
   const show: ChartShape = has('cell') ? 'grid' : has('line') ? 'line' : has('dot') ? 'dots' : 'bars';
   const counts = parts.filter((l) => l.count);
-  const countUp = counts.length ? counts.some((l) => l.count!.from !== l.count!.to) : CHART_DEFAULTS.countUp;
+  const countUp = counts.length ? counts.some((l) => (l.tracks.draw?.length ?? 0) > 1) : CHART_DEFAULTS.countUp;
   const series = show === 'grid' ? 'cell' : show === 'bars' ? 'bar' : 'dot';
   const a = parts.find((l) => l.id === chartPartId(base, series, 0))?.start;
   const b = parts.find((l) => l.id === chartPartId(base, series, 1))?.start;
@@ -267,12 +317,13 @@ export function withChart(
   rows: readonly Row[],
   o: ChartOptions,
   start = 0,
+  sceneMs?: number,
 ): LayerV3[] {
   const base = layers.find((l) => l.id === baseId);
   if (!base) return [...layers];
   const kept = layers.filter((l) => !isPart(baseId, l.id));
   const i = kept.indexOf(base);
-  return [...kept.slice(0, i + 1), ...chartLayers(base, rows, o, start), ...kept.slice(i + 1)];
+  return [...kept.slice(0, i + 1), ...chartLayers(base, rows, o, start, sceneMs), ...kept.slice(i + 1)];
 }
 
 /** "60 ms" → 60; undefined when it is not a whole, non-negative number of ms. */

@@ -47,9 +47,16 @@ export function layerMs(layer: LayerV3): number {
 export function layerStarts(layers: readonly LayerV3[], overlapMs: number = OVERLAP_MS): number[] {
   const starts: number[] = [];
   let end: number | undefined;
+  let hostStart = 0;
   for (const layer of layers) {
+    // Generated chart parts and bones share their host's timing and never move the layers after them.
+    if (layer.id.includes('~')) {
+      starts.push(layer.start ?? hostStart);
+      continue;
+    }
     const start = layer.start ?? (end === undefined ? 0 : Math.max(0, end - overlapMs));
     starts.push(start);
+    hostStart = start;
     end = start + layerMs(layer);
   }
   return starts;

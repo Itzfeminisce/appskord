@@ -32,7 +32,7 @@ export function LayerTab({ bakers = REAL }: { bakers?: Bakers }) {
         <>
           {assetOf(layer) && <AssetDetails layer={layer} />}
           <PhysicsPanel layer={layer} bake={bakers.secondary} />
-          <RigPanel layer={layer} />
+          <RigPanel key={layer.id} layer={layer} />
         </>
       )}
       <SceneLayers key={scene.id} />

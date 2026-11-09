@@ -12,6 +12,8 @@ import { C, PanelHead, Section, Segmented, SwitchRow, quietButton } from './ui';
 // Data tab: the chart's table (typed, pasted from a spreadsheet or dropped as a CSV/TSV file), how it shows, and
 // cloned cards. The rows live where the v2 recipe keeps chart values; the v3 layers are redrawn from them.
 
+const MAX_FILE_BYTES = 1024 * 1024;
+
 /** A scene's chart: its layer, its rows, and where the v2 recipe keeps them. */
 export interface ChartData {
   base: LayerV3;
@@ -48,7 +50,7 @@ export function setChart(st: V3State, rows: readonly Row[], o: ChartOptions, met
   const scene = st.clip.v3.scenes[i];
   if (!data || !scene) return st;
   const start = layerStarts(scene.layers)[scene.layers.indexOf(data.base)] ?? 0;
-  const next = { ...structuredClone(scene), layers: withChart(scene.layers, data.base.id, rows, o, start) };
+  const next = { ...structuredClone(scene), layers: withChart(scene.layers, data.base.id, rows, o, start, scene.ms) };
   const checked = validateScene(next);
   if (!checked.ok) return { ...st, errors: checked.errors };
   const values = rows.map((r) => ({ label: r.label, value: r.value }));
@@ -88,6 +90,8 @@ export function DataTab() {
     const file = e.dataTransfer.files[0];
     if (!file) return;
     e.preventDefault();
+    // Blocked: no frame copy for "table too big", so an oversized file is refused with a console error only.
+    if (file.size > MAX_FILE_BYTES) return console.error('Motikord: the table file is over 1 MB');
     file.text().then(take, (error: unknown) => console.error('Motikord: could not read the table file', error));
   };
   const title = sceneTitle(state.clip, state.scene);

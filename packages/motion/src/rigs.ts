@@ -136,14 +136,32 @@ export function rigLayers(
   bones: readonly Bone[],
   o: RigSettings,
   start = 0,
+  sceneMs?: number,
 ): LayerV3[] {
-  return bones.map((b) => ({
-    id: boneLayerId(host.id, b.id),
-    kind: 'path',
-    depth: host.depth,
-    start: start + (o.follow && b.parent ? FOLLOW_MS : 0),
-    tracks: { opacity: [key(0, 0)], ...moveTracks(o.moves[b.id], b, o.squash) },
-  }));
+  return bones.map((b) => {
+    const at = start + (o.follow && b.parent ? FOLLOW_MS : 0);
+    const room = sceneMs === undefined ? Infinity : sceneMs - at;
+    return {
+      id: boneLayerId(host.id, b.id),
+      kind: 'path',
+      depth: host.depth,
+      start: at,
+      tracks: { opacity: [key(0, 0)], ...fitTracks(moveTracks(o.moves[b.id], b, o.squash), room) },
+    };
+  });
+}
+
+/** Moves scaled in time so their last key lands inside `room` ms of scene. */
+function fitTracks(tracks: BoneTracks, room: number): BoneTracks {
+  const last = Math.max(0, ...Object.values(tracks).map((t) => t[t.length - 1]!.t));
+  if (last <= room) return tracks;
+  const f = Math.max(0, room) / last;
+  const out: BoneTracks = {};
+  for (const [prop, track] of Object.entries(tracks) as [keyof BoneTracks, Track<number>][]) {
+    let prev = -1;
+    out[prop] = track.map((k) => ({ ...k, t: (prev = Math.max(prev + 1, Math.round(k.t * f))) }));
+  }
+  return out;
 }
 
 /** The scene's layers with `hostId`'s bone layers redone, right after the host. */
@@ -153,17 +171,20 @@ export function withRig(
   bones: readonly Bone[],
   o: RigSettings,
   start = 0,
+  sceneMs?: number,
 ): LayerV3[] {
   const host = layers.find((l) => l.id === hostId);
   if (!host || !canRig(host)) return [...layers];
   const prefix = `${hostId}~bone~`;
   const kept = layers.filter((l) => !l.id.startsWith(prefix));
   const i = kept.indexOf(host);
-  return [...kept.slice(0, i + 1), ...rigLayers(host, bones, o, start), ...kept.slice(i + 1)];
+  return [...kept.slice(0, i + 1), ...rigLayers(host, bones, o, start, sceneMs), ...kept.slice(i + 1)];
 }
 
 const sameTracks = (a: BoneTracks, b: LayerV3['tracks']) =>
-  (['rotate', 'y', 'scale'] as const).every((p) => JSON.stringify(a[p] ?? null) === JSON.stringify(b[p] ?? null));
+  (['rotate', 'y', 'scale'] as const).every(
+    (p) => JSON.stringify(a[p]?.map((k) => k.v) ?? null) === JSON.stringify(b[p]?.map((k) => k.v) ?? null),
+  );
 
 /** The rig on `hostId` as its layers hold it; undefined when the layer has no bones. */
 export function rigOf(layers: readonly LayerV3[], hostId: string, bones: readonly Bone[]): RigSettings | undefined {
@@ -231,7 +252,8 @@ export function poseBones(bones: readonly Bone[], poses: Partial<Record<BoneId, 
       angle += (p.rotate * weights[j]!) / total;
       const a = b.points[j]!;
       const c = b.points[j + 1]!;
-      const v = turn([(c[0] - a[0]) / Math.sqrt(p.scale), (c[1] - a[1]) * p.scale], angle);
+      // Squash stretches the segment along its own direction, then the bend turns it.
+      const v = turn([(c[0] - a[0]) * p.scale, (c[1] - a[1]) * p.scale], angle);
       const last = points[j]!;
       points.push([last[0] + v[0], last[1] + v[1]]);
       angles.push(angle);

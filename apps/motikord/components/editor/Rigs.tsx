@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { layerStarts } from '@appskord/motion/choreo';
 import { autoRig, boneLine, canRig, RIG_DEFAULTS, RIG_MOVES, rigOf, withRig, type BoneId, type RigSettings } from '@appskord/motion/rigs';
 import type { LayerV3 } from '@appskord/motion/types';
@@ -18,13 +18,15 @@ export function RigPanel({ layer }: { layer: LayerV3 }) {
   const rig = rigOf(ed.scene.layers, layer.id, BONES);
   const [picked, setPicked] = useState<BoneId>();
   const [squash, setSquash] = useState<number>();
+  // The recipe's squash wins again whenever it changes (undo, redo).
+  useEffect(() => setSquash(undefined), [rig?.squash]);
   if (layer.id.includes('~')) return null;
   if (!canRig(layer)) return layer.kind === 'media' ? <p style={{ ...hint, margin: '12px 0 0' }}>{NOTE}</p> : null;
   const name = ed.name(layer);
   const save = (o: RigSettings, summary: string, mergeKey?: string) =>
     ed.update((st) => editScene(st, st.scene, (s) => {
       const start = layerStarts(s.layers)[s.layers.findIndex((l) => l.id === layer.id)] ?? 0;
-      s.layers = withRig(s.layers, layer.id, BONES, o, start);
+      s.layers = withRig(s.layers, layer.id, BONES, o, start, s.ms);
     }, { summary: `${name}: ${summary}`, mergeKey }));
   const bone = BONES.find((b) => b.id === picked) ?? BONES.find((b) => rig?.moves[b.id]) ?? BONES[0]!;
   const amount = squash ?? rig?.squash ?? RIG_DEFAULTS.squash;

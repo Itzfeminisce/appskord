@@ -12,6 +12,7 @@ import {
   withChart,
   type ChartOptions,
 } from '../src/charts';
+import { layerStarts } from '../src/choreo';
 import { validateScene } from '../src/recipe';
 import { frameAt } from '../src/scene';
 import type { LayerV3, SceneV3 } from '../src/types';
@@ -153,5 +154,60 @@ describe('chart tracks', () => {
     expect(at(240 + 700)).toBe(1);
     expect(at(240 + 350)).toBeGreaterThan(0);
     expect(at(240 + 350)).toBeLessThan(1);
+  });
+});
+
+describe('review fixes', () => {
+  const bar: LayerV3 = {
+    id: 'c',
+    kind: 'chart',
+    depth: 'mid',
+    tracks: {
+      opacity: [
+        { t: 0, v: 1 },
+        { t: 300, v: 1 },
+      ],
+    },
+  };
+  const after: LayerV3 = { id: 'z', kind: 'shape', depth: 'mid', tracks: {} };
+
+  it('adding chart parts does not move other layers', () => {
+    const before = layerStarts([bar, after]);
+    const o = { ...CHART_DEFAULTS, show: 'bars' as const };
+    const withParts = withChart([bar, after], 'c', WEEK, o, 0, 3000);
+    const starts = layerStarts(withParts);
+    expect(starts[withParts.findIndex((l) => l.id === 'z')]).toBe(before[1]);
+  });
+
+  it('caps rows and columns', () => {
+    const big = Array.from({ length: 300 }, (_, i) => `r${i},${i}`).join('\n');
+    expect(parseTable(big).rows).toHaveLength(200);
+    const wide = Array.from({ length: 20 }, (_, i) => (i === 0 ? 'a' : i === 15 ? '9' : 'x')).join(',');
+    expect(parseTable(wide).rows).toHaveLength(0);
+  });
+
+  it('keeps newlines inside quoted fields and counts separators outside quotes', () => {
+    expect(parseTable('"Mon\nday",5\nTue,6').rows).toEqual([
+      { label: 'Mon\nday', value: 5 },
+      { label: 'Tue', value: 6 },
+    ]);
+    expect(parseTable('"a;b;c",1\n"d;e",2').rows.map((r) => r.value)).toEqual([1, 2]);
+  });
+
+  it('fits the stagger inside the scene', () => {
+    const rows = Array.from({ length: 10 }, (_, i) => ({ label: `r${i}`, value: i + 1 }));
+    const parts = chartLayers(bar, rows, { ...CHART_DEFAULTS, show: 'bars' }, 500, 2000);
+    const bars = parts.filter((l) => l.id.includes('~bar~'));
+    expect(bars[9]!.start! + 700).toBeLessThanOrEqual(2000);
+    const tight = chartLayers(bar, rows, { ...CHART_DEFAULTS, show: 'bars' }, 500, 900);
+    expect(new Set(tight.filter((l) => l.id.includes('~bar~')).map((l) => l.start))).toEqual(new Set([500]));
+  });
+
+  it('reads count-up from the draw track, also for all-zero values', () => {
+    const zeros = WEEK.map((r) => ({ ...r, value: 0 }));
+    for (const countUp of [true, false]) {
+      const layers = withChart([bar], 'c', zeros, { ...CHART_DEFAULTS, countUp }, 0, 5000);
+      expect(chartOptionsOf('c', layers)?.countUp).toBe(countUp);
+    }
   });
 });

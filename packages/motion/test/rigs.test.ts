@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateScene } from '../src/recipe';
 import {
   autoRig,
+  type Bone,
   boneLayerId,
   boneLine,
   canRig,
@@ -13,6 +14,7 @@ import {
   withRig,
   type RigSettings,
 } from '../src/rigs';
+import { layerStarts } from '../src/choreo';
 import { frameAt } from '../src/scene';
 import type { LayerV3, SceneV3 } from '../src/types';
 
@@ -92,5 +94,44 @@ describe('rig poses', () => {
     expect(pose(350)).toEqual(pose(350));
     expect(frameAt(s, 350).layers[3]!.props.rotate).toBe(70);
     expect(pose(100)).toEqual(poseBones(bones, {})['arm-right']);
+  });
+});
+
+describe('review fixes', () => {
+  it('rig layers do not move later layers', () => {
+    const next: LayerV3 = { id: 'n', kind: 'shape', depth: 'front', tracks: {} };
+    const plain = layerStarts([cup, next]);
+    const rigged = withRig([cup, next], 'cup', bones, { ...RIG_DEFAULTS, moves: { 'arm-left': 'wave' } }, 100, 3000);
+    expect(layerStarts(rigged)[rigged.findIndex((l) => l.id === 'n')]).toBe(plain[1]);
+  });
+
+  it('truncates moves to the scene length', () => {
+    const rigged = withRig(
+      [cup],
+      'cup',
+      bones,
+      { ...RIG_DEFAULTS, moves: { 'arm-left': 'wave', body: 'breathe' } },
+      100,
+      1000,
+    );
+    for (const l of rigged.slice(1)) {
+      for (const t of Object.values(l.tracks)) expect(l.start! + t![t!.length - 1]!.t).toBeLessThanOrEqual(1000);
+    }
+    expect(rigOf(rigged, 'cup', bones)?.moves).toEqual({ 'arm-left': 'wave', body: 'breathe' });
+  });
+
+  it('squashes along a horizontal bone', () => {
+    const arm: Bone = {
+      id: 'arm-right',
+      name: 'Arm',
+      points: [
+        [0, 0],
+        [100, 0],
+      ],
+      side: 1,
+    };
+    const squashed = poseBones([arm], { 'arm-right': { rotate: 0, y: 0, scale: 0.5 } })['arm-right'];
+    expect(squashed[1]![0]).toBeCloseTo(50);
+    expect(squashed[1]![1]).toBeCloseTo(0);
   });
 });
