@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { blocksVerdict, exportVerdict, failedRow, memoryVerdict, previewVerdict, SCENE, v3Row, V3_ROWS } from '../src/check';
+import {
+  blocksVerdict,
+  exportVerdict,
+  failedRow,
+  memoryVerdict,
+  previewVerdict,
+  SCENE,
+  v3Row,
+  V3_ROWS,
+} from '../src/check';
 
 describe('v3 check verdicts', () => {
   it('passes the building blocks only when all load', () => {
@@ -28,7 +37,13 @@ describe('v3 check verdicts', () => {
 
 describe('v3 rows', () => {
   it('lists the five rows in order', () => {
-    expect(V3_ROWS.map((r) => r.name)).toEqual(['Building blocks load', 'Preview speed', 'Export 30 fps', 'Export 60 fps', 'Memory']);
+    expect(V3_ROWS.map((r) => r.name)).toEqual([
+      'Building blocks load',
+      'Preview speed',
+      'Export 30 fps',
+      'Export 60 fps',
+      'Memory',
+    ]);
   });
 
   it('names the fallback only when a row misses', () => {

@@ -13,7 +13,10 @@ describe('seeded', () => {
 
   it('swaps Math.random only while the callback runs', () => {
     const original = Math.random;
-    const value = withRandom(() => 0.25, () => Math.random());
+    const value = withRandom(
+      () => 0.25,
+      () => Math.random(),
+    );
     expect(value).toBe(0.25);
     expect(Math.random).toBe(original);
   });

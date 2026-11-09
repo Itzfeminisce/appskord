@@ -29,7 +29,10 @@ export class VelocityBlurEffect extends Effect {
     super('VelocityBlurEffect', blurShader, {
       attributes: EffectAttribute.DEPTH | EffectAttribute.CONVOLUTION,
       blendFunction: BlendFunction.NORMAL,
-      defines: new Map([['SAMPLES', String(Math.max(2, samples))], ['MAX_PIXELS', '48.0']]),
+      defines: new Map([
+        ['SAMPLES', String(Math.max(2, samples))],
+        ['MAX_PIXELS', '48.0'],
+      ]),
       uniforms: new Map<string, Uniform>([
         ['previousViewProjection', new Uniform(new Matrix4())],
         ['inverseViewProjection', new Uniform(new Matrix4())],
@@ -76,7 +79,12 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 
 /** The finish: a lift/gain grade, saturation, vignette and grain seeded by frame number. */
 export class FinishEffect extends Effect {
-  constructor({ lift = new Vector3(0.02, 0.0, 0.05), gain = new Vector3(1.05, 1.0, 0.95), saturation = 1.1, grain = 0.06 } = {}) {
+  constructor({
+    lift = new Vector3(0.02, 0.0, 0.05),
+    gain = new Vector3(1.05, 1.0, 0.95),
+    saturation = 1.1,
+    grain = 0.06,
+  } = {}) {
     super('FinishEffect', finishShader, {
       uniforms: new Map<string, Uniform>([
         ['lift', new Uniform(lift)],

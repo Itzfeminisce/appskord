@@ -19,14 +19,27 @@ declare module 'troika-three-text' {
     sync(callback?: () => void): void;
     dispose(): void;
   }
-  export function configureTextBuilder(config: { useWorker?: boolean; sdfGlyphSize?: number; defaultFontURL?: string | null }): void;
+  export function configureTextBuilder(config: {
+    useWorker?: boolean;
+    sdfGlyphSize?: number;
+    defaultFontURL?: string | null;
+  }): void;
 }
 
 declare module 'opentype.js' {
-  export interface Font { numGlyphs: number; unitsPerEm: number; charToGlyph(c: string): { index: number }; getPath(text: string, x: number, y: number, size: number): { commands: unknown[] } }
+  export interface Font {
+    numGlyphs: number;
+    unitsPerEm: number;
+    charToGlyph(c: string): { index: number };
+    getPath(text: string, x: number, y: number, size: number): { commands: unknown[] };
+  }
   export function parse(buffer: ArrayBuffer): Font;
 }
 
 declare module 'flubber' {
-  export function interpolate(from: string | number[][], to: string | number[][], options?: { maxSegmentLength?: number; string?: boolean }): (t: number) => string;
+  export function interpolate(
+    from: string | number[][],
+    to: string | number[][],
+    options?: { maxSegmentLength?: number; string?: boolean },
+  ): (t: number) => string;
 }
