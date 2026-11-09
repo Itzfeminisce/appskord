@@ -7,6 +7,7 @@ import { useEditorV3 } from './context';
 import { FLOOR, FRAME_SIZE, localEnd, wordBoxes } from './edits';
 import { editLayer, editScene } from './model';
 import { AssetDetails, assetOf } from './AssetPicker';
+import { RigPanel } from './Rigs';
 import { C, Chip, hint, PanelHead, Section, Segmented, Slider, SwitchRow } from './ui';
 
 // Layer tab: Light 3D for words, Particles and physics for a particle layer, Physics for anything that can fall.
@@ -31,6 +32,7 @@ export function LayerTab({ bakers = REAL }: { bakers?: Bakers }) {
         <>
           {assetOf(layer) && <AssetDetails layer={layer} />}
           <PhysicsPanel layer={layer} bake={bakers.secondary} />
+          <RigPanel layer={layer} />
         </>
       )}
       <SceneLayers key={scene.id} />
