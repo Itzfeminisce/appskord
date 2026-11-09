@@ -37,6 +37,8 @@ function useGl(canvas: HTMLCanvasElement | null): Gl | undefined {
   return gl;
 }
 
+const toolButton = (dark: boolean) => ({ height: 34, padding: '0 12px', border: dark ? 0 : '1px solid #E0E0E4', borderRadius: 9, background: dark ? '#111114' : C.surface, color: dark ? '#FFFFFF' : C.ink, font: `${dark ? 600 : 500} 12px/1 ${C.font}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' as const, flexShrink: 0 });
+
 export function Stage({ preview }: { preview?: { effect: string } }) {
   const ed = useEditorV3();
   const { state, scene, layer, look, t, setT, playing, setPlaying, spread } = ed;
@@ -164,14 +166,19 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
     <main style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '12px 20px 10px', background: C.stage, minWidth: 0, gap: 10, position: 'relative' }}>
       {layer && (
         <div style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{ed.name(layer)}</span>
-            <span style={{ fontSize: 12, color: C.muted }}>{motionLine(scene, layer)}</span>
+          <span style={{ height: 34, padding: '0 10px', boxSizing: 'border-box', borderRadius: 9, background: C.surface, border: '1px solid #E0E0E4', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
+            <i aria-hidden="true" style={{ width: 8, height: 8, flexShrink: 0, borderRadius: 2, background: '#BE185D' }} />
+            <span style={{ fontWeight: 600 }}>{ed.name(layer)}</span>
+            <span style={{ fontFamily: C.mono, fontSize: 11, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis' }}>{motionLine(scene, layer)}</span>
           </span>
-          <button type="button" style={quietButton} onClick={() => ed.setOverlay('animate')}>Animate this layer</button>
+          <span style={{ flexGrow: 1 }} />
+          <button type="button" style={toolButton(true)} onClick={() => ed.setOverlay('animate')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F9A8D4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>Animate this layer
+          </button>
           {similar.length > 0 && (
-            <button type="button" style={quietButton} onClick={copyMotion}>
-              Copy motion to similar layers <span style={{ marginLeft: 4, fontWeight: 600, color: C.accent }}>{similar.length}</span>
+            <button type="button" style={toolButton(false)} onClick={copyMotion}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
+              Copy motion to similar layers <span style={{ minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: '#F1F1F3', fontFamily: C.mono, fontSize: 10, color: C.muted, display: 'grid', placeItems: 'center' }}>{similar.length}</span>
             </button>
           )}
         </div>
@@ -189,7 +196,7 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
           {`Previewing ${effectEntry(preview.effect as never).name}`}
         </div>
       )}
-      <div style={{ position: 'relative', flex: 1, minHeight: 0, aspectRatio: '9 / 16', maxWidth: '100%', borderRadius: 10, overflow: 'hidden', background: look.palette[0] ?? '#0B0B10', boxShadow: '0 1px 3px rgba(16,16,20,0.12)' }}>
+      <div style={{ position: 'relative', flex: 1, minHeight: 0, aspectRatio: '9 / 16', maxWidth: '100%', borderRadius: 4, overflow: 'hidden', background: look.palette[0] ?? '#0B0B10', boxShadow: '0 14px 36px rgba(16,16,20,0.22), 0 1px 3px rgba(16,16,20,0.1)' }}>
         <canvas ref={setCanvas} role="img" aria-label={`Scene ${state.scene + 1} of ${state.clip.recipe.name}`} style={{ width: '100%', height: '100%', display: 'block' }} />
         {preview && layer && (
           <span style={{ position: 'absolute', left: 8, bottom: 8, fontSize: 11, padding: '3px 6px', borderRadius: 6, background: 'rgba(255,255,255,0.9)', color: C.ink }}>
@@ -208,13 +215,14 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
           }
           setPlaying(!playing);
         }}
-          style={{ width: 32, height: 32, borderRadius: 16, border: 0, background: C.ink, color: '#FFFFFF', cursor: 'pointer' }}>
-          {playing ? '❚❚' : '▶'}
+          style={{ width: 34, height: 34, borderRadius: '50%', border: 0, background: C.ink, color: '#FFFFFF', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">{playing ? <path d="M6 4h4v16H6zM14 4h4v16h-4z" /> : <path d="M7 4v16l13-8z" />}</svg>
         </button>
-        <button type="button" title={`Play scene ${state.scene + 1}`} style={quietButton} onClick={() => { setT(0); setSceneOnly(true); setPlaying(true); }}>
+        <button type="button" title={`Play scene ${state.scene + 1}`} style={{ ...quietButton, height: 34, padding: '0 12px', border: '1px solid #E0E0E4', borderRadius: 999, fontWeight: 400 }} onClick={() => { setT(0); setSceneOnly(true); setPlaying(true); }}>
           {`Play scene ${state.scene + 1}`}
         </button>
-        <span style={{ fontSize: 12, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{`${clockTenths(at)} / ${clockTenths(total)}`}</span>
+        <span style={{ fontFamily: C.mono, fontSize: 12, color: C.ink }}>{`${clockTenths(at)} / ${clockTenths(total)}`}</span>
+        {layer && <span style={{ fontSize: 12, color: C.muted }}>Pink diamonds: this layer’s keyframes</span>}
       </div>
     </main>
   );
