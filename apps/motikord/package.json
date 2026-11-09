@@ -2,7 +2,7 @@
   "name": "motikord",
   "description": "Short animated clips, made on your computer",
   "private": true,
-  "version": "2.0.1",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
