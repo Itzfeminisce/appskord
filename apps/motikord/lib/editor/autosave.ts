@@ -16,8 +16,9 @@ export interface AutosaveOptions {
 export interface Autosave {
   /** Call after every change with the clip as it now is. */
   schedule(clip: Clip): void;
-  /** Writes the pending clip now (tab hidden, Try again). Resolves when the write settles. */
+  /** Writes the pending clip now (tab hidden, Try again, unmount). Resolves when the write settles; works after dispose. */
   flush(): Promise<void>;
+  /** Stops new changes and retries; a flush still writes what is pending. */
   dispose(): void;
 }
 
@@ -40,7 +41,8 @@ export function createAutosave(o: AutosaveOptions): Autosave {
     if (timer !== undefined) { clear(timer); timer = undefined; }
     if (writing) await writing;
     const clip = pending;
-    if (!clip || disposed) return;
+    // Still writes after dispose, so an unmount mid-write keeps the last edit.
+    if (!clip) return;
     pending = undefined;
     o.onStatus('saving');
     writing = o.write(clip).then(

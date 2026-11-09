@@ -54,4 +54,20 @@ describe('autosave', () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(write).toHaveBeenCalledTimes(2);
   });
+
+  it('flush on unmount writes the pending edit even while a write is in flight', async () => {
+    let release!: () => void;
+    const write = vi.fn((_c: Clip) => (write.mock.calls.length === 1 ? new Promise<void>((r) => { release = r; }) : Promise.resolve()));
+    const a = createAutosave({ write, onStatus: () => {}, delayMs: 100 });
+    a.schedule(clip(1));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(write).toHaveBeenCalledTimes(1);
+    a.schedule(clip(2));
+    const done = a.flush();
+    a.dispose();
+    release();
+    await done;
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write.mock.calls[1]![0].updatedAt).toBe(2);
+  });
 });

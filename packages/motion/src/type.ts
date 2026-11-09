@@ -204,7 +204,7 @@ export class AxisText extends THREE.Mesh<THREE.ShapeGeometry, THREE.MeshBasicMat
     this.material.opacity = userData.opacity ?? 1;
   }
 
-  dispose(): void {
+  override dispose(): void {
     for (const g of this.cuts.values()) g.dispose();
     this.cuts.clear();
     this.geometry.dispose();
@@ -279,7 +279,7 @@ export class KineticType extends THREE.Group {
     });
   }
 
-  dispose(): void {
+  override dispose(): void {
     for (const t of this.texts) {
       this.remove(t);
       t.dispose();
