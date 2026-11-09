@@ -42,3 +42,27 @@ Preview: the 16:9 recorded prompt with the most scenes, made by the real pipelin
 | Storyboard + scenes + checker, 20 recorded prompts | < 15 s | Pass | median 0.003 s, slowest 0.03 s; Groq network time not included |
 
 Owner: confirm on the laptop with the machine check page in the test build.
+
+## v3 (sandbox)
+
+Sandbox numbers, not the laptop: headless Chromium 153, 4 cores (Xeon 2.1 GHz), no GPU, so WebGL2 runs on SwiftShader (software)
+and every GPU-bound number here is a floor. Run with `pnpm build`, then `node scripts/measure-v3.mjs 10`; it serves the build
+with the extension's CSP (`script-src 'self' 'wasm-unsafe-eval'`). The page's Run v3 button runs the same rows.
+Scene: `@appskord/motion` test scene, 15 s, 1080x1920, seed 7: troika 3D text, three.quarks particles, depth of field and bloom
+(postprocessing), our velocity motion blur (depth reprojection), grade, vignette and grain. Export: full quality, WebCodecs
+H.264 via mediabunny `CanvasSource`, MP4 (VP9/WebM when H.264 cannot encode). Preview: reduced quality, 540x960, 5 blur samples.
+
+| Test | Budget | Result | Numbers |
+| --- | --- | --- | --- |
+| Building blocks load | All load, no eval, no remote code | Pass | 10 of 10; 0 CSP violations, 0 remote requests; rapier and dotLottie wasm bundled |
+| Preview speed | ≥ 30 fps at reduced quality | Pass | 38.1 fps, p95 frame 16.7 ms (10 s) |
+| Export 30 fps | ≤ 4x clip length (60 s) | Slow | 703 s (46.9x); 1.56 s per frame waiting on software GPU and encode, 5 ms to submit |
+| Export 60 fps | ≤ 8x clip length (120 s) | Slow | 1360 s (90.7x); fallback 30 fps default |
+| Memory | < 1.5 GB during export | Pass | 45 MB peak JS heap (`performance.memory`; GPU memory is not visible to pages) |
+
+The export rows are Slow only because the sandbox has no GPU; the laptop decides them.
+Owner's laptop (Windows, 4 cores, 8 GB, Chrome 156): _not run yet; paste Copy results from Run v3 here._
+
+Bundle: side panel 1,091,844 bytes before and after (same chunk files, byte for byte). Check page 165,999 bytes before,
+5,051,956 after (the v3 stack, one 4.9 MB chunk), plus `dotlottie-player.wasm` 1.23 MB and the Archivo Black
+woff 13 KB as assets. The v3 stack is imported only by the check page.
