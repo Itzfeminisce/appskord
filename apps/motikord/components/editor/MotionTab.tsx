@@ -1,9 +1,10 @@
 import { FEEL } from '@appskord/motion/curves';
 import type { Curve, LayerV3, SceneV3 } from '@appskord/motion/types';
 import { useEditorV3 } from './context';
+import { feelNear } from './curves';
 import { CurveEditor } from './CurveEditor';
 import {
-  carryInto, COMES_IN, dropCarry, FEEL_NAMES, FEEL_ORDER, feelOf, GOES_OUT, HOLDS, OVERLAP, parseMs, parseRange,
+  carryInto, COMES_IN, dropCarry, FEEL_NAMES, FEEL_ORDER, GOES_OUT, HOLDS, OVERLAP, parseMs, parseRange,
   rangeText, readMotion, writeMotion, type MotionSpec,
 } from './edits';
 import { editScenes, type V3State } from './model';
@@ -41,7 +42,7 @@ function MotionFor({ scene, layer }: { scene: SceneV3; layer: LayerV3 }) {
   const ed = useEditorV3();
   const name = ed.name(layer);
   const spec = readMotion(scene, layer);
-  const feel = feelOf(spec.curve);
+  const feel = feelNear(spec.curve);
   // "Reset to {feel}" goes back to the feel the layer had before its handles moved.
   if (feel) ed.feels.set(layer.id, feel);
   const had = ed.feels.get(layer.id) ?? ed.look.feel ?? 'smooth';
@@ -68,10 +69,10 @@ function MotionFor({ scene, layer }: { scene: SceneV3; layer: LayerV3 }) {
             set({ curve }, v === 'spring' ? `Spring · ${20}% bounce` : 'Curve');
           }}
           onCommit={(curve) => {
-            const f = feelOf(curve);
+            const f = feelNear(curve);
             set({ curve }, curve.kind === 'spring' ? `Spring · ${curve.bounce}% bounce` : f ? FEEL_NAMES[f] : 'Curve');
           }}
-          reset={feel ? undefined : { name: FEEL_NAMES[had], onReset: () => set({ curve: FEEL[had].curve, ms: FEEL[had].ms }, FEEL_NAMES[had]) }} />
+          reset={feel ? undefined : { name: FEEL_NAMES[had], onReset: () => set({ curve: FEEL[had].curve }, FEEL_NAMES[had]) }} />
         {spring && (
           <Slider name="Bounce" min={0} max={100} value={spring.bounce} text={`Spring · ${spring.bounce}% bounce`}
             onChange={(b) => set({ curve: { ...spring, bounce: b } }, `Spring · ${b}% bounce`, `${layer.id}:bounce`)} />

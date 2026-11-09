@@ -1,11 +1,12 @@
 import { validateClip, validateScene } from '@appskord/motion/recipe';
-import type { SceneV3 } from '@appskord/motion/types';
+import type { Feel, SceneV3 } from '@appskord/motion/types';
 import type { PromptEdit } from '../../lib/editor/applyPrompt';
 import { toSizeOnly } from '../../lib/editor/sizeOnly';
 import { setAspect } from '../../lib/editor/store';
 import { restyle, type RestyledClip } from '../../lib/restyle/restyle';
 import { linkScenes } from '../../lib/templates/v3/build';
 import type { Aspect, PatchOp, Recipe } from '../../lib/types';
+import { feelNear } from './curves';
 import { readMotion, type MotionSpec } from './edits';
 import { applyOps, type V3State } from './model';
 
@@ -64,6 +65,8 @@ export interface PromptChanged {
   scene: number;
   layerId?: string;
   sections: string[];
+  /** The changed layer's feel before the edit, when its curve was one of the feels. */
+  hadFeel?: Feel;
 }
 
 // Panel sections, by their titles in the Motion and Scene tabs.
@@ -90,14 +93,16 @@ export function promptChanged(before: RestyledClip, after: RestyledClip, summary
       return !old || !same(old, l) || !same(oldV2?.layers.find((o) => o.id === l.id), v2?.layers.find((o) => o.id === l.id));
     });
     const sections: string[] = [];
+    let hadFeel: Feel | undefined;
     const old = layer && oldS?.layers.find((o) => o.id === layer.id);
     if (layer && oldS && old) {
       const [a, b] = [readMotion(oldS, old), readMotion(s, layer)];
+      hadFeel = feelNear(a.curve);
       for (const [title, keys] of MOTION_SECTIONS) if (keys.some((k) => !same(a[k], b[k]))) sections.push(title);
       if ((layer.start ?? 0) !== (old.start ?? 0) && !sections.includes('Timing')) sections.push('Timing');
     }
     if (oldS && !same(oldS.camera, s.camera)) sections.push('Camera and depth');
-    return { clip: after, summary, scene: i, layerId: layer?.id ?? s.layers[0]?.id, sections };
+    return { clip: after, summary, scene: i, layerId: layer?.id ?? s.layers[0]?.id, sections, hadFeel };
   }
   return undefined;
 }

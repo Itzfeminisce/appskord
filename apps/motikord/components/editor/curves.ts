@@ -1,6 +1,6 @@
 import { ease, FEEL } from '@appskord/motion/curves';
 import type { Curve, Feel, LayerV3, SceneV3 } from '@appskord/motion/types';
-import { localEnd, OUT_MS, readMotion } from './edits';
+import { feelOf, localEnd, OUT_MS, readMotion } from './edits';
 
 // The easing curve as drawn: in the Motion tab's curve editor and on the timeline's layer rows.
 
@@ -78,6 +78,11 @@ export function nearFeel(c: Bezier): Exclude<Feel, 'bouncy'> | undefined {
     const p = (FEEL[f].curve as Bezier).p;
     return p.every((v, k) => Math.abs(v - c.p[k]!) <= SNAP + 1e-9);
   });
+}
+
+/** The feel a curve reads as: the spring feel exactly, a bezier within SNAP of a feel's handles. */
+export function feelNear(c: Curve): Feel | undefined {
+  return c.kind === 'spring' ? feelOf(c) : nearFeel(c);
 }
 
 /** Handles near a feel's curve take that curve exactly; any other shape stays as it is. */

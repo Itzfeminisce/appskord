@@ -98,6 +98,7 @@ describe('EditPromptV3', () => {
     await v.click(v.button('Undo'));
     expect(v.host.textContent).not.toContain('Fake words');
     expect(v.host.textContent).not.toMatch(/ · changed/);
+    expect(v.changesTab().getAttribute('aria-label')).toBeNull();
     expect(v.all('button[aria-label="Redo"]')[0]!.hasAttribute('disabled')).toBe(false);
   });
 

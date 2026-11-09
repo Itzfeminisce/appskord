@@ -71,8 +71,11 @@ export function EditorV3Provider({ clip, look, provider = 'Groq', initial, child
   const feels = useRef(new Map<string, Feel>()).current;
   const setChanged = useCallback((c: PromptChanged | undefined) => {
     setChangedState(c);
-    if (c) setChangesNew((n) => n + 1);
-  }, []);
+    // Setting nothing is an Undo: it takes back the change that lit the dot.
+    setChangesNew((n) => (c ? n + 1 : Math.max(0, n - 1)));
+    // The feel the layer had before the edit is what Reset goes back to.
+    if (c?.layerId && c.hadFeel) feels.set(c.layerId, c.hadFeel);
+  }, [feels]);
   // Opening the Changes tab clears its dot.
   if (state.tab === 'changes' && changesNew) setChangesNew(0);
   const api = useMemo<EditorV3Api>(() => {

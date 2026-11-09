@@ -252,7 +252,7 @@ function PromptToast({ changed, onClose }: { changed: PromptChanged; onClose: ()
     <div ref={ref} role="status" style={{ width: 560, maxWidth: '100%', height: 44, boxSizing: 'border-box', borderRadius: 12, background: '#111114', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: 10, padding: '0 6px 0 12px', boxShadow: '0 10px 28px rgba(16,16,20,0.28)', flexShrink: 0 }}>
       <svg width="16" height="16" viewBox="0 0 24 24" {...stroke} stroke="#F9A8D4" strokeWidth="2.4"><path d="M20 6L9 17l-5-5" /></svg>
       <span style={{ flexGrow: 1, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doneLine(changed.summary)}</span>
-      <button type="button" onClick={() => { if (ed.state.clip === changed.clip) ed.undo(); onClose(); }}
+      <button type="button" onClick={() => { if (ed.state.clip === changed.clip) { ed.undo(); ed.setChanged(undefined); } onClose(); }}
         style={{ height: 32, padding: '0 12px', border: 0, borderRadius: 8, background: 'rgba(255,255,255,0.12)', color: '#FFFFFF', font: `600 12px/1 ${C.font}`, cursor: 'pointer' }}>Undo</button>
       <button type="button" onClick={() => { ed.setOverlay(undefined); ed.setTab('changes'); onClose(); }}
         style={{ height: 32, padding: '0 10px', border: 0, borderRadius: 8, background: 'transparent', color: '#F9A8D4', font: `500 12px/1 ${C.font}`, cursor: 'pointer', whiteSpace: 'nowrap' }}>See in Changes</button>

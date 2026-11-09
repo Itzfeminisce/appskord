@@ -7,6 +7,7 @@ import { sampleClip } from './fixture';
 import { initV3 } from './model';
 import { FEEL } from '@appskord/motion/curves';
 import { readMotion, writeMotion } from './edits';
+import { feelNear } from './curves';
 import { applyPromptV3, doneLine, promptChanged, promptStep, recipeOps, setSizeV3, syncScenes, underRecipe } from './prompt';
 
 const clip = sampleClip();
@@ -107,6 +108,15 @@ describe('after a prompt edit (EditPromptV3)', () => {
     expect(c.sections).toEqual(expect.arrayContaining(['Comes in', 'Feel']));
     expect(c.sections).not.toContain('Goes out');
     expect(promptChanged(clip, clip, 'x')).toBeUndefined();
+  });
+
+  it('records the feel the changed layer had before the edit', () => {
+    const s = structuredClone(clip);
+    const scene = s.v3.scenes[0]!;
+    const i = scene.layers.findIndex((l) => l.slotId === 'headline');
+    const was = feelNear(readMotion(clip.v3.scenes[0]!, clip.v3.scenes[0]!.layers[i]!).curve);
+    scene.layers[i] = writeMotion(scene, scene.layers[i]!, { ...readMotion(scene, scene.layers[i]!), curve: { kind: 'bezier', p: [0.7, 0.1, 0.3, 0.95] } });
+    expect(promptChanged(clip, s, 'x')!.hadFeel).toBe(was);
   });
 
   it('keeps a box edit to this size only when the switch is on', () => {

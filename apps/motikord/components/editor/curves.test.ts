@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FEEL } from '@appskord/motion/curves';
 import type { Curve } from '@appskord/motion/types';
-import { bounceFor, curveAria, curveArea, curveLabel, curvePath, dragHandle, EDITOR_BOX, handles, motionSegments, nearFeel, snapToFeel, springPeak, toBox } from './curves';
+import { bounceFor, curveAria, curveArea, curveLabel, curvePath, dragHandle, EDITOR_BOX, handles, motionSegments, feelNear, nearFeel, snapToFeel, springPeak, toBox } from './curves';
 import { readMotion, writeMotion } from './edits';
 import { sampleClip } from './fixture';
 
@@ -86,5 +86,12 @@ describe('curve labels (CurveLabelsV3)', () => {
     expect(bounceFor(spring, peak)).toBe(50);
     expect(bounceFor(spring, 0.5)).toBe(0);
     expect(springPeak({ ...spring, bounce: 80 })[1]).toBeGreaterThan(peak);
+  });
+
+  it('reads a feel the same way everywhere: near for beziers, exact for the spring', () => {
+    const near = { kind: 'bezier', p: [...(FEEL.steady.curve as { p: number[] }).p.map((v, k) => (k === 0 ? v + 0.01 : v))] } as Curve;
+    expect(feelNear(near)).toBe('steady');
+    expect(feelNear(FEEL.bouncy.curve)).toBe('bouncy');
+    expect(feelNear({ kind: 'bezier', p: [0.7, 0.1, 0.3, 0.95] })).toBeUndefined();
   });
 });

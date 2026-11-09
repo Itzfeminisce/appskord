@@ -27,6 +27,9 @@ export const FORMATS_NOTE = 'Each template has its own layout per size, so nothi
 /** "Push in · 3 depth layers". */
 export const depthLine = (s: SceneV3) => `${CAMERA_LABELS[s.camera.move]} · ${new Set(s.layers.map((l) => l.depth)).size} depth layers`;
 
+/** The longest a frame may advance the Play-all clock: a hidden tab does not jump it. */
+export const MAX_TICK_MS = 100;
+
 /** A still inside the scene where its layers have come in, as v2's All sizes shows. */
 const restMs = (s: SceneV3) => Math.min(1800, Math.floor(s.ms / 2));
 
@@ -39,6 +42,8 @@ function SizeView({ aspect, w, h, sceneIndex, t, faults }: { aspect: Aspect; w: 
   const gl = useGl(canvas);
   const view = useRef<V3Renderer | undefined>(undefined);
   const shownT = useRef(t);
+  // A rebuild on a scene boundary draws at the current t, not the one the last render left.
+  shownT.current = t;
   const size = useMemo(() => previewSize(aspect), [aspect]);
   const contentKey = JSON.stringify(scene.layers.map((l) => [l.id, layerContent(state.clip, sceneIndex, l) ?? null]));
   const contents = useMemo(() => new Map(JSON.parse(contentKey) as [string, ReturnType<typeof layerContent> | null][]), [contentKey]);
@@ -103,7 +108,7 @@ export function FormatsV3({ go }: { go?: (to: ChromeGo) => void }) {
     let last = performance.now();
     let now = 0;
     const tick = (time: number) => {
-      now = Math.min(total, now + time - last);
+      now = Math.min(total, now + Math.min(MAX_TICK_MS, time - last));
       last = time;
       let i = 0;
       while (i + 1 < starts.length && starts[i + 1]! <= now) i++;
