@@ -40,6 +40,9 @@ export async function getLook(id: string): Promise<SavedLook | undefined> {
 export async function listLooks(): Promise<SavedLook[]> {
   return (await (await lookDB.get()).getAllFromIndex('lookGuides', 'updatedAt')).reverse();
 }
-export async function deleteLook(id: string): Promise<void> {
+/** Deletes a saved guide; refused while a clip uses it (`inUse` holds the guide ids clips point at). */
+export async function deleteLook(id: string, inUse: ReadonlySet<string>): Promise<void> {
+  if (inUse.has(id))
+    throw new Error(`Motikord: could not delete look guide "${id}". A clip uses it. Restyle that clip with another look, then delete.`);
   await (await lookDB.get()).delete('lookGuides', id);
 }

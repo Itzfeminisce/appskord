@@ -28,13 +28,13 @@ export function moveTracks(move: Move, ms: number, curve: Curve): Tracks {
     case 'drop':
       return { opacity: from(0, 1, 80, curve), y: from(-600, 0, ms, curve) };
     case 'extrude':
-      return { opacity: fadeIn, rotateY: from(-35, 0, ms, curve), z: from(-10, 0, ms, curve) };
+      return { opacity: fadeIn, rotateY: from(-35, 0, ms, curve) };
     case 'orbit-in':
       return { opacity: fadeIn, rotate: from(-90, 0, ms, curve), scale: from(0, 1, ms, curve) };
     case 'morph':
       return { opacity: fadeIn, morph: from(0, 1, ms, curve) };
     case 'count':
-      // draw is the count's progress: 0 shows 0, 1 shows the value from the data
+      // draw is the count's progress: 0 shows `count.from`, 1 shows `count.to`
       return { draw: from(0, 1, ms, curve) };
     case 'focus-in':
       return { opacity: fadeIn, blur: from(12, 0, ms, curve), z: from(-6, 0, ms, curve) };
@@ -87,6 +87,10 @@ function layerFrom(plan: LayerPlan, input: LayerInput, nth: number, pack: PackV3
     start: Math.round(plan.at * 1000) + nth * ITEM_STEP_MS,
     tracks: moveTracks(plan.move, ms, curve),
   };
+  const range = ([a, b]: [number, number]): Track<number> => (a === b ? [key(0, a)] : from(a, b, ms, curve));
+  if (plan.extrude) layer.tracks.extrude = range(plan.extrude);
+  if (plan.soft) layer.tracks.soft = range(plan.soft);
+  if (plan.count) layer.count = { ...plan.count };
   if (plan.z !== undefined) layer.z = plan.z;
   if (input.slotId) layer.slotId = input.slotId;
   if (plan.unit) layer.type = plan.fill ? { unit: plan.unit, fill: true } : { unit: plan.unit };

@@ -76,3 +76,33 @@ describe('restyle with v3 motion', () => {
     }
   });
 });
+
+describe('restyling again and timing', () => {
+  it('undoes a second restyle with a replace of the previous v3, and Open v2 drops restyle Changes', () => {
+    const first = restyle(v2Clip(), { packId: 'bold', now: 5, changeId: 'ch1' });
+    const second = restyle(first, { packId: 'soft', now: 6, changeId: 'ch2' });
+    const change = second.history.at(-1)!;
+    expect(change.patch[0]).toMatchObject({ op: 'replace', path: '/v3' });
+    expect(change.inverse).toEqual([{ op: 'replace', path: '/v3', value: first.v3 }]);
+    expect(second.v2Version).toEqual(first.v2Version);
+    const back = openV2Version(second);
+    expect(back.history).toEqual([]);
+    expect(back.recipe).toEqual(v2Clip().recipe);
+  });
+
+  it('keeps a custom-timed v2 layer: starts where it started and its tracks fit its length', () => {
+    const clip = v2Clip();
+    const free = clip.recipe.scenes.at(-1)!;
+    Object.assign(free.layers[0]!, { startMs: 500, endMs: 800 });
+    const after = restyle(clip, { now: 1, changeId: 'x' });
+    const layers = after.v3.scenes.at(-1)!.layers;
+    const timed = layers.find((l) => l.id === 't1')!;
+    expect(timed.start).toBe(500);
+    const ends = Object.values(timed.tracks).map((t) => t.at(-1)!.t);
+    expect(Math.max(...ends)).toBe(300);
+    // a layer spanning the whole scene keeps the template's own timing
+    expect(layers.find((l) => l.id === 'v1')!.start).not.toBe(0 + 99999);
+    expect(validateClip(after.v3).ok).toBe(true);
+  });
+});
+

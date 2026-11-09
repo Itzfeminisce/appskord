@@ -72,4 +72,11 @@ describe('v3 templates', () => {
     const clip = { version: 3, scenes, lookGuideId: 'pack-studio', packId: 'studio', fps: 30, finish: packFinish(studio) };
     expect(validateClip(clip).ok).toBe(true);
   });
+
+  it('uses the real count, extrude and soft fields', () => {
+    const layers = TEMPLATES_V3.flatMap((t) => buildScene(t, PACKS_V3.find((p) => p.id === t.packId)!, { id: t.id }).layers);
+    expect(layers.find((l) => l.id === 'count')!.count).toEqual({ from: 0, to: 2400, decimals: 0 });
+    expect(layers.some((l) => l.tracks.extrude?.at(-1)?.v === 18 && l.tracks.extrude[0]!.v === 0)).toBe(true);
+    expect(layers.find((l) => l.id === 'quote')!.tracks.soft!.map((k) => k.v)).toEqual([0, 100]);
+  });
 });

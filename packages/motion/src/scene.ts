@@ -284,6 +284,8 @@ export const REST: Readonly<Record<Prop, number>> = {
   morph: 0,
   mask: 1,
   rotateY: 0,
+  extrude: 0,
+  soft: 0,
 };
 
 export interface LayerFrame {

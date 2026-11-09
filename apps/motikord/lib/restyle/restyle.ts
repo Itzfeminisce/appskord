@@ -85,7 +85,27 @@ function sceneV3(scene: Scene, pack: PackV3, keyFramesFirst: boolean): SceneV3 {
     ...(l.slot ? { slotId: l.slot } : {}),
   }));
   const s = buildScene(t, pack, { id: scene.id, ms: scene.durationMs, layers });
-  return keyFramesFirst ? { ...s, keyFrameApproved: false } : s;
+  const timed = keepTiming(s, scene);
+  return keyFramesFirst ? { ...timed, keyFrameApproved: false } : timed;
+}
+
+/** Layers whose v2 timing is custom (not the whole scene) keep it: start at its start, tracks fit its length. */
+function keepTiming(v3: SceneV3, scene: Scene): SceneV3 {
+  const timed = new Map(scene.layers.map((l) => [l.id, l]));
+  return {
+    ...v3,
+    layers: v3.layers.map((l) => {
+      const v2 = timed.get(l.id);
+      if (!v2 || (v2.startMs <= 0 && v2.endMs >= scene.durationMs)) return l;
+      const span = Math.max(1, v2.endMs - v2.startMs);
+      const end = Math.max(0, ...Object.values(l.tracks).map((tr) => tr?.at(-1)?.t ?? 0));
+      const k = end > span ? span / end : 1;
+      const tracks = Object.fromEntries(
+        Object.entries(l.tracks).map(([prop, tr]) => [prop, tr.map((key) => ({ ...key, t: Math.round(key.t * k) }))]),
+      ) as LayerV3['tracks'];
+      return { ...l, start: Math.max(0, v2.startMs), tracks };
+    }),
+  };
 }
 
 /** The v2 clip as a v3 clip. Throws when the result fails the recipe check; the v2 clip is never changed. */
@@ -103,18 +123,19 @@ export function restyle(clip: Clip, o: RestyleOptions): RestyledClip {
   };
   const checked = validateClip(v3);
   if (!checked.ok) throw new Error(`Motikord: could not restyle clip. ${checked.errors.join(' ')}`);
+  const previous = isRestyled(clip) ? clip.v3 : undefined;
   const change: Change = {
     id: o.changeId,
     at: o.now,
     by: 'hand',
     summary: RESTYLE.summary(pack.name),
-    patch: [{ op: 'add', path: '/v3', value: v3 }],
-    inverse: [{ op: 'remove', path: '/v3' }],
+    patch: [{ op: previous ? 'replace' : 'add', path: '/v3', value: v3 }],
+    inverse: previous ? [{ op: 'replace', path: '/v3', value: previous }] : [{ op: 'remove', path: '/v3' }],
   };
   return {
     ...clip,
     v3,
-    v2Version: structuredClone(v2),
+    v2Version: structuredClone(isRestyled(clip) ? clip.v2Version : v2),
     history: [...clip.history, change],
     updatedAt: o.now,
   };
@@ -123,7 +144,8 @@ export function restyle(clip: Clip, o: RestyleOptions): RestyledClip {
 /** "Open v2 version": the clip as it was before the restyle, playing through @appskord/scenes again. */
 export function openV2Version(clip: RestyledClip): Clip {
   const { v3: _v3, v2Version, ...rest } = clip;
-  return { ...rest, recipe: structuredClone(v2Version) };
+  const history = rest.history.filter((c) => !c.patch.some((op) => op.path === '/v3'));
+  return { ...rest, history, recipe: structuredClone(v2Version) };
 }
 
 /** Every word the clip shows: text layers and the text in template slots. */

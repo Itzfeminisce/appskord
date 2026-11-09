@@ -8,7 +8,20 @@ const isObj = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 const list = (xs: readonly string[]) => xs.join(', ');
 
-const LAYER_KEYS = ['id', 'kind', 'depth', 'z', 'slotId', 'tracks', 'type', 'carry', 'seed', 'start', 'particles'];
+const LAYER_KEYS = [
+  'id',
+  'kind',
+  'depth',
+  'z',
+  'slotId',
+  'tracks',
+  'type',
+  'carry',
+  'seed',
+  'start',
+  'count',
+  'particles',
+];
 const SCENE_KEYS = [
   'version',
   'id',
@@ -140,6 +153,15 @@ function checkLayer(e: Errors, l: unknown, at: string): void {
   e.str(l, 'carry', p, true);
   e.num(l, 'seed', p, 0, 2 ** 32 - 1, true);
   e.num(l, 'start', p, 0, 600000, true);
+  if (l.count !== undefined) {
+    if (!isObj(l.count)) e.add(`${p}count`, 'is not count settings', 'Use { from, to, decimals? }');
+    else {
+      e.unknownKeys(l.count, ['from', 'to', 'decimals'], `${p}count.`);
+      e.num(l.count, 'from', `${p}count.`, -1e12, 1e12);
+      e.num(l.count, 'to', `${p}count.`, -1e12, 1e12);
+      e.num(l.count, 'decimals', `${p}count.`, 0, 6, true);
+    }
+  }
   if (l.particles !== undefined) checkParticles(e, l.particles, `${p}particles`);
   if (l.type !== undefined) {
     if (!isObj(l.type)) e.add(`${p}type`, 'is not kinetic type settings', 'Use { unit: "letter" | "word" | "line" }');

@@ -237,6 +237,8 @@ export function packFinish(pack: PackV3): Finish {
 }
 
 /** The look guide a pack starts as ("From pack: Studio"). */
+/** Whether a look guide id is a pack's own guide ("pack-studio"), which needs no saved copy. */
+export const isPackLookId = (id: string): boolean => id.startsWith('pack-') && isPackId(id.slice(5));
 export function packLook(pack: PackV3): LookGuide {
   return {
     id: `pack-${pack.id}`,

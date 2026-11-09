@@ -36,13 +36,16 @@ export interface LayerV3 {
       | 'draw'
       | 'morph'
       | 'mask'
-      | 'rotateY',
+      | 'rotateY'
+      | 'extrude'
+      | 'soft',
       Track<number>
     >
   >;
   type?: { unit: 'letter' | 'word' | 'line'; fill?: boolean }; // kinetic type
   carry?: string; // continuity id shared with a layer in the next scene
   seed?: number; // particles and physics
+  count?: { from: number; to: number; decimals?: number }; // a counting number; its `draw` track is the progress
   start?: number; // T1 addition: ms from the scene's start; absent means hierarchy-timed after the layer before it
   particles?: ParticleSettings & { bake?: ParticleBake }; // seeded, run once and saved (T3)
 }
@@ -124,6 +127,8 @@ export const PROPS: readonly Prop[] = [
   'morph',
   'mask',
   'rotateY',
+  'extrude', // 3D text depth
+  'soft', // Fraunces SOFT axis, 0..100
 ];
 export const LIGHTS: readonly LookGuide['light'][] = ['left', 'right', 'top', 'none'];
 export const PARALLAX: Readonly<Record<Depth, number>> = { front: 1, middle: 0.6, back: 0.3 };

@@ -47,6 +47,31 @@ describe('v3 contract additions (T6)', () => {
     expect(f.layers[1]!.props.rotateY).toBe(0);
   });
 
+  it('accepts count, extrude and soft; extrude and soft rest at 0', () => {
+    const s = scene();
+    s.layers[0]!.count = { from: 0, to: 2400, decimals: 0 };
+    s.layers[0]!.tracks.extrude = [
+      { t: 0, v: 0 },
+      { t: 400, v: 18 },
+    ];
+    s.layers[0]!.tracks.soft = [{ t: 0, v: 100 }];
+    expect(errors(s)).toEqual([]);
+    const f = frameAt(s, 400);
+    expect(f.layers[0]!.props).toMatchObject({ extrude: 18, soft: 100 });
+    expect(f.layers[1]!.props).toMatchObject({ extrude: 0, soft: 0 });
+  });
+
+  it('rejects bad count settings naming the key', () => {
+    const s = scene() as unknown as { layers: Record<string, unknown>[] };
+    s.layers[0]!.count = { from: 'a', to: 5, decimals: 9, extra: 1 };
+    const es = errors(s as never);
+    expect(es.some((e) => e.includes('layers[0].count.from'))).toBe(true);
+    expect(es.some((e) => e.includes('layers[0].count.decimals'))).toBe(true);
+    expect(es.some((e) => e.includes('layers[0].count.extra'))).toBe(true);
+    s.layers[0]!.count = 5;
+    expect(errors(s as never).some((e) => e.includes('layers[0].count'))).toBe(true);
+  });
+
   it('rejects bad particles, effects and depth settings naming the key and the fix', () => {
     const s = scene() as unknown as Record<string, unknown> & { layers: Record<string, unknown>[] };
     s.layers[2]!.particles = { ...PARTICLE_DEFAULTS, preset: 'rain', gravity: 'yes' };

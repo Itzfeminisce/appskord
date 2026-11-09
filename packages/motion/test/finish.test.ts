@@ -115,7 +115,7 @@ describe('effects library', () => {
     expect(isActive(use('glow', 0.5, { scope: 'layer', layerId: 'nope' }), 's1', f)).toBe(false);
   });
 
-  it('writes Blur in as keyframes and leaves 3D flip for a track the recipe lacks', () => {
+  it('writes Blur in as keyframes and writes 3D flip as rotateY keys', () => {
     expect(effectTracks(use('blur-in', 1))).toEqual({
       blur: [
         { t: 0, v: 24 },
@@ -126,7 +126,13 @@ describe('effects library', () => {
         { t: 360, v: 1 },
       ],
     });
-    expect(effectTracks(use('3d-flip'))).toBeNull();
+    expect(effectTracks(use('3d-flip'))).toEqual({
+      rotateY: [
+        { t: 0, v: 90 },
+        { t: 600, v: 0 },
+      ],
+    });
+    expect(effectTracks(use('grain'))).toBeNull();
   });
 });
 

@@ -309,11 +309,20 @@ export function isActive(use: EffectUse, sceneId: string, frame?: FrameState): b
   return !!layer && layer.local >= 0 && layer.props.opacity > 0;
 }
 
-/** Keyframes a motion effect writes into the layer's tracks; null when the recipe has no track for it. */
-export function effectTracks(
-  use: EffectUse,
-): { blur: { t: number; v: number }[]; opacity: { t: number; v: number }[] } | null {
-  if (use.effect !== 'blur-in') return null; // 3D flip needs a y-rotation track the v3 recipe does not have
+type Keys = { t: number; v: number }[];
+
+/** Keyframes a motion effect writes into the layer's tracks; null for a shader effect. */
+export function effectTracks(use: EffectUse): { blur: Keys; opacity: Keys } | { rotateY: Keys } | null {
+  if (use.effect === '3d-flip') {
+    const ms = effectParams(use).ms as number;
+    return {
+      rotateY: [
+        { t: 0, v: 90 },
+        { t: ms, v: 0 },
+      ],
+    };
+  }
+  if (use.effect !== 'blur-in') return null;
   const p = effectParams(use);
   const ms = p.ms as number;
   return {

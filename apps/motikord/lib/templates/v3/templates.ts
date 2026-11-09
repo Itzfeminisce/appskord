@@ -42,6 +42,12 @@ export interface LayerPlan {
   z?: number;
   carry?: string;
   particles?: ParticleSettings;
+  /** 3D text depth from, to; one value held when they match. */
+  extrude?: [number, number];
+  /** Fraunces SOFT axis from, to (0..100). */
+  soft?: [number, number];
+  /** A counting number: the layer's draw track is its progress. */
+  count?: { from: number; to: number; decimals?: number };
 }
 export interface Beat {
   /** Seconds, or null for "Out". */
@@ -150,7 +156,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
     ],
     plan: [
       { id: 'number', slot: true, kind: 'text', depth: 'front', at: 0, move: 'whip', curve: SNAPPY },
-      { id: 'count', kind: 'chart', depth: 'front', at: 0.1, move: 'count', ms: 900 },
+      { id: 'count', kind: 'chart', depth: 'front', at: 0.1, move: 'count', ms: 900, count: { from: 0, to: 2400, decimals: 0 } },
       { id: 'bar', kind: 'shape', depth: 'middle', at: 0.6, move: 'draw' },
       { id: 'label', slot: true, kind: 'text', depth: 'front', at: 0.7, move: 'rise' },
       { id: 'source', slot: true, kind: 'text', depth: 'front', at: 0.9, move: 'fade' },
@@ -217,7 +223,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
     plan: [
       { id: 'blob', kind: 'shape', depth: 'back', at: 0, move: 'morph', carry: 'blob' },
       { id: 'drift', kind: 'particles', depth: 'back', at: 0, move: 'fade', particles: DRIFT },
-      { id: 'quote', slot: true, kind: 'text', depth: 'front', at: 0.3, move: 'rise', unit: 'line', curve: FLOATY },
+      { id: 'quote', slot: true, kind: 'text', depth: 'front', at: 0.3, move: 'rise', unit: 'line', curve: FLOATY, soft: [0, 100] },
       { id: 'name', slot: true, kind: 'text', depth: 'front', at: 1.4, move: 'fade' },
       { id: 'role', slot: true, kind: 'text', depth: 'front', at: 1.6, move: 'fade' },
     ],
@@ -285,7 +291,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
       { id: 'media', slot: true, kind: 'media', depth: 'back', at: 0, move: 'fade' },
       { id: 'arch', kind: 'shape', depth: 'back', at: 0, move: 'wipe', z: -2, carry: 'arch' },
       { id: 'pills', kind: 'model', depth: 'middle', at: 0, move: 'drop', curve: spring(35) },
-      { id: 'headline', slot: true, kind: 'text', depth: 'front', at: 0.2, move: 'extrude', unit: 'word' },
+      { id: 'headline', slot: true, kind: 'text', depth: 'front', at: 0.2, move: 'extrude', unit: 'word', extrude: [10, 10] },
       { id: 'line', slot: true, kind: 'text', depth: 'front', at: 0.5, move: 'rise' },
     ],
     camera: { move: 'orbit', amount: 8 / 30 },
@@ -391,7 +397,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
     ],
     plan: [
       { id: 'spheres', kind: 'model', depth: 'middle', at: 0, move: 'orbit-in', curve: spring(30) },
-      { id: 'logo', slot: true, kind: 'media', depth: 'front', at: 0.3, move: 'extrude' },
+      { id: 'logo', slot: true, kind: 'media', depth: 'front', at: 0.3, move: 'extrude', extrude: [0, 18] },
       { id: 'tagline', slot: true, kind: 'text', depth: 'front', at: 1.1, move: 'rise', unit: 'word' },
     ],
     camera: { move: 'orbit', amount: 12 / 30 },

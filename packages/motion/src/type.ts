@@ -158,6 +158,9 @@ const WIDTH_STEP = 2;
 const CUT_CACHE = 8;
 
 /** Variable-axis text: re-cuts its glyphs from opentype.js when the weight or width track crosses a step. */
+/** The troika Text fields this file sets; the package's typings leave them out. */
+type TextProps = Text & { fillOpacity: number; clipRect?: number[] | null };
+
 export class AxisText extends THREE.Mesh<THREE.ShapeGeometry, THREE.MeshBasicMaterial> {
   private readonly axes: FontAxis[];
   private key = '';
@@ -261,7 +264,8 @@ export class KineticType extends THREE.Group {
     const { fontSize, unitMs, curve } = this.options;
     const lineHeight = this.options.lineHeight ?? fontSize * 1.1;
     const progress = unitProgress(this.texts.length, this.unit, local, unitMs, curve);
-    this.texts.forEach((t, i) => {
+    this.texts.forEach((text, i) => {
+      const t = text as TextProps;
       const box = this.boxes[i] as UnitBox;
       const pose = unitPose(this.unit, progress[i] as number, lineHeight);
       t.position.y = -(box.y + pose.dy) * UNIT;
@@ -269,9 +273,9 @@ export class KineticType extends THREE.Group {
       const clipRect = pose.clip ? [-1e4, (pose.dy - lineHeight) * UNIT, 1e4, pose.dy * UNIT] : null;
       t.fillOpacity = pose.opacity;
       // Assigning clipRect re-typesets, so only touch it when its values change.
-      const prev = t.clipRect as number[] | null | undefined;
+      const prev = t.clipRect;
       const same = clipRect === null ? !prev : !!prev && clipRect.every((v, k) => v === prev[k]);
-      if (!same) t.clipRect = clipRect as never;
+      if (!same) t.clipRect = clipRect;
     });
   }
 
