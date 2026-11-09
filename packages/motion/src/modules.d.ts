@@ -23,6 +23,7 @@ declare module 'troika-three-text' {
     useWorker?: boolean;
     sdfGlyphSize?: number;
     defaultFontURL?: string | null;
+    unicodeFontsURL?: string;
   }): void;
 }
 

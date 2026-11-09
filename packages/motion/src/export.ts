@@ -41,6 +41,23 @@ async function peakMemory<T>(work: () => Promise<T>): Promise<{ value: T; peakMb
   }
 }
 
+const READY_TIMEOUT_MS = 30_000;
+
+/** Waits for the scene's fonts, failing instead of hanging if they never load. */
+async function readyWithin(scene: TestScene): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      scene.ready(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('scene.ready() timed out after 30 s')), READY_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Renders the 15 s test scene at full quality and encodes it with WebCodecs, muxed by mediabunny. */
 export async function exportTestScene(
   fps: 30 | 60,
@@ -52,18 +69,19 @@ export async function exportTestScene(
   const canvas = document.createElement('canvas');
   const run = await peakMemory(async () => {
     const scene = new TestScene(canvas, { width, height, seconds, seed, quality: 'full', fontUrl });
-    await scene.ready();
     const output = new Output({
       format: avc ? new Mp4OutputFormat({ fastStart: 'in-memory' }) : new WebMOutputFormat(),
       target: new BufferTarget(),
     });
-    const source = new CanvasSource(canvas, { codec, bitrate: QUALITY_HIGH, keyFrameInterval: 2 });
-    output.addVideoTrack(source, { frameRate: fps });
-    await output.start();
-    const frames = seconds * fps;
-    let renderMs = 0;
-    const start = performance.now();
+    let finalized = false;
     try {
+      await readyWithin(scene);
+      const source = new CanvasSource(canvas, { codec, bitrate: QUALITY_HIGH, keyFrameInterval: 2 });
+      output.addVideoTrack(source, { frameRate: fps });
+      await output.start();
+      const frames = seconds * fps;
+      let renderMs = 0;
+      const start = performance.now();
       for (let i = 0; i < frames; i++) {
         const t = performance.now();
         scene.render(i / fps, 1 / fps);
@@ -72,15 +90,17 @@ export async function exportTestScene(
         if (i % fps === 0) onProgress?.(i, frames);
       }
       await output.finalize();
+      finalized = true;
+      return {
+        frames,
+        seconds: (performance.now() - start) / 1000,
+        renderMs,
+        bytes: output.target.buffer?.byteLength ?? 0,
+      };
     } finally {
       scene.dispose();
+      if (!finalized) await output.cancel().catch(() => {});
     }
-    return {
-      frames,
-      seconds: (performance.now() - start) / 1000,
-      renderMs,
-      bytes: output.target.buffer?.byteLength ?? 0,
-    };
   });
   return { fps, codec, ...run.value, peakMb: run.peakMb, memorySource: run.source };
 }
@@ -91,13 +111,24 @@ export async function previewTestScene(
   seconds: number,
 ): Promise<{ meanFps: number; p95Ms: number; frames: number }> {
   const scene = new TestScene(canvas, { ...SCENE, quality: 'reduced', fontUrl });
-  await scene.ready();
   const intervals: number[] = [];
   try {
-    await new Promise<void>((done) => {
+    await readyWithin(scene);
+    await new Promise<void>((resolve) => {
+      let finished = false;
+      let guard: ReturnType<typeof setTimeout> | undefined;
+      const done = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(guard);
+        resolve();
+      };
+      // requestAnimationFrame never fires in a hidden tab, so a timer also ends the run.
+      guard = setTimeout(done, (seconds + 20) * 1000);
       let start = 0;
       let last = 0;
       const tick = (now: number) => {
+        if (finished) return;
         if (!start) start = last = now;
         else intervals.push(now - last);
         last = now;

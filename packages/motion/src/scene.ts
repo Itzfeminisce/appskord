@@ -259,6 +259,7 @@ export class TestScene {
     this.subtitle.dispose();
     this.particles.dispose();
     this.composer.dispose();
+    this.renderer.forceContextLoss();
     this.renderer.dispose();
   }
 }

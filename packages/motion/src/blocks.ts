@@ -60,6 +60,7 @@ const PROBES: [string, () => Promise<string>][] = [
     async () => {
       const renderer = new THREE.WebGLRenderer({ canvas: new OffscreenCanvas(8, 8) });
       const ok = renderer.capabilities.isWebGL2;
+      renderer.forceContextLoss();
       renderer.dispose();
       if (!ok) throw new Error('WebGL2 is not available');
       return `r${THREE.REVISION}, WebGL2`;
@@ -70,6 +71,7 @@ const PROBES: [string, () => Promise<string>][] = [
     async () => {
       const renderer = new THREE.WebGLRenderer({ canvas: new OffscreenCanvas(8, 8) });
       new EffectComposer(renderer).dispose();
+      renderer.forceContextLoss();
       renderer.dispose();
       return 'composer ok';
     },
