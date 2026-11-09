@@ -90,6 +90,56 @@ describe('Motion tab', () => {
   });
 });
 
+describe('EditorMotion top bar: sizes', () => {
+  it('switches the size between 9:16, 1:1 and 16:9, and All sizes goes to sizes', async () => {
+    const go = vi.fn();
+    const v = await open({ go });
+    const sizes = v.all('[role="radiogroup"][aria-label="Size"] [role="radio"]');
+    expect(sizes.map((e) => e.textContent)).toEqual(['9:16', '1:1', '16:9']);
+    expect(v.host.querySelector('canvas')!.parentElement!.style.aspectRatio).toBe('1920 / 1080');
+    await v.click(sizes[1]);
+    expect(v.all('[role="radiogroup"][aria-label="Size"] [aria-checked="true"]')[0]!.textContent).toBe('1:1');
+    expect(v.host.querySelector('canvas')!.parentElement!.style.aspectRatio).toBe('1080 / 1080');
+    expect(await v.newest()).toBe('Size 1:1');
+    await v.click(v.button('All sizes'));
+    expect(go).toHaveBeenCalledWith('sizes');
+  });
+});
+
+describe('Tell Motikord what to change', () => {
+  it('sits under the stage with Send, and Send waits for words', async () => {
+    const v = await open();
+    const input = v.host.querySelector<HTMLInputElement>('main input[aria-label="Tell Motikord what to change"]')!;
+    expect(input.placeholder).toBe('Tell Motikord what to change');
+    expect(v.host.querySelector<HTMLButtonElement>('main button[aria-label="Send"]')!.disabled).toBe(true);
+  });
+});
+
+describe('Motion tab: curve', () => {
+  it('drags a handle of the custom curve into one Curve change, and the timeline draws the motion curves', async () => {
+    const v = await open();
+    const svg = v.host.querySelector<SVGSVGElement>('svg[aria-label="Curve editor: slow start, soft landing. Drag the two handles."]')!;
+    expect(svg).toBeTruthy();
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 266, height: 64, right: 266, bottom: 64, x: 0, y: 0, toJSON: () => ({}) });
+    const before = svg.querySelector('[data-curve]')!.getAttribute('d');
+    await act(async () => { svg.querySelector('[data-handle="0"]')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 })); });
+    for (const x of [100, 134]) await act(async () => { svg.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: x, clientY: 56 })); });
+    await act(async () => { svg.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })); });
+    expect(v.host.querySelector('svg[aria-label^="Curve editor"] [data-curve]')!.getAttribute('d')).not.toBe(before);
+    expect(v.host.querySelector('svg[aria-label^="Curve editor"] [data-handle="0"]')!.getAttribute('cx')).toBe('134');
+    expect(v.host.querySelectorAll('[data-motion-curve="in"]').length).toBeGreaterThan(0);
+    expect(await v.newest()).toMatch(/: Curve$/);
+    expect(v.all('[role="tabpanel"] li').length).toBe(2);
+  });
+
+  it('draws a spring without handles', async () => {
+    const v = await open();
+    await v.click(v.all('[role="radio"]').find((e) => e.textContent === 'Spring'));
+    expect(v.host.querySelector('[data-handle]')).toBeNull();
+    expect(v.host.querySelector('svg[aria-labelledby] [data-curve]')!.getAttribute('d')).toMatch(/ L/);
+  });
+});
+
 describe('Scene tab: camera and depth', () => {
   it('sets the camera move, focus and depth shadows', async () => {
     const v = await open({ initial: { tab: 'scene' } });

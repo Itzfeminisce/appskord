@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { EffectId } from '@appskord/motion/effects';
 import type { LookGuide } from '@appskord/motion/types';
 import { createAutosave, type SaveStatus } from '../../lib/editor/autosave';
+import { ASPECTS } from '../../lib/recipe/validate';
+import { PromptField } from '../../screens/editor/EditorPrompt';
 import type { RestyledClip } from '../../lib/restyle/restyle';
 import type { Author } from '../../lib/types';
 import { AnimateDialog, AnimatedToast, type Animate } from './AnimateDialog';
@@ -15,6 +17,7 @@ import { EffectsDialog } from './EffectsDialog';
 import { LayerTab, type Bakers } from './LayerTab';
 import { clipMs, clock, sceneStarts, sceneTitle, TABS, templateName, type Tab } from './model';
 import { MotionTab } from './MotionTab';
+import { applyPromptV3, recipeOps, setSizeV3 } from './prompt';
 import { SceneTab } from './SceneTab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
@@ -24,7 +27,7 @@ import { C } from './ui';
 // The v3 editor tab at 1366 × 768: shared chrome (Add, Effects, Look, Brand, Check, Export), scenes, stage,
 // the 320 px right panel (Scene, Layer, Motion, Changes) and the timeline. Every edit goes through the recipe check.
 
-export type ChromeGo = 'library' | 'look' | 'brand' | 'check' | 'export';
+export type ChromeGo = 'library' | 'look' | 'brand' | 'check' | 'export' | 'sizes';
 
 export interface EditorV3Props {
   clip: RestyledClip;
@@ -108,7 +111,7 @@ function Shell(p: EditorV3Props) {
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <ScenesList />
         {overlay === 'add' && <AssetPicker catalog={p.catalog} />}
-        <Stage preview={preview && overlay === 'effects' ? { effect: preview } : undefined} />
+        <Stage preview={preview && overlay === 'effects' ? { effect: preview } : undefined} prompt={<Prompt />} />
         <aside style={{ width: 320, flexShrink: 0, background: C.surface, borderLeft: '1px solid #E8E8EB', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 6, boxSizing: 'border-box', overflow: 'auto' }}>
           <div role="tablist" aria-label="Edit" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: C.stage, flexShrink: 0 }}>
             {tabs.map(([id, name]) => (
@@ -165,6 +168,16 @@ function TopBar({ status, go, checkCount }: { status: SaveStatus; go?: (to: Chro
       <button type="button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!state.clip.history.length} onClick={ed.undo} style={{ ...iconButton, color: state.clip.history.length ? C.ink : '#A1A1AA' }}><svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M9 14L4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg></button>
       <button type="button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!state.future.length} onClick={ed.redo} style={{ ...iconButton, color: state.future.length ? C.ink : '#A1A1AA' }}><svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M15 14l5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></svg></button>
       <span style={{ flex: 1 }} />
+      <div role="radiogroup" aria-label="Size" style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: '#F1F1F3', flexShrink: 0 }}>
+        {ASPECTS.map((a) => {
+          const on = state.clip.recipe.aspect === a;
+          return (
+            <button key={a} type="button" role="radio" aria-checked={on} onClick={() => ed.update((st) => setSizeV3(st, a))}
+              style={{ height: 30, padding: '0 9px', border: 0, borderRadius: 6, background: on ? C.surface : 'transparent', boxShadow: on ? '0 1px 2px rgba(16,16,20,0.08)' : 'none', font: `${on ? 500 : 400} 12px/1 ${C.mono}`, color: on ? C.ink : '#5F6168', cursor: 'pointer' }}>{a}</button>
+          );
+        })}
+      </div>
+      <button type="button" onClick={() => go?.('sizes')} style={barButton()}>All sizes</button>
       <button type="button" aria-pressed={overlay === 'add'} onClick={() => toggle('add')} style={barButton(overlay === 'add')}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>Add</button>
       <button type="button" aria-pressed={overlay === 'effects'} onClick={() => toggle('effects')} style={barButton(overlay === 'effects')}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke}><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /><circle cx="12" cy="12" r="3" /></svg>Effects</button>
       <button type="button" title="Look guide" onClick={() => go?.('look')} style={{ ...barButton(), padding: '0 10px 0 8px', gap: 7 }}>
@@ -179,6 +192,18 @@ function TopBar({ status, go, checkCount }: { status: SaveStatus; go?: (to: Chro
       </button>
       <button type="button" onClick={() => go?.('export')} style={{ ...barButton(), padding: '0 16px', border: 0, background: '#BE185D', color: '#FFFFFF', fontWeight: 600 }}><svg width="15" height="15" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>Export</button>
     </header>
+  );
+}
+
+function Prompt() {
+  const ed = useEditorV3();
+  return (
+    <PromptField recipe={ed.state.clip.recipe} speak={false} maxWidth={560}
+      apply={(out) => {
+        if (!recipeOps(ed.state.clip, out.recipe, out.edit.ops)) return false;
+        ed.update((st) => applyPromptV3(st, out));
+        return true;
+      }} />
   );
 }
 

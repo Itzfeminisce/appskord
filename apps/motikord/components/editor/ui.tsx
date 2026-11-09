@@ -32,12 +32,12 @@ export function Section({ title, aside, children }: { title: string; aside?: Rea
 }
 
 /** A segmented radiogroup ("Feel": Smooth, Snappy…). */
-export function Segmented<T extends string>({ name, options, value, onChange, disabled }: { name: string; options: readonly (readonly [T, string])[]; value: T | undefined; onChange: (v: T) => void; disabled?: boolean }) {
+export function Segmented<T extends string>({ name, options, value, onChange, disabled, small }: { name: string; options: readonly (readonly [T, string])[]; value: T | undefined; onChange: (v: T) => void; disabled?: boolean; small?: boolean }) {
   return (
     <div role="radiogroup" aria-label={name} style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 8, background: '#F1F1F3' }}>
       {options.map(([id, text]) => (
         <button key={id} type="button" role="radio" aria-checked={id === value} disabled={disabled} onClick={() => onChange(id)}
-          style={{ flex: 1, minWidth: 0, height: 26, border: 0, borderRadius: 6, background: id === value ? C.surface : 'transparent', boxShadow: id === value ? '0 1px 2px rgba(16,16,20,0.1)' : 'none', font: `${id === value ? 600 : 400} 11.5px/1 ${C.font}`, color: id === value ? C.accentHover : C.muted, cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          style={{ flex: 1, minWidth: 0, height: small ? 18 : 26, border: 0, borderRadius: 6, background: id === value ? C.surface : 'transparent', boxShadow: id === value ? '0 1px 2px rgba(16,16,20,0.1)' : 'none', font: `${id === value ? 600 : 400} ${small ? 10 : 11.5}px/1 ${C.font}`, padding: small ? 0 : undefined, color: id === value ? C.accentHover : C.muted, cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {text}
         </button>
       ))}

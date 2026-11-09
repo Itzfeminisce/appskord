@@ -83,7 +83,7 @@ describe('Data tab', () => {
     const text = v.host.querySelector('[role="tabpanel"]')!.textContent!;
     for (const s of ['Chart', '“Cups sold by day”', 'Morning shift · 5 rows', 'Label', 'Value', 'Add row', 'Paste from a spreadsheet', 'Show as', 'Clone each row', 'Each row becomes its own animated card', 'Count up', 'Stagger'])
       expect(text, s).toContain(s);
-    expect(v.all('[role="radio"]').map((e) => e.textContent)).toEqual(['Bars', 'Line', 'Dots', 'Counter grid']);
+    expect(v.all('[role="tabpanel"] [role="radio"]').map((e) => e.textContent)).toEqual(['Bars', 'Line', 'Dots', 'Counter grid']);
     expect(v.host.querySelector<HTMLInputElement>('[aria-label="Row 3 value"]')!.value).toBe('240');
     expect(v.host.querySelector<HTMLInputElement>('[aria-label="Stagger"]')!.value).toBe('60 ms');
   });
@@ -91,7 +91,7 @@ describe('Data tab', () => {
   it('redraws the chart from Show as, a switch, a typed number and a pasted table', async () => {
     const v = await open(chartClip());
     await v.click(v.all('[role="radio"]').find((e) => e.textContent === 'Counter grid'));
-    expect(v.all('[role="radio"][aria-checked="true"]')[0]!.textContent).toBe('Counter grid');
+    expect(v.all('[role="tabpanel"] [role="radio"][aria-checked="true"]')[0]!.textContent).toBe('Counter grid');
     await v.click(v.host.querySelector('[role="switch"][aria-label="Count up"]')!);
     expect(v.host.querySelector('[role="switch"][aria-label="Count up"]')!.getAttribute('aria-checked')).toBe('false');
     const value = v.host.querySelector<HTMLInputElement>('[aria-label="Row 4 value"]')!;

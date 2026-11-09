@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { fontUrl } from '@appskord/motion/assets';
 import { createCanvasRenderer, V3Renderer, type LayerContent } from '@appskord/motion/renderer';
 import { EFFECTS_NOTE, effectEntry } from '@appskord/motion/effects';
 import type { LayerV3 } from '@appskord/motion/types';
+import type { Aspect } from '../../lib/types';
 import { useEditorV3 } from './context';
 import { motionLine, similarLayers, readMotion, writeMotion } from './edits';
 import { clipMs, clockTenths, editScenes, layerContent, sceneStarts } from './model';
@@ -11,6 +12,12 @@ import { C, quietButton } from './ui';
 // The stage: the scene drawn by packages/motion at reduced quality, the selected layer's line and the transport.
 
 export const PREVIEW = { width: 1080, height: 1920 } as const;
+/** The preview canvas for the clip's size, at the same long side as 9:16. */
+export function previewSize(aspect: Aspect): { width: number; height: number } {
+  if (aspect === '1:1') return { width: PREVIEW.width, height: PREVIEW.width };
+  if (aspect === '16:9') return { width: PREVIEW.height, height: PREVIEW.width };
+  return PREVIEW;
+}
 export const SHOW_DEPTH = 'Show depth';
 export const SHOW_DEPTH_LINE = 'Pulls the layers apart so you can see what moves. Turn off to see the camera’s view.';
 export const LOWER_3D = 'Your computer previews 3D at lower quality. Export is always full quality.';
@@ -39,7 +46,7 @@ function useGl(canvas: HTMLCanvasElement | null): Gl | undefined {
 
 const toolButton = (dark: boolean) => ({ height: 34, padding: '0 12px', border: dark ? 0 : '1px solid #E0E0E4', borderRadius: 9, background: dark ? '#111114' : C.surface, color: dark ? '#FFFFFF' : C.ink, font: `${dark ? 600 : 500} 12px/1 ${C.font}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' as const, flexShrink: 0 });
 
-export function Stage({ preview }: { preview?: { effect: string } }) {
+export function Stage({ preview, prompt }: { preview?: { effect: string }; prompt?: ReactNode }) {
   const ed = useEditorV3();
   const { state, scene, layer, look, t, setT, playing, setPlaying, spread } = ed;
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
@@ -48,6 +55,8 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
   const v3 = state.clip.v3;
   const starts = useMemo(() => sceneStarts(v3), [v3]);
   const total = clipMs(v3);
+  const aspect = state.clip.recipe.aspect;
+  const size = useMemo(() => previewSize(aspect), [aspect]);
   const previewUses = useMemo(
     () => (preview && layer ? [{ effect: preview.effect as never, amount: effectEntry(preview.effect as never).amount, scope: 'layer' as const, sceneId: scene.id, layerId: layer.id }] : []),
     [preview, layer, scene.id],
@@ -64,7 +73,7 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
     let current = true;
     try {
       next = new V3Renderer(scene, {
-        ...PREVIEW,
+        ...size,
         quality: 'reduced',
         fps: v3.fps,
         fontUrl,
@@ -91,7 +100,7 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
     };
     // t is drawn by the effect below; rebuilding is only for recipe, content and look changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, scene, contents, v3.finish, v3.effects, v3.fps, look, spread, previewUses]);
+  }, [gl, scene, contents, v3.finish, v3.effects, v3.fps, look, spread, previewUses, size]);
 
   useEffect(() => {
     shownT.current = t;
@@ -196,7 +205,7 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
           {`Previewing ${effectEntry(preview.effect as never).name}`}
         </div>
       )}
-      <div style={{ position: 'relative', flex: 1, minHeight: 0, aspectRatio: '9 / 16', maxWidth: '100%', borderRadius: 4, overflow: 'hidden', background: look.palette[0] ?? '#0B0B10', boxShadow: '0 14px 36px rgba(16,16,20,0.22), 0 1px 3px rgba(16,16,20,0.1)' }}>
+      <div style={{ position: 'relative', flex: 1, minHeight: 0, aspectRatio: `${size.width} / ${size.height}`, maxWidth: '100%', borderRadius: 4, overflow: 'hidden', background: look.palette[0] ?? '#0B0B10', boxShadow: '0 14px 36px rgba(16,16,20,0.22), 0 1px 3px rgba(16,16,20,0.1)' }}>
         <canvas ref={setCanvas} role="img" aria-label={`Scene ${state.scene + 1} of ${state.clip.recipe.name}`} style={{ width: '100%', height: '100%', display: 'block' }} />
         {preview && layer && (
           <span style={{ position: 'absolute', left: 8, bottom: 8, fontSize: 11, padding: '3px 6px', borderRadius: 6, background: 'rgba(255,255,255,0.9)', color: C.ink }}>
@@ -224,6 +233,7 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
         <span style={{ fontFamily: C.mono, fontSize: 12, color: C.ink }}>{`${clockTenths(at)} / ${clockTenths(total)}`}</span>
         {layer && <span style={{ fontSize: 12, color: C.muted }}>Pink diamonds: this layer’s keyframes</span>}
       </div>
+      {prompt}
     </main>
   );
 }
