@@ -33,10 +33,14 @@ export interface LayerContent {
   backs?: string[];
   /** Decor only: drawn at low contrast at its full size, and may sit behind text where it covers it least. */
   decor?: boolean;
+  /** An accent bar: a line drawn on just under this slot's text, as wide as its block. */
+  under?: string;
 }
 
-/** How strongly decor-only shapes and lines draw (blended in linear light, so it reads near 40%), so text over them stays readable. */
+/** How strongly decor-only shapes and lines read against the background, so text over them stays readable. */
 export const DECOR_ALPHA = 0.14;
+/** DECOR_ALPHA as a blend in linear light, where the frame is composed: it reads as DECOR_ALPHA once gamma is applied. */
+export const DECOR_OPACITY = DECOR_ALPHA ** 2.2;
 
 export interface Inks {
   ink: string;
@@ -59,7 +63,7 @@ export type DrawSpec =
       color: string;
       stroke?: { color: string; width: number };
       bones?: Bone[];
-      /** Opacity on top of the layer's own: decor draws at DECOR_ALPHA. */
+      /** Opacity on top of the layer's own: decor draws at DECOR_OPACITY. */
       alpha?: number;
     }
   | { kind: 'path'; lines: Point[][]; color: string; width: number; bones?: Bone[]; alpha?: number };
@@ -239,6 +243,8 @@ export function drawSpec(
       color: c.color ?? inks.ink,
       fill: !!layer.type?.fill,
     };
+  // No asset is drawn for these yet: nothing, never a stand-in box in the picture.
+  if (layer.kind === 'media' || layer.kind === 'lottie' || layer.kind === 'model') return { kind: 'none' };
   if (layer.kind === 'chart' && layers.some((l) => chartPart(l.id)?.base === layer.id)) return { kind: 'none' };
   const size = c.size ?? (layer.kind === 'icon' ? ICON_SIZE : SHAPE_SIZE);
   if (layer.kind === 'path' || c.shape === 'line') {
@@ -254,7 +260,7 @@ export function drawSpec(
           ];
     const width = c.strokeWidth ?? (layer.kind === 'path' ? 8 : Math.max(2, Math.min(size.h, 12)));
     const bones = bonesFor(layer, layers, lines.flat());
-    const alpha = c.decor ? { alpha: DECOR_ALPHA } : {};
+    const alpha = c.decor ? { alpha: DECOR_OPACITY } : {};
     return { kind: 'path', lines, color: c.stroke ?? c.color ?? inks.accent, width, bones, ...alpha };
   }
   const outline = outlineOf(layer.kind, c);
@@ -270,6 +276,6 @@ export function drawSpec(
     color: c.color ?? (c.decor ? inks.accent : inks.panel),
     stroke: c.stroke ? { color: c.stroke, width: c.strokeWidth ?? 4 } : undefined,
     bones: bonesFor(layer, layers, outline),
-    ...(c.decor ? { alpha: DECOR_ALPHA } : {}),
+    ...(c.decor ? { alpha: DECOR_OPACITY } : {}),
   };
 }

@@ -272,6 +272,8 @@ function restAt(rest: Rest, size: { width: number; height: number }): { x: numbe
 
 /** Padding round the text a backing panel sits behind, as a share of the frame's short side. */
 const BACKING_PAD = 0.04;
+/** An accent bar's thickness and its gap below the text it underlines, as shares of that text block's height. */
+const UNDER = { width: 0.07, gap: 0.1 } as const;
 
 export class V3Renderer {
   readonly graph: MotionGraph;
@@ -296,6 +298,8 @@ export class V3Renderer {
   private readonly blocks = new Map<string, Rect>();
   /** Backing panels, by layer id: the text layers each sits behind, and the size its outline was cut at. */
   private readonly backing = new Map<string, { ids: string[]; width: number; height: number }>();
+  /** Accent bars, by layer id: the text layers each underlines, and the length its line was cut at. */
+  private readonly under = new Map<string, { ids: string[]; width: number }>();
   /** The camera's pose at each end of the scene's move: text rests inside the safe area shrunk by it. */
   private readonly ends: CameraPose[];
   /** Recipe px the text layout boxes take, which the layers a template adds are placed around. */
@@ -445,6 +449,7 @@ export class V3Renderer {
    */
   private placeAdded(layer: LayerV3, spec: DrawSpec, content: LayerContent | undefined): DrawSpec {
     if (content?.backs && spec.kind === 'shape') return this.placeBacking(layer, spec, content.backs);
+    if (content?.under && spec.kind === 'path') return this.placeUnder(layer, spec, content.under);
     if (content?.box || chartPart(layer.id) || !this.taken.length) return spec;
     const size =
       spec.kind === 'count'
@@ -480,21 +485,54 @@ export class V3Renderer {
    * behind it (re-centred on the block each frame). With none of those layers it is drawn as specified.
    */
   private placeBacking(layer: LayerV3, spec: Extract<DrawSpec, { kind: 'shape' }>, slots: readonly string[]): DrawSpec {
-    const ids = this.scene.layers
-      .filter((l) => l.slotId && slots.includes(l.slotId) && this.kinetic.has(l.id))
-      .map((l) => l.id);
+    const ids = this.slotText(slots);
     const rect = union(ids.flatMap((id) => this.restBlock(id, this.rests.get(id) ?? { x: 0, y: 0 })?.rect ?? []));
     if (!rect) return spec;
     const pad = this.backingPad;
     const w = rect.width + 2 * pad;
     const h = rect.height + 2 * pad;
     this.backing.set(layer.id, { ids, width: w, height: h });
-    // It moves with the text it backs, so parallax never slides it out from behind; it still draws behind.
-    const front = this.scene.layers.find((l) => l.id === ids[0])!.depth;
-    const group = this.graph.layers.get(layer.id);
-    if (group) this.graph.depths[front].add(group);
+    this.followText(layer.id, ids[0]!);
     const outline = roundedRect(w, h, Math.min(w, h) * 0.12);
     return { ...spec, outline, morphTo: spec.morphTo && roundedRect(w, h, Math.min(w, h) / 2), bones: undefined };
+  }
+
+  /**
+   * An accent bar: a line as wide as the slot's text block, resting just under it (re-placed on the block each frame,
+   * so it follows a counting number). With no such layer it is drawn as specified.
+   */
+  private placeUnder(layer: LayerV3, spec: Extract<DrawSpec, { kind: 'path' }>, slot: string): DrawSpec {
+    const ids = this.slotText([slot]);
+    const rect = union(ids.flatMap((id) => this.restBlock(id, this.rests.get(id) ?? { x: 0, y: 0 })?.rect ?? []));
+    if (!rect || rect.width <= 0) return spec;
+    this.under.set(layer.id, { ids, width: rect.width });
+    this.followText(layer.id, ids[0]!);
+    const half = rect.width / 2;
+    return {
+      ...spec,
+      lines: [
+        [
+          [-half, 0],
+          [half, 0],
+        ],
+      ],
+      width: Math.max(4, rect.height * UNDER.width),
+      bones: undefined,
+    };
+  }
+
+  /** The text layers of these slots. */
+  private slotText(slots: readonly string[]): string[] {
+    return this.scene.layers
+      .filter((l) => l.slotId && slots.includes(l.slotId) && this.kinetic.has(l.id))
+      .map((l) => l.id);
+  }
+
+  /** Moves a layer to the depth of the text it sits with, so parallax never slides it off; it still draws behind. */
+  private followText(id: string, text: string): void {
+    const front = this.scene.layers.find((l) => l.id === text)!.depth;
+    const group = this.graph.layers.get(id);
+    if (group) this.graph.depths[front].add(group);
   }
 
   /** Back to front: each depth after the one behind it, and within a depth the words over the shapes. */
@@ -554,6 +592,14 @@ export class V3Renderer {
       // Typeset widths replace the measured ones once fonts load: the panel follows the block's real size.
       group.scale.x *= (rect.width + 2 * pad) / backs.width;
       group.scale.y *= (rect.height + 2 * pad) / backs.height;
+    }
+    for (const [id, under] of this.under) {
+      const group = this.graph.layers.get(id);
+      const rect = union(under.ids.flatMap((b) => this.blocks.get(b) ?? []));
+      if (!group || !rect) continue;
+      group.position.x += (rect.x + rect.width / 2) * UNIT;
+      group.position.y -= (rect.y + rect.height * (1 + UNDER.gap)) * UNIT;
+      group.scale.x *= rect.width / under.width;
     }
   }
 

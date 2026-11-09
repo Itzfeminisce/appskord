@@ -4,6 +4,7 @@ import {
   chartPart,
   countedNumber,
   DECOR_ALPHA,
+  DECOR_OPACITY,
   drawSpec,
   formatCount,
   growOutline,
@@ -246,13 +247,26 @@ describe('textNumber', () => {
   });
 });
 
+describe('layers with no asset', () => {
+  it('draws nothing for a media, lottie or model layer rather than a stand-in box', () => {
+    const inks = { ink: '#fff', panel: '#123', accent: '#f80' };
+    for (const kind of ['media', 'lottie', 'model'] as const) {
+      const l: LayerV3 = { id: 'pills', kind, depth: 'middle', tracks: {} };
+      expect(drawSpec(l, [l], { size: { w: 200, h: 100 } }, inks)).toEqual({ kind: 'none' });
+    }
+  });
+});
+
 describe('decor', () => {
   const shape: LayerV3 = { id: 'blob', kind: 'shape', depth: 'back', tracks: {} };
   const inks = { ink: '#fff', panel: '#123', accent: '#f80' };
 
   it('draws a blob or an arch at low contrast in the accent', () => {
     const spec = drawSpec(shape, [shape], { shape: 'blob', decor: true }, inks);
-    expect(spec).toMatchObject({ kind: 'shape', alpha: DECOR_ALPHA, color: '#f80' });
+    expect(spec).toMatchObject({ kind: 'shape', alpha: DECOR_OPACITY, color: '#f80' });
+    // Blended in linear light over a dark ground, it reads at DECOR_ALPHA after gamma, not near 40%.
+    expect(DECOR_OPACITY ** (1 / 2.2)).toBeCloseTo(DECOR_ALPHA, 5);
+    expect(DECOR_OPACITY).toBeLessThan(0.03);
     expect(drawSpec(shape, [shape], undefined, inks)).not.toHaveProperty('alpha');
     const b = bounds(blob(320, 200));
     expect(b.width).toBeLessThanOrEqual(320);

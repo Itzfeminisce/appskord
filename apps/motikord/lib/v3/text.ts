@@ -22,6 +22,9 @@ export type LayerContents = (i: number, layer: LayerV3, aspect: Aspect) => Layer
 /** The aspect of a drawn frame. */
 export const aspectOfSize = (size: { width: number; height: number }): Aspect => aspectOf(size.width, size.height);
 
+/** The frame in recipe px: 1080 wide. */
+const recipeFrame = (aspect: Aspect) => ({ width: 1080, height: aspect === '9:16' ? 1920 : aspect === '1:1' ? 1080 : 607.5 });
+
 /**
  * What the renderer draws for a layer beyond its tracks, from its v2 layer in a frame of `aspect` (boxes reflowed
  * from `source`, the size the recipe was laid out at): a text's words, size, layout box and alignment in it; a shape's box, fill and
@@ -37,7 +40,7 @@ export function sceneLayerContent(
   const b = v2 && scene ? boxFor(v2, aspect, source, scene.layout) : undefined;
   const box = b && { x: b.x, y: b.y, w: b.w, h: b.h };
   // Recipe px are 1080 wide; v2 sizes are px at a 1080 short side.
-  const frame = { width: 1080, height: aspect === '9:16' ? 1920 : aspect === '1:1' ? 1080 : 607.5 };
+  const frame = recipeFrame(aspect);
   const k = Math.min(frame.width, frame.height) / 1080;
   if (layer.kind === 'text') {
     const fontSize = v2?.type === 'text' ? sizeOn(v2, aspect) * k : undefined;
@@ -51,23 +54,28 @@ export function sceneLayerContent(
       ...(valign ? { valign } : {}),
     };
   }
-  if (!v2) return addedContent(scene, layer);
+  if (!v2) return addedContent(scene, layer, aspect);
   if (v2.type !== 'shape' || !box) return undefined;
   return { size: { w: box.w * frame.width, h: box.h * frame.height }, color: v2.fill, shape: v2.shape, radius: v2.radius === undefined ? undefined : v2.radius * k, box };
 }
 
 /** Recipe px of decor outlines: large and soft, as the template frames draw them. */
 const DECOR_SIZE = { blob: { w: 620, h: 540 }, arch: { w: 440, h: 580 } } as const;
+/** Decor's longer side at most, as a share of the frame's shorter side, so it stays an accent behind the text. */
+const DECOR_MAX = 0.6;
 
-/** A layer the scene's template adds: what its plan says it is for, a backing panel or decor. */
-function addedContent(scene: Scene | undefined, layer: LayerV3): LayerContent | undefined {
+/** A layer the scene's template adds: what its plan says it is for, a backing panel, an accent bar or decor. */
+function addedContent(scene: Scene | undefined, layer: LayerV3, aspect: Aspect): LayerContent | undefined {
   const t = scene?.template && getTemplateV3(scene.template);
   // buildScene renames a template layer whose id a v2 layer already has.
   const plan = t ? t.plan.find((p) => !p.slot && (p.id === layer.id || `v3-${p.id}` === layer.id)) : undefined;
   if (plan?.backs) return { backs: plan.backs };
+  if (plan?.under) return { under: plan.under, shape: 'line' };
   if (plan?.decor === 'line') return { decor: true };
-  if (plan?.decor) return { decor: true, shape: plan.decor, size: DECOR_SIZE[plan.decor] };
-  return undefined;
+  if (!plan?.decor) return undefined;
+  const d = DECOR_SIZE[plan.decor];
+  const k = Math.min(1, (DECOR_MAX * Math.min(...Object.values(recipeFrame(aspect)))) / Math.max(d.w, d.h));
+  return { decor: true, shape: plan.decor, size: { w: d.w * k, h: d.h * k } };
 }
 
 /** The content of every layer of `scene` that has some, by layer id. */

@@ -52,6 +52,8 @@ export interface LayerPlan {
   backs?: string[];
   /** Decor only: drawn at low contrast in this outline, and may sit behind text. */
   decor?: 'blob' | 'arch' | 'line';
+  /** An accent bar: line-draws in the accent just under this slot's text, as wide as it. */
+  under?: string;
   /** A text slot this layer's count runs on: that layer's own number counts up in place; nothing else is drawn. */
   onto?: string;
 }
@@ -163,7 +165,7 @@ export const TEMPLATES_V3: readonly TemplateV3[] = [
     plan: [
       { id: 'number', slot: true, kind: 'text', depth: 'front', at: 0, move: 'whip', curve: SNAPPY },
       { id: 'count', kind: 'chart', depth: 'front', at: 0.1, move: 'count', ms: 900, count: { from: 0 }, onto: 'number' },
-      { id: 'bar', kind: 'shape', depth: 'middle', at: 0.6, move: 'draw' },
+      { id: 'bar', kind: 'shape', depth: 'middle', at: 0.6, move: 'draw', under: 'number' },
       { id: 'label', slot: true, kind: 'text', depth: 'front', at: 0.7, move: 'rise' },
       { id: 'source', slot: true, kind: 'text', depth: 'front', at: 0.9, move: 'fade' },
     ],
