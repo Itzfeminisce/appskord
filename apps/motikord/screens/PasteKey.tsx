@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent } from 'react';
 import { PROVIDERS, providerForKey } from '../lib/providers';
 import type { Provider } from '../lib/types';
 import { Button } from '../components/ui';
-import { useRouter } from '../entrypoints/sidepanel/router';
+import { HOME_ROUTE, useRouter } from '../entrypoints/sidepanel/router';
 import { HOSTS, requestHost } from '../lib/hostAccess';
 import { createKeyWatcher, detectKey, serviceLabel, verifyKey, type KeyField, type ProviderKeyName } from '@appskord/llm';
 import { mergeKeys } from '../lib/penv';
@@ -111,7 +111,7 @@ function PasteKeyFor({ provider }: { provider: Provider }) {
     setBusy(true);
     try {
       await updateSettings({ onboarded: true });
-      replace('Home');
+      replace(HOME_ROUTE);
     } catch (error) {
       console.error('Motikord: could not save the key', error);
     } finally {

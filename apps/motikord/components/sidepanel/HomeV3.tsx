@@ -49,8 +49,9 @@ export default function HomeV3() {
   const make = () => {
     // Chrome only asks inside the click, so the request goes out before anything is awaited.
     const access = settings?.ai === 'local' ? Promise.resolve('granted' as const) : requestHost(HOSTS[settings?.provider ?? 'groq']);
+    // plan shows the planning state now, then waits for access; a refusal ends in plan-failed.
+    void flow.plan({ ...draft.get(), aspect }, look, access);
     navigate('LookLock');
-    void access.then(() => flow.plan({ ...draft.get(), aspect }, look));
   };
 
   return (

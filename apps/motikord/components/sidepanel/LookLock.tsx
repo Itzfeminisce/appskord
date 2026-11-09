@@ -46,11 +46,11 @@ function Card({ frame, state }: { frame: KeyFrame; state: FlowState }) {
         {frame.status === 'failed' ? (
           <span role="alert" style={{ fontSize: 12, color: 'var(--error-ink)' }}>
             <strong>{stateCopy('keyframe-failed', { scene: n }).title}</strong> {stateCopy('keyframe-failed').line}{' '}
-            <button type="button" onClick={() => flow.redraw(frame.index)} style={{ ...quiet, height: 30 }}>{stateCopy('keyframe-failed').action}</button>
+            <button type="button" onClick={() => { void flow.redraw(frame.index); }} style={{ ...quiet, height: 30 }}>{stateCopy('keyframe-failed').action}</button>
           </span>
         ) : (
           <span style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
-            <button type="button" disabled={approved || drawing} onClick={() => flow.approve(frame.index)} style={{ ...quiet, background: approved ? 'var(--tint)' : 'var(--surface)' }}>{KEY_FRAMES.approve}</button>
+            <button type="button" disabled={approved || drawing} onClick={() => { void flow.approve(frame.index); }} style={{ ...quiet, background: approved ? 'var(--tint)' : 'var(--surface)' }}>{KEY_FRAMES.approve}</button>
             <button type="button" disabled={drawing} onClick={() => { void flow.another(frame.index); }} style={quiet}>{KEY_FRAMES.tryAnother}</button>
           </span>
         )}
@@ -103,7 +103,7 @@ export default function LookLock() {
       {head}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 24px 0' }}>
         <span style={{ fontSize: 13, color: 'var(--muted)', flexGrow: 1 }}>{LOOK_LOCK.sceneLine(board.frames.length, seconds, getPackV3(state.packId).name)}</span>
-        <button type="button" onClick={() => flow.approveAll()} style={quiet}>{KEY_FRAMES.approveAll}</button>
+        <button type="button" onClick={() => { void flow.approveAll(); }} style={quiet}>{KEY_FRAMES.approveAll}</button>
       </div>
       <ul style={{ listStyle: 'none', margin: '12px 0 0', padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {board.frames.map((f) => <Card key={f.sceneId} frame={f} state={state} />)}
@@ -117,7 +117,7 @@ export default function LookLock() {
         <Button block disabled={!ready} aria-disabled={!ready} onClick={() => { navigate('MakingMotion'); void flow.addTheMotion(); }} style={{ height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}>{KEY_FRAMES.addMotion}</Button>
         <span style={{ fontSize: 12, color: 'var(--faint)', textAlign: 'center' }}>{KEY_FRAMES.addMotionLine}</span>
         <Button variant="secondary" block onClick={() => navigate('LookBible')}>{LOOK_LOCK.changeLook}</Button>
-        <Button variant="ghost" block onClick={() => { flow.cancel(); flow.reset(); navigate('HomeV3'); }}>{LOOK_LOCK.cancel}</Button>
+        <Button variant="ghost" block onClick={() => { flow.clear(); navigate('HomeV3'); }}>{LOOK_LOCK.cancel}</Button>
         <MakeFooter by={by} />
       </div>
     </main>

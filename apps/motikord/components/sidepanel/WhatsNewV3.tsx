@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useRouter } from '../../entrypoints/sidepanel/router';
+import { HOME_ROUTE, useRouter } from '../../entrypoints/sidepanel/router';
 import { BackButton } from '../../screens/Setup';
 import { Button } from '../ui';
 import { WHATS_NEW } from './copy';
@@ -7,7 +7,7 @@ import { dismissNewCard, markWhatsNewSeen } from './whatsNew';
 
 /** WhatsNewV3: shown once after the update; seeing it marks the version as seen. */
 export default function WhatsNewV3() {
-  const { back, replace } = useRouter();
+  const { replace } = useRouter();
   useEffect(() => {
     const version = browser.runtime.getManifest().version;
     markWhatsNewSeen(version).then(dismissNewCard).catch((error: unknown) => console.error('Motikord: could not save that you saw what’s new', error));
@@ -15,7 +15,7 @@ export default function WhatsNewV3() {
   return (
     <main data-frame="WhatsNewV3" style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', paddingBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '12px 12px 0' }}>
-        <BackButton onBack={back} />
+        <BackButton onBack={() => replace(HOME_ROUTE)} />
         <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>{WHATS_NEW.title}</h1>
       </div>
       <div style={{ padding: '14px 24px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -36,7 +36,7 @@ export default function WhatsNewV3() {
       </ul>
       <p style={{ margin: '14px 24px 0', fontSize: 12, lineHeight: 1.5, color: 'var(--faint)' }}>{WHATS_NEW.v2}</p>
       <div style={{ marginTop: 'auto', padding: '18px 16px 0' }}>
-        <Button block onClick={() => replace('HomeV3')} style={{ height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}>{WHATS_NEW.make}</Button>
+        <Button block onClick={() => replace(HOME_ROUTE)} style={{ height: 48, fontSize: 15, fontWeight: 600, borderRadius: 12 }}>{WHATS_NEW.make}</Button>
       </div>
     </main>
   );

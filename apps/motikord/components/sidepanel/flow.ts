@@ -96,7 +96,8 @@ export function createFlow(deps: FlowDeps = defaultDeps) {
   const packOf = (e: Engine) => e.lookPack(getPackV3(state.packId), state.look);
   const setBoard = (e: Engine, board: KeyFrameBoard) => set({ board, left: e.footer(board) });
 
-  async function plan(draft: MakeDraft, look: Settings['look']): Promise<void> {
+  /** `gate` is awaited after the planning state shows, such as the host access request. */
+  async function plan(draft: MakeDraft, look: Settings['look'], gate?: Promise<unknown>): Promise<void> {
     controller?.abort();
     const mine = ++sequence;
     const ctl = (controller = new AbortController());
@@ -105,6 +106,7 @@ export function createFlow(deps: FlowDeps = defaultDeps) {
     ready = undefined;
     set({ stage: 'planning', recipe: undefined, board: undefined, failure: undefined, done: undefined, failedScene: undefined, quality: undefined, drawing: [] });
     try {
+      await gate;
       // The v2 writer knows four styles; the other packs only shape the motion.
       const written = { ...look, style: isV2Style(state.packId) ? state.packId : ('auto' as const) };
       const recipe = await deps.plan(draft, written, ctl.signal);
@@ -144,40 +146,75 @@ export function createFlow(deps: FlowDeps = defaultDeps) {
     useLook(look: LookGuide) { set({ look }); },
     plan,
     retryPlan() { return lastDraft ? plan(lastDraft, lastLook) : Promise.resolve(); },
-    async approve(i: number) { const e = await engine(); if (state.board) setBoard(e, e.approve(state.board, i)); },
-    async approveAll() { const e = await engine(); if (state.board) setBoard(e, e.approveAll(state.board)); },
+    async approve(i: number) {
+      try {
+        const e = await engine();
+        if (state.board) setBoard(e, e.approve(state.board, i));
+      } catch (error) {
+        console.error('Motikord: could not approve the frame', error);
+      }
+    },
+    async approveAll() {
+      try {
+        const e = await engine();
+        if (state.board) setBoard(e, e.approveAll(state.board));
+      } catch (error) {
+        console.error('Motikord: could not approve the frames', error);
+      }
+    },
     async another(i: number) {
       const { recipe, board: b } = state;
       if (!recipe || !b || state.drawing.includes(i)) return;
       set({ drawing: [...state.drawing, i] });
-      await deps.tick();
-      const e = await engine();
-      const latest = state.board;
-      if (latest) setBoard(e, e.tryAnother(latest, recipe, state.look, packOf(e), i));
-      set({ drawing: state.drawing.filter((x) => x !== i) });
+      try {
+        await deps.tick();
+        const e = await engine();
+        const latest = state.board;
+        if (latest) setBoard(e, e.tryAnother(latest, recipe, state.look, packOf(e), i));
+      } catch (error) {
+        console.error('Motikord: could not draw the frame again', error);
+      } finally {
+        set({ drawing: state.drawing.filter((x) => x !== i) });
+      }
     },
     /** keyframe-failed's "Try again". */
     async redraw(i: number) {
-      const e = await engine();
-      const { recipe, board: b } = state;
-      if (recipe && b) setBoard(e, e.redraw(b, recipe, state.look, packOf(e), i));
+      try {
+        const e = await engine();
+        const { recipe, board: b } = state;
+        if (recipe && b) setBoard(e, e.redraw(b, recipe, state.look, packOf(e), i));
+      } catch (error) {
+        console.error('Motikord: could not draw the frame again', error);
+      }
     },
     /** "Add the motion": motion for every scene, the quality check, then the editor. */
     async addTheMotion(): Promise<void> {
-      const e = await engine();
       const { recipe, board: b } = state;
-      if (!recipe || !b || !e.allApproved(b)) return;
-      controller?.abort();
-      const mine = ++sequence;
-      const ctl = (controller = new AbortController());
-      const total = recipe.scenes.length;
-      set({ stage: 'motion', scene: { at: Math.min(1, total) || 1, total }, failedScene: undefined, quality: undefined });
-      await deps.tick();
-      const guide = brandLook(state.look, await deps.brand()).guide;
-      const made = e.addMotion({
-        recipe, board: b, look: guide, pack: packOf(e), done: state.done,
-        onScene: (at, n) => set({ scene: { at, total: n } }),
-      });
+      if (!recipe || !b) return;
+      let mine = sequence;
+      let ctl: AbortController;
+      let guide: LookGuide;
+      let made: ReturnType<Engine['addMotion']>;
+      try {
+        const e = await engine();
+        if (!e.allApproved(b)) return;
+        controller?.abort();
+        mine = ++sequence;
+        ctl = controller = new AbortController();
+        const total = recipe.scenes.length;
+        set({ stage: 'motion', scene: { at: Math.min(1, total) || 1, total }, failedScene: undefined, quality: undefined });
+        await deps.tick();
+        guide = brandLook(state.look, await deps.brand()).guide;
+        made = e.addMotion({
+          recipe, board: b, look: guide, pack: packOf(e), done: state.done,
+          onScene: (at, n) => set({ scene: { at, total: n } }),
+        });
+      } catch (error) {
+        if (mine !== sequence) return;
+        console.error('Motikord: could not add the motion', error);
+        set({ stage: 'motion-failed', failedScene: state.scene ? state.scene.at - 1 : undefined });
+        return;
+      }
       if (mine !== sequence) return;
       if (!made.ok) {
         set(made.state === 'motion-failed' ? { stage: 'motion-failed', done: made.done, failedScene: made.sceneIndex } : { stage: 'keyframes' });
@@ -210,6 +247,14 @@ export function createFlow(deps: FlowDeps = defaultDeps) {
       controller?.abort();
       sequence++;
       set({ stage: state.board ? 'keyframes' : 'idle', scene: undefined });
+    },
+    /** Cancel on the key frames: drops the story and its frames, keeps the pack and the look. */
+    clear() {
+      controller?.abort();
+      sequence++;
+      ready = undefined;
+      state = { stage: 'idle', packId: state.packId, look: state.look, drawing: [] };
+      listeners.forEach((l) => l());
     },
     reset() {
       controller?.abort();

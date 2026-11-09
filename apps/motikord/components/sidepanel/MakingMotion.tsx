@@ -9,14 +9,14 @@ import { MAKING } from './copy';
 import { flow, useFlow, type Stage } from './flow';
 import { Still } from './Still';
 
-type Step = 'done' | 'working' | 'waiting';
+type Step = 'done' | 'working' | 'waiting' | 'failed';
 const order: Stage[] = ['keyframes', 'motion', 'checking', 'opening'];
-const statusWord: Record<Step, string> = { done: 'Done', working: 'Working', waiting: 'Not started' };
+const statusWord: Record<Step, string> = { done: 'Done', working: 'Working', waiting: 'Not started', failed: 'Failed' };
 
 function Row({ step, title, children }: { step: Step; title: string; children?: ReactNode }) {
   return (
     <li style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <span role="img" aria-label={statusWord[step]} style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0, borderRadius: '50%', display: 'grid', placeItems: 'center', border: step === 'waiting' ? '1.5px solid var(--line-strong)' : 0, background: step === 'done' ? 'var(--success-ink)' : step === 'working' ? 'var(--accent)' : 'transparent', color: '#fff' }}>
+      <span role="img" aria-label={statusWord[step]} style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0, borderRadius: '50%', display: 'grid', placeItems: 'center', border: step === 'waiting' ? '1.5px solid var(--line-strong)' : 0, background: step === 'done' ? 'var(--success-ink)' : step === 'working' ? 'var(--accent)' : step === 'failed' ? 'var(--error-ink)' : 'transparent', color: '#fff' }}>
         {step === 'done' && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>}
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1 }}>
@@ -68,7 +68,12 @@ export default function MakingMotion() {
             : <span style={line}>{MAKING_MOTION.addingLine}</span>}
         </Row>
         <Row step={stepOf(2)} title={MAKING_MOTION.check}><span style={line}>{MAKING_MOTION.checkLine}</span></Row>
-        <Row step={stepOf(3)} title={MAKING.opening}><span style={line}>{MAKING.openingLine}</span></Row>
+        <Row step={state.stage === 'failed' ? 'failed' : stepOf(3)} title={MAKING.opening}>
+          {state.stage === 'failed'
+            ? <span role="alert" style={{ ...line, color: 'var(--error-ink)' }}>{MAKING.openFailed}{' '}
+                <button type="button" onClick={() => { void flow.openNow(); }} style={{ border: 0, background: 'none', padding: 0, font: '600 12px var(--font)', color: 'var(--accent-hover)', cursor: 'pointer' }}>{stateCopy('motion-failed').action}</button></span>
+            : <span style={line}>{MAKING.openingLine}</span>}
+        </Row>
       </ol>
       <div style={{ marginTop: 'auto', padding: '18px 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Button variant="secondary" block disabled={!canOpen} aria-disabled={!canOpen} onClick={() => { void flow.openNow(); }}>{MAKING.openNow}</Button>

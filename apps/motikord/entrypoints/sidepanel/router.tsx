@@ -47,3 +47,5 @@ export const sidepanel = createRouter({
 });
 export type SidepanelScreen = (typeof sidepanel.names)[number];
 export const { RouterProvider, useRouter, Outlet } = sidepanel;
+/** The panel's home screen. */
+export const HOME_ROUTE: SidepanelScreen = 'HomeV3';

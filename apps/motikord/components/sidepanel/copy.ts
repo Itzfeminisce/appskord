@@ -90,6 +90,7 @@ export const MAKING = {
   openNow: 'Open the editor now',
   cancel: 'Cancel',
   opening: 'Opening the editor',
+  openFailed: 'Couldn’t open the editor.',
   openingLine: 'Export renders every frame at full quality. A slower computer takes longer, never looks worse.',
   fps: '60 fps',
   finishing: 'Finishing on',

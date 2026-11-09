@@ -1,11 +1,11 @@
-import { useRouter } from '../entrypoints/sidepanel/router';
+import { HOME_ROUTE, useRouter } from '../entrypoints/sidepanel/router';
 import { BackButton } from './Setup';
 
 const IDEAS = ['A 5-second logo intro from your logo file', 'A quote card from a line on any web page', 'A chart that grows from a table on any site'];
 
 export default function LibraryEmpty() {
   const { replace } = useRouter();
-  const home = () => replace('Home');
+  const home = () => replace(HOME_ROUTE);
   return (
     <main data-frame="LibraryEmpty" style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '16px 16px 0' }}>
