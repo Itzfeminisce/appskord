@@ -3,7 +3,7 @@
 import { PLOT } from './charts';
 import { parsePath, type Point } from './paths';
 import { autoRig, boneLayerId, canRig, type Bone, type BoneId, type BonePose } from './rigs';
-import { circle, roundedRect } from './shapes';
+import { bounds, circle, roundedRect } from './shapes';
 import type { LayerV3, Unit } from './types';
 
 /** What the app knows about a layer that the v3 recipe does not hold: its words, colour and geometry. */
@@ -78,15 +78,28 @@ export function formatCount(count: NonNullable<LayerV3['count']>, draw: number):
   return `${sign}${grouped}${frac ? `.${frac}` : ''}`;
 }
 
-/** The bones on `host` when the scene holds its rig layers: auto bones from the host's size. */
+/** The bones on `host` when the scene holds its rig layers: auto bones for its size, centred on `centre`. */
 export function rigBones(
   host: Pick<LayerV3, 'id' | 'kind'>,
   layers: readonly Pick<LayerV3, 'id'>[],
   size: { w: number; h: number },
+  centre: Point = [0, 0],
 ): Bone[] | undefined {
   if (!canRig(host)) return undefined;
   const prefix = `${host.id}~bone~`;
-  return layers.some((l) => l.id.startsWith(prefix)) ? autoRig(size) : undefined;
+  if (!layers.some((l) => l.id.startsWith(prefix))) return undefined;
+  const [cx, cy] = centre;
+  return autoRig(size).map((b) => ({ ...b, points: b.points.map(([x, y]): Point => [x + cx, y + cy]) }));
+}
+
+/** Rig bones fitted to what the layer draws, not its nominal size. */
+function bonesFor(host: LayerV3, layers: readonly LayerV3[], drawn: readonly Point[]): Bone[] | undefined {
+  const b = bounds(drawn);
+  // A flat line still needs a body with length to bend.
+  return rigBones(host, layers, { w: Math.max(1, b.width), h: Math.max(1, b.height) }, [
+    b.x + b.width / 2,
+    b.y + b.height / 2,
+  ]);
 }
 
 /** A bone's pose from its hidden layer's props at this frame. */
@@ -170,7 +183,6 @@ export function drawSpec(
     };
   if (layer.kind === 'chart' && layers.some((l) => chartPart(l.id)?.base === layer.id)) return { kind: 'none' };
   const size = c.size ?? (layer.kind === 'icon' ? ICON_SIZE : SHAPE_SIZE);
-  const bones = rigBones(layer, layers, size);
   if (layer.kind === 'path' || c.shape === 'line') {
     const lines = c.path
       ? parsePath(c.path)
@@ -183,6 +195,7 @@ export function drawSpec(
             ] as Point[],
           ];
     const width = c.strokeWidth ?? (layer.kind === 'path' ? 8 : Math.max(2, Math.min(size.h, 12)));
+    const bones = bonesFor(layer, layers, lines.flat());
     return { kind: 'path', lines, color: c.stroke ?? c.color ?? inks.accent, width, bones };
   }
   const outline = outlineOf(layer.kind, c);
@@ -197,6 +210,6 @@ export function drawSpec(
     grow: !!layer.tracks.draw?.length,
     color: c.color ?? inks.panel,
     stroke: c.stroke ? { color: c.stroke, width: c.strokeWidth ?? 4 } : undefined,
-    bones,
+    bones: bonesFor(layer, layers, outline),
   };
 }

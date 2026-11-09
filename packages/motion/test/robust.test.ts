@@ -18,6 +18,7 @@ vi.mock('../src/text', () => ({
 import { applyMask, maskReveal } from '../src/masks';
 import { morpher } from '../src/morph';
 import { parsePath } from '../src/paths';
+import { UNIT } from '../src/scene';
 import { AxisText, KineticType, unitProgress, type AxisFont } from '../src/type';
 
 const box = { x: 0, y: 0, width: 100, height: 50 };
@@ -37,6 +38,23 @@ describe('dispose', () => {
     k.dispose();
     expect(k.children).toHaveLength(0);
     expect(made.every((t) => t.dispose.mock.calls.length === 1)).toBe(true);
+  });
+
+  it('KineticType places words from the typeset carets once synced', async () => {
+    made.length = 0;
+    const k = new KineticType('ab cd', 'word', { measure: (s) => s.length * 100, fontSize: 40, fontUrl: '/f.ttf' });
+    expect(k.boxes[0]!.x).toBe(-250);
+    const line = made[2] as unknown as { textRenderInfo: unknown };
+    const carets = new Float32Array(5 * 4);
+    for (let i = 0; i < 5; i++) [carets[i * 4], carets[i * 4 + 1]] = [i * 10 * UNIT, (i + 1) * 10 * UNIT];
+    line.textRenderInfo = { blockBounds: [0, -40 * UNIT, 50 * UNIT, 0], caretPositions: carets };
+    await k.ready();
+    expect(k.boxes.map((b) => [b.text, b.x, b.width].map((v) => (typeof v === 'number' ? Math.round(v) : v)))).toEqual([
+      ['ab', -25, 20],
+      ['cd', 5, 20],
+    ]);
+    expect(k.children[1]!.position.x).toBeCloseTo(5 * UNIT, 6);
+    k.dispose();
   });
 
   it('AxisText disposes geometry and material', () => {

@@ -161,7 +161,7 @@ describe('review fixes', () => {
   const bar: LayerV3 = {
     id: 'c',
     kind: 'chart',
-    depth: 'mid',
+    depth: 'middle',
     tracks: {
       opacity: [
         { t: 0, v: 1 },
@@ -169,7 +169,7 @@ describe('review fixes', () => {
       ],
     },
   };
-  const after: LayerV3 = { id: 'z', kind: 'shape', depth: 'mid', tracks: {} };
+  const after: LayerV3 = { id: 'z', kind: 'shape', depth: 'middle', tracks: {} };
 
   it('adding chart parts does not move other layers', () => {
     const before = layerStarts([bar, after]);

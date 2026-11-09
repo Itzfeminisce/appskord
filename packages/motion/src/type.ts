@@ -15,6 +15,8 @@ export interface UnitBox {
   x: number;
   y: number;
   width: number;
+  /** The unit's first character in its line (UTF-16 index), where the line's typeset carets place it. */
+  at?: number;
 }
 
 /** Width of a string at the type's size, in recipe units. */
@@ -28,15 +30,17 @@ export function layoutUnits(text: string, unit: Unit, measure: Measure, lineHeig
     const left = -measure(line) / 2;
     const y = n * lineHeight;
     if (unit === 'line') {
-      boxes.push({ text: line, line: n, x: left, y, width: measure(line) });
+      boxes.push({ text: line, line: n, x: left, y, width: measure(line), at: 0 });
       return;
     }
     const parts = unit === 'letter' ? [...line] : line.split(/(\s+)/);
     let x = left;
+    let at = 0;
     for (const part of parts) {
       const width = measure(part);
-      if (part && !/^\s+$/.test(part)) boxes.push({ text: part, line: n, x, y, width });
+      if (part && !/^\s+$/.test(part)) boxes.push({ text: part, line: n, x, y, width, at });
       x += width;
+      at += part.length;
     }
   });
   return boxes;
@@ -212,10 +216,32 @@ export class AxisText extends THREE.Mesh<THREE.ShapeGeometry, THREE.MeshBasicMat
   }
 }
 
+/** What troika reports after a sync, in the text's own world units. */
+type Typeset = { blockBounds: number[]; caretPositions?: Float32Array | null } | null;
+type Syncing = Text & { _needsSync?: boolean; _isSyncing?: boolean; textRenderInfo?: Typeset };
+
+/** Resolves once `text` has typeset its current props; troika's sync(cb) only calls back when a sync is pending. */
+export function synced(text: Text): Promise<void> {
+  const t = text as Syncing;
+  if (t._needsSync) return new Promise((done) => t.sync(done));
+  if (!t._isSyncing) return Promise.resolve();
+  return new Promise((done) => {
+    const target = t as unknown as THREE.EventDispatcher<{ synccomplete: object }>;
+    const once = (): void => {
+      target.removeEventListener('synccomplete', once);
+      done();
+    };
+    target.addEventListener('synccomplete', once);
+  });
+}
+
 /** Kinetic type: one troika text per letter, word or line, staggered from the layer's local time. */
 export class KineticType extends THREE.Group {
   readonly boxes: UnitBox[];
   private readonly texts: Text[];
+  /** One whole-line text per line, typeset only to read where its carets fall (letter and word units). */
+  private readonly lines: Text[];
+  private placed = false;
 
   constructor(
     text: string,
@@ -238,25 +264,76 @@ export class KineticType extends THREE.Group {
       );
     const lineHeight = options.lineHeight ?? options.fontSize * 1.1;
     this.boxes = layoutUnits(text, unit, options.measure, lineHeight);
-    this.texts = this.boxes.map((box) => {
+    const make = (s: string): Text => {
       const t = new Text();
       Object.assign(t, {
-        text: box.text,
+        text: s,
         font: options.fontUrl,
         fontSize: options.fontSize * UNIT,
         anchorX: 'left',
         anchorY: 'top',
       });
+      return t;
+    };
+    this.texts = this.boxes.map((box) => {
+      const t = make(box.text);
       t.color = (options.color ?? '#111114') as string;
       t.position.set(box.x * UNIT, -box.y * UNIT, 0);
-      t.sync();
+      t.sync(() => this.place());
       this.add(t);
       return t;
     });
-    if (options.fill) {
-      const widest = Math.max(0, ...text.split('\n').map((line) => options.measure(line)));
-      this.scale.setScalar(fillScale(widest, options.fill.frameWidth, options.fill.inset));
-    }
+    const lineCount = 1 + Math.max(-1, ...this.boxes.map((b) => b.line));
+    this.lines =
+      unit === 'line'
+        ? []
+        : Array.from({ length: lineCount }, (_, n) => {
+            const t = make(text.split('\n').filter((l) => l.trim() !== '')[n] ?? '');
+            t.sync(() => this.place());
+            return t;
+          });
+    this.fill(Math.max(0, ...text.split('\n').map((line) => options.measure(line))));
+  }
+
+  private fill(widest: number): void {
+    const { fill } = this.options;
+    if (fill) this.scale.setScalar(fillScale(widest, fill.frameWidth, fill.inset));
+  }
+
+  /**
+   * Re-places every unit from the typeset glyphs once all lines have synced: the estimate from `measure`
+   * only holds until then. Widths and the fill scale follow.
+   */
+  private place(): void {
+    const infoOf = (t: Text | undefined): Typeset => (t as Syncing | undefined)?.textRenderInfo ?? null;
+    const sources = this.unit === 'line' ? this.texts : this.lines;
+    if (!sources.length || sources.some((t) => !infoOf(t))) return;
+    let widest = 0;
+    this.boxes.forEach((box, i) => {
+      const info = infoOf(sources[this.unit === 'line' ? i : box.line])!;
+      const [x0 = 0, , x1 = 0] = info.blockBounds;
+      const lineWidth = (x1 - x0) / UNIT;
+      widest = Math.max(widest, lineWidth);
+      const carets = info.caretPositions;
+      const at = box.at ?? 0;
+      const end = at + box.text.length - 1;
+      if (this.unit === 'line' || !carets || carets.length < (end + 1) * 4) {
+        box.x = -lineWidth / 2;
+        box.width = lineWidth;
+      } else {
+        box.x = -lineWidth / 2 + (carets[at * 4]! - x0) / UNIT;
+        box.width = (carets[end * 4 + 1]! - carets[at * 4]!) / UNIT;
+      }
+      this.texts[i]!.position.x = box.x * UNIT;
+    });
+    this.fill(widest);
+    this.placed = true;
+  }
+
+  /** Resolves once every unit has typeset and been placed from its real glyph widths. */
+  async ready(): Promise<void> {
+    await Promise.all([...this.texts, ...this.lines].map(synced));
+    if (!this.placed) this.place();
   }
 
   /** Poses every unit at `local` ms from the layer's start, faded by the layer's opacity. */
@@ -284,7 +361,9 @@ export class KineticType extends THREE.Group {
       this.remove(t);
       t.dispose();
     }
+    for (const t of this.lines) t.dispose();
     this.texts.length = 0;
+    this.lines.length = 0;
   }
 }
 
@@ -307,6 +386,11 @@ export class CountText extends THREE.Group {
       this.shown = value;
     }
     this.text.fillOpacity = opacity;
+  }
+
+  /** Resolves once the shown string has typeset. */
+  ready(): Promise<void> {
+    return synced(this.text);
   }
 
   override dispose(): void {

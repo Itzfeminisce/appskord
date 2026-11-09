@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fontUrl } from '@appskord/motion/assets';
-import { createCanvasRenderer, V3Renderer } from '@appskord/motion/renderer';
+import { createCanvasRenderer, V3Renderer, type LayerContent } from '@appskord/motion/renderer';
 import { EFFECTS_NOTE, effectEntry } from '@appskord/motion/effects';
 import type { LayerV3 } from '@appskord/motion/types';
 import { useEditorV3 } from './context';
@@ -51,9 +51,15 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
     [preview, layer, scene.id],
   );
 
+  // What each layer draws comes from the v2 layers (text, fill, size); a string key rebuilds only when it changes.
+  const contentKey = JSON.stringify(scene.layers.map((l) => [l.id, layerContent(state.clip, state.scene, l) ?? null]));
+  const contents = useMemo(() => new Map(JSON.parse(contentKey) as [string, LayerContent | null][]), [contentKey]);
+  const shownT = useRef(t);
+
   useEffect(() => {
     if (!gl) return;
     let next: V3Renderer | undefined;
+    let current = true;
     try {
       next = new V3Renderer(scene, {
         ...PREVIEW,
@@ -64,20 +70,29 @@ export function Stage({ preview }: { preview?: { effect: string } }) {
         effects: [...(v3.effects ?? []), ...previewUses],
         look,
         spread,
-        content: (l) => layerContent(state.clip, state.scene, l),
+        content: (l) => contents.get(l.id) ?? undefined,
       });
       next.attach(gl);
       next.render(t);
+      // Text typesets asynchronously; draw again once it has, at whatever t is showing by then.
+      const drawn = next;
+      void drawn.ready().then(() => {
+        if (current) drawn.render(shownT.current);
+      });
     } catch (error) {
       console.error('Motikord: could not draw the scene', error);
     }
     view.current = next;
-    return () => next?.dispose();
-    // t is drawn by the effect below; rebuilding is only for recipe and look changes.
+    return () => {
+      current = false;
+      next?.dispose();
+    };
+    // t is drawn by the effect below; rebuilding is only for recipe, content and look changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, scene, v3.finish, v3.effects, v3.fps, look, spread, previewUses]);
+  }, [gl, scene, contents, v3.finish, v3.effects, v3.fps, look, spread, previewUses]);
 
   useEffect(() => {
+    shownT.current = t;
     try {
       view.current?.render(t);
     } catch (error) {

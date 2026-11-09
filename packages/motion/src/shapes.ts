@@ -60,18 +60,39 @@ export function bounds(points: readonly Point[]): { x: number; y: number; width:
   return points.length ? { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } : { x: 0, y: 0, width: 0, height: 0 };
 }
 
-/** A filled shape in the scene graph; `setPoints` swaps its outline (used by morph). Recipe units in, y down. */
-export class ShapeMesh extends THREE.Mesh<THREE.ShapeGeometry, THREE.MeshBasicMaterial> {
+/** Triangle indices into `ring` (a closed outline, last point optionally repeating the first). */
+export function triangulate(ring: readonly Point[]): number[] {
+  const contour = ring.map(([x, y]) => new THREE.Vector2(x, y));
+  return THREE.ShapeUtils.triangulateShape(contour, []).flat();
+}
+
+/**
+ * A filled shape in the scene graph. `setPoints` re-triangulates a new outline; `movePoints` moves the same
+ * points in place (morph, rigs), keeping the triangles. Recipe units in, y down.
+ */
+export class ShapeMesh extends THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> {
   constructor(points: readonly Point[], color: THREE.ColorRepresentation = '#8B9CFF') {
-    super(new THREE.ShapeGeometry(toShape(points)), new THREE.MeshBasicMaterial({ color, transparent: true }));
+    // Triangles keep their winding when points move or flip, so both faces draw.
+    super(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial({ color, transparent: true, side: THREE.DoubleSide }),
+    );
+    this.setPoints(points);
   }
 
   setPoints(points: readonly Point[]): void {
-    this.geometry.dispose();
-    this.geometry = new THREE.ShapeGeometry(toShape(points));
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(points.length * 3), 3));
+    this.geometry.setIndex(triangulate(points));
+    this.movePoints(points);
   }
-}
 
-function toShape(points: readonly Point[]): THREE.Shape {
-  return new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x * UNIT, -y * UNIT)));
+  /** Moves the outline without re-triangulating; false (nothing moved) when the point count differs. */
+  movePoints(points: readonly Point[]): boolean {
+    const position = this.geometry.getAttribute('position') as THREE.BufferAttribute;
+    if (points.length !== position.count) return false;
+    points.forEach(([x, y], i) => position.setXYZ(i, x * UNIT, -y * UNIT, 0));
+    position.needsUpdate = true;
+    this.geometry.computeBoundingSphere();
+    return true;
+  }
 }

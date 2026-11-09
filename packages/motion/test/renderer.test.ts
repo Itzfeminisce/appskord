@@ -157,9 +157,9 @@ describe('V3Renderer', () => {
     expect(strokes.geometry.drawRange.count).toBe(6);
     const mask = (g('w').children[0] as ShapeMesh).material.clippingPlanes;
     expect(mask).toHaveLength(4);
-    const bar = (g('c~bar~1').children[0] as ShapeMesh).geometry;
-    bar.computeBoundingBox();
-    const grown = bar.boundingBox!.max.y - bar.boundingBox!.min.y;
+    const bar = g('c~bar~1').children[0] as ShapeMesh;
+    const grown = bar.scale.y;
+    const cut = bar.geometry.index;
     const mascot = () => {
       const m = (g('mascot').children[0] as ShapeMesh).geometry;
       m.computeBoundingBox();
@@ -167,10 +167,9 @@ describe('V3Renderer', () => {
     };
     const at500 = mascot();
     r.pose(2000);
-    bar.computeBoundingBox();
-    const full = (g('c~bar~1').children[0] as ShapeMesh).geometry;
-    full.computeBoundingBox();
-    expect(full.boundingBox!.max.y - full.boundingBox!.min.y).toBeGreaterThan(grown);
+    // Bars grow by scaling about their bottom edge; the triangles are cut once.
+    expect(bar.scale.y).toBeGreaterThan(grown);
+    expect(bar.geometry.index).toBe(cut);
     expect((g('w').children[0] as ShapeMesh).material.clippingPlanes).toHaveLength(0);
     const again = make();
     again.pose(500);
@@ -179,5 +178,86 @@ describe('V3Renderer', () => {
     expect(m2.boundingBox!.equals(at500)).toBe(true);
     r.dispose();
     again.dispose();
+  });
+
+  it('skips the edge of an empty outline instead of throwing', () => {
+    const s = scene();
+    s.layers.push({ id: 'i', kind: 'icon', depth: 'front', start: 0, tracks: {} });
+    const r = new V3Renderer(s, {
+      width: 540,
+      height: 960,
+      quality: 'reduced',
+      fps: 30,
+      fontUrl: '/f.woff2',
+      content: (l) => (l.id === 'i' ? { path: 'M 0 0', stroke: '#fff', strokeWidth: 4 } : undefined),
+    });
+    expect(() => r.pose(100)).not.toThrow();
+    expect(r.graph.layers.get('i')!.children.some((c) => c instanceof StrokeMesh)).toBe(false);
+    r.dispose();
+  });
+
+  it('morphs and rigs in place: one geometry, positions moved, no re-cut', () => {
+    const s = scene();
+    const host = { id: 'm', kind: 'shape' as const, depth: 'middle' as const, start: 0, tracks: {} };
+    s.layers.push(
+      {
+        id: 'b',
+        kind: 'shape',
+        depth: 'front',
+        start: 0,
+        tracks: {
+          morph: [
+            { t: 0, v: 0 },
+            { t: 1000, v: 1 },
+          ],
+        },
+      },
+      host,
+      ...rigLayers(host, autoRig({ w: 320, h: 200 }), { ...RIG_DEFAULTS, moves: { body: 'lean' } }),
+    );
+    const r = new V3Renderer(s, { width: 540, height: 960, quality: 'reduced', fps: 30, fontUrl: '/f.woff2' });
+    for (const id of ['b', 'm']) {
+      const mesh = r.graph.layers.get(id)!.children[0] as ShapeMesh;
+      r.pose(100);
+      const position = mesh.geometry.getAttribute('position');
+      const before = [...(position.array as Float32Array)];
+      r.pose(700);
+      expect(mesh.geometry.getAttribute('position')).toBe(position);
+      expect([...(position.array as Float32Array)]).not.toEqual(before);
+    }
+    r.dispose();
+  });
+
+  it('ready() waits for every text still typesetting', async () => {
+    const s = scene();
+    const r = new V3Renderer(s, {
+      width: 540,
+      height: 960,
+      quality: 'reduced',
+      fps: 30,
+      fontUrl: '/f.woff2',
+      content: (l) => (l.kind === 'text' ? { text: 'Two words' } : undefined),
+    });
+    r.pose(0);
+    // Mark one unit as mid-typeset, the way troika leaves a text whose string just changed.
+    const unit = r.graph.layers.get('headline')!.children[0]!.children[0] as THREE.Object3D & {
+      _needsSync?: boolean;
+      sync: (cb?: () => void) => void;
+    };
+    let finish: (() => void) | undefined;
+    unit._needsSync = true;
+    unit.sync = (cb) => {
+      finish = cb;
+    };
+    let done = false;
+    const waiting = r.ready().then(() => {
+      done = true;
+    });
+    await new Promise((res) => setTimeout(res, 10));
+    expect(done).toBe(false);
+    finish!();
+    await waiting;
+    expect(done).toBe(true);
+    r.dispose();
   });
 });

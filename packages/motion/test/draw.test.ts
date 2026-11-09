@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { chartLayers, CHART_DEFAULTS, PLOT, type Row } from '../src/charts';
 import { chartPart, drawSpec, formatCount, growOutline, rigBones } from '../src/draw';
-import { strokeStrip } from '../src/paths';
+import { splitSharpJoins, strokeStrip } from '../src/paths';
 import { autoRig, deformPoints, poseBones, rigLayers, RIG_DEFAULTS } from '../src/rigs';
-import { bounds } from '../src/shapes';
+import { bounds, roundedRect } from '../src/shapes';
 import type { LayerV3 } from '../src/types';
 
 const inks = { ink: '#fff', panel: '#222', accent: '#8B9CFF' };
@@ -143,6 +143,51 @@ describe('pure geometry', () => {
       4,
     );
     expect([...s]).toEqual([0, 2, 0, -2, 10, 2, 10, -2]);
+  });
+
+  it('strokeStrip mitres radius-0 rect corners and joins across the seam', () => {
+    const rect = roundedRect(100, 60, 0);
+    const s = strokeStrip([...rect, rect[0]!], 10);
+    // Every corner's outer edge sits a full half-width out on both sides: (50+5, 30+5) etc., no pinch at the seam.
+    for (let i = 0; i < rect.length + 1; i++) {
+      const [x, y] = rect[i % rect.length]!;
+      const ex = Math.max(Math.abs(s[i * 4]! - x), Math.abs(s[i * 4 + 2]! - x));
+      const ey = Math.max(Math.abs(s[i * 4 + 1]! - y), Math.abs(s[i * 4 + 3]! - y));
+      expect(ex).toBeCloseTo(5, 6);
+      expect(ey).toBeCloseTo(5, 6);
+    }
+    expect([s[0], s[1], s[2], s[3]]).toEqual([...s.slice(rect.length * 4, rect.length * 4 + 4)]);
+  });
+
+  it('strokeStrip ignores repeated points and bevels past the miter limit', () => {
+    const dup = strokeStrip(
+      [
+        [0, 0],
+        [10, 0],
+        [10, 0],
+        [20, 0],
+      ],
+      4,
+    );
+    expect([...dup.slice(4, 8)]).toEqual([10, 2, 10, -2]);
+    const hairpin: [number, number][] = [
+      [0, 0],
+      [100, 0],
+      [0, 1],
+    ];
+    const split = splitSharpJoins(hairpin);
+    expect(split).toHaveLength(4);
+    const s = strokeStrip(split, 4);
+    for (let i = 0; i < split.length * 4; i++) expect(Math.abs(s[i]!)).toBeLessThan(103);
+  });
+
+  it('fits rig bones to the drawn outline, not the nominal size', () => {
+    const host = layer({ id: 'h', kind: 'icon' });
+    const all = [host, ...rigLayers(host, autoRig({ w: 120, h: 120 }), RIG_DEFAULTS)];
+    const spec = drawSpec(host, all, { path: 'M 100 100 L 140 100 L 140 180 L 100 180 Z' }, inks);
+    const body = spec.kind === 'shape' ? spec.bones!.find((b) => b.id === 'body')! : undefined;
+    expect(body!.points[0]).toEqual([120, 180]);
+    expect(body!.points[3]).toEqual([120, 100]);
   });
 
   it('deformPoints keeps an outline at rest and moves it with the bones', () => {

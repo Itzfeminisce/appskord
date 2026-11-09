@@ -16,12 +16,13 @@ import {
   type LayerFrame,
   type MotionGraph,
   type Quality,
+  UNIT,
 } from './scene';
 import { applyMask, type Box } from './masks';
-import { morpher } from './morph';
+import { morphRing } from './morph';
 import { StrokeMesh, type Point } from './paths';
-import { deformPoints, poseBones, type Bone, type BoneId } from './rigs';
-import { bounds, ShapeMesh } from './shapes';
+import { deformPoints, poseBones, type Bone, type BoneId, type BonePose } from './rigs';
+import { bounds, ShapeMesh, triangulate } from './shapes';
 import { CountText, KineticType, type Measure } from './type';
 import type { Finish, LayerV3, LookGuide, SceneV3 } from './types';
 
@@ -52,68 +53,120 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement | OffscreenCanvas
 
 type Props = LayerFrame['props'];
 type Joints = Partial<Record<BoneId, Point[]>>;
+type Poses = Partial<Record<BoneId, BonePose>>;
+type PropsOf = (id: string) => Props | undefined;
 
 /** One layer's content under its group, posed from the layer's props each frame. */
 interface View {
   readonly id: string;
   /** Local bounds for the mask, recipe px. */
   readonly box: Box;
-  update(l: LayerFrame, joints: JointsOf): void;
+  update(l: LayerFrame, props: PropsOf): void;
   dispose(): void;
 }
-type JointsOf = (host: string, bones: readonly Bone[]) => Joints;
 
-const restOf = (bones: readonly Bone[]): Joints => poseBones(bones, {});
-const jointsKey = (j: Joints | undefined): string =>
-  j
-    ? Object.values(j)
-        .map((ps) => ps!.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' '))
-        .join('|')
-    : '';
+const clamp01 = (x: number): number => (x > 0 ? (x < 1 ? x : 1) : 0);
+
+const samePoses = (bones: readonly Bone[], a: Poses | undefined, b: Poses): boolean =>
+  !!a &&
+  bones.every(({ id }) => {
+    const p = a[id];
+    const q = b[id];
+    return p === q || (!!p && !!q && p.rotate === q.rotate && p.y === q.y && p.scale === q.scale);
+  });
+
+/** A host's bones: re-posed (forward kinematics) only on frames where a bone layer moved. */
+class RigPose {
+  private readonly rest: Joints;
+  private joints: Joints;
+  private last?: Poses;
+
+  constructor(
+    private readonly host: string,
+    private readonly bones: readonly Bone[],
+  ) {
+    this.rest = poseBones(bones, {});
+    this.joints = this.rest;
+  }
+
+  /** True when the bones moved since the last frame. */
+  update(props: PropsOf): boolean {
+    const poses = bonePoses(this.host, this.bones, props);
+    if (samePoses(this.bones, this.last, poses)) return false;
+    this.last = poses;
+    this.joints = poseBones(this.bones, poses);
+    return true;
+  }
+
+  deform(points: readonly Point[]): Point[] {
+    return deformPoints(points, this.rest, this.joints);
+  }
+}
 
 class ShapeView implements View {
   readonly box: Box;
   private readonly mesh: ShapeMesh;
   private readonly edge?: StrokeMesh;
   private readonly at?: (t: number) => Point[];
-  private readonly rest?: Joints;
-  private drawn: readonly Point[];
-  private key = '';
+  /** Morph triangles cut at each end; the nearer end's are used (ring point counts match). */
+  private readonly ends?: [THREE.BufferAttribute, THREE.BufferAttribute];
+  private readonly rig?: RigPose;
+  /** Recipe y of the outline's bottom edge, the pivot the draw track grows from. */
+  private readonly bottom: number;
+  private points: readonly Point[];
+  private morph = Number.NaN;
+  private draw = Number.NaN;
 
   constructor(
     readonly id: string,
     group: THREE.Group,
     private readonly spec: Extract<DrawSpec, { kind: 'shape' }>,
   ) {
-    this.mesh = new ShapeMesh(spec.outline, spec.color);
-    this.drawn = spec.outline;
+    if (spec.morphTo) {
+      this.at = morphRing(spec.outline, spec.morphTo);
+      const [a, b] = [this.at(0), this.at(1)];
+      if (a.length === b.length && a.length >= 3)
+        this.ends = [
+          new THREE.Uint32BufferAttribute(triangulate(a), 1),
+          new THREE.Uint32BufferAttribute(triangulate(b), 1),
+        ];
+    }
+    this.points = this.at ? this.at(0) : spec.outline;
+    this.mesh = new ShapeMesh(this.points, spec.color);
     group.add(this.mesh);
-    if (spec.stroke) {
-      this.edge = new StrokeMesh([...spec.outline, spec.outline[0]!], spec.stroke.width, spec.stroke.color);
+    if (spec.stroke && spec.outline.length >= 2) {
+      this.edge = new StrokeMesh(closed(this.points), spec.stroke.width, spec.stroke.color);
       group.add(this.edge);
     }
-    if (spec.morphTo) this.at = morpher(spec.outline, spec.morphTo);
-    if (spec.bones) this.rest = restOf(spec.bones);
+    if (spec.bones) this.rig = new RigPose(id, spec.bones);
+    this.bottom = Math.max(...spec.outline.map((p) => p[1]));
     this.box = bounds(spec.morphTo ? [...spec.outline, ...spec.morphTo] : spec.outline);
   }
 
-  update({ props }: LayerFrame, joints: JointsOf): void {
+  update({ props }: LayerFrame, propsOf: PropsOf): void {
     const { spec } = this;
-    const morph = this.at ? Math.min(1, Math.max(0, props.morph)) : 0;
-    const draw = spec.grow ? Math.min(1, Math.max(0, props.draw)) : 1;
-    const posed = spec.bones ? joints(this.id, spec.bones) : undefined;
-    const key = `${morph}|${draw}|${jointsKey(posed)}`;
-    if (key !== this.key) {
-      this.key = key;
+    const morph = this.at ? clamp01(props.morph) : 0;
+    const draw = spec.grow ? clamp01(props.draw) : 1;
+    const moved = this.rig?.update(propsOf) ?? false;
+    const reshaped = moved || morph !== this.morph;
+    if (reshaped) {
       let points = this.at ? this.at(morph) : spec.outline;
-      if (spec.grow) points = growOutline(points, draw);
-      if (posed && this.rest) points = deformPoints(points, this.rest, posed);
-      if (points !== this.drawn) {
-        this.mesh.setPoints(points);
-        this.edge?.setPoints([...points, points[0]!], 1);
-        this.drawn = points;
-      }
+      if (this.rig) points = this.rig.deform(points);
+      if (!this.mesh.movePoints(points)) this.mesh.setPoints(points);
+      else if (this.ends) this.mesh.geometry.setIndex(this.ends[morph < 0.5 ? 0 : 1]);
+      this.points = points;
+      this.morph = morph;
     }
+    if (draw !== this.draw) {
+      // Grow from the bottom edge: scale about it rather than re-cutting the outline.
+      this.mesh.scale.y = draw;
+      this.mesh.position.y = -this.bottom * UNIT * (1 - draw);
+    }
+    if (this.edge && (reshaped || draw !== this.draw)) {
+      const edge = spec.grow ? growOutline(this.points, draw) : this.points;
+      this.edge.setPoints(closed(edge), 1);
+    }
+    this.draw = draw;
     this.mesh.material.opacity = props.opacity;
     if (this.edge) this.edge.material.opacity = props.opacity;
   }
@@ -126,12 +179,14 @@ class ShapeView implements View {
   }
 }
 
+const closed = (points: readonly Point[]): Point[] => (points.length ? [...points, points[0]!] : []);
+
 class PathView implements View {
   readonly box: Box;
   private readonly strokes: StrokeMesh[];
   private readonly lines: Point[][];
-  private readonly rest?: Joints;
-  private key = '';
+  private readonly rig?: RigPose;
+  private draw = Number.NaN;
 
   constructor(
     readonly id: string,
@@ -141,20 +196,19 @@ class PathView implements View {
     this.lines = spec.lines.filter((l) => l.length > 1);
     this.strokes = this.lines.map((l) => new StrokeMesh(l, spec.width, spec.color));
     for (const s of this.strokes) group.add(s);
-    if (spec.bones) this.rest = restOf(spec.bones);
+    if (spec.bones) this.rig = new RigPose(id, spec.bones);
     const b = bounds(spec.lines.flat());
     const pad = spec.width / 2;
     this.box = { x: b.x - pad, y: b.y - pad, width: b.width + 2 * pad, height: b.height + 2 * pad };
   }
 
-  update({ props }: LayerFrame, joints: JointsOf): void {
-    const posed = this.spec.bones ? joints(this.id, this.spec.bones) : undefined;
-    const key = `${props.draw}|${jointsKey(posed)}`;
-    if (key !== this.key) {
-      this.key = key;
+  update({ props }: LayerFrame, propsOf: PropsOf): void {
+    const moved = this.rig?.update(propsOf) ?? false;
+    if (moved || props.draw !== this.draw) {
+      this.draw = props.draw;
       this.strokes.forEach((s, i) => {
         const line = this.lines[i]!;
-        s.setPoints(posed && this.rest ? deformPoints(line, this.rest, posed) : line, props.draw);
+        s.setPoints(this.rig ? this.rig.deform(line) : line, props.draw);
       });
     }
     for (const s of this.strokes) s.material.opacity = props.opacity;
@@ -168,6 +222,7 @@ class PathView implements View {
   }
 }
 
+/** Width before troika has typeset the line; KineticType re-places units from the real glyphs once it has. */
 const roughMeasure =
   (fontSize: number): Measure =>
   (s) =>
@@ -253,11 +308,6 @@ export class V3Renderer {
         });
         group.add(k);
         this.kinetic.set(layer.id, k);
-        const lineHeight = spec.fontSize * 1.1;
-        const lines = 1 + Math.max(0, ...k.boxes.map((b) => b.line));
-        const x0 = Math.min(0, ...k.boxes.map((b) => b.x));
-        const x1 = Math.max(0, ...k.boxes.map((b) => b.x + b.width));
-        this.textBoxes.set(layer.id, { x: x0, y: 0, width: x1 - x0, height: lines * lineHeight });
         return;
       }
       case 'count': {
@@ -295,12 +345,18 @@ export class V3Renderer {
     }
   }
 
-  /** A rigged host's joints this frame, posed from its hidden bone layers. */
-  private readonly joints: JointsOf = (host, bones) =>
-    poseBones(
-      bones,
-      bonePoses(host, bones, (id) => this.props.get(id)),
-    );
+  private readonly propsOf: PropsOf = (id) => this.props.get(id);
+
+  /** A text layer's box for its mask, from where its units now sit (typeset widths once synced). */
+  private textBox(id: string): Box | undefined {
+    const k = this.kinetic.get(id);
+    if (!k) return this.textBoxes.get(id);
+    const lineHeight = k.options.fontSize * 1.1;
+    const lines = 1 + Math.max(0, ...k.boxes.map((b) => b.line));
+    const x0 = Math.min(0, ...k.boxes.map((b) => b.x));
+    const x1 = Math.max(0, ...k.boxes.map((b) => b.x + b.width));
+    return { x: x0, y: 0, width: x1 - x0, height: lines * lineHeight };
+  }
 
   /** Poses the graph, content, camera and finish for `t` ms into the scene. Pure of GPU work. */
   pose(t: number): FrameState {
@@ -315,11 +371,11 @@ export class V3Renderer {
       const c = this.counts.get(l.id);
       c?.view.update(formatCount(c.count, l.props.draw), l.props.opacity);
       this.particles.get(l.id)?.update(Math.max(0, l.local));
-      this.views.get(l.id)?.update(l, this.joints);
+      this.views.get(l.id)?.update(l, this.propsOf);
     }
     for (const layer of this.masked) {
       const group = this.graph.layers.get(layer.id);
-      const box = this.views.get(layer.id)?.box ?? this.textBoxes.get(layer.id);
+      const box = this.views.get(layer.id)?.box ?? this.textBox(layer.id);
       if (group && box) applyMask(group, box);
     }
     this.chain.update({ sceneId: this.scene.id, t, frame, graph: this.graph });
@@ -346,6 +402,24 @@ export class V3Renderer {
     this.chain.blur?.render(this.renderer, this.graph, this.camera, this.previous);
     this.composer.render();
     this.previous.copy(this.camera);
+  }
+
+  /**
+   * Resolves once every text has typeset what the last pose asked for (troika typesets asynchronously, so a
+   * plain render can show the previous string) and kinetic type sits on its real glyph widths.
+   */
+  async ready(): Promise<void> {
+    await Promise.all([
+      ...[...this.kinetic.values()].map((k) => k.ready()),
+      ...[...this.counts.values()].map((c) => c.view.ready()),
+    ]);
+  }
+
+  /** The export path: poses `t`, waits for its text to typeset, then draws it. Preview keeps the sync render. */
+  async renderReady(t: number): Promise<void> {
+    this.pose(t);
+    await this.ready();
+    this.render(t);
   }
 
   get frame(): FrameState | null {
