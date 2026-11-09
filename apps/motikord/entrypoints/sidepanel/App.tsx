@@ -4,6 +4,7 @@ import { findInterrupted } from '../../lib/exportJob';
 import { onMessage, PANEL_GOTO } from '../../lib/messages';
 import { getSettings } from '../../lib/settings';
 import { takeSidePanelGoal } from '../../lib/sidepanelGo';
+import { shouldShowWhatsNew } from '../../components/sidepanel/whatsNew';
 import { Outlet, RouterProvider, sidepanel, useRouter, type SidepanelScreen } from './router';
 
 function Switcher() {
@@ -65,7 +66,13 @@ export default function App() {
       return [];
     });
     Promise.all([getSettings(), interrupted, devScreen()])
-      .then(([s, jobs]) => setFirst(jobs.length > 0 ? 'Recovered' : s.onboarded ? 'Home' : 'Main'))
+      .then(async ([s, jobs]) => {
+        if (jobs.length > 0) return 'Recovered' as const;
+        if (!s.onboarded) { await shouldShowWhatsNew(browser.runtime.getManifest().version, false); return 'Main' as const; }
+        // What's new shows once after an update; a patch bump skips it.
+        return (await shouldShowWhatsNew(browser.runtime.getManifest().version, true)) ? 'WhatsNewV3' as const : 'HomeV3' as const;
+      })
+      .then(setFirst)
       .catch((error: unknown) => {
         console.error('Motikord: could not read settings', error);
         setFirst('Main');
