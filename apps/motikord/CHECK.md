@@ -61,7 +61,19 @@ H.264 via mediabunny `CanvasSource`, MP4 (VP9/WebM when H.264 cannot encode). Pr
 | Memory | < 1.5 GB during export | Pass | 45 MB peak JS heap (`performance.memory`; GPU memory is not visible to pages) |
 
 The export rows are Slow only because the sandbox has no GPU; the laptop decides them.
-Owner's laptop (Windows, 4 cores, 8 GB, Chrome 156): _not run yet; paste Copy results from Run v3 here._
+## v3 (owner's laptop, 2026-11-09)
+
+Windows, 4 cores, 8 GB, no WebGPU, Chrome 156. All rows Pass; no fallback needed.
+
+| Test | Budget | Result | Numbers |
+| --- | --- | --- | --- |
+| Building blocks load | all load, no eval, no remote code | Pass | 10 of 10, 0 CSP violations, 0 remote requests |
+| Preview speed | 30 fps | Pass | 54.5 fps at 540x960, p95 frame 16.9 ms |
+| Export 30 fps | 60 s (4x) | Pass | 34.9 s (2.33x), render 14.4 ms + encode 63.2 ms per frame, 310 MB |
+| Export 60 fps | 120 s (8x) | Pass | 78.1 s (5.21x), render 23.4 ms + encode 63.3 ms per frame, 519 MB |
+| Memory | 1.5 GB | Pass | 1044 MB peak JS heap (60 fps); 600 MB at 30 fps |
+
+Encode, not render, is the cost per frame. The 60 fps peak holds the whole file in memory: T5 streams export output instead.
 
 Bundle: side panel 1,091,844 bytes before and after (same chunk files, byte for byte). Check page 165,999 bytes before,
 5,051,956 after (the v3 stack, one 4.9 MB chunk), plus `dotlottie-player.wasm` 1.23 MB and the Archivo Black
