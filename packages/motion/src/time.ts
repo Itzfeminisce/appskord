@@ -5,7 +5,7 @@ export function frameMs(frame: number, fps: number): number {
 }
 
 export function frameCount(ms: number, fps: number): number {
-  return Math.ceil((ms * fps) / 1000);
+  return Math.max(0, Math.ceil((ms * fps) / 1000 - 1e-6));
 }
 
 /** The frame showing time `ms`, so float drift never picks a neighbour frame. */
