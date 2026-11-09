@@ -283,6 +283,7 @@ export const REST: Readonly<Record<Prop, number>> = {
   draw: 1,
   morph: 0,
   mask: 1,
+  rotateY: 0,
 };
 
 export interface LayerFrame {
@@ -358,7 +359,7 @@ export function applyFrame(graph: MotionGraph, frame: FrameState): void {
     if (!g) continue;
     g.position.set(props.x * UNIT, -props.y * UNIT, props.z * UNIT);
     g.scale.setScalar(props.scale);
-    g.rotation.set(0, 0, (-props.rotate * Math.PI) / 180);
+    g.rotation.set(0, (props.rotateY * Math.PI) / 180, (-props.rotate * Math.PI) / 180);
     g.visible = local >= 0 && props.opacity > 0;
     Object.assign(g.userData, {
       opacity: props.opacity,
