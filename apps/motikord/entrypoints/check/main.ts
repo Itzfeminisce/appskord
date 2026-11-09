@@ -5,6 +5,8 @@ import { exportVerdict, memoryVerdict, previewVerdict, supportVerdict } from '@/
 import { drawFrame, makeImages } from './draw';
 import type { RenderReply } from './render.worker';
 import { BG_KINDS, jpegFrame, pipeline, previewBackground, previewTransition, TRANSITIONS, type V2Row } from './v2';
+import { saveMachineResult } from '../../components/settings/store';
+import { machineView, renderMachineCheck } from './machineCheckV3';
 import { CHECK_ROWS, failedCheckRow, v3Tests, type CheckRow } from './v3';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -290,11 +292,19 @@ function v3Row(id: string, cells: string[]) {
 }
 const v3Text = (r: CheckRow) => [`${r.value ?? ''} ${r.unit}`.trim(), r.fallback ? `Fallback: ${r.fallback}` : '', numbersText(r.numbers)].filter(Boolean).join('\n');
 for (const { id, name, budget } of CHECK_ROWS) v3Row(id, [name, budget, '', '']);
+/** MachineCheckV3's summary from the v3 rows; Settings reads whether 60 fps export is ready. */
+async function showMachineCheck(seconds: number) {
+  const m = await machine();
+  const view = machineView(Object.fromEntries(v3Results.map((r) => [r.id, r.verdict])), { cores: m.cores as number, memoryGb: m.memoryGb as number | null }, seconds);
+  renderMachineCheck($('machinev3'), view, { onAgain: () => void runV3(), onDone: () => window.close() });
+  await saveMachineResult({ at: Date.now(), fps60: view.fps60 }).catch((error: unknown) => console.error('Motikord: could not save the machine check', error));
+}
 async function runV3() {
   if (busy) return;
   busy = true;
   document.querySelectorAll('button').forEach((b) => { b.disabled = true; });
   v3Results.length = 0;
+  const startedAt = performance.now();
   for (const [id, test] of v3List) {
     $('status').textContent = `Running v3 ${id}`;
     v3Row(id, [id, '', 'Running', '']);
@@ -308,6 +318,7 @@ async function runV3() {
     v3Results.push(r);
     v3Row(id, [r.name, r.budget, r.verdict, v3Text(r)]);
   }
+  await showMachineCheck(Math.round((performance.now() - startedAt) / 1000));
   $('status').textContent = 'Done. Press Copy results.';
   document.querySelectorAll('button').forEach((b) => { b.disabled = false; });
   busy = false;

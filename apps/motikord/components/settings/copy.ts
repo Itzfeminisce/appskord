@@ -1,0 +1,68 @@
+// SettingsV3, PrivacyV3 and ExportV3 copy, verbatim from the frames.
+
+export const FINISHING_LINE = 'Motion blur, soft light, fine grain and a gentle grade on every export.';
+export const EXPORT_LINE = 'Export renders every frame at full quality. A slower computer takes longer, never looks worse.';
+
+export const SETTINGS = {
+  title: 'Settings',
+  lookAndQuality: 'Look and quality',
+  defaultStyle: 'Default style',
+  defaultPace: 'Default pace',
+  qualityCheck: 'Quality check',
+  qualityCheckLine: (provider: string) => `Up to 8 small frames per pass go to ${provider}.`,
+  canSee: 'Your model can see images · Ready',
+  beatSync: 'Beat sync',
+  beatSyncLine: 'Beats are found on this computer. The music never leaves it.',
+  aiImages: 'AI images',
+  aiImagesLine: 'Only the slot’s few-word description goes out.',
+  finishing: 'Finishing',
+  finishingLine: FINISHING_LINE,
+  frameRate: 'Frame rate',
+  fps60: '60 fps when your computer can',
+  fps30: '30 fps',
+  machine: (fps: 60 | 30, when: string) => `This computer: ${fps} fps export · checked ${when}`,
+  // Before any check has run, the link carries the check page's title.
+  machineNever: 'Checking this computer',
+  previewQuality: 'Preview quality',
+  previewQualityLine: 'Only the preview changes. Export is always full quality.',
+  keyFrames: 'Show key frames first',
+  keyFramesLine: 'Check one still per scene before the motion is added.',
+  voiceAndCaptions: 'Voice and captions',
+  captions: 'Auto captions',
+  captionsLine: (provider: string) => `Your narration goes to ${provider} to be written down.`,
+  voiceover: 'AI voiceover',
+  voiceoverLine: 'Only the script goes to OpenAI.',
+  keyTitle: 'OpenAI key for voiceover',
+  keyReady: 'From Penv Cloud · Ready',
+  pasteKey: 'Paste a key instead',
+  privacy: 'Where your data goes',
+  openSource: 'Open source on GitHub',
+  codeUrl: 'https://github.com/Itzfeminisce/appskord',
+} as const;
+
+export const PRIVACY = {
+  title: 'Where your data goes',
+  line: 'Each kind of data, and the only place it goes. Anything not listed stays on this computer.',
+  stays: 'Stays on this computer',
+  neverUploaded: 'Never uploaded',
+  local: [
+    { title: 'Editor, preview and render' },
+    { title: 'Library and look guides' },
+    { title: 'Your media', line: 'Photos, videos and music.' },
+    { title: '3D, effects, particles, animations and fonts', line: 'Bundled. Nothing is downloaded.' },
+  ],
+  goes: 'Goes to your AI',
+  groq: 'Groq',
+  ai: [
+    { title: 'Prompt and storyboard', line: 'So the AI can plan and write your clip.' },
+    { title: 'Look guide text', line: 'Palette, type pair, motion feel, light and texture as words.' },
+    { title: '“Animate this layer” settings', line: 'Only the layer’s settings, never media.' },
+    { title: 'Small frames for the quality check', line: 'Up to 8 per check pass, only if your model can see images.' },
+  ],
+  captions: { group: 'Captions', to: 'Groq or OpenAI', title: 'Your narration', line: 'Only when Auto captions is on.' },
+  voiceover: { group: 'Voiceover', to: 'OpenAI', title: 'Only the script', line: 'Only when AI voiceover is on.' },
+  keys: 'Keys',
+  keysLine: 'Keys come from Penv Cloud or a key you paste. Motikord never shows or logs them.',
+  on: 'On',
+  off: 'Off',
+} as const;

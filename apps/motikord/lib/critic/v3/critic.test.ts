@@ -191,6 +191,16 @@ describe('quality check: three passes', () => {
     spy.mockRestore();
   });
 
+  it('a missing key keeps its own state and is not shown as critic-ai-failed', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const g = fakeGroq({});
+    const r = await qualityCheck(flawed(), { ...g.opts, key: undefined, critic: vision() });
+    expect(r.passes.map((q) => q.state)).toEqual(['key-needed', 'key-needed', 'key-needed']);
+    expect(r.passes[2]!.copy).toBeUndefined();
+    expect(r.passes[2]!.notes.length).toBe(3);
+    spy.mockRestore();
+  });
+
   it('keeps a twelve-scene wordy clip under 8,000 tokens per call, frames included', async () => {
     const base = testRecipe();
     const recipe: Recipe = { ...base, scenes: Array.from({ length: 12 }, (_, i) => ({ ...structuredClone(base.scenes[i % 5]!), id: `s${i}` })) };

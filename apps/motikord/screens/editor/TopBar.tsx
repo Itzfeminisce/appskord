@@ -80,6 +80,7 @@ export function TopBar() {
       <button type="button" style={linkStyle} onClick={() => go('BrandKit')}>
         <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', background: dot ?? 'transparent', border: dot ? 0 : '1.5px dashed var(--line-strong)' }} />Brand
       </button>
+      <button type="button" style={linkStyle} onClick={() => go('RestyleV2')}>Restyle with v3 motion</button>
       <button type="button" data-slot="check-count" style={linkStyle} onClick={() => go('Checker')}>
         Check{count > 0 && <span aria-label={`${count} to fix`} style={{ minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: '#FEF3C7', color: '#92400E', font: '600 11px/18px var(--font)', textAlign: 'center' }}>{count}</span>}
       </button>

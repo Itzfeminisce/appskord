@@ -59,8 +59,8 @@ export interface PassResult {
   id: PassId;
   name: string;
   ran: boolean;
-  /** Why the AI part didn't run: critic-not-available, or critic-ai-failed (the call failed or timed out). */
-  state?: 'critic-not-available' | 'critic-ai-failed';
+  /** Why the AI part didn't run: critic-not-available, critic-ai-failed (the call failed or timed out), or key-needed (its own state, with the key card's copy). */
+  state?: 'critic-not-available' | 'critic-ai-failed' | 'key-needed';
   copy?: StateCopy;
   notes: QualityNote[];
   frames: number;
@@ -149,6 +149,8 @@ async function runPass(pass: PassId, x: CheckInput, o: QualityOptions): Promise<
     if (signal.aborted && !o.signal?.aborted) return failed();
     const err = toAiError(e, 'make');
     if (err.code === 'cancelled') throw err;
+    // No key is not "the AI didn't answer": it keeps its own state.
+    if (err.state === 'key-needed') return result({ state: 'key-needed', frames: images.length, tokens });
     // A garbled reply means no AI notes; the free checks still stand.
     if (err.code === 'bad-reply') return result({ ran: true, frames: images.length, tokens });
     console.error('Motikord: could not run quality check', err);

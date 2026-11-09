@@ -67,7 +67,7 @@ export default function EditorSwitch() {
     const params = { clipId: open.clip.id };
     if (to === 'library') goInSidePanel(win.current, 'Library');
     else if (to === 'look') openSidePanel(win.current);
-    else navigate(to === 'brand' ? 'BrandKit' : to === 'check' ? 'Checker' : 'Export', params);
+    else navigate(to === 'brand' ? 'BrandKit' : to === 'check' ? 'Checker' : 'ExportV3', params);
   };
   return (
     <Suspense fallback={null}>
