@@ -10,7 +10,7 @@
     "dev": "vp run motikord#dev"
   },
   "devDependencies": {
-    "vite-plus": "1.4.0"
+    "vite-plus": "1.5.0"
   },
   "engines": {
     "node": ">=22"
