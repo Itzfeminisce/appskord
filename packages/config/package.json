@@ -15,13 +15,13 @@
     "compile": "tsc --noEmit"
   },
   "dependencies": {
-    "fake-indexeddb": "^6.2.7"
+    "fake-indexeddb": "^6.2.8"
   },
   "devDependencies": {
-    "@types/chrome": "^0.1.0",
+    "@types/chrome": "^0.3.7",
     "@types/node": "^22.20.5",
     "typescript": "^5.9.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "wxt": "^0.21.5"
   }
 }
