@@ -14,14 +14,14 @@
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.21.0",
-    "@lottiefiles/dotlottie-web": "0.82.1",
+    "@lottiefiles/dotlottie-web": "0.83.2",
     "bezier-easing": "3.2.0",
     "flubber": "0.4.2",
-    "mediabunny": "1.65.2",
+    "mediabunny": "1.66.2",
     "opentype.js": "2.0.0",
     "postprocessing": "6.39.6",
     "three": "0.187.0",
-    "three.quarks": "0.17.1",
+    "three.quarks": "0.18.0",
     "troika-three-text": "0.53.1"
   },
   "devDependencies": {
@@ -29,6 +29,6 @@
     "@types/node": "^22.20.5",
     "@types/three": "0.187.0",
     "typescript": "^5.9.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.1"
   }
 }
